@@ -1,0 +1,13 @@
+{
+  "name": "g5500-controller",
+  "private": true,
+  "scripts": {
+    "test:web": "node tools/check_web.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
