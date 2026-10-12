@@ -1,6 +1,5 @@
 # Сборка
 
-Канонические исходники находятся в `G5500_Fork/`. Этот каталог используется Arduino и PlatformIO.
 
 ## Зафиксированные зависимости
 
@@ -72,22 +71,6 @@ python3 tools/simulator.py --log /tmp/g5500-packets.jsonl
 ```
 
 Симулятор доступен на http://127.0.0.1:8080. Для подключения логгера с другого компьютера используйте `--host 0.0.0.0` и IP компьютера с симулятором. Симулятор моделирует датчики и движение без управления GPIO. `Ctrl+C` завершает симулятор.
-
-## ESP32-S2, 4 MB, без PSRAM
-
-Дополнительная цель `esp32s2_4mb`: Arduino-ESP32 и библиотеки те же. USB использует TinyUSB CDC вместо аппаратного Serial/JTAG. RGB отключён: GPIO48 отсутствует, а распространённый RGB на GPIO18 конфликтует с EL. Все выводы TFT/touch, ADC, направлений, HC-05, BOOT и скорости сохраняют исходные номера. UART0 GS-232 на GPIO43/44 требует внешнего USB–UART; встроенный USB CDC служит диагностике и прошивке.
-
-PlatformIO: `pio run -e esp32s2_4mb`. По умолчанию остаётся сборка S3.
-
-Для Arduino IDE/CLI подготовить обычный скетч из единственных канонических исходников:
-
-```sh
-python3 tools/prepare_sketch.py --target s2
-```
-
-Открыть выведенный `build/arduino-s2/G5500_Fork/G5500_Fork.ino`. Скопированная `partitions.csv` относится к S2: два OTA-раздела по 0x1e0000, NVS 0x9000…0xdfff, SPIFFS и coredump. Канонический скетч S3 сохраняет свою таблицу 16 MB. Не использовать её на S2 4 MB.
-
-В IDE выбрать ESP32S2 Dev Module, Flash 4 MB, PSRAM Disabled, USB CDC On Boot Enabled, Upload Mode Internal USB, Partition Scheme Minimal SPIFFS (1.9 MB APP with OTA); лежащая рядом таблица имеет приоритет. CLI FQBN: `esp32:esp32:esp32s2:FlashSize=4M,PSRAM=disabled,PartitionScheme=min_spiffs,CDCOnBoot=cdc,UploadMode=cdc`.
 
 
 ## Проверка веб-интерфейса
