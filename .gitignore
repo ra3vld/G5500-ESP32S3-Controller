@@ -1,0 +1,35 @@
+# Build outputs and test results
+.pio/
+build/
+artifacts/
+dist/
+.cache/
+node_modules/
+__pycache__/
+*.py[cod]
+G5500_Fork/*.ino.cpp
+*.o
+*.a
+*.bin
+*.elf
+*.map
+*.log
+
+# Local editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+*.bak
+
+# Local configuration and device backups
+.env
+.env.*
+secrets.h
+credentials.*
+flash-backups/
+*.pem
+*.key
