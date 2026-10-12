@@ -1,0 +1,9 @@
+{
+  "captured_on": "2026-10-04",
+  "source": "Real 5MContest UDP capture from the earlier UEDX controller validation",
+  "contest_exe_sha256": "19a3657e854276321084bf9113371b9656493119f0cdc8b74a932053fc692de6",
+  "installation_hash_verified_on": "2026-10-12",
+  "installation_version_from_menu": "8.0.13",
+  "target": "<PST><AZIMUTH>288</AZIMUTH></PST>",
+  "stop": "<PST><STOP>1</STOP></PST>"
+}
