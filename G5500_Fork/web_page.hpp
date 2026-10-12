@@ -155,8 +155,16 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div class="field"><label>UR5EQF UDP</label><input name="pstPort" type="number" min="1" max="65534" required></div>
 <div class="field"><label>Положение N1MM UDP</label><input name="reportPort" type="number" min="1" max="65535" required></div>
 <div class="field"><label>Дополнительный IP N1MM</label><input name="reportHost" placeholder="192.168.1.10"></div></div>
-<div id="speedSettings"><label><input name="speedEnabled" type="checkbox"> Электронная скорость: каскад 0–5 В проверен</label>
-<div class="field"><label>Скорость, %</label><input name="speedPercent" type="number" min="25" max="100" step="1" value="50"></div></div>
+<div id="speedSettings"><label><input name="speedEnabled" type="checkbox"> Управлять скоростью через внешний модуль 0–5 В</label>
+<div class="row">
+<div class="field"><label>Рабочая скорость, %</label><input name="speedPercent" type="number" min="25" max="100" step="1" value="50" required></div>
+<div class="field"><label>Скорость старта, %</label><input name="startSpeedPercent" type="number" min="25" max="100" step="1" value="25" required></div>
+<div class="field"><label>Скорость у цели, %</label><input name="approachSpeedPercent" type="number" min="25" max="100" step="1" value="25" required></div>
+<div class="field"><label>Время разгона 0–100% рабочей скорости, мс</label><input name="accelerationMs" type="number" min="100" max="10000" step="1" value="2000" required></div>
+<div class="field"><label>Время торможения 100–0% рабочей скорости, мс</label><input name="decelerationMs" type="number" min="100" max="10000" step="1" value="1500" required></div>
+<div class="field"><label>Начинать замедление за, °</label><input name="slowdownDegrees" type="number" min="1" max="90" step="1" value="10" required></div>
+</div><p class="hint">Скорости старта и у цели ограничены рабочей скоростью. При реверсе сначала торможение, затем пауза 300 мс. STOP отключает привод сразу.</p>
+<div class="hint">Текущий выход скорости: <b id="speedOutput">0%</b></div></div>
 <button class="btn" type="submit">Сохранить настройки</button></form></details></div>
 <div class="card"><div class="label">История RSSI домашнего Wi-Fi</div>
 <div class="row" style="margin-top:10px"><button class="btn rbtn active" data-r="hour">1 HOUR</button><button class="btn rbtn" data-r="day">1 DAY</button><button class="btn rbtn" data-r="week">1 WEEK</button><button class="btn rbtn" data-r="month">1 MONTH</button><button class="btn rbtn" data-r="year">1 YEAR</button></div>
@@ -203,7 +211,8 @@ function updateFork(j){
  document.getElementById('speedSettings').classList.toggle('hide',!g800);
  document.getElementById('movementButtons').classList.toggle('az-only',g800);
  const f=document.getElementById('forkSettings');
- for(const key of ['model','rotorName','n1mmPort','pstPort','reportPort','reportHost','speedPercent'])if(first||!f.contains(document.activeElement))f.elements[key].value=j[key];
+ for(const key of ['model','rotorName','n1mmPort','pstPort','reportPort','reportHost','speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees'])if(first||!f.contains(document.activeElement))f.elements[key].value=j[key];
+ document.getElementById('speedOutput').textContent=j.speedOutputPercent.toFixed(1)+'%';
  if(first||!f.contains(document.activeElement))f.elements.speedEnabled.checked=j.speedEnabled;
  document.querySelector('#presetEditor [name=az]').max=j.azMode===36?360:450;
  if(first)fillPreset();

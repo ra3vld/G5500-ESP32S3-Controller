@@ -10,9 +10,13 @@ p.add_argument('--output', type=pathlib.Path)
 a = p.parse_args()
 out = a.output or ROOT / 'build' / ('arduino-' + a.target) / 'G5500_Fork'
 source = ROOT / 'G5500_Fork'
+if out.name != source.name:
+    p.error('Arduino sketch directory must be named G5500_Fork')
 if out.resolve() == source.resolve():
     p.error('output must differ from canonical source directory')
 out.mkdir(parents=True, exist_ok=True)
+# PlatformIO's generated file must never become a second copy of setup/loop.
+(out / 'G5500_Fork.ino.cpp').unlink(missing_ok=True)
 for f in source.iterdir():
     if f.suffix in {'.ino', '.cpp', '.hpp', '.h'} and not f.name.endswith('.ino.cpp'):
         shutil.copy2(f, out / f.name)

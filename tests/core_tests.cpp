@@ -1,4 +1,5 @@
 #include "api.hpp"
+#include "input.hpp"
 #include <iostream>
 #include <stdexcept>
 #include <cmath>
@@ -6,8 +7,43 @@ using namespace forkrot;
 unsigned checks=0;
 #define CHECK(expr) do {++checks;if(!(expr))throw std::runtime_error(std::string(__FILE__)+":"+std::to_string(__LINE__)+": " #expr);}while(0)
 Controller ready(Model model=Model::G5500){Controller c;c.model=model;c.feedback(20,30,true,true);return c;}
+Controller rampReady(){auto c=ready(Model::G800DXA);c.speedEnabled=true;c.decelerationMs=1000;return c;}
 std::string n1(float a,const std::string& name="G5500",int offset=0,int bi=0){return "<N1MMRotor><rotor>"+name+"</rotor><goazi>"+std::to_string(a)+"</goazi><offset>"+std::to_string(offset)+"</offset><bidirectional>"+std::to_string(bi)+"</bidirectional></N1MMRotor>";}
 int main(){try{
+ {auto c=rampReady();c.jog(0,1,true,0);c.tick(0);CHECK(c.axes[0].speedOutputPercent==25);
+ c.tick(0);CHECK(c.axes[0].speedOutputPercent==25);c.tick(500);CHECK(c.axes[0].speedOutputPercent==37.5f);
+ c.tick(1000);CHECK(c.axes[0].speedOutputPercent==50);c.tick(1200);CHECK(c.axes[0].speedOutputPercent==50);
+ c.speedPercent=100;c.tick(1700);CHECK(c.axes[0].speedOutputPercent==75);c.tick(2200);CHECK(c.axes[0].speedOutputPercent==100);
+ c.speedPercent=25;c.tick(2700);CHECK(c.axes[0].speedOutputPercent==87.5f);c.tick(5200);CHECK(c.axes[0].speedOutputPercent==25);
+ c.stop();c.tick(5201);CHECK(c.axes[0].speedOutputPercent==0);CHECK(!c.moving());}
+ {auto c=rampReady();uint32_t now=0xffffff00u;c.jog(0,1,true,now);c.tick(now);
+ c.tick(now+200);c.tick(now+700);c.tick(now+1000);CHECK(c.axes[0].speedOutputPercent==50);}
+ {auto c=rampReady();c.jog(0,1,true,0);c.tick(0);c.tick(1000);c.jog(0,-1,true,1000);c.tick(1000);
+ CHECK(c.axes[0].direction==1);c.tick(1250);CHECK(c.axes[0].speedOutputPercent==37.5f);CHECK(c.axes[0].direction==1);
+ c.tick(2000);CHECK(c.axes[0].speedOutputPercent==0);CHECK(c.axes[0].direction==0);
+ c.tick(2299);CHECK(c.axes[0].direction==0);c.tick(2300);CHECK(c.axes[0].direction==-1);CHECK(c.axes[0].speedOutputPercent==25);
+ c.tick(2800);CHECK(c.axes[0].speedOutputPercent==37.5f);CHECK(c.axes[0].runAt==0);}
+ {auto c=rampReady();c.target({90,0,true,false},false,0);c.tick(0);c.tick(1000);CHECK(c.axes[0].speedOutputPercent==50);
+ c.feedback(84.5,0,true,false);c.tick(1250);CHECK(c.axes[0].speedOutputPercent==37.5f);
+ c.feedback(89,0,true,false);c.tick(1500);CHECK(c.axes[0].speedOutputPercent==26.25f);
+ c.feedback(89.5,0,true,false);c.tick(1501);CHECK(!c.moving());CHECK(c.axes[0].speedOutputPercent==0);
+ c.startSpeedPercent=100;c.target({88,0,true,false},false,1801);c.tick(1801);CHECK(c.axes[0].direction==-1);CHECK(c.axes[0].speedOutputPercent<=28);
+ c.feedback(88.5,0,true,false);c.tick(1802);CHECK(!c.moving());}
+ {auto c=rampReady();c.jog(0,1,true,0);c.tick(0);c.tick(1000);c.jog(0,-1,true,1000);
+ c.feedback(450,0,true,false);c.tick(1100);CHECK(!c.moving());CHECK(c.axes[0].speedOutputPercent==0);
+ c.jog(0,-1,true,1400);c.tick(1400);CHECK(c.axes[0].direction==-1);c.tick(181400);CHECK(!c.moving());CHECK(c.fault=="continuous_motion_timeout");CHECK(c.axes[0].speedOutputPercent==0);}
+ {auto c=rampReady();c.preset(1,0);c.tick(0);c.tick(1000);CHECK(c.presetActive);
+ c.feedback(20,0,false,false);c.tick(1001);CHECK(!c.moving());CHECK(!c.presetActive);CHECK(c.axes[0].speedOutputPercent==0);}
+ for(auto packet:{"S","A","stop"}){auto c=rampReady();Protocol p(c);c.jog(0,1,true,0);c.tick(0);c.tick(1000);
+ CHECK(p.line(packet,1001).result==Result::Ok);c.tick(1001);CHECK(!c.moving());CHECK(c.axes[0].speedOutputPercent==0);}
+ {auto c=rampReady();Protocol p(c);Settings cfg;
+ CHECK(api(c,p,cfg,"/api/settings",{{"startSpeedPercent","30"},{"approachSpeedPercent","35"},{"accelerationMs","3000"},{"decelerationMs","2500"},{"slowdownDegrees","15"}},0).status==200);
+ CHECK(c.startSpeedPercent==30);CHECK(c.approachSpeedPercent==35);CHECK(c.accelerationMs==3000);CHECK(c.decelerationMs==2500);CHECK(c.slowdownDegrees==15);
+ for(const auto& entry:Form{{"startSpeedPercent","24"},{"approachSpeedPercent","101"},{"accelerationMs","99"},{"decelerationMs","10001"},{"slowdownDegrees","0"}}){
+  const auto before=stateJson(c,p,cfg,0);CHECK(api(c,p,cfg,"/api/settings",{{entry.first,entry.second},{"speedPercent","100"}},0).status==400);CHECK(stateJson(c,p,cfg,0)==before);
+ }
+ c.jog(0,1,true,0);c.tick(0);CHECK(api(c,p,cfg,"/api/settings",{{"speedEnabled","false"}},1).status==200);c.tick(1);CHECK(!c.moving());CHECK(c.axes[0].speedOutputPercent==0);
+ c.setModel(Model::G5500);c.speedEnabled=true;c.jog(0,1,true,2);c.tick(302);CHECK(c.axes[0].direction==1);CHECK(c.axes[0].speedOutputPercent==0);}
  {auto c=ready();Protocol p(c);CHECK(p.datagram("<PST><AZIMUTH>450</AZIMUTH></PST>",0).result==Result::Pending);CHECK(c.pending.az==90);CHECK(p.line("M450",1).result==Result::Pending);CHECK(c.pending.az==450);}
  {auto c=ready();Protocol p(c);CHECK(p.positionReport(137)=="G5500@1370");CHECK(p.positionReport(270)=="G5500@2700");CHECK(p.positionReport(450)=="G5500@900");CHECK(p.positionReport(-1)=="G5500@3590");CHECK(p.positionReport(359.96f)=="G5500@0");}
  {auto c=ready();CHECK(c.mode==Mode::Manual);CHECK(c.target({90,0,true,false},true,0)==Result::Pending);CHECK(c.pendingValid);CHECK(!c.moving());

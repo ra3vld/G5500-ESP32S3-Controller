@@ -45,10 +45,12 @@ arduino-cli core update-index --additional-urls https://espressif.github.io/ardu
 arduino-cli core install esp32:esp32@3.3.11 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 arduino-cli lib install 'Adafruit GFX Library@1.12.1' 'Adafruit ILI9341@1.6.2' 'Adafruit BusIO@1.17.2'
 # XPT2046 v1.4: установить официальный ZIP через IDE или arduino-cli lib install --zip-path ...
-./tools/build_arduino.sh
+./tools/build_arduino.sh s3
+# Для ESP32-S2 с Flash 4 MB:
+./tools/build_arduino.sh s2
 ```
 
-Аргументы CLI и меню IDE соответствуют друг другу. Скрипт разрешает `ARDUINO_CLI` и `FQBN` для изолированного стенда; обычный пакет имеет FQBN `esp32:esp32:esp32s3`.
+Аргументы CLI и меню IDE соответствуют друг другу. Без аргумента скрипт собирает S3; `s2` выбирает S2 и её таблицу разделов. Все модули копируются из канонической папки в отдельный скетч `build/arduino-s3/G5500_Fork/` или `build/arduino-s2/G5500_Fork/`. Скрипт разрешает `ARDUINO_CLI`, `ARDUINO_CONFIG_FILE`, `FQBN` и `BUILD_JOBS` для изолированного стенда; обычный пакет имеет FQBN `esp32:esp32:esp32s3` или `esp32:esp32:esp32s2`.
 
 ## PlatformIO
 
@@ -57,7 +59,7 @@ pio run -t clean
 pio run -j4
 ```
 
-Не запускать PlatformIO и Arduino CLI одновременно над одним каталогом скетча: PlatformIO временно создаёт `.ino.cpp` при конвертации скетча. Последовательные сборки либо отдельные копии исходников исключают пересечение.
+PlatformIO временно создаёт `.ino.cpp` при конвертации скетча. Скрипт `build_arduino.sh` использует отдельную подготовленную копию и исключает пересечение с PlatformIO. Проверку в Arduino IDE непосредственно из канонической папки выполнять после завершения PlatformIO.
 
 `platformio.ini` фиксирует платформу и библиотеки. Выход: `.pio/build/esp32s3_n16r8/firmware.bin` и `firmware.factory.bin`. При параллельных проектах следует изолировать `PLATFORMIO_CORE_DIR`, чтобы не менять общий кэш.
 

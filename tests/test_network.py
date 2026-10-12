@@ -96,5 +96,38 @@ class NetworkTests(unittest.TestCase):
                 self.udp('<PST>AZ?</PST>',port)
                 self.assertRegex(listener.recv(200).decode(),r'^AZ:\d+\.\d\r$')
         finally:self.post('/api/settings',pstPort=self.pst)
+    def test_speed_ramp_and_immediate_stop(self):
+        values=dict(model='G800DXA',speedEnabled='true',speedPercent=75,
+                    startSpeedPercent=25,approachSpeedPercent=25,
+                    accelerationMs=2000,decelerationMs=1500,slowdownDegrees=10)
+        self.post('/api/settings',**values)
+        state=self.get('/api/status')
+        for key in ('speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees'):
+            self.assertEqual(state[key],values[key])
+        self.post('/api/move',d='R' if state['az']<225 else 'L')
+        self.post('/api/sim/step',ms=250)
+        ramp=self.get('/api/status')['speedOutputPercent']
+        self.assertGreater(ramp,25);self.assertLess(ramp,75)
+        self.post('/api/sim/step',ms=2000)
+        self.assertEqual(self.get('/api/status')['speedOutputPercent'],75)
+        self.post('/api/move',d='S')
+        state=self.get('/api/status')
+        self.assertEqual(state['speedOutputPercent'],0);self.assertEqual(state['directionAz'],0)
+    def test_speed_ramp_target_approach(self):
+        self.post('/api/settings',model='G800DXA',speedEnabled='true',speedPercent=75,
+                  startSpeedPercent=25,approachSpeedPercent=25,
+                  accelerationMs=100,decelerationMs=100,slowdownDegrees=10)
+        az=self.get('/api/status')['az'];target=az+10 if az<430 else az-10
+        self.post('/api/target',az=target)
+        self.post('/api/sim/step',ms=500)
+        first=self.get('/api/status');self.assertNotEqual(first['directionAz'],0)
+        self.post('/api/sim/step',ms=2000)
+        approach=self.get('/api/status')
+        self.assertGreater(approach['speedOutputPercent'],25)
+        self.assertLess(approach['speedOutputPercent'],first['speedOutputPercent'])
+        self.post('/api/sim/step',ms=10000)
+        stopped=self.get('/api/status')
+        self.assertEqual(stopped['speedOutputPercent'],0);self.assertEqual(stopped['directionAz'],0)
+        self.assertLessEqual(abs(stopped['az']-target),0.51)
 
 if __name__=='__main__':unittest.main()
