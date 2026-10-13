@@ -45,7 +45,11 @@ void Application::controllerSetup() {
   diagnostics_.initRssiHistory();
 
   diagnostics_.dbgPrintln("");
+#if TFT_DISPLAY_ENABLED
   diagnostics_.dbgPrintln("######## FIRMWARE v1.6.23 TFT TOUCH CAL + HC-05 ########");
+#else
+  diagnostics_.dbgPrintln("######## FIRMWARE v1.6.23 WEB + HC-05 ########");
+#endif
   diagnostics_.dbgPrintln("[DIAG] Web console: /diaglog, RAM ring buffer 160 lines");
   diagnostics_.dbgPrint("[RESET REASON] ");
   diagnostics_.dbgPrintln(diagnostics_.bootReasonText());
@@ -62,7 +66,11 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln(timeOk ? "NTP OK" : "NO NTP - history entry has no exact time");
 
   diagnostics_.dbgPrintln("");
+#if TFT_DISPLAY_ENABLED
   diagnostics_.dbgPrintln("=== G5500 " FORK_CHIP_NAME " v1.6.23 TFT TOUCH CAL ===");
+#else
+  diagnostics_.dbgPrintln("=== G5500 " FORK_CHIP_NAME " v1.6.23 WEB ===");
+#endif
   diagnostics_.dbgPrintln("Copyright (c) UA1CFM");
   diagnostics_.dbgPrintln(
       "UART0 USB: PSTROTATOR GS-232, 9600 baud (COM number assigned by Windows)");
@@ -92,13 +100,19 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln("Calibration buttons: saved points highlighted in green");
   diagnostics_.dbgPrintln(
       "Calibration data stored separately; separate reset for each mode and axis");
+#if TFT_DISPLAY_ENABLED
   diagnostics_.dbgPrintln(
       "TFT SPI: MOSI GPIO10, SCK GPIO11, MISO GPIO2, TFT_CS GPIO12, DC GPIO13, RST GPIO14");
   diagnostics_.dbgPrintln("XPT2046: TOUCH_CS GPIO8, TOUCH_IRQ GPIO9; shared SPI bus");
+#endif
   diagnostics_.dbgPrintln("Fork control: calibrated target movement, 300ms reverse dead-time");
   diagnostics_.dbgPrintln("Web main cards: current / target shown inline for AZ and EL");
+#if TFT_DISPLAY_ENABLED
   diagnostics_.dbgPrintln("TFT: ILI9341 320x240 dashboard + XPT2046 touch calibration UI");
   diagnostics_.dbgPrintln("TFT calibration: 2-POINT / MULTI-POINT, P36/P45, AZ/EL capture + reset");
+#else
+  diagnostics_.dbgPrintln("Display and touch: disabled; Web control and calibration available");
+#endif
   diagnostics_.dbgPrint("[WiFi AP]  ");
   diagnostics_.dbgPrintln(WiFi.softAPIP().toString());
   if (WiFi.status() == WL_CONNECTED) {

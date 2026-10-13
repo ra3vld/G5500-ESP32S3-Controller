@@ -1,5 +1,8 @@
 // G5500 Fork; original by UA1CFM, modifications by RA3VLD. GPL-3.0.
 #pragma once
+#include "build_config.hpp"
+
+#if TFT_DISPLAY_ENABLED
 #include <SPI.h>
 #include <Adafruit_ILI9341.h>
 #include <XPT2046_Touchscreen.h>
@@ -114,3 +117,30 @@ private:
   static constexpr uint16_t TFT_TARGET = ILI9341_MAGENTA;
 };
 } // namespace forkrot
+
+#else
+
+namespace forkrot {
+struct Runtime;
+class DeviceActions;
+class Calibration;
+class Hardware;
+class Diagnostics;
+class Network;
+class Storage;
+
+// The same application interface without drivers, peripheral state or GPIO calls.
+class Display {
+public:
+  Display(Runtime &, DeviceActions &, Calibration &, Hardware &, Diagnostics &, Network &,
+          Storage &) {}
+  void invalidate() {}
+  void loadTouchCalibration() {}
+  void startAfterCalibrationLoad() {}
+  void serviceTouch() {}
+  void initLocalDisplay() {}
+  void updateLocalDisplay() {}
+};
+} // namespace forkrot
+
+#endif

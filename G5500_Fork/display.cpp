@@ -1,4 +1,7 @@
 // G5500 Fork; original by UA1CFM, modifications by RA3VLD. GPL-3.0.
+#include "build_config.hpp"
+
+#if TFT_DISPLAY_ENABLED
 #include "display.hpp"
 #include "cat_image.h"
 namespace forkrot {
@@ -912,3 +915,5 @@ void Display::startAfterCalibrationLoad() {
 }
 
 } // namespace forkrot
+
+#endif

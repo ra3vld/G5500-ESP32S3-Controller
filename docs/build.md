@@ -12,10 +12,12 @@
 | Adafruit BusIO | 1.17.2 |
 | XPT2046_Touchscreen | v1.4, официальный tag PaulStoffregen |
 
+Adafruit GFX, ILI9341, BusIO и XPT2046 нужны только при включённом дисплее. Для сборки без дисплея достаточно Arduino-ESP32; устанавливать эти четыре библиотеки не требуется.
+
 ## Arduino IDE 2.x
 
 1. В Additional Boards Manager URLs добавить `https://espressif.github.io/arduino-esp32/package_esp32_index.json`.
-2. Установить **esp32 by Espressif Systems 3.3.11**. В Library Manager выбрать точные версии библиотек из таблицы. XPT2046_Touchscreen установить из ZIP https://github.com/PaulStoffregen/XPT2046_Touchscreen/archive/refs/tags/v1.4.zip.
+2. Установить **esp32 by Espressif Systems 3.3.11**. При включённом дисплее в Library Manager выбрать точные версии библиотек из таблицы. XPT2046_Touchscreen установить из ZIP https://github.com/PaulStoffregen/XPT2046_Touchscreen/archive/refs/tags/v1.4.zip. Для варианта без дисплея сначала изменить флаг, как описано ниже.
 3. Открыть `G5500_Fork/G5500_Fork.ino`. `cat_image.h` и `partitions.csv` должны находиться рядом со скетчем.
 4. Выбрать **ESP32S3 Dev Module** и настройки:
 
@@ -42,6 +44,7 @@ Arduino обрабатывает `.cpp` обычным компилятором;
 ```sh
 arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 arduino-cli core install esp32:esp32@3.3.11 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+# Только для варианта с дисплеем:
 arduino-cli lib install 'Adafruit GFX Library@1.12.1' 'Adafruit ILI9341@1.6.2' 'Adafruit BusIO@1.17.2'
 # XPT2046 v1.4: установить официальный ZIP через IDE или arduino-cli lib install --zip-path ...
 ./tools/build_arduino.sh s3
@@ -62,6 +65,32 @@ PlatformIO временно создаёт `.ino.cpp` при конвертац�
 
 `platformio.ini` фиксирует платформу и библиотеки. Выход: `.pio/build/esp32s3_n16r8/firmware.bin` и `firmware.factory.bin`. При параллельных проектах следует изолировать `PLATFORMIO_CORE_DIR`, чтобы не менять общий кэш.
 
+## Сборка без дисплея
+
+Настройка действует при компиляции и одновременно отключает TFT ILI9341 и тачскрин XPT2046. По умолчанию дисплей отключён (`TFT_DISPLAY_ENABLED=0`).
+
+В **Arduino IDE** откройте соседний со скетчем [build_config.hpp](../G5500_Fork/build_config.hpp), измените строку на `#define TFT_DISPLAY_ENABLED 0` и выполните Verify. Чтобы вернуть экран, установите `1` и пересоберите проект.
+
+В **Arduino CLI** можно переопределить значение из заголовка:
+
+```sh
+DISPLAY_ENABLED=0 ./tools/build_arduino.sh s3
+DISPLAY_ENABLED=0 ./tools/build_arduino.sh s2
+```
+
+`DISPLAY_ENABLED=1` принудительно включает экран; без переменной используется значение из `build_config.hpp`. Подготовленные S3/S2-скетчи содержат этот заголовок.
+
+В **PlatformIO** выберите профиль без экранных зависимостей:
+
+```sh
+pio run -e esp32s3_n16r8_headless
+pio run -e esp32s2_4mb_headless
+```
+
+Эти профили задают `TFT_DISPLAY_ENABLED=0` и пустой список `lib_deps`. Обычные профили содержат экранные зависимости; для сборки без их установки используйте именно профили `headless`.
+
+При отключении не подключаются заголовки SPI, Adafruit и XPT2046, не создаются объекты TFT/тачскрина, не инициализируются их GPIO и не включается картинка экрана. Веб-интерфейс, веб-калибровка, кнопка BOOT и протоколы управления продолжают работать. Сохранённая калибровка тачскрина остаётся в NVS для последующего включения экрана.
+
 ## Host
 
 ```sh
@@ -69,6 +98,8 @@ PlatformIO временно создаёт `.ino.cpp` при конвертац�
 python3 -m unittest discover -s tests -p test_network.py -v
 python3 tools/simulator.py --log /tmp/g5500-packets.jsonl
 ```
+
+`build_native.sh` также проверяет компиляцию отключённого дисплея без Arduino- и экранных заголовков.
 
 Симулятор доступен на http://127.0.0.1:8080. Для подключения логгера с другого компьютера используйте `--host 0.0.0.0` и IP компьютера с симулятором. Симулятор моделирует датчики и движение без управления GPIO. `Ctrl+C` завершает симулятор.
 
