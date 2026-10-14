@@ -14,7 +14,7 @@
 | XPT2046_Touchscreen | официальный tag v1.4 | TFT/touch |
 | LiquidCrystal | 1.0.7 | параллельный LCD1602 |
 
-NONE не требует экранных библиотек. LCD требует только LiquidCrystal; TFT не требует LiquidCrystal. HC-05 использует Arduino HardwareSerial без дополнительной Bluetooth-библиотеки; встроенный Bluetooth/BLE не включается.
+NONE не требует экранных библиотек. LCD требует только LiquidCrystal; TFT не требует LiquidCrystal. На S2/S3 HC-05 использует Arduino HardwareSerial без дополнительной библиотеки. На классическом ESP32 используется BluetoothSerial из Arduino-ESP32; BLE отключён.
 
 ## Arduino IDE 2.x
 
@@ -86,7 +86,7 @@ python3 -m unittest discover -s tests -p test_network.py -v
 python3 tools/build_matrix.py --tool all --legacy
 ```
 
-Матрица: S3 и S2 Mini × NONE/TFT/LCD × HC-05 off/on × YAESU/SEPARATE_PWM/BTS7960 = **36 конфигураций каждого инструмента**. Дополнительно `--legacy` проверяет прежнюю S2 с NONE и TFT. Все сборки используют отдельные копии одного зафиксированного снимка исходников. JSON с SHA-256 снимка, размерами Flash/RAM/бинарника, длительностью и результатами находится в `artifacts/build-matrix/{arduino,platformio}.json`; логи — рядом. Размер .bin проверяется по настоящему OTA-слоту, а не общему Flash платы.
+Матрица: ESP32, S3 и S2 Mini × NONE/TFT/LCD × Bluetooth off/on × YAESU/SEPARATE_PWM/BTS7960 = **54 конфигурации каждого инструмента**. Дополнительно `--legacy` проверяет прежнюю S2 с NONE и TFT. Все сборки используют отдельные копии одного зафиксированного снимка исходников. JSON с SHA-256 снимка, размерами Flash/RAM/бинарника, длительностью и результатами находится в `artifacts/build-matrix/{arduino,platformio}.json`; логи — рядом. Размер .bin проверяется по настоящему разделу приложения, а не общему Flash платы.
 
 Для автономного стенда доступны `--arduino-cli`, `--arduino-config`, `--arduino-vendor`, `--pio`, `--platform`, `--library-dir`, `--workers`, `--jobs`. Локальные библиотеки должны иметь зафиксированные версии. Проверка веба: запустить `tools/simulator.py`, затем `npm run test:web`; зависимости браузерного теста заданы в `package-lock.json`. Это проверка общего ядра и интерфейса с виртуальными двигателями.
 
@@ -96,4 +96,19 @@ python3 tools/build_matrix.py --tool all --legacy
 python3 tools/package_release.py
 ```
 
-Архив формируется только из Git-учтённых файлов текущей рабочей копии; перед обычной упаковкой новые файлы должны быть добавлены в Git. Проверка незакоммиченной реализации использует отдельный временный индекс, не изменяя индекс репозитория. В ZIP входят все плоские заголовки, оба CSV, исходники, документация и схемы; `SOURCE_SHA256SUMS` задаёт хеш каждого файла. Arduino-копия должна содержать единственный `.ino`, все соседние модули и целевой CSV. Упаковка и Verify не означают публикацию или прошивку устройства.
+Архив формируется только из Git-учтённых файлов текущей рабочей копии; перед обычной упаковкой новые файлы должны быть добавлены в Git. Проверка незакоммиченной реализации использует отдельный временный индекс, не изменяя индекс репозитория. В ZIP входят все плоские заголовки, три CSV, исходники, документация и схемы; `SOURCE_SHA256SUMS` задаёт хеш каждого файла. Arduino-копия должна содержать единственный `.ino`, все соседние модули и целевой CSV. Упаковка и Verify не означают публикацию или прошивку устройства.
+
+## Сборка классического ESP32
+
+```sh
+pio run -e esp32_4mb
+pio run -e esp32_4mb_lcd
+pio run -e esp32_4mb_tft
+python3 tools/build_platformio.py --env esp32_4mb --display tft --bluetooth 1 --drive bts7960
+./tools/build_arduino.sh esp32
+python3 tools/prepare_sketch.py --target esp32
+```
+
+Arduino IDE: открыть подготовленную копию, выбрать ESP32 Dev Module, Flash 4 MB, DIO 40 MHz, PSRAM Disabled и Core Debug Level None. Распиновка одинакова для WROOM и WROVER; PSRAM не требуется. Копия содержит partitions_esp32.csv под именем partitions.csv: один factory-раздел приложения 3 MB, без второго OTA-слота и без изменения смещений NVS. Wi-Fi + SPP не помещаются в прежний слот 1,97 MB на Flash 4 MB. В Arduino IDE выбрать Huge APP (3 MB No OTA), сохранив CSV проекта.
+
+Проверка только нового профиля: `tools/build_matrix.py --tool all --boards esp32 --run-name esp32`. Регрессионная проверка трёх дисплеев S2/S3: `--boards s3 s2-mini --select smoke`. `--run-name` изолирует логи и сборки разных запусков.

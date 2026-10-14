@@ -7,6 +7,7 @@
 #include "hardware.hpp"
 #include "diagnostics.hpp"
 #include "input.hpp"
+#include "bluetooth.hpp"
 #include <WiFi.h>
 #include <WiFiUdp.h>
 namespace forkrot {
@@ -27,8 +28,8 @@ public:
     return rotctldClient_ && rotctldClient_.connected();
   }
   void handlePstRotatorSerial();
-  bool hc05Connected();
-  void handleHc05Serial();
+  bool bluetoothConnected() { return bluetooth_.connected(); }
+  void handleBluetoothSerial();
   void handleRotctldTcp();
   void startWifi();
   void serviceWifiReconnect();
@@ -50,11 +51,10 @@ private:
   WifiCredentials credentials_;
   WiFiServer tcpServer_{board::TCP_PORT};
   WiFiClient rotctldClient_;
-#if BLUETOOTH_ENABLED
-  HardwareSerial hc05Serial_{1};
-#endif
+  Bluetooth bluetooth_;
+  uint32_t lastBtDropped_ = 0;
   WiFiUDP n1mmUdp, pstUdp;
-  enum GsReplyPort : uint8_t { GS_REPLY_USB = 0, GS_REPLY_HC05 = 1 };
+  enum GsReplyPort : uint8_t { GS_REPLY_USB = 0, GS_REPLY_BLUETOOTH = 1 };
   GsReplyPort gsReplyPort = GS_REPLY_USB;
   static constexpr uint32_t WIFI_RECONNECT_MS = 30000, WIFI_RECONNECT_TIMEOUT_MS = 8000;
   uint32_t wifiReconnectMs = 0, wifiReconnectTryStartedMs = 0;

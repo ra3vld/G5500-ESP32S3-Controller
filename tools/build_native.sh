@@ -8,6 +8,12 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tes
 ./build/core_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/adapter_tests.cpp -o build/adapter_tests
 ./build/adapter_tests
+for flags in '-DBOARD_PROFILE=4' '-DBOARD_PROFILE=4 -DBLUETOOTH_ENABLED=0' '-DBOARD_PROFILE=1'; do
+  ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -pthread $flags -I tests/fakes -I G5500_Fork G5500_Fork/bluetooth.cpp G5500_Fork/input.cpp G5500_Fork/control.cpp G5500_Fork/protocol.cpp tests/bluetooth_tests.cpp -o build/bluetooth_tests
+  ./build/bluetooth_tests
+  ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 $flags -I G5500_Fork $CORE_SOURCES tests/build_metadata_tests.cpp -o build/build_metadata_tests
+  ./build/build_metadata_tests
+done
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DTFT_DISPLAY_ENABLED=0 -I G5500_Fork -c G5500_Fork/display.cpp -o build/display_disabled.o
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DTFT_DISPLAY_ENABLED=0 -I G5500_Fork -c tests/display_disabled_compile.cpp -o build/display_disabled_compile.o
 for drive in 0 1 2; do

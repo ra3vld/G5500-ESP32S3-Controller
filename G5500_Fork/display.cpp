@@ -302,7 +302,7 @@ void Display::updateDashboard() {
     dashLastWifi = wifiText;
   }
 
-  bool bt = network_.hc05Connected();
+  bool bt = network_.bluetoothConnected();
   String btText = BLUETOOTH_ENABLED ? (bt ? "ON" : "OFF") : "N/A";
   if (btText != dashLastBt) {
     tft.fillRect(271, 183, 40, 20, TFT_BG);

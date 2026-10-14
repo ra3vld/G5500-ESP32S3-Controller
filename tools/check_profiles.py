@@ -15,12 +15,16 @@ def compile_case(flags, expected):
         raise SystemExit(f'Unexpected result for {flags}:\n{result.stderr}')
     checks+=1
 
-for board,display,bt,drive in itertools.product((1,3),range(3),range(2),range(3)):
+for board,display,bt,drive in itertools.product((1,3,4),range(3),range(2),range(3)):
     compile_case([f'BOARD_PROFILE={board}',f'DISPLAY_KIND={display}',f'BLUETOOTH_ENABLED={bt}',f'DRIVE_INTERFACE={drive}'],True)
 for flags in [
     ['BOARD_PROFILE=UNKNOWN_PROFILE'],
     ['BOARD_PROFILE=1','CONFIG_IDF_TARGET_ESP32S2=1'],
     ['BOARD_PROFILE=3','CONFIG_IDF_TARGET_ESP32S3=1'],
+    ['BOARD_PROFILE=4','CONFIG_IDF_TARGET_ESP32S2=1'],
+    ['BOARD_PROFILE=1','CONFIG_IDF_TARGET_ESP32=1'],
+    ['BOARD_PROFILE=4','ARDUINO_USB_CDC_ON_BOOT=1'],
+    *[[f'BOARD_PROFILE=4',f'USER_BUTTON_GPIO={pin}'] for pin in (6,11,16,17,20,24,28,37,38,39)],
     ['BOARD_PROFILE=2','DRIVE_INTERFACE=1'],
     ['BOARD_PROFILE=2','DRIVE_INTERFACE=2'],
     ['USER_BUTTON_GPIO=4'], ['USER_BUTTON_GPIO=21'], ['USER_BUTTON_GPIO=48'],
@@ -32,4 +36,5 @@ for flags in [
     ['DRIVE_INTERFACE=2','SOC_LEDC_CHANNEL_NUM=2'], ['BOARD_PROFILE=3','USER_BUTTON_GPIO=44'],
 ]:compile_case(flags,False)
 for flags in [['USER_BUTTON_GPIO=-1'],['USER_BUTTON_GPIO=38'],['USER_BUTTON_GPIO=6','BLUETOOTH_ENABLED=0'],['USER_BUTTON_GPIO=8','DISPLAY_KIND=0'],['BOARD_PROFILE=3','CONFIG_IDF_TARGET_ESP32S2=1'],['TFT_DISPLAY_ENABLED=0'],['TFT_DISPLAY_ENABLED=1'],['USER_BUTTON_GPIO=47','DRIVE_INTERFACE=0']]:compile_case(flags,True)
+for flags in [['CONFIG_IDF_TARGET_ESP32=1'],['BOARD_PROFILE=4','USER_BUTTON_GPIO=39','USER_BUTTON_PULLUP=0'],['BOARD_PROFILE=4','USER_BUTTON_GPIO=-1']]:compile_case(flags,True)
 print(f'PASS: {checks} board/display/BT/drive ownership and negative compile checks')

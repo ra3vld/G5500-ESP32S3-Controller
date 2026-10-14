@@ -1,6 +1,6 @@
 # G5500 Controller
 
-Прошивка контроллера антенных поворотных устройств Yaesu G-5500 и G-800DXA для ESP32-S3 и ESP32-S2. Форк проекта [UA1CFM/G5500-ESP32S3-Controller](https://github.com/ua1cfm/G5500-ESP32S3-Controller), основанный на v1.6.23 P36/P45 SAFE TCP COLOR, с переносом возможностей веток до v1.6.29.
+Прошивка контроллера антенных поворотных устройств Yaesu G-5500 и G-800DXA для классического ESP32, ESP32-S3 и ESP32-S2. Форк проекта [UA1CFM/G5500-ESP32S3-Controller](https://github.com/ua1cfm/G5500-ESP32S3-Controller), основанный на v1.6.23 P36/P45 SAFE TCP COLOR, с переносом возможностей веток до v1.6.29.
 
 ## Возможности
 
@@ -9,9 +9,9 @@
 - Подтверждение цели пользовательской кнопкой на настраиваемом GPIO или из веб-интерфейса.
 - Четыре редактируемые предустановки для каждого профиля.
 - Прямое управление из N1MM Logger+, UR5EQF и 5MContest по UDP.
-- GS-232 через UART0 и HC-05; rotctld и GS-232 через TCP 4533.
+- GS-232 через UART0 и Bluetooth (встроенный SPP на ESP32, HC-05 на S2/S3); rotctld и GS-232 через TCP 4533.
 - Веб-интерфейс, опциональные TFT ILI9341/XPT2046 или параллельный LCD1602, калибровка и диагностика.
-- Профили S3 N16R8, S2 Mini и прежней S2; флаги дисплея и внешнего HC-05.
+- Профили ESP32 WROOM/WROVER, S3 N16R8, S2 Mini и прежней S2; флаги дисплея и Bluetooth.
 - Независимые приводы обеих осей: отдельный PWM или стандартные BTS7960, раздельные параметры скорости.
 - Фильтрация обратной связи и наведение одним проходом: зона остановки ±5°, без возврата после перелёта.
 - Опциональная регулировка скорости G-800DXA через внешний каскад 0–5 В: плавный разгон, замедление у цели и торможение перед реверсом; скорости и параметры плавности задаются в настройках.
@@ -26,11 +26,13 @@
 
 ```sh
 pio run -e esp32s3_n16r8
+# Классический ESP32 WROOM/WROVER, Flash от 4 MB:
+pio run -e esp32_4mb
 # ESP32-S2 с Flash 4 MB:
 pio run -e esp32s2_4mb
 ```
 
-Аппаратные параметры — в [build_config.hpp](G5500_Fork/build_config.hpp). По умолчанию: дисплей NONE, HC-05 включён, интерфейс YAESU. Для выбора зависимостей по конфигурации:
+Аппаратные параметры — в [build_config.hpp](G5500_Fork/build_config.hpp). По умолчанию: дисплей NONE, Bluetooth включён, интерфейс YAESU. ESP32 использует встроенный SPP без HC-05; S2/S3 — внешний HC-05. Для выбора зависимостей по конфигурации:
 
 ```sh
 python3 tools/build_platformio.py --env esp32s2_mini --display lcd --bluetooth 0 --drive bts7960
@@ -38,7 +40,7 @@ python3 tools/build_platformio.py --env esp32s2_mini --display lcd --bluetooth 0
 DISPLAY_KIND=2 BLUETOOTH_ENABLED=0 DRIVE_INTERFACE=2 ./tools/build_arduino.sh s2-mini
 ```
 
-[Профили, распиновка и кнопка](docs/configuration.md), [два IBT-2 без внешнего буфера](docs/hardware/independent-pwm-bts7960.md), [изолированное управление IBT-2](docs/hardware/independent-pwm-bts7960-isolated.md), [инструкция сборки](docs/build.md). Порог 5° задаёт момент выключения; физическая точность и выбег зависят от механики.
+[Классический ESP32 и встроенный Bluetooth](docs/classic-esp32.md), [профили, распиновка и кнопка](docs/configuration.md), [два IBT-2 без внешнего буфера](docs/hardware/independent-pwm-bts7960.md), [изолированное управление IBT-2](docs/hardware/independent-pwm-bts7960-isolated.md), [инструкция сборки](docs/build.md). Порог 5° задаёт момент выключения; физическая точность и выбег зависят от механики.
 
 После первого запуска подключитесь к точке доступа `G5500-Rotator` и откройте `http://192.168.4.1`. В настройках задайте Wi-Fi, пароль точки доступа и профиль поворотки. Затем выполните калибровку и настройте логгер.
 

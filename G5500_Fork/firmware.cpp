@@ -21,6 +21,9 @@
 
 #include "firmware.hpp"
 #include "application.hpp"
+#if SELECTED_BOARD == BOARD_ESP32
+#include <esp_log.h>
+#endif
 namespace forkrot {
 using namespace board;
 void Application::controllerSetup() {
@@ -29,6 +32,10 @@ void Application::controllerSetup() {
   hardware_.beginDirections();
   hardware_.allStop();
   hardware_.rgbSet(0, 0, 0);
+#if SELECTED_BOARD == BOARD_ESP32
+  // UART0 belongs to GS-232. Keep IDF radio diagnostics off that byte stream.
+  esp_log_level_set("*", ESP_LOG_NONE);
+#endif
   network_.beginSerial();
   diagnostics_.beginNativeUsb();
   hardware_.beginAdc();
@@ -58,7 +65,8 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrint("[RESET CODE] ");
   diagnostics_.dbgPrintln(String((int)diagnostics_.bootReasonCode()));
   diagnostics_.dbgPrintln("[V1559] USB debug alive");
-  diagnostics_.dbgPrintln(BLUETOOTH_ENABLED ? "External HC-05 enabled" : "External HC-05 disabled");
+  diagnostics_.dbgPrint("Bluetooth backend: ");
+  diagnostics_.dbgPrintln(board::BLUETOOTH_BACKEND_NAME);
   network_.startWifi();
   network_.setupLoggerUdp();
 
@@ -76,8 +84,12 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln("Copyright (c) UA1CFM");
   diagnostics_.dbgPrintln(
       "UART0 USB: PSTROTATOR GS-232, 9600 baud (COM number assigned by Windows)");
+#if FORK_NATIVE_USB
   diagnostics_.dbgPrintln("Native USB " FORK_USB_NAME
                           ": diagnostics + programming (COM number assigned by Windows)");
+#else
+  diagnostics_.dbgPrintln("UART0 bridge: GS-232 + programming; diagnostics: /diaglog");
+#endif
   diagnostics_.dbgPrintln("TCP 4533: Look4Sat/Hamlib + GS-232B full command set");
   diagnostics_.dbgPrintln("R4UAB DDE Client TCP: decimal comma accepted in Hamlib P az el command");
   diagnostics_.dbgPrintln(
@@ -137,7 +149,7 @@ void Application::controllerLoop() {
   }
   network_.serviceLoggerUdp();
   network_.handlePstRotatorSerial(); // UART0 USB / PSTROTATOR / GS-232
-  network_.handleHc05Serial();       // HC-05 Bluetooth Classic / GS-232B
+  network_.handleBluetoothSerial(); // selected Bluetooth transport / GS-232B
   network_.handleRotctldTcp();       // Wi-Fi TCP 4533 / Look4Sat / Hamlib rotctld
   web_server_.service();
   network_.serviceWifiReconnect();

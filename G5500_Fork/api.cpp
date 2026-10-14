@@ -108,6 +108,7 @@ std::string stateJson(const Controller &controller, const Protocol &protocol,
   json << "],\"build\":{\"board\":" << jsonQuote(board::NAME)
        << ",\"display\":" << jsonQuote(DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE")
        << ",\"bluetooth\":" << (BLUETOOTH_ENABLED ? "true" : "false")
+       << ",\"bluetoothBackend\":" << jsonQuote(board::BLUETOOTH_BACKEND_NAME)
        << ",\"drive\":" << jsonQuote(DRIVE_INTERFACE == DRIVE_YAESU ? "YAESU" : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960" : "SEPARATE_PWM")
        << ",\"userButtonGpio\":" << USER_BUTTON_GPIO << ",\"userButtonActiveLow\":" << (USER_BUTTON_ACTIVE_LOW ? "true" : "false")
        << ",\"userButtonPullup\":" << (USER_BUTTON_PULLUP ? "true" : "false")
@@ -179,7 +180,7 @@ Response api(Controller &controller, Protocol &protocol, Settings &settings,
     bool valid = true;
     // Compile-time hardware configuration is read-only, including attempted aliases.
     for (const auto &entry : form) {
-      if (entry.first == "drive" || entry.first == "display" || entry.first == "bluetooth" || entry.first == "pins" || entry.first == "build" || entry.first == "board" || entry.first == "boardProfile" ||
+      if (entry.first == "drive" || entry.first == "display" || entry.first == "bluetooth" || entry.first == "bluetoothBackend" || entry.first == "pins" || entry.first == "build" || entry.first == "board" || entry.first == "boardProfile" ||
           entry.first == "displayKind" || entry.first == "bluetoothEnabled" || entry.first == "driveInterface" ||
           entry.first.find("userButton") == 0 || entry.first.find("build.") == 0) valid = false;
     }

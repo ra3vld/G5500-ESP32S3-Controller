@@ -3,11 +3,9 @@
 namespace forkrot {
 using namespace board;
 void Network::sendReply(const String &s) {
-  if (gsReplyPort == GS_REPLY_HC05) {
-#if BLUETOOTH_ENABLED
-    hc05Serial_.print(s);
-#endif
-    diagnostics_.dbgPrint("[HC05 TX] ");
+  if (gsReplyPort == GS_REPLY_BLUETOOTH) {
+    if (!bluetooth_.send(s)) diagnostics_.dbgPrintln("[BT TX] dropped: disconnected or queue full");
+    diagnostics_.dbgPrint("[BT TX] ");
     diagnostics_.dbgPrintln(s);
   } else {
     Serial0.print(s);
@@ -88,31 +86,20 @@ void Network::handlePstRotatorSerial() {
   }
 }
 
-bool Network::hc05Connected() {
-#if BLUETOOTH_ENABLED
-  return digitalRead(PIN_HC05_STATE) == HIGH;
-
-#else
-  return false;
-#endif
-}
-
-void Network::handleHc05Serial() {
-#if BLUETOOTH_ENABLED
-  static forkrot::LineBuffer receiver;
-  std::string command;
-  while (hc05Serial_.available()) {
-    if (receiver.feed((char)hc05Serial_.read(), command)) {
-      gsReplyPort = GS_REPLY_HC05;
-      String cmd(command.c_str());
-      diagnostics_.dbgPrint("[HC05 RX] ");
-      diagnostics_.dbgPrintln(cmd);
-      processGs232Command(cmd);
-    }
+void Network::handleBluetoothSerial() {
+  uint32_t dropped = bluetooth_.droppedCommands();
+  if (dropped != lastBtDropped_) {
+    diagnostics_.dbgPrintln("[BT RX] dropped complete commands: queue full");
+    lastBtDropped_ = dropped;
   }
-
-#else
-#endif
+  std::string command;
+  while (bluetooth_.receive(command)) {
+    gsReplyPort = GS_REPLY_BLUETOOTH;
+    String cmd(command.c_str());
+    diagnostics_.dbgPrint("[BT RX] ");
+    diagnostics_.dbgPrintln(cmd);
+    processGs232Command(cmd);
+  }
 }
 
 void Network::rotctldSend(const String &s) {
@@ -211,7 +198,7 @@ void Network::processRotctldCommand(String cmd) {
 
   // Minimal info support.
   if (cmd == "_" || lower == "\\get_info" || lower == "get_info") {
-    rotctldSend("G5500 ESP32-S3 v1.6.23 UA1CFM Look4Sat bridge\n");
+    rotctldSend("G5500 " FORK_CHIP_NAME " v1.6.23 UA1CFM Look4Sat bridge\n");
     return;
   }
 
@@ -509,10 +496,7 @@ void Network::serviceLoggerUdp() {
 }
 void Network::beginSerial() {
   Serial0.begin(9600, SERIAL_8N1, PIN_UART_RX, PIN_UART_TX);
-#if BLUETOOTH_ENABLED
-  pinMode(PIN_HC05_STATE, INPUT);
-  hc05Serial_.begin(HC05_BAUD, SERIAL_8N1, PIN_HC05_RX, PIN_HC05_TX);
-#endif
+  if (!bluetooth_.begin()) diagnostics_.dbgPrintln("[BT] initialization failed; USB and network remain available");
 }
 
 } // namespace forkrot

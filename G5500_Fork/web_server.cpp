@@ -309,7 +309,7 @@ void WebInterface::setupWeb() {
         "\",\"ssid\":" +
         String(forkrot::jsonQuote(network_.credentials().wifiSsid.c_str()).c_str()) +
         ",\"rssi\":" + rssiJson + ",\"signal\":\"" + signal +
-        "\",\"btConnected\":" + (network_.hc05Connected() ? "true" : "false") +
+        "\",\"btConnected\":" + (network_.bluetoothConnected() ? "true" : "false") +
         ",\"resetReason\":\"" + diagnostics_.bootReasonText() + "\"}";
     auto extra = forkrot::stateJson(runtime_.controller, runtime_.protocol, runtime_.loggerSettings,
                                     millis());

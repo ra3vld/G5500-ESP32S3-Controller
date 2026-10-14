@@ -1,4 +1,4 @@
-# ESP32-S2 4MB: two OTA slots; NVS at the original offset.
+# ESP32 / ESP32-S2 4MB: two OTA slots; NVS at the original offset.
 # Name,   Type, SubType, Offset,  Size, Flags
 nvs,      data, nvs,     0x9000,  0x5000,
 otadata,  data, ota,     0xe000,  0x2000,

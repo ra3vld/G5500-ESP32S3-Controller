@@ -178,7 +178,7 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <canvas id="rchart" width="900" height="260"></canvas>
 <div class="kv" style="margin-top:10px"><div>MIN: <b id="rmin">-</b></div><div>MAX: <b id="rmax">-</b></div><div>AVG: <b id="ravg">-</b></div><div>Points: <b id="rcount">0</b></div></div></div>
 <div class="card"><div class="label">Подключение</div><div class="kv" style="margin-top:10px">
-<div>Home IP: <b id="ip">-</b></div><div>AP IP: <b>192.168.4.1</b></div><div>TCP rotctld: <b>4533</b></div><div>Mode: <b id="mode">-</b></div><div>Home Wi-Fi RSSI: <b id="rssi">-</b></div><div>Signal: <b id="sig">-</b></div><div>HC-05 Bluetooth: <b id="btstate">-</b></div><div>HC-05 UART: <b>9600 baud</b></div></div>
+<div>Home IP: <b id="ip">-</b></div><div>AP IP: <b>192.168.4.1</b></div><div>TCP rotctld: <b>4533</b></div><div>Mode: <b id="mode">-</b></div><div>Home Wi-Fi RSSI: <b id="rssi">-</b></div><div>Signal: <b id="sig">-</b></div><div><span id="btlabel">Bluetooth</span>: <b id="btstate">-</b></div><div id="bttransport">-</div></div>
 <div class="field" style="margin-top:10px"><label>Wi‑Fi SSID</label><input id="ssid"></div>
 <div class="field" style="margin-top:8px"><label>Wi‑Fi password</label><input id="pass" type="password"></div>
 <button class="btn good" style="margin-top:10px" onclick="wifi()">Save Wi‑Fi + reboot</button>
@@ -219,7 +219,11 @@ function updateFork(j){
  document.getElementById('speedSettings').classList.toggle('hide',!g800&&!independent);
  document.getElementById('analogSpeedToggle').classList.toggle('hide',independent);
  document.getElementById('elSpeedSettings').classList.toggle('hide',g800||!independent);
- document.getElementById('buildInfo').textContent=j.build?`${j.build.board} · ${j.build.drive} · ${j.build.display} · HC-05 ${j.build.bluetooth?'включён':'отключён'}`:'';
+ const btBackend=j.build?.bluetoothBackend||(j.build?.bluetooth===false?'NONE':'HC05');
+ const btName=btBackend==='ESP32_SPP'?'Встроенный Bluetooth SPP':btBackend==='HC05'?'HC-05':'Bluetooth отключён';
+ document.getElementById('buildInfo').textContent=j.build?`${j.build.board} · ${j.build.drive} · ${j.build.display} · ${btName}`:'';
+ document.getElementById('btlabel').textContent=btName;
+ document.getElementById('bttransport').textContent=btBackend==='ESP32_SPP'?'G5500-Rotator · SPP / виртуальный COM':btBackend==='HC05'?'HC-05 UART: 9600 baud':'';
  document.getElementById('movementButtons').classList.toggle('az-only',g800);
  const f=document.getElementById('forkSettings');
  for(const key of ['model','rotorName','n1mmPort','pstPort','reportPort','reportHost','speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees'])if(first||!f.contains(document.activeElement))f.elements[key].value=j[key];
