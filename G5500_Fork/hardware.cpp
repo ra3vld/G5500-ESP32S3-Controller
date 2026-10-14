@@ -1,8 +1,15 @@
 // G5500 Fork; original by UA1CFM, modifications by RA3VLD. GPL-3.0.
 #include "hardware.hpp"
 #include <cmath>
+#include <driver/gpio.h>
 namespace forkrot {
 using namespace board;
+namespace {
+// Arduino 3.x digitalWrite requires an existing GPIO owner. Set the GPIO latch
+// directly before enabling output, and independently of LEDC ownership.
+void preloadLevel(int pin, int level) { gpio_set_level(static_cast<gpio_num_t>(pin), level); }
+}
+
 namespace {
 uint32_t motorPwmDuty(uint32_t logicalDuty) {
 #if DRIVE_INTERFACE == DRIVE_BTS7960 && BTS7960_PWM_INVERTED
@@ -169,8 +176,8 @@ void Hardware::controlRotator() {
 void Hardware::outputsOff() {
 #if DRIVE_INTERFACE == DRIVE_BTS7960
   // Disable both bridges before changing PWM or detaching LEDC.
-  digitalWrite(PIN_SPEED, LOW);
-  digitalWrite(PIN_EL_SPEED, LOW);
+  preloadLevel(PIN_SPEED, LOW);
+  preloadLevel(PIN_EL_SPEED, LOW);
 #endif
   const int pins[] = {PIN_LEFT, PIN_RIGHT, PIN_DOWN, PIN_UP, PIN_SPEED,
 #if DRIVE_INTERFACE != DRIVE_YAESU
@@ -185,7 +192,7 @@ void Hardware::outputsOff() {
 #endif
   };
   for (unsigned i=0; i<4; ++i) if (attached_[i]) ledcWrite(pwm[i], motorPwmDuty(0));
-  for (int pin : pins) if (pin >= 0) digitalWrite(pin, idleOutputLevel(pin));
+  for (int pin : pins) if (pin >= 0) preloadLevel(pin, idleOutputLevel(pin));
 }
 bool Hardware::preparePwm(bool enable) {
   const int pins[] = {
@@ -203,7 +210,12 @@ bool Hardware::preparePwm(bool enable) {
       attached_[i] = ledcAttach(pins[i], DRIVE_INTERFACE == DRIVE_YAESU ? 20000 : 1000, 10);
       if (!attached_[i]) {
         outputsOff();
-        for (unsigned j=0; j<i; ++j) { ledcDetach(pins[j]); attached_[j] = false; digitalWrite(pins[j], idleOutputLevel(pins[j])); pinMode(pins[j], OUTPUT); }
+        for (unsigned j=0; j<=i; ++j) {
+          if (attached_[j]) ledcDetach(pins[j]);
+          attached_[j] = false;
+          preloadLevel(pins[j], idleOutputLevel(pins[j]));
+          pinMode(pins[j], OUTPUT);
+        }
         pwmFailed = true;
         runtime_.controller.stop();
         runtime_.controller.driveFault = true;
@@ -219,7 +231,7 @@ bool Hardware::preparePwm(bool enable) {
     outputsOff();
     for (unsigned i=0; i<4; ++i) if (attached_[i]) {
       ledcDetach(pins[i]); attached_[i] = false;
-      digitalWrite(pins[i], idleOutputLevel(pins[i])); pinMode(pins[i], OUTPUT);
+      preloadLevel(pins[i], idleOutputLevel(pins[i])); pinMode(pins[i], OUTPUT);
     }
     pwmReady = false;
   }
@@ -265,15 +277,15 @@ void Hardware::applyOutputs() {
 }
 void Hardware::beginDirections() {
 #if DRIVE_INTERFACE == DRIVE_BTS7960
-  digitalWrite(PIN_SPEED, LOW); pinMode(PIN_SPEED, OUTPUT);
-  digitalWrite(PIN_EL_SPEED, LOW); pinMode(PIN_EL_SPEED, OUTPUT);
+  preloadLevel(PIN_SPEED, LOW); pinMode(PIN_SPEED, OUTPUT);
+  preloadLevel(PIN_EL_SPEED, LOW); pinMode(PIN_EL_SPEED, OUTPUT);
 #endif
   const int pins[] = {PIN_LEFT, PIN_RIGHT, PIN_UP, PIN_DOWN, PIN_SPEED, PIN_LED,
 #if DRIVE_INTERFACE != DRIVE_YAESU
     PIN_EL_SPEED,
 #endif
   };
-  for (int pin : pins) if (pin >= 0) { digitalWrite(pin, idleOutputLevel(pin)); pinMode(pin, OUTPUT); }
+  for (int pin : pins) if (pin >= 0) { preloadLevel(pin, idleOutputLevel(pin)); pinMode(pin, OUTPUT); }
 }
 void Hardware::beginAdc() {
   analogReadResolution(12);

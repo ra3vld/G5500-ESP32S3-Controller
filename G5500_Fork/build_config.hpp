@@ -53,6 +53,7 @@
 #ifndef EL_STOP_TOLERANCE_DEG
 #define EL_STOP_TOLERANCE_DEG 5.0f
 #endif
+static_assert(BOARD_PROFILE >= BOARD_AUTO && BOARD_PROFILE <= BOARD_S2_MINI, "Invalid board profile");
 #if BOARD_PROFILE == BOARD_AUTO
 #if defined(ARDUINO_LOLIN_S2_MINI)
 #define SELECTED_BOARD BOARD_S2_MINI

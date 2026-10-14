@@ -1,126 +1,99 @@
-# Сборка
+# Сборка Arduino и PlatformIO
 
+Канонические исходники: `G5500_Fork/G5500_Fork.ino` и соседние `.cpp/.hpp/.h`. Аппаратные флаги и распиновки описаны в [configuration.md](configuration.md). Сборка не прошивает устройство.
 
 ## Зафиксированные зависимости
 
-| Компонент | Версия |
-|---|---|
-| Arduino-ESP32 | 3.3.11 |
-| pioarduino espressif32 | 55.03.311 |
-| Adafruit GFX Library | 1.12.1 |
-| Adafruit ILI9341 | 1.6.2 |
-| Adafruit BusIO | 1.17.2 |
-| XPT2046_Touchscreen | v1.4, официальный tag PaulStoffregen |
+| Компонент | Версия | Когда нужен |
+|---|---|---|
+| Arduino-ESP32 | 3.3.11 | всегда |
+| pioarduino espressif32 | 55.03.311 | PlatformIO |
+| Adafruit GFX | 1.12.1 | TFT |
+| Adafruit ILI9341 | 1.6.2 | TFT |
+| Adafruit BusIO | 1.17.2 | TFT |
+| XPT2046_Touchscreen | официальный tag v1.4 | TFT/touch |
+| LiquidCrystal | 1.0.7 | параллельный LCD1602 |
 
-Adafruit GFX, ILI9341, BusIO и XPT2046 нужны только при включённом дисплее. Для сборки без дисплея достаточно Arduino-ESP32; устанавливать эти четыре библиотеки не требуется.
+NONE не требует экранных библиотек. LCD требует только LiquidCrystal; TFT не требует LiquidCrystal. HC-05 использует Arduino HardwareSerial без дополнительной Bluetooth-библиотеки; встроенный Bluetooth/BLE не включается.
 
 ## Arduino IDE 2.x
 
-1. В Additional Boards Manager URLs добавить `https://espressif.github.io/arduino-esp32/package_esp32_index.json`.
-2. Установить **esp32 by Espressif Systems 3.3.11**. При включённом дисплее в Library Manager выбрать точные версии библиотек из таблицы. XPT2046_Touchscreen установить из ZIP https://github.com/PaulStoffregen/XPT2046_Touchscreen/archive/refs/tags/v1.4.zip. Для варианта без дисплея сначала изменить флаг, как описано ниже.
-3. Открыть `G5500_Fork/G5500_Fork.ino`. `cat_image.h` и `partitions.csv` должны находиться рядом со скетчем.
-4. Выбрать **ESP32S3 Dev Module** и настройки:
+Добавьте URL `https://espressif.github.io/arduino-esp32/package_esp32_index.json`, установите **esp32 by Espressif Systems 3.3.11** и только библиотеки выбранного дисплея. XPT2046: [официальный ZIP v1.4](https://github.com/PaulStoffregen/XPT2046_Touchscreen/archive/refs/tags/v1.4.zip).
 
-| Параметр | Значение |
-|---|---|
-| CPU Frequency | 240 MHz |
-| Flash Size | 16 MB (128 Mb) |
-| Flash Mode | QIO 80 MHz |
-| PSRAM | OPI PSRAM (N16R8, 8 MB) |
-| Partition Scheme | Custom |
-| USB Mode | Hardware CDC and JTAG |
-| USB CDC On Boot | Enabled |
-| Upload Mode | UART0 / Hardware CDC |
-| Erase All Flash Before Sketch Upload | Disabled |
+Откройте `G5500_Fork/G5500_Fork.ino`; измените значения в `build_config.hpp`. Все плоские заголовки профилей должны остаться рядом со скетчем. Для S2 подготовьте копию со своей таблицей разделов:
 
-5. Нажать **Verify**. Для проверки сборки COM-порт не нужен. Для загрузки выбрать порт подключённой платы и нажать **Upload**.
+```sh
+python3 tools/prepare_sketch.py --target s2-mini
+# Открыть build/arduino-s2-mini/G5500_Fork/G5500_Fork.ino
+# Для старой проводки: --target s2; для S3: --target s3
+```
 
-`Custom` использует поставляемый `partitions.csv`: два OTA-раздела по `0x640000` (6 553 600 байт), NVS, SPIFFS и coredump. Это размер разделов, а не добавление веб-OTA: обновление по воздуху здесь не реализовано.
+| Настройка | S3 DevKitC-1 N16R8 | LOLIN S2 Mini | Прежняя S2 |
+|---|---|---|---|
+| Плата Arduino | ESP32S3 Dev Module | LOLIN S2 Mini | ESP32S2 Dev Module |
+| Flash / PSRAM | 16 МБ / OPI 8 МБ | 4 МБ / встроенная 2 МБ | 4 МБ / отключена |
+| Flash mode | QIO 80 MHz | DIO 80 MHz | QIO |
+| Native USB | Hardware CDC/JTAG, CDC enabled | CDC enabled | CDC enabled |
+| Таблица проекта | partitions.csv | partitions_s2.csv → partitions.csv | partitions_s2.csv → partitions.csv |
+| BOARD_PROFILE | AUTO или S3 | AUTO или S2_MINI | AUTO или S2_LEGACY |
 
-Arduino обрабатывает `.cpp` обычным компилятором; JavaScript внутри веб-страницы не проходит автогенерацию прототипов `.ino`. См. [процесс сборки Arduino](https://docs.arduino.cc/arduino-cli/sketch-build-process/).
+Для S3 выбирайте Custom. Для S2 скетч содержит свой `partitions.csv`, который имеет приоритет перед таблицей из меню. В CLI предел приложения выставляется по реальному размеру слота; в IDE при необходимости выберите размер приложения не менее фактического бинарника (например, вариант 2 MB), сохранив файл проекта. Меню не должно приводить к удалению поставленного CSV. Реальные слоты: S3 `0x640000` = 6 553 600 байт, S2 `0x1e0000` = 1 966 080 байт; все проверяемые бинарники должны помещаться именно в них. Таблицы и смещения NVS сохранены. Наличие двух OTA-слотов не добавляет веб-OTA.
+
+Нажмите **Verify**; COM-порт для этого не нужен. Во время проверки Arduino IDE непосредственно из канонической папки завершите PlatformIO: он создаёт временный `.ino.cpp`. `prepare_sketch.py` исключает этот файл из копии, предотвращая вторые `setup()/loop()`.
 
 ## Arduino CLI
 
 ```sh
 arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 arduino-cli core install esp32:esp32@3.3.11 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-# Только для варианта с дисплеем:
-arduino-cli lib install 'Adafruit GFX Library@1.12.1' 'Adafruit ILI9341@1.6.2' 'Adafruit BusIO@1.17.2'
-# XPT2046 v1.4: установить официальный ZIP через IDE или arduino-cli lib install --zip-path ...
+# Только выбранный дисплей:
+arduino-cli lib install 'LiquidCrystal@1.0.7'
+# либо TFT: GFX@1.12.1, ILI9341@1.6.2, BusIO@1.17.2 и официальный ZIP XPT2046 v1.4
+
 ./tools/build_arduino.sh s3
-# Для ESP32-S2 с Flash 4 MB:
 ./tools/build_arduino.sh s2
+DISPLAY_KIND=2 BLUETOOTH_ENABLED=0 DRIVE_INTERFACE=2 ./tools/build_arduino.sh s2-mini
 ```
 
-Аргументы CLI и меню IDE соответствуют друг другу. Без аргумента скрипт собирает S3; `s2` выбирает S2 и её таблицу разделов. Все модули копируются из канонической папки в отдельный скетч `build/arduino-s3/G5500_Fork/` или `build/arduino-s2/G5500_Fork/`. Скрипт разрешает `ARDUINO_CLI`, `ARDUINO_CONFIG_FILE`, `FQBN` и `BUILD_JOBS` для изолированного стенда; обычный пакет имеет FQBN `esp32:esp32:esp32s3` или `esp32:esp32:esp32s2`.
+`DISPLAY_KIND`: 0 NONE, 1 TFT, 2 LCD. `DRIVE_INTERFACE`: 0 YAESU, 1 SEPARATE_PWM, 2 BTS7960. Старый `DISPLAY_ENABLED=0/1` остаётся алиасом NONE/TFT; несовместимые флаги отклоняются. Можно передать `EXTRA_BUILD_FLAGS='-DUSER_BUTTON_GPIO=38'`. Без переопределений используется `build_config.hpp`. Скрипт допускает `ARDUINO_CLI`, `ARDUINO_CONFIG_FILE`, `FQBN`, `BUILD_JOBS`; исходники и результаты изолированы в `build/arduino-<target>` и `artifacts/arduino-<target>`.
 
 ## PlatformIO
 
-```sh
-pio run -t clean
-pio run -j4
-```
-
-PlatformIO временно создаёт `.ino.cpp` при конвертации скетча. Скрипт `build_arduino.sh` использует отдельную подготовленную копию и исключает пересечение с PlatformIO. Проверку в Arduino IDE непосредственно из канонической папки выполнять после завершения PlatformIO.
-
-`platformio.ini` фиксирует платформу и библиотеки. Выход: `.pio/build/esp32s3_n16r8/firmware.bin` и `firmware.factory.bin`. При параллельных проектах следует изолировать `PLATFORMIO_CORE_DIR`, чтобы не менять общий кэш.
-
-## Сборка без дисплея
-
-Настройка действует при компиляции и одновременно отключает TFT ILI9341 и тачскрин XPT2046. По умолчанию дисплей отключён (`TFT_DISPLAY_ENABLED=0`).
-
-В **Arduino IDE** откройте соседний со скетчем [build_config.hpp](../G5500_Fork/build_config.hpp), измените строку на `#define TFT_DISPLAY_ENABLED 0` и выполните Verify. Чтобы вернуть экран, установите `1` и пересоберите проект.
-
-В **Arduino CLI** можно переопределить значение из заголовка:
+Скрипт выбирает экранные зависимости согласно общему заголовку и параметрам:
 
 ```sh
-DISPLAY_ENABLED=0 ./tools/build_arduino.sh s3
-DISPLAY_ENABLED=0 ./tools/build_arduino.sh s2
+python3 tools/build_platformio.py --env esp32s3_n16r8
+python3 tools/build_platformio.py --env esp32s2_mini --display lcd --bluetooth 0 --drive bts7960
+python3 tools/build_platformio.py --env esp32s2_mini --display none --drive separate-pwm
 ```
 
-`DISPLAY_ENABLED=1` принудительно включает экран; без переменной используется значение из `build_config.hpp`. Подготовленные S3/S2-скетчи содержат этот заголовок.
-
-В **PlatformIO** выберите профиль без экранных зависимостей:
+Сохраняются прямые окружения `esp32s3_n16r8`, `esp32s2_4mb`, оба прежних `_headless`; добавлены `esp32s2_mini`, `esp32s2_mini_headless`, и варианты `_tft`/`_lcd` двух новых плат. Окружения с дисплеем явно задают также совместимый `TFT_DISPLAY_ENABLED`, чтобы PlatformIO LDF правильно выбрал условные библиотеки.
 
 ```sh
-pio run -e esp32s3_n16r8_headless
-pio run -e esp32s2_4mb_headless
+pio run -e esp32s3_n16r8_tft -j4
+pio run -e esp32s2_mini_lcd -j4
+pio run -e esp32s2_4mb_headless -j4
 ```
 
-Эти профили задают `TFT_DISPLAY_ENABLED=0` и пустой список `lib_deps`. Обычные профили содержат экранные зависимости; для сборки без их установки используйте именно профили `headless`.
+При изменении DISPLAY_KIND в заголовке используйте `build_platformio.py`, который добавит только выбранные зависимости. Прямое `pio run` использует `lib_deps` выбранного окружения. При параллельных проектах изолируйте `PLATFORMIO_CORE_DIR`, `PLATFORMIO_BUILD_DIR`, `PLATFORMIO_LIBDEPS_DIR`; некоторые версии платформы записывают вспомогательный файл в SDK, поэтому ему нужна отдельная записываемая копия.
 
-При отключении не подключаются заголовки SPI, Adafruit и XPT2046, не создаются объекты TFT/тачскрина, не инициализируются их GPIO и не включается картинка экрана. Веб-интерфейс, веб-калибровка, кнопка BOOT и протоколы управления продолжают работать. Сохранённая калибровка тачскрина остаётся в NVS для последующего включения экрана.
-
-## Host
+## Программная приёмка
 
 ```sh
 ./tools/build_native.sh
+python3 tools/check_profiles.py
 python3 -m unittest discover -s tests -p test_network.py -v
-python3 tools/simulator.py --log /tmp/g5500-packets.jsonl
+python3 tools/build_matrix.py --tool all --legacy
 ```
 
-`build_native.sh` также проверяет компиляцию отключённого дисплея без Arduino- и экранных заголовков.
+Матрица: S3 и S2 Mini × NONE/TFT/LCD × HC-05 off/on × YAESU/SEPARATE_PWM/BTS7960 = **36 конфигураций каждого инструмента**. Дополнительно `--legacy` проверяет прежнюю S2 с NONE и TFT. Все сборки используют отдельные копии одного зафиксированного снимка исходников. JSON с SHA-256 снимка, размерами Flash/RAM/бинарника, длительностью и результатами находится в `artifacts/build-matrix/{arduino,platformio}.json`; логи — рядом. Размер .bin проверяется по настоящему OTA-слоту, а не общему Flash платы.
 
-Симулятор доступен на http://127.0.0.1:8080. Для подключения логгера с другого компьютера используйте `--host 0.0.0.0` и IP компьютера с симулятором. Симулятор моделирует датчики и движение без управления GPIO. `Ctrl+C` завершает симулятор.
+Для автономного стенда доступны `--arduino-cli`, `--arduino-config`, `--arduino-vendor`, `--pio`, `--platform`, `--library-dir`, `--workers`, `--jobs`. Локальные библиотеки должны иметь зафиксированные версии. Проверка веба: запустить `tools/simulator.py`, затем `npm run test:web`; зависимости браузерного теста заданы в `package-lock.json`. Это проверка общего ядра и интерфейса с виртуальными двигателями.
 
-
-## Проверка веб-интерфейса
-
-Нужны Node.js 20 или новее и Playwright:
-
-```sh
-npm ci
-npx playwright install chromium
-# При запущенном симуляторе:
-npm run test:web
-```
-
-Для установленного системного Chromium можно задать `CHROMIUM_PATH` вместо загрузки браузера. `SIM_URL` меняет HTTP-адрес симулятора, `SIM_N1MM_PORT` — порт отправки UDP-команд на localhost (по умолчанию 12040). Снимки сохраняются в игнорируемом `artifacts/screenshots/`.
-
-## Архив исходников
+## Упаковка
 
 ```sh
 python3 tools/package_release.py
 ```
 
-Скрипт упаковывает файлы, добавленные в Git, и создаёт `artifacts/g5500-controller-sources.zip`, `SOURCE_SHA256SUMS` и `SHA256SUMS`. Команда `sha256sum -c artifacts/SOURCE_SHA256SUMS` проверяет исходники из корня проекта; в `artifacts/` команда `sha256sum -c SHA256SUMS` проверяет архив. Сборки и результаты тестов в архив не входят.
+Архив формируется только из Git-учтённых файлов текущей рабочей копии; перед обычной упаковкой новые файлы должны быть добавлены в Git. Проверка незакоммиченной реализации использует отдельный временный индекс, не изменяя индекс репозитория. В ZIP входят все плоские заголовки, оба CSV, исходники, документация и схемы; `SOURCE_SHA256SUMS` задаёт хеш каждого файла. Arduino-копия должна содержать единственный `.ino`, все соседние модули и целевой CSV. Упаковка и Verify не означают публикацию или прошивку устройства.

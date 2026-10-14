@@ -74,7 +74,7 @@ void gpioOrdering() {
   Hardware hardware(runtime);
   hardware.beginDirections();
   for (unsigned i=0; i<fakeHardware.events.size(); i+=2) {
-    CHECK(fakeHardware.events[i].operation == "write");
+    CHECK(fakeHardware.events[i].operation == "preload");
     CHECK(fakeHardware.events[i].value == LOW);
     CHECK(fakeHardware.events[i+1].operation == "mode");
     CHECK(fakeHardware.events[i+1].value == OUTPUT);

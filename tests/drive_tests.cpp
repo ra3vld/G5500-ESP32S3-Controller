@@ -28,9 +28,9 @@ void onePass() {
     CHECK(c.target({90,80,true,true},true,40)==Result::Ok); c.tick(40);
     CHECK(c.axes[0].completed && !c.axes[0].direction);
   }
-  c.stop(0);
+  c.feedback(100,45,true,true); c.stop(0);
   c.target({90,80,true,true},true,50); c.tick(50);
-  CHECK(!c.axes[0].direction && c.axes[0].acceptedTarget==90);
+  CHECK(!c.axes[0].direction && !c.axes[0].wanted && !c.axes[0].tracking && c.axes[0].acceptedTarget==90);
   CHECK(c.axes[1].tracking);
   CHECK(c.target({95,90,true,true},true,60)==Result::Ok); c.tick(60);
   CHECK(c.axes[0].target==90 && c.axes[0].acceptedTarget==90);
@@ -196,6 +196,7 @@ void outputs() {
     const auto attempts=fakeHardware.attachCalls;
     fakeHardware.attachSucceeds=true; partial.applyOutputs();
     CHECK(fakeHardware.attachCalls==attempts);
+    for (const auto &event : fakeHardware.events) CHECK(event.operation!="write_unowned");
   }
 
 }

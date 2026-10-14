@@ -52,16 +52,19 @@ struct FakeHardware {
   int failAttachAt = -1;
   unsigned attachCalls = 0, readsMv = 0, readsRaw = 0;
   std::map<int, int> levels, millivolts;
+  std::map<int, bool> gpioOwned;
   std::vector<GpioEvent> events;
 };
 inline FakeHardware fakeHardware;
 inline uint32_t millis() { return fakeHardware.now; }
 inline void digitalWrite(int pin, int level) {
-  fakeHardware.levels[pin] = level;
-  fakeHardware.events.push_back({"write", pin, uint32_t(level)});
+  if (fakeHardware.gpioOwned[pin]) {
+    fakeHardware.levels[pin] = level;
+    fakeHardware.events.push_back({"write", pin, uint32_t(level)});
+  } else fakeHardware.events.push_back({"write_unowned", pin, uint32_t(level)});
 }
 inline int digitalRead(int pin) { return fakeHardware.levels[pin]; }
-inline void pinMode(int pin, int mode) { fakeHardware.events.push_back({"mode", pin, uint32_t(mode)}); }
+inline void pinMode(int pin, int mode) { fakeHardware.gpioOwned[pin]=true; fakeHardware.events.push_back({"mode", pin, uint32_t(mode)}); }
 inline int analogReadMilliVolts(int pin) { ++fakeHardware.readsMv; return fakeHardware.millivolts[pin]; }
 inline int analogRead(int pin) { ++fakeHardware.readsRaw; return fakeHardware.millivolts[pin]; }
 inline void delayMicroseconds(unsigned) {}
@@ -69,8 +72,9 @@ inline void analogReadResolution(unsigned) {}
 inline void analogSetPinAttenuation(int, int) {}
 inline void rgbLedWrite(int, int, int, int) {}
 inline bool ledcAttach(int pin, unsigned frequency, unsigned resolution) {
+  fakeHardware.gpioOwned[pin]=false;
   fakeHardware.events.push_back({"attach", pin, frequency});
   return int(fakeHardware.attachCalls++) != fakeHardware.failAttachAt && fakeHardware.attachSucceeds && resolution == 10;
 }
 inline void ledcWrite(int pin, uint32_t duty) { fakeHardware.events.push_back({"pwm", pin, duty}); }
-inline void ledcDetach(int pin) { fakeHardware.events.push_back({"detach", pin, 0}); }
+inline void ledcDetach(int pin) { fakeHardware.gpioOwned[pin]=false; fakeHardware.events.push_back({"detach", pin, 0}); }

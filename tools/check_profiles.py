@@ -18,6 +18,7 @@ def compile_case(flags, expected):
 for board,display,bt,drive in itertools.product((1,3),range(3),range(2),range(3)):
     compile_case([f'BOARD_PROFILE={board}',f'DISPLAY_KIND={display}',f'BLUETOOTH_ENABLED={bt}',f'DRIVE_INTERFACE={drive}'],True)
 for flags in [
+    ['BOARD_PROFILE=UNKNOWN_PROFILE'],
     ['BOARD_PROFILE=1','CONFIG_IDF_TARGET_ESP32S2=1'],
     ['BOARD_PROFILE=3','CONFIG_IDF_TARGET_ESP32S3=1'],
     ['BOARD_PROFILE=2','DRIVE_INTERFACE=1'],

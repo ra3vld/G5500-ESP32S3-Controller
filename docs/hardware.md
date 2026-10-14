@@ -51,3 +51,5 @@ GPIO21 выдаёт PWM 3,3 В. Внешний фильтр и буфер дол
 | UART0 RX / TX | 44 / 43 |
 
 Эта таблица относится к S3 и прежней S2 в интерфейсе YAESU. Выбранный дисплей может быть NONE, ILI9341/XPT2046 или параллельный LCD1602. [Схема с TFT](hardware/g5500-esp32s3-tft-schematic.pdf) сохранена из оригинала UA1CFM.
+
+Референс с логикой 5 В: [два BTS7960 через 74HCT245](hardware/independent-pwm-bts7960-hct.md), [схема PDF](hardware/independent-pwm-bts7960-hct.pdf). GPIO направлений несут PWM; GPIO21/33/47 управляют ENABLE.
