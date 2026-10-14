@@ -6,8 +6,8 @@ void Application::updatePosition() {
   auto &calibrationState = calibration_.state();
   // factory-calibrated ESP32-S3 millivolts -> selected mechanical calibration -> angle.
   // AZ table is selected by P36/P45; EL table is shared.
-  int az = hardware_.adcAvgMv(PIN_AZ_ADC),
-      el = runtime_.controller.model == forkrot::Model::G5500 ? hardware_.adcAvgMv(PIN_EL_ADC) : 0;
+  int az = hardware_.filteredMv(0),
+      el = runtime_.controller.model == forkrot::Model::G5500 ? hardware_.filteredMv(1) : 0;
   float azMax = calibration_.activeAzMaxDeg();
 
   if (calibrationState.calibrationMode == CAL_MULTI_POINT) {
@@ -81,6 +81,7 @@ void Application::setGsAzMode(uint8_t m) {
   storage_.saveAzMode(runtime_.controller.model, calibrationState.gsAzMode);
 
   updatePosition();
+  runtime_.controller.axes[0].target = runtime_.currentAz;
   runtime_.targetAz = runtime_.currentAz; // cancel stale AZ target without disturbing EL target
   calibrationState.cal.valid = calibration_.selectedCalibrationValid();
 

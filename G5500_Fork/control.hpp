@@ -1,5 +1,6 @@
 // G5500 Fork; original by UA1CFM, modifications by RA3VLD. GPL-3.0.
 #pragma once
+#include "build_config.hpp"
 #include <array>
 #include <cstdint>
 #include <string>
@@ -12,9 +13,14 @@ struct Target {
   float az = 0, el = 0;
   bool hasAz = true, hasEl = false;
 };
+struct SpeedSettings {
+  unsigned speedPercent = 100, startSpeedPercent = 18, approachSpeedPercent = 18;
+  unsigned accelerationMs = 1800, decelerationMs = 1200, slowdownDegrees = 3;
+};
 struct Axis {
   float current = 0, target = 0;
-  bool calibrated = false, tracking = false;
+  bool calibrated = false, tracking = false, completed = false, accepted = false;
+  float acceptedTarget = 0;
   int direction = 0, wanted = 0, previous = 0;
   uint32_t offAt = 0, runAt = 0;
   bool hasRun = false;
@@ -34,10 +40,21 @@ public:
   Target pending{};
   bool pendingValid = false, presetActive = false, targetKnown = false;
   int presetSlot = -1;
-  bool speedEnabled = false;
-  unsigned speedPercent = 50;
-  unsigned startSpeedPercent = 25, approachSpeedPercent = 25;
-  unsigned accelerationMs = 2000, decelerationMs = 1500, slowdownDegrees = 10;
+  bool speedEnabled = DRIVE_INTERFACE != DRIVE_YAESU;
+  std::array<SpeedSettings, 2> speeds{};
+  unsigned &speedPercent = speeds[0].speedPercent;
+  unsigned &startSpeedPercent = speeds[0].startSpeedPercent;
+  unsigned &approachSpeedPercent = speeds[0].approachSpeedPercent;
+  unsigned &accelerationMs = speeds[0].accelerationMs;
+  unsigned &decelerationMs = speeds[0].decelerationMs;
+  unsigned &slowdownDegrees = speeds[0].slowdownDegrees;
+  bool driveFault = false;
+  bool variableSpeed(unsigned i) const;
+  static constexpr float tolerance(unsigned i) { return i ? EL_STOP_TOLERANCE_DEG : AZ_STOP_TOLERANCE_DEG; }
+  size_t sequenceIndex() const { return sequence_.empty() ? 0 : sequenceIndex_ + 1; }
+  size_t sequenceCount() const { return sequence_.empty() ? pendingSequence_.size() : sequence_.size(); }
+  Controller(const Controller &other);
+  Controller &operator=(const Controller &other);
   uint32_t stopEpoch = 0;
   std::string fault;
   Controller();
@@ -67,7 +84,7 @@ private:
   bool speedUpdateStarted_ = false;
   std::vector<Target> sequence_, pendingSequence_;
   size_t sequenceIndex_ = 0;
-  Result start(Target t, uint32_t now);
+  Result start(Target t, uint32_t now, bool external = false);
   void output(unsigned axis, int dir, uint32_t now);
   void expire(uint32_t now);
 };

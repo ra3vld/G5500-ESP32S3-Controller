@@ -93,6 +93,7 @@ private:
   float dashLastTargetAz = -9999.0f, dashLastTargetEl = -9999.0f;
   bool dashLastTargetValid = false;
   int dashLastAzBar = -1, dashLastElBar = -1;
+  int dashLastSpeed[2] = {-1, -1};
   String dashLastAzState = "", dashLastElState = "";
   String dashLastCal = "", dashLastWifi = "", dashLastBt = "", dashLastIp = "", dashLastTouch = "";
   bool dashLastTcpConnected = false;
@@ -118,6 +119,29 @@ private:
 };
 } // namespace forkrot
 
+#elif DISPLAY_KIND == DISPLAY_LCD1602
+#include <Arduino.h>
+#include <LiquidCrystal.h>
+#include "board.hpp"
+#include "runtime.hpp"
+namespace forkrot {
+class DeviceActions; class Calibration; class Hardware; class Diagnostics; class Network; class Storage;
+class Display {
+  Runtime &runtime_;
+  LiquidCrystal lcd_{board::PIN_LCD_RS, board::PIN_LCD_E, board::PIN_LCD_D4,
+                     board::PIN_LCD_D5, board::PIN_LCD_D6, board::PIN_LCD_D7};
+  uint32_t updatedAt_ = 0;
+  bool redraw_ = true;
+public:
+  Display(Runtime &runtime, DeviceActions &, Calibration &, Hardware &, Diagnostics &, Network &, Storage &) : runtime_(runtime) {}
+  void invalidate() { redraw_ = true; }
+  void loadTouchCalibration() {}
+  void startAfterCalibrationLoad() {}
+  void serviceTouch() {}
+  void initLocalDisplay();
+  void updateLocalDisplay();
+};
+}
 #else
 
 namespace forkrot {

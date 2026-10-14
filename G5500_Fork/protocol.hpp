@@ -14,6 +14,7 @@ class Protocol {
   std::vector<Target> loadedSequence_;
   uint32_t loadedIntervalMs_ = 1000;
   uint32_t loadedStopEpoch_ = 0;
+  bool loadedSequenceStarted_ = false;
 
 public:
   std::string rotorName = "G5500";

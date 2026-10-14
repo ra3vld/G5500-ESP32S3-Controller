@@ -286,6 +286,7 @@ void Storage::loadForkSettings(Runtime &runtime) {
       prefs_.getUChar("model", 0) == 1 ? forkrot::Model::G800DXA : forkrot::Model::G5500;
   runtime.controller.restoreMode(prefs_.getUChar("mode", 0) == 1 ? forkrot::Mode::Auto
                                                                  : forkrot::Mode::Manual);
+#if DRIVE_INTERFACE == DRIVE_YAESU
   runtime.controller.speedEnabled = prefs_.getBool("speedon", false);
   runtime.controller.speedPercent = constrain(prefs_.getUInt("speed", 50), 25u, 100u);
   runtime.controller.startSpeedPercent = constrain(prefs_.getUInt("startspd", 25), 25u, 100u);
@@ -293,18 +294,34 @@ void Storage::loadForkSettings(Runtime &runtime) {
   runtime.controller.accelerationMs = constrain(prefs_.getUInt("accelms", 2000), 100u, 10000u);
   runtime.controller.decelerationMs = constrain(prefs_.getUInt("decelms", 1500), 100u, 10000u);
   runtime.controller.slowdownDegrees = constrain(prefs_.getUInt("slowdeg", 10), 1u, 90u);
+#endif
   runtime.protocol.rotorName = prefs_.getString("name", "G5500").c_str();
   runtime.loggerSettings.n1mmPort = prefs_.getUShort("nport", 12040);
   runtime.loggerSettings.pstPort = prefs_.getUShort("pport", 1234);
   runtime.loggerSettings.reportPort = prefs_.getUShort("rport", 13010);
   runtime.loggerSettings.reportHost = prefs_.getString("rhost", "").c_str();
   prefs_.end();
+#if DRIVE_INTERFACE != DRIVE_YAESU
+  prefs_.begin("forkpwm", true);
+  for (unsigned i=0; i<2; ++i) {
+    auto &speed = runtime.controller.speeds[i];
+    const String prefix = i ? "el" : "az";
+    speed.speedPercent = constrain(prefs_.getUInt((prefix + "work").c_str(), 100), 1u, 100u);
+    speed.startSpeedPercent = constrain(prefs_.getUInt((prefix + "start").c_str(), 18), 1u, 100u);
+    speed.approachSpeedPercent = constrain(prefs_.getUInt((prefix + "approach").c_str(), 18), 1u, 100u);
+    speed.accelerationMs = constrain(prefs_.getUInt((prefix + "accel").c_str(), 1800), 100u, 10000u);
+    speed.decelerationMs = constrain(prefs_.getUInt((prefix + "decel").c_str(), 1200), 100u, 10000u);
+    speed.slowdownDegrees = constrain(prefs_.getUInt((prefix + "slow").c_str(), i ? 2 : 3), 1u, 90u);
+  }
+  prefs_.end();
+#endif
 }
 
 void Storage::saveForkSettings(const Runtime &runtime) {
   prefs_.begin("forkcfg", false);
   prefs_.putUChar("model", runtime.controller.model == forkrot::Model::G800DXA ? 1 : 0);
   prefs_.putUChar("mode", runtime.controller.mode == forkrot::Mode::Auto ? 1 : 0);
+#if DRIVE_INTERFACE == DRIVE_YAESU
   prefs_.putBool("speedon", runtime.controller.speedEnabled);
   prefs_.putUInt("speed", runtime.controller.speedPercent);
   prefs_.putUInt("startspd", runtime.controller.startSpeedPercent);
@@ -312,12 +329,27 @@ void Storage::saveForkSettings(const Runtime &runtime) {
   prefs_.putUInt("accelms", runtime.controller.accelerationMs);
   prefs_.putUInt("decelms", runtime.controller.decelerationMs);
   prefs_.putUInt("slowdeg", runtime.controller.slowdownDegrees);
+#endif
   prefs_.putString("name", runtime.protocol.rotorName.c_str());
   prefs_.putUShort("nport", runtime.loggerSettings.n1mmPort);
   prefs_.putUShort("pport", runtime.loggerSettings.pstPort);
   prefs_.putUShort("rport", runtime.loggerSettings.reportPort);
   prefs_.putString("rhost", runtime.loggerSettings.reportHost.c_str());
   prefs_.end();
+#if DRIVE_INTERFACE != DRIVE_YAESU
+  prefs_.begin("forkpwm", false);
+  for (unsigned i=0; i<2; ++i) {
+    const auto &speed = runtime.controller.speeds[i];
+    const String prefix = i ? "el" : "az";
+    prefs_.putUInt((prefix + "work").c_str(), speed.speedPercent);
+    prefs_.putUInt((prefix + "start").c_str(), speed.startSpeedPercent);
+    prefs_.putUInt((prefix + "approach").c_str(), speed.approachSpeedPercent);
+    prefs_.putUInt((prefix + "accel").c_str(), speed.accelerationMs);
+    prefs_.putUInt((prefix + "decel").c_str(), speed.decelerationMs);
+    prefs_.putUInt((prefix + "slow").c_str(), speed.slowdownDegrees);
+  }
+  prefs_.end();
+#endif
 }
 
 const char *Storage::presetNamespace(const Runtime &runtime) {

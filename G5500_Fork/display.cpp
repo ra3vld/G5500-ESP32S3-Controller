@@ -56,6 +56,7 @@ void Display::resetDashboardCache() {
   dashLastTargetValid = !runtime_.targetValid; // force first target redraw
   dashLastAzBar = -1;
   dashLastElBar = -1;
+  dashLastSpeed[0] = dashLastSpeed[1] = -1;
   dashLastAzState = "";
   dashLastElState = "";
   dashLastCal = "";
@@ -135,6 +136,9 @@ void Display::updateDashboard() {
     tftText(12, 160, 1, TFT_TEXT, TFT_BG,
             String(calibrationState.gsAzMode == 36 ? "P36 " : "P45 ") + hardware_.motion() + " " +
                 tftCalibrationText());
+    tft.fillRect(12, 150, 296, 5, TFT_PANEL);
+    tft.fillRect(12, 150, int(runtime_.controller.axes[0].speedOutputPercent*2.96f), 5, TFT_AZ);
+    tftText(220, 136, 1, TFT_AZ, TFT_BG, String(runtime_.controller.axes[0].speedOutputPercent, 0) + "%");
     tft.fillRect(126, 180, 191, 27, TFT_BG);
     tftText(130, 187, 1, TFT_TEXT, TFT_BG,
             WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString());
@@ -236,13 +240,24 @@ void Display::updateDashboard() {
     dashLastElBar = elw;
   }
 
+  for (unsigned i=0; i<2; ++i) {
+    const int percent = int(lroundf(runtime_.controller.axes[i].speedOutputPercent));
+    if (percent != dashLastSpeed[i]) {
+      const int x = i ? 173 : 13;
+      tft.fillRect(x, 132, 90, 4, TFT_PANEL);
+      tft.fillRect(x, 132, percent*90/100, 4, i ? TFT_EL : TFT_AZ);
+      tft.fillRect(x+92, 129, 42, 9, TFT_BG);
+      tftText(x+92, 129, 1, TFT_MUTED, TFT_BG, String(percent) + "%");
+      dashLastSpeed[i] = percent;
+    }
+  }
   // Motion text: update only on state change.
   // Read each axis directly from its GPIOs so simultaneous motion
   // (e.g. UP+RIGHT) is displayed correctly.
-  bool left = digitalRead(PIN_LEFT);
-  bool right = digitalRead(PIN_RIGHT);
-  bool up = digitalRead(PIN_UP);
-  bool down = digitalRead(PIN_DOWN);
+  bool left = runtime_.controller.axes[0].direction < 0;
+  bool right = runtime_.controller.axes[0].direction > 0;
+  bool up = runtime_.controller.axes[1].direction > 0;
+  bool down = runtime_.controller.axes[1].direction < 0;
 
   bool azMoving = left || right;
   bool elMoving = up || down;
@@ -287,8 +302,8 @@ void Display::updateDashboard() {
     dashLastWifi = wifiText;
   }
 
-  bool bt = digitalRead(PIN_HC05_STATE);
-  String btText = bt ? "ON" : "OFF";
+  bool bt = network_.hc05Connected();
+  String btText = BLUETOOTH_ENABLED ? (bt ? "ON" : "OFF") : "N/A";
   if (btText != dashLastBt) {
     tft.fillRect(271, 183, 40, 20, TFT_BG);
     tftText(272, 186, 2, bt ? TFT_OK : TFT_MUTED, TFT_BG, btText);
@@ -916,4 +931,45 @@ void Display::startAfterCalibrationLoad() {
 
 } // namespace forkrot
 
+#elif DISPLAY_KIND == DISPLAY_LCD1602
+#include "display.hpp"
+#include <cstdio>
+#include <cmath>
+#include <cstring>
+namespace forkrot {
+void Display::initLocalDisplay() {
+  lcd_.begin(16, 2);
+  for (uint8_t width=1; width<=5; ++width) {
+    uint8_t pixels[8];
+    for (auto &row : pixels) row = uint8_t(0x1f << (5-width)) & 0x1f;
+    lcd_.createChar(width, pixels);
+  }
+}
+void Display::updateLocalDisplay() {
+  const uint32_t now = millis();
+  if (!redraw_ && uint32_t(now-updatedAt_) < 250) return;
+  redraw_ = false; updatedAt_ = now;
+  for (unsigned i=0; i<2; ++i) {
+    char text[40];
+    const auto &axis = runtime_.controller.axes[i];
+    const char mode = runtime_.controller.pendingValid ? 'W' : runtime_.controller.mode == Mode::Manual ? 'M' : runtime_.controller.mode == Mode::AutoHour ? 'H' : 'A';
+    if (i && runtime_.controller.model == Model::G800DXA) {
+      std::snprintf(text, sizeof text, "%s %-9s", runtime_.controller.pendingValid ? "WAIT" : "MODE", Controller::modeName(runtime_.controller.mode));
+    } else {
+      char target[12] = "---";
+      const auto &c = runtime_.controller;
+      const bool waiting = c.pendingValid && (i ? c.pending.hasEl : c.pending.hasAz);
+      if (waiting || c.targetKnown) std::snprintf(target, sizeof target, "%3d", int(lroundf(waiting ? (i ? c.pending.el : c.pending.az) : axis.target)));
+      std::snprintf(text, sizeof text, "%c%3d>%3s %3d%%%c%c", i ? 'E' : 'A', int(lroundf(axis.current)), target, int(lroundf(axis.speedOutputPercent)), mode, axis.direction > 0 ? '+' : axis.direction < 0 ? '-' : '=');
+    }
+    lcd_.setCursor(0, i);
+    for (unsigned col=0; col<16; ++col) {
+      if (col==15 && !(i && runtime_.controller.model == Model::G800DXA)) {
+        const uint8_t width=uint8_t(lroundf(axis.speedOutputPercent*5.f/100.f));
+        lcd_.write(width ? width : uint8_t(' '));
+      } else lcd_.write(col < std::strlen(text) ? text[col] : ' ');
+    }
+  }
+}
+}
 #endif

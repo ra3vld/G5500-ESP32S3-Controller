@@ -4,7 +4,9 @@ namespace forkrot {
 using namespace board;
 void Network::sendReply(const String &s) {
   if (gsReplyPort == GS_REPLY_HC05) {
+#if BLUETOOTH_ENABLED
     hc05Serial_.print(s);
+#endif
     diagnostics_.dbgPrint("[HC05 TX] ");
     diagnostics_.dbgPrintln(s);
   } else {
@@ -87,10 +89,16 @@ void Network::handlePstRotatorSerial() {
 }
 
 bool Network::hc05Connected() {
+#if BLUETOOTH_ENABLED
   return digitalRead(PIN_HC05_STATE) == HIGH;
+
+#else
+  return false;
+#endif
 }
 
 void Network::handleHc05Serial() {
+#if BLUETOOTH_ENABLED
   static forkrot::LineBuffer receiver;
   std::string command;
   while (hc05Serial_.available()) {
@@ -102,6 +110,9 @@ void Network::handleHc05Serial() {
       processGs232Command(cmd);
     }
   }
+
+#else
+#endif
 }
 
 void Network::rotctldSend(const String &s) {
@@ -497,9 +508,11 @@ void Network::serviceLoggerUdp() {
   }
 }
 void Network::beginSerial() {
-  Serial0.begin(9600);
+  Serial0.begin(9600, SERIAL_8N1, PIN_UART_RX, PIN_UART_TX);
+#if BLUETOOTH_ENABLED
   pinMode(PIN_HC05_STATE, INPUT);
   hc05Serial_.begin(HC05_BAUD, SERIAL_8N1, PIN_HC05_RX, PIN_HC05_TX);
+#endif
 }
 
 } // namespace forkrot

@@ -362,6 +362,7 @@ std::string Protocol::positionReport(float mechanicalAz) const {
 Packet Protocol::line(const std::string &input, uint32_t now, bool tcp) {
   if (loadedStopEpoch_ != controller_.stopEpoch) {
     loadedSequence_.clear();
+    loadedSequenceStarted_ = false;
     loadedStopEpoch_ = controller_.stopEpoch;
   }
   Packet packet;
@@ -449,6 +450,7 @@ Packet Protocol::line(const std::string &input, uint32_t now, bool tcp) {
           packet.result = Result::Ignored;
         } else {
           loadedSequence_ = points;
+          loadedSequenceStarted_ = false;
           loadedStopEpoch_ = controller_.stopEpoch;
           loadedIntervalMs_ = uint32_t(nums[0]) * 1000;
           packet.result = controller_.target(points[0], true, now);
@@ -459,8 +461,10 @@ Packet Protocol::line(const std::string &input, uint32_t now, bool tcp) {
     }
   } else if (u == "T") {
     packet.result = controller_.sequence(loadedSequence_, loadedIntervalMs_, now);
+    if (packet.result == Result::Ok || packet.result == Result::Pending) loadedSequenceStarted_ = true;
   } else if (u == "N") {
-    packet.reply = "N=" + std::to_string(loadedSequence_.size()) + "\r\n";
+    packet.reply = "N=" + std::to_string(controller_.sequenceIndex()) + "/" +
+                   std::to_string(loadedSequenceStarted_ ? controller_.sequenceCount() : loadedSequence_.size()) + "\r\n";
     return packet;
   } else {
     packet.matched = false;

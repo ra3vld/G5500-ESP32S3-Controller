@@ -24,13 +24,13 @@ int main(){try{
  c.tick(2299);CHECK(c.axes[0].direction==0);c.tick(2300);CHECK(c.axes[0].direction==-1);CHECK(c.axes[0].speedOutputPercent==25);
  c.tick(2800);CHECK(c.axes[0].speedOutputPercent==37.5f);CHECK(c.axes[0].runAt==0);}
  {auto c=rampReady();c.target({90,0,true,false},false,0);c.tick(0);c.tick(1000);CHECK(c.axes[0].speedOutputPercent==50);
- c.feedback(84.5,0,true,false);c.tick(1250);CHECK(c.axes[0].speedOutputPercent==37.5f);
- c.feedback(89,0,true,false);c.tick(1500);CHECK(c.axes[0].speedOutputPercent==26.25f);
+ c.feedback(80,0,true,false);c.tick(1250);CHECK(c.axes[0].speedOutputPercent==37.5f);
+ c.feedback(84.5,0,true,false);c.tick(1500);CHECK(c.axes[0].speedOutputPercent==26.25f);
  c.feedback(89.5,0,true,false);c.tick(1501);CHECK(!c.moving());CHECK(c.axes[0].speedOutputPercent==0);
- c.startSpeedPercent=100;c.target({88,0,true,false},false,1801);c.tick(1801);CHECK(c.axes[0].direction==-1);CHECK(c.axes[0].speedOutputPercent<=28);
- c.feedback(88.5,0,true,false);c.tick(1802);CHECK(!c.moving());}
+ c.startSpeedPercent=100;c.target({83,0,true,false},false,1801);c.tick(1801);CHECK(c.axes[0].direction==-1);CHECK(c.axes[0].speedOutputPercent<=29);
+ c.feedback(83.5,0,true,false);c.tick(1802);CHECK(!c.moving());}
  {auto c=rampReady();c.jog(0,1,true,0);c.tick(0);c.tick(1000);c.jog(0,-1,true,1000);
- c.feedback(450,0,true,false);c.tick(1100);CHECK(!c.moving());CHECK(c.axes[0].speedOutputPercent==0);
+ c.feedback(450,0,true,false);c.tick(1100);CHECK(c.axes[0].direction==0);CHECK(c.axes[0].wanted==-1);CHECK(c.axes[0].speedOutputPercent==0);
  c.jog(0,-1,true,1400);c.tick(1400);CHECK(c.axes[0].direction==-1);c.tick(181400);CHECK(!c.moving());CHECK(c.fault=="continuous_motion_timeout");CHECK(c.axes[0].speedOutputPercent==0);}
  {auto c=rampReady();c.preset(1,0);c.tick(0);c.tick(1000);CHECK(c.presetActive);
  c.feedback(20,0,false,false);c.tick(1001);CHECK(!c.moving());CHECK(!c.presetActive);CHECK(c.axes[0].speedOutputPercent==0);}

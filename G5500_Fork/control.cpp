@@ -13,13 +13,44 @@ constexpr uint32_t kReverseDeadTimeMs = 300;
 constexpr uint32_t kContinuousMotionTimeoutMs = 180000;
 constexpr uint32_t kMinimumSequenceIntervalMs = 1000;
 constexpr uint32_t kMaximumSequenceIntervalMs = 999000;
-constexpr float kArrivalToleranceDegrees = 0.5f;
+
 } // namespace
 
 Controller::Controller() {
+  speeds[1].slowdownDegrees = 2;
+#if DRIVE_INTERFACE == DRIVE_YAESU
+  speeds[0] = {50, 25, 25, 2000, 1500, 10};
+#endif
   for (unsigned i = 0; i < 4; ++i) {
     presets[i] = {std::to_string(i * 90) + "°", {float(i * 90), 0, true, true}};
   }
+}
+Controller::Controller(const Controller &other) : Controller() { *this = other; }
+Controller &Controller::operator=(const Controller &other) {
+  model = other.model;
+  mode = other.mode;
+  maximum = other.maximum;
+  axes = other.axes;
+  presets = other.presets;
+  pending = other.pending;
+  pendingValid = other.pendingValid;
+  presetActive = other.presetActive;
+  targetKnown = other.targetKnown;
+  presetSlot = other.presetSlot;
+  speedEnabled = other.speedEnabled;
+  speeds = other.speeds;
+  driveFault = other.driveFault;
+  stopEpoch = other.stopEpoch;
+  fault = other.fault;
+  autoHourStartedAt_ = other.autoHourStartedAt_;
+  sequenceAdvancedAt_ = other.sequenceAdvancedAt_;
+  sequenceIntervalMs_ = other.sequenceIntervalMs_;
+  lastSpeedUpdateAt_ = other.lastSpeedUpdateAt_;
+  speedUpdateStarted_ = other.speedUpdateStarted_;
+  sequence_ = other.sequence_;
+  pendingSequence_ = other.pendingSequence_;
+  sequenceIndex_ = other.sequenceIndex_;
+  return *this;
 }
 const char *Controller::modeName(Mode mode) {
   return mode == Mode::Auto ? "auto" : mode == Mode::AutoHour ? "auto_1h" : "manual";
@@ -52,7 +83,8 @@ bool Controller::valid(Target candidate) const {
           (std::isfinite(candidate.el) && candidate.el >= 0 && candidate.el <= 180 &&
            (model == Model::G5500 || candidate.el == 0)));
 }
-Result Controller::start(Target nextTarget, uint32_t) {
+Result Controller::start(Target nextTarget, uint32_t, bool external) {
+  if (driveFault) return Result::Invalid;
   if (!valid(nextTarget)) {
     return Result::Invalid;
   }
@@ -60,17 +92,25 @@ Result Controller::start(Target nextTarget, uint32_t) {
       (nextTarget.hasEl && model == Model::G5500 && !axes[1].calibrated)) {
     return Result::NotCalibrated;
   }
-  fault.clear();
+  bool accepted = false;
   targetKnown = true;
   for (unsigned i = 0; i < 2; ++i) {
     if ((i == 0 ? nextTarget.hasAz : nextTarget.hasEl) && (i == 0 || model == Model::G5500)) {
       Axis &axis = axes[i];
-      axis.target = i ? nextTarget.el : nextTarget.az;
+      const float value = i ? nextTarget.el : nextTarget.az;
+      if (external && axis.accepted && std::abs(value - axis.acceptedTarget) <= tolerance(i)) continue;
+      accepted = true;
+      axis.acceptedTarget = value;
+      axis.accepted = true;
+      axis.completed = false;
+      axis.target = value;
       float difference = axis.target - axis.current;
-      axis.wanted = std::abs(difference) <= kArrivalToleranceDegrees ? 0 : difference > 0 ? 1 : -1;
+      axis.wanted = std::abs(difference) <= tolerance(i) ? 0 : difference > 0 ? 1 : -1;
       axis.tracking = axis.wanted != 0;
+      axis.completed = !axis.tracking;
     }
   }
+  if (accepted) fault.clear();
   return Result::Ok;
 }
 Result Controller::target(Target nextTarget, bool external, uint32_t now) {
@@ -91,7 +131,7 @@ Result Controller::target(Target nextTarget, bool external, uint32_t now) {
     presetActive = false;
     presetSlot = -1;
   }
-  auto result = start(nextTarget, now);
+  auto result = start(nextTarget, now, external);
   if (result == Result::Ok) {
     pendingValid = false;
   }
@@ -114,6 +154,9 @@ Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now
     presetActive = false;
     presetSlot = -1;
   }
+  if (driveFault) return Result::Invalid;
+  axes[axis].completed = false;
+  axes[axis].accepted = false;
   axes[axis].tracking = false;
   axes[axis].wanted = direction;
   fault.clear();
@@ -132,6 +175,7 @@ void Controller::stop(int axis) {
     if (axis < 0 || axis == i) {
       axes[i].wanted = 0;
       axes[i].tracking = false;
+      axes[i].completed = false;
       axes[i].speedOutputPercent = 0;
     }
   }
@@ -181,18 +225,22 @@ void Controller::setModel(Model nextModel) {
   model = nextModel;
   mode = Mode::Manual;
   targetKnown = false;
-  fault.clear();
+  if (!driveFault) fault.clear();
   for (auto &axis : axes) {
     axis.calibrated = false;
     axis.hasRun = false;
+    axis.accepted = false;
   }
 }
 void Controller::setMaximum(float nextMaximum) {
   if (nextMaximum != 360 && nextMaximum != 450) {
     return;
   }
-  stop();
+  if (nextMaximum == maximum) return;
+  stop(0);
   maximum = nextMaximum;
+  axes[0].accepted = false;
+  axes[0].target = std::max(0.f, std::min(maximum, axes[0].current));
 }
 Result Controller::savePreset(unsigned slot, const std::string &label, Target newTarget) {
   if (slot >= 4 || label.empty() || label.size() > 48 || !valid(newTarget)) {
@@ -299,6 +347,13 @@ void Controller::expire(uint32_t now) {
     sequence_.clear();
   }
 }
+bool Controller::variableSpeed(unsigned i) const {
+#if DRIVE_INTERFACE == DRIVE_YAESU
+  return i == 0 && model == Model::G800DXA && speedEnabled;
+#else
+  return i == 0 || model == Model::G5500;
+#endif
+}
 void Controller::tick(uint32_t now) {
   expire(now);
   const uint32_t elapsed = speedUpdateStarted_ ? uint32_t(now - lastSpeedUpdateAt_) : 0;
@@ -318,34 +373,45 @@ void Controller::tick(uint32_t now) {
   }
   for (unsigned i = 0; i < 2; ++i) {
     auto &axis = axes[i];
+    if (driveFault) { axis.wanted = 0; axis.tracking = false; }
     if (i == 1 && model == Model::G800DXA) {
       axis.wanted = 0;
       axis.tracking = false;
     }
     if (axis.tracking &&
         (!axis.calibrated ||
-         (axis.wanted > 0 && axis.current >= axis.target - kArrivalToleranceDegrees) ||
-         (axis.wanted < 0 && axis.current <= axis.target + kArrivalToleranceDegrees))) {
+         (axis.wanted > 0 && axis.current >= axis.target - tolerance(i)) ||
+         (axis.wanted < 0 && axis.current <= axis.target + tolerance(i)))) {
+      axis.completed = axis.calibrated;
       axis.wanted = 0;
       axis.tracking = false;
     }
-    if (axis.calibrated &&
-        (((axis.wanted < 0 || axis.direction < 0) && axis.current <= 0) ||
-         ((axis.wanted > 0 || axis.direction > 0) && axis.current >= (i ? 180 : maximum)))) {
-      axis.wanted = 0;
-      axis.tracking = false;
+    if (axis.calibrated) {
+      const auto outward = [&](int dir) {
+        return (dir < 0 && axis.current <= 0) || (dir > 0 && axis.current >= (i ? 180 : maximum));
+      };
+      if (outward(axis.wanted)) {
+        axis.wanted = 0;
+        axis.tracking = false;
+      }
+      if (outward(axis.direction)) {
+        // The old output must stop at a limit, while a new inward target remains armed.
+        output(i, 0, now);
+        axis.speedOutputPercent = 0;
+      }
     }
     if (model == Model::G800DXA && axis.hasRun &&
         uint32_t(now - axis.runAt) >= kContinuousMotionTimeoutMs) {
       stop();
       fault = "continuous_motion_timeout";
     }
-    const bool variableSpeed = i == 0 && model == Model::G800DXA && speedEnabled;
+    const bool variableSpeed = this->variableSpeed(i);
+    const auto &speed = speeds[i];
     if (variableSpeed && axis.direction && axis.wanted && axis.direction != axis.wanted) {
       // Brake in the old direction, then let output() enforce the 300 ms interlock.
       axis.speedOutputPercent =
           std::max(0.f, axis.speedOutputPercent -
-                            speedPercent * float(elapsed) / std::max(1u, decelerationMs));
+                            speed.speedPercent * float(elapsed) / std::max(1u, speed.decelerationMs));
       if (axis.speedOutputPercent > 0) {
         continue;
       }
@@ -356,24 +422,24 @@ void Controller::tick(uint32_t now) {
       axis.speedOutputPercent = 0;
       continue;
     }
-    float requested = float(speedPercent);
+    float requested = float(speed.speedPercent);
     if (axis.tracking) {
       const float distance = std::abs(axis.target - axis.current);
-      const float fraction = std::max(0.f, std::min(1.f, (distance - kArrivalToleranceDegrees) /
-                                                             std::max(1u, slowdownDegrees)));
-      const float approach = float(std::min(approachSpeedPercent, speedPercent));
-      requested = approach + (speedPercent - approach) * fraction;
+      const float fraction = std::max(0.f, std::min(1.f, (distance - tolerance(i)) /
+                                                             std::max(1u, speed.slowdownDegrees)));
+      const float approach = float(std::min(speed.approachSpeedPercent, speed.speedPercent));
+      requested = approach + (speed.speedPercent - approach) * fraction;
     }
     if (!oldDirection) {
-      axis.speedOutputPercent = std::min(float(startSpeedPercent), requested);
+      axis.speedOutputPercent = std::min(float(speed.startSpeedPercent), requested);
     } else if (requested > axis.speedOutputPercent) {
       axis.speedOutputPercent =
           std::min(requested, axis.speedOutputPercent +
-                                  speedPercent * float(elapsed) / std::max(1u, accelerationMs));
+                                  speed.speedPercent * float(elapsed) / std::max(1u, speed.accelerationMs));
     } else {
       axis.speedOutputPercent =
           std::max(requested, axis.speedOutputPercent -
-                                  speedPercent * float(elapsed) / std::max(1u, decelerationMs));
+                                  speed.speedPercent * float(elapsed) / std::max(1u, speed.decelerationMs));
     }
   }
   if (presetActive && !moving()) {

@@ -1,0 +1,223 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1800" viewBox="0 0 2400 1800">
+<title>IBT-2 direct 3.3 V control</title>
+<rect width="100%" height="100%" fill="white"/>
+<text x="45" y="30" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="36" font-weight="bold" fill="#172b46">Два IBT-2: прямое управление без внешнего буфера</text>
+<text x="47" y="82" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="25" font-weight="normal" fill="#245fbe">ESP32-S2 Mini / ESP32-S3  |  DRIVE_INTERFACE = DRIVE_BTS7960</text>
+<text x="47" y="127" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#586575">VCC(7) модулей = 3,3 В. Требуется встроенный 74HC244 / 74AHC244; HCT/AHCT сюда не подходит.</text>
+<rect x="45" y="245" width="500" height="685" fill="#f6f8fc" stroke="#aebed2" stroke-width="2"/>
+<text x="65" y="262" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">ESP32: выходы 3,3 В</text>
+<text x="690" y="205" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#245fbe">6 × 47 Ом у выходов ESP32</text>
+<text x="65" y="312" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#245fbe">AZ RPWM / CW</text>
+<text x="65" y="345" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">S2: GPIO16 / S3: GPIO16</text>
+<polyline points="545,340 1450,340" fill="none" stroke="#245fbe" stroke-width="3"/>
+<polyline points="940,340 972.0,340" fill="none" stroke="#245fbe" stroke-width="3"/>
+<rect x="972.0" y="333" width="36" height="14" fill="white" stroke="#245fbe" stroke-width="2"/>
+<polyline points="1008.0,340 1040,340" fill="none" stroke="#245fbe" stroke-width="3"/>
+<text x="962.0" y="309" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#245fbe">47Ω</text>
+<circle cx="725" cy="340" r="4" fill="#245fbe"/>
+<polyline points="725,348 725,351.0" fill="none" stroke="#586575" stroke-width="3"/>
+<rect x="718" y="351.0" width="14" height="36" fill="white" stroke="#586575" stroke-width="2"/>
+<polyline points="725,387.0 725,390" fill="none" stroke="#586575" stroke-width="3"/>
+<text x="743" y="357.0" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">10k</text>
+<polyline points="725,340 725,348" fill="none" stroke="#586575" stroke-width="3"/>
+<polyline points="713,390 737,390" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="717,396 733,396" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="722,402 728,402" fill="none" stroke="#586575" stroke-width="2"/>
+<text x="65" y="392" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#245fbe">AZ LPWM / CCW</text>
+<text x="65" y="425" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">S2: GPIO34 / S3: GPIO15</text>
+<polyline points="545,420 1450,420" fill="none" stroke="#245fbe" stroke-width="3"/>
+<polyline points="940,420 972.0,420" fill="none" stroke="#245fbe" stroke-width="3"/>
+<rect x="972.0" y="413" width="36" height="14" fill="white" stroke="#245fbe" stroke-width="2"/>
+<polyline points="1008.0,420 1040,420" fill="none" stroke="#245fbe" stroke-width="3"/>
+<text x="962.0" y="389" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#245fbe">47Ω</text>
+<circle cx="725" cy="420" r="4" fill="#245fbe"/>
+<polyline points="725,428 725,431.0" fill="none" stroke="#586575" stroke-width="3"/>
+<rect x="718" y="431.0" width="14" height="36" fill="white" stroke="#586575" stroke-width="2"/>
+<polyline points="725,467.0 725,470" fill="none" stroke="#586575" stroke-width="3"/>
+<text x="743" y="437.0" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">10k</text>
+<polyline points="725,420 725,428" fill="none" stroke="#586575" stroke-width="3"/>
+<polyline points="713,470 737,470" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="717,476 733,476" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="722,482 728,482" fill="none" stroke="#586575" stroke-width="2"/>
+<text x="65" y="472" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#245fbe">AZ ENABLE</text>
+<text x="65" y="505" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">S2: GPIO21 / S3: GPIO21</text>
+<polyline points="545,500 1450,500" fill="none" stroke="#245fbe" stroke-width="3"/>
+<polyline points="940,500 972.0,500" fill="none" stroke="#245fbe" stroke-width="3"/>
+<rect x="972.0" y="493" width="36" height="14" fill="white" stroke="#245fbe" stroke-width="2"/>
+<polyline points="1008.0,500 1040,500" fill="none" stroke="#245fbe" stroke-width="3"/>
+<text x="962.0" y="469" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#245fbe">47Ω</text>
+<circle cx="725" cy="500" r="4" fill="#245fbe"/>
+<polyline points="725,508 725,511.0" fill="none" stroke="#586575" stroke-width="3"/>
+<rect x="718" y="511.0" width="14" height="36" fill="white" stroke="#586575" stroke-width="2"/>
+<polyline points="725,547.0 725,550" fill="none" stroke="#586575" stroke-width="3"/>
+<text x="743" y="517.0" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">10k</text>
+<polyline points="725,500 725,508" fill="none" stroke="#586575" stroke-width="3"/>
+<polyline points="713,550 737,550" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="717,556 733,556" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="722,562 728,562" fill="none" stroke="#586575" stroke-width="2"/>
+<circle cx="1385" cy="500" r="4" fill="#245fbe"/>
+<polyline points="1385,500 1385,525 1450,525" fill="none" stroke="#245fbe" stroke-width="3"/>
+<circle cx="1230" cy="500" r="4" fill="#245fbe"/>
+<polyline points="1230,508 1230,511.0" fill="none" stroke="#586575" stroke-width="3"/>
+<rect x="1223" y="511.0" width="14" height="36" fill="white" stroke="#586575" stroke-width="2"/>
+<polyline points="1230,547.0 1230,550" fill="none" stroke="#586575" stroke-width="3"/>
+<text x="1248" y="517.0" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">10k</text>
+<polyline points="1230,500 1230,508" fill="none" stroke="#586575" stroke-width="3"/>
+<polyline points="1218,550 1242,550" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="1222,556 1238,556" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="1227,562 1233,562" fill="none" stroke="#586575" stroke-width="2"/>
+<text x="65" y="642" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#245fbe">EL RPWM / UP</text>
+<text x="65" y="675" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">S2: GPIO17 / S3: GPIO17</text>
+<polyline points="545,670 1450,670" fill="none" stroke="#245fbe" stroke-width="3"/>
+<polyline points="940,670 972.0,670" fill="none" stroke="#245fbe" stroke-width="3"/>
+<rect x="972.0" y="663" width="36" height="14" fill="white" stroke="#245fbe" stroke-width="2"/>
+<polyline points="1008.0,670 1040,670" fill="none" stroke="#245fbe" stroke-width="3"/>
+<text x="962.0" y="639" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#245fbe">47Ω</text>
+<circle cx="725" cy="670" r="4" fill="#245fbe"/>
+<polyline points="725,678 725,681.0" fill="none" stroke="#586575" stroke-width="3"/>
+<rect x="718" y="681.0" width="14" height="36" fill="white" stroke="#586575" stroke-width="2"/>
+<polyline points="725,717.0 725,720" fill="none" stroke="#586575" stroke-width="3"/>
+<text x="743" y="687.0" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">10k</text>
+<polyline points="725,670 725,678" fill="none" stroke="#586575" stroke-width="3"/>
+<polyline points="713,720 737,720" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="717,726 733,726" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="722,732 728,732" fill="none" stroke="#586575" stroke-width="2"/>
+<text x="65" y="722" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#245fbe">EL LPWM / DOWN</text>
+<text x="65" y="755" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">S2: GPIO18 / S3: GPIO18</text>
+<polyline points="545,750 1450,750" fill="none" stroke="#245fbe" stroke-width="3"/>
+<polyline points="940,750 972.0,750" fill="none" stroke="#245fbe" stroke-width="3"/>
+<rect x="972.0" y="743" width="36" height="14" fill="white" stroke="#245fbe" stroke-width="2"/>
+<polyline points="1008.0,750 1040,750" fill="none" stroke="#245fbe" stroke-width="3"/>
+<text x="962.0" y="719" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#245fbe">47Ω</text>
+<circle cx="725" cy="750" r="4" fill="#245fbe"/>
+<polyline points="725,758 725,761.0" fill="none" stroke="#586575" stroke-width="3"/>
+<rect x="718" y="761.0" width="14" height="36" fill="white" stroke="#586575" stroke-width="2"/>
+<polyline points="725,797.0 725,800" fill="none" stroke="#586575" stroke-width="3"/>
+<text x="743" y="767.0" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">10k</text>
+<polyline points="725,750 725,758" fill="none" stroke="#586575" stroke-width="3"/>
+<polyline points="713,800 737,800" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="717,806 733,806" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="722,812 728,812" fill="none" stroke="#586575" stroke-width="2"/>
+<text x="65" y="802" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#245fbe">EL ENABLE</text>
+<text x="65" y="835" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">S2: GPIO33 / S3: GPIO47</text>
+<polyline points="545,830 1450,830" fill="none" stroke="#245fbe" stroke-width="3"/>
+<polyline points="940,830 972.0,830" fill="none" stroke="#245fbe" stroke-width="3"/>
+<rect x="972.0" y="823" width="36" height="14" fill="white" stroke="#245fbe" stroke-width="2"/>
+<polyline points="1008.0,830 1040,830" fill="none" stroke="#245fbe" stroke-width="3"/>
+<text x="962.0" y="799" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#245fbe">47Ω</text>
+<circle cx="725" cy="830" r="4" fill="#245fbe"/>
+<polyline points="725,838 725,841.0" fill="none" stroke="#586575" stroke-width="3"/>
+<rect x="718" y="841.0" width="14" height="36" fill="white" stroke="#586575" stroke-width="2"/>
+<polyline points="725,877.0 725,880" fill="none" stroke="#586575" stroke-width="3"/>
+<text x="743" y="847.0" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">10k</text>
+<polyline points="725,830 725,838" fill="none" stroke="#586575" stroke-width="3"/>
+<polyline points="713,880 737,880" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="717,886 733,886" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="722,892 728,892" fill="none" stroke="#586575" stroke-width="2"/>
+<circle cx="1385" cy="830" r="4" fill="#245fbe"/>
+<polyline points="1385,830 1385,855 1450,855" fill="none" stroke="#245fbe" stroke-width="3"/>
+<circle cx="1230" cy="830" r="4" fill="#245fbe"/>
+<polyline points="1230,838 1230,841.0" fill="none" stroke="#586575" stroke-width="3"/>
+<rect x="1223" y="841.0" width="14" height="36" fill="white" stroke="#586575" stroke-width="2"/>
+<polyline points="1230,877.0 1230,880" fill="none" stroke="#586575" stroke-width="3"/>
+<text x="1248" y="847.0" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">10k</text>
+<polyline points="1230,830 1230,838" fill="none" stroke="#586575" stroke-width="3"/>
+<polyline points="1218,880 1242,880" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="1222,886 1238,886" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="1227,892 1233,892" fill="none" stroke="#586575" stroke-width="2"/>
+<rect x="1450" y="260" width="530" height="325" fill="#f6f8fc" stroke="#aebed2" stroke-width="2"/>
+<text x="1630" y="275" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">IBT-2: AZ</text>
+<text x="1630" y="311" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">BTS7960 / BTN7960</text>
+<text x="1465" y="326" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#245fbe">1 RPWM</text>
+<text x="1465" y="406" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#245fbe">2 LPWM</text>
+<text x="1465" y="486" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#245fbe">3 R_EN</text>
+<text x="1465" y="511" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#245fbe">4 L_EN</text>
+<text x="1630" y="472" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">Встроенный буфер сохранён</text>
+<text x="1630" y="505" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#586575">5 R_IS / 6 L_IS: NC</text>
+<text x="1465" y="545" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087c60">7 VCC: 3V3</text>
+<text x="1720" y="545" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087c60">8 GND: GND★</text>
+<text x="1720" y="567" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#087c60">B−: GND★</text>
+<polyline points="1880,260 1880,224 2300,224" fill="none" stroke="#a65600" stroke-width="3"/>
+<rect x="2050" y="215" width="60" height="18" fill="white" stroke="#a65600" stroke-width="2"/>
+<text x="2055" y="184" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#a65600">F1</text>
+<text x="2250" y="186" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#a65600">V_MOTOR</text>
+<text x="1890" y="238" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#a65600">B+</text>
+<rect x="2170" y="377" width="180" height="100" fill="#fff6e8" stroke="#a65600" stroke-width="2"/>
+<text x="2190" y="394" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#a65600">M_AZ</text>
+<text x="2190" y="432" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#a65600">щёт. DC</text>
+<text x="1910" y="385" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#a65600">M+</text>
+<polyline points="1980,407 2170,407" fill="none" stroke="#a65600" stroke-width="3"/>
+<text x="1910" y="429" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#a65600">M−</text>
+<polyline points="1980,451 2170,451" fill="none" stroke="#a65600" stroke-width="3"/>
+<rect x="1450" y="590" width="530" height="325" fill="#f6f8fc" stroke="#aebed2" stroke-width="2"/>
+<text x="1630" y="605" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">IBT-2: EL</text>
+<text x="1630" y="641" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">BTS7960 / BTN7960</text>
+<text x="1465" y="656" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#245fbe">1 RPWM</text>
+<text x="1465" y="736" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#245fbe">2 LPWM</text>
+<text x="1465" y="816" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#245fbe">3 R_EN</text>
+<text x="1465" y="841" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#245fbe">4 L_EN</text>
+<text x="1630" y="802" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">Встроенный буфер сохранён</text>
+<text x="1630" y="835" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#586575">5 R_IS / 6 L_IS: NC</text>
+<text x="1465" y="875" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087c60">7 VCC: 3V3</text>
+<text x="1720" y="875" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087c60">8 GND: GND★</text>
+<text x="1720" y="897" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#087c60">B−: GND★</text>
+<polyline points="1880,590 1880,590 2300,590" fill="none" stroke="#a65600" stroke-width="3"/>
+<rect x="2050" y="581" width="60" height="18" fill="white" stroke="#a65600" stroke-width="2"/>
+<text x="2055" y="550" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#a65600">F2</text>
+<text x="2250" y="552" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#a65600">V_MOTOR</text>
+<text x="1890" y="600" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#a65600">B+</text>
+<rect x="2170" y="707" width="180" height="100" fill="#fff6e8" stroke="#a65600" stroke-width="2"/>
+<text x="2190" y="724" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#a65600">M_EL</text>
+<text x="2190" y="762" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#a65600">щёт. DC</text>
+<text x="1910" y="715" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#a65600">M+</text>
+<polyline points="1980,737 2170,737" fill="none" stroke="#a65600" stroke-width="3"/>
+<text x="1910" y="759" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#a65600">M−</text>
+<polyline points="1980,781 2170,781" fill="none" stroke="#a65600" stroke-width="3"/>
+<text x="47" y="962" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="bold" fill="#245fbe">BTS7960_PWM_INVERTED=0: штатная полярность PWM и ENABLE. Общая земля GND★.</text>
+<rect x="45" y="1020" width="1080" height="315" fill="#f6f8fc" stroke="#aebed2" stroke-width="2"/>
+<text x="65" y="1037" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">Распиновка профилей</text>
+<text x="65" y="1085" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="bold" fill="#172b46">Выход / назначение</text>
+<text x="650" y="1085" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="bold" fill="#172b46">S2 Mini</text>
+<text x="850" y="1085" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="bold" fill="#172b46">S3 N16R8</text>
+<text x="65" y="1122" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">AZ: RPWM / LPWM / EN</text>
+<text x="650" y="1122" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">16 / 34 / 21</text>
+<text x="850" y="1122" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">16 / 15 / 21</text>
+<text x="65" y="1159" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">EL: RPWM / LPWM / EN</text>
+<text x="650" y="1159" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">17 / 18 / 33</text>
+<text x="850" y="1159" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">17 / 18 / 47</text>
+<text x="65" y="1196" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">Обратная связь AZ / EL</text>
+<text x="650" y="1196" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">ADC4 / ADC5</text>
+<text x="850" y="1196" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">ADC4 / ADC5</text>
+<text x="65" y="1233" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">GS-232 UART RX / TX</text>
+<text x="650" y="1233" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">37 / 39</text>
+<text x="850" y="1233" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">44 / 43</text>
+<text x="65" y="1270" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">HC-05 RX / TX / STATE</text>
+<text x="650" y="1270" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">6 / 7 / 3</text>
+<text x="850" y="1270" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">6 / 7 / 3</text>
+<rect x="1160" y="1020" width="1195" height="315" fill="#fff8ea" stroke="#aebed2" stroke-width="2"/>
+<text x="1180" y="1037" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#a65600">Питание и земля</text>
+<text x="1180" y="1085" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">VCC(7) обоих модулей: 3V3 контроллера.</text>
+<text x="1180" y="1122" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">У VCC/GND каждого IBT-2: 100 нФ + 1 мкФ.</text>
+<text x="1180" y="1159" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">B+ через F1/F2; V_MOTOR - по двигателям.</text>
+<text x="1180" y="1196" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">B− и GND(8) идут к общей точке источника GND★.</text>
+<text x="1180" y="1233" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">Земля ESP32 - отдельный сигнальный возврат.</text>
+<text x="1180" y="1270" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">Силовой ток не проходит через ESP32 и его землю.</text>
+<rect x="45" y="1380" width="1250" height="320" fill="#f6f8fc" stroke="#aebed2" stroke-width="2"/>
+<text x="65" y="1397" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">Обратная связь AZ / EL</text>
+<text x="65" y="1445" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">0...5 В → 4,7 кОм → узел делителя → 1 кОм → ADC4/5.</text>
+<text x="65" y="1482" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Узел: 4,7 кОм и 100 нФ к GND.</text>
+<text x="65" y="1519" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">У ADC: Schottky A=ADC/K=3V3, A=GND/K=ADC (BAT54S).</text>
+<text x="65" y="1556" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">После делителя: 0...2,5 В. По одной цепи на AZ и EL.</text>
+<text x="65" y="1593" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Датчик питается по паспорту; GPIO0 → кнопка → GND.</text>
+<text x="65" y="1630" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Пользовательская кнопка: INPUT_PULLUP, active LOW.</text>
+<rect x="1330" y="1380" width="1025" height="320" fill="#f6f8fc" stroke="#aebed2" stroke-width="2"/>
+<text x="1350" y="1397" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">Условия подключения</text>
+<text x="1350" y="1445" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">R_IS / L_IS: NC; их выход не ограничен до 3,3 В.</text>
+<text x="1350" y="1482" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">TFT: MOSI10/SCK11/MISO2, CS12/DC13/RST14;</text>
+<text x="1350" y="1519" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">touch: CS8/IRQ9. LCD: RS8/E9, D4...D7=10...13.</text>
+<text x="1350" y="1556" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">LCD RW=GND; логика LCD 5 В требует согласования.</text>
+<text x="1350" y="1593" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">GPIO21 и GPIO33/47 - ENABLE, не выходы скорости.</text>
+<text x="1350" y="1630" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Встроенные буферы IBT-2 сохраняются.</text>
+<text x="47" y="1730" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">Проект подключения. GPIO и логика проверяются в коде; уровни, питание, направления и STOP - на оборудовании.</text>
+<text x="47" y="1770" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#586575">Источники и номиналы: документация .md рядом. Генератор: tools/render_pwm_schematic.py.</text>
+</svg>

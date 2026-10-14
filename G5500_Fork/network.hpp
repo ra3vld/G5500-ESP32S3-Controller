@@ -50,7 +50,9 @@ private:
   WifiCredentials credentials_;
   WiFiServer tcpServer_{board::TCP_PORT};
   WiFiClient rotctldClient_;
+#if BLUETOOTH_ENABLED
   HardwareSerial hc05Serial_{1};
+#endif
   WiFiUDP n1mmUdp, pstUdp;
   enum GsReplyPort : uint8_t { GS_REPLY_USB = 0, GS_REPLY_HC05 = 1 };
   GsReplyPort gsReplyPort = GS_REPLY_USB;

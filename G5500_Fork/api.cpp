@@ -1,4 +1,5 @@
 #include "api.hpp"
+#include "board.hpp"
 #include <sstream>
 #include <iomanip>
 #include <cmath>
@@ -80,7 +81,7 @@ std::string stateJson(const Controller &controller, const Protocol &protocol,
        << ",\"pending\":" << targetJson(controller.pending)
        << ",\"presetActive\":" << (controller.presetActive ? "true" : "false")
        << ",\"presetSlot\":" << controller.presetSlot
-       << ",\"speedEnabled\":" << (controller.speedEnabled ? "true" : "false")
+       << ",\"speedEnabled\":" << ((DRIVE_INTERFACE != DRIVE_YAESU || controller.speedEnabled) ? "true" : "false")
        << ",\"speedPercent\":" << controller.speedPercent
        << ",\"startSpeedPercent\":" << controller.startSpeedPercent
        << ",\"approachSpeedPercent\":" << controller.approachSpeedPercent
@@ -104,7 +105,42 @@ std::string stateJson(const Controller &controller, const Protocol &protocol,
          << ",\"valid\":" << (controller.valid(controller.presets[i].target) ? "true" : "false")
          << '}';
   }
-  json << "]}";
+  json << "],\"build\":{\"board\":" << jsonQuote(board::NAME)
+       << ",\"display\":" << jsonQuote(DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE")
+       << ",\"bluetooth\":" << (BLUETOOTH_ENABLED ? "true" : "false")
+       << ",\"drive\":" << jsonQuote(DRIVE_INTERFACE == DRIVE_YAESU ? "YAESU" : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960" : "SEPARATE_PWM")
+       << ",\"userButtonGpio\":" << USER_BUTTON_GPIO << ",\"userButtonActiveLow\":" << (USER_BUTTON_ACTIVE_LOW ? "true" : "false")
+       << ",\"userButtonPullup\":" << (USER_BUTTON_PULLUP ? "true" : "false")
+       << ",\"pins\":{\"azAdc\":" << board::PIN_AZ_ADC << ",\"elAdc\":" << board::PIN_EL_ADC
+       << ",\"azNegative\":" << board::PIN_LEFT << ",\"azPositive\":" << board::PIN_RIGHT
+       << ",\"elNegative\":" << board::PIN_DOWN << ",\"elPositive\":" << board::PIN_UP
+       << ",\"azSpeedEnable\":" << board::PIN_SPEED << ",\"elSpeedEnable\":" << board::PIN_EL_SPEED << "}},\"axes\":[";
+  for (unsigned i=0; i<2; ++i) {
+    if (i) json << ',';
+    const auto &axis = controller.axes[i];
+    json << "{\"current\":" << axis.current << ",\"target\":" << axis.target
+         << ",\"tracking\":" << (axis.tracking ? "true" : "false")
+         << ",\"completed\":" << (axis.completed ? "true" : "false")
+         << ",\"calibrated\":" << (axis.calibrated ? "true" : "false")
+         << ",\"direction\":" << axis.direction << ",\"stopToleranceDegrees\":" << Controller::tolerance(i)
+         << ",\"speedEnabled\":" << (controller.variableSpeed(i) ? "true" : "false")
+         << ",\"speedOutputPercent\":" << axis.speedOutputPercent << '}';
+  }
+  json << ']';
+  for (unsigned i=0; i<2; ++i) {
+    const auto &speed = controller.speeds[i];
+    const char *prefix = i ? "el" : "az";
+    json << ",\"" << prefix << "SpeedPercent\":" << speed.speedPercent;
+    json << ",\"" << prefix << "StartSpeedPercent\":" << speed.startSpeedPercent;
+    json << ",\"" << prefix << "ApproachSpeedPercent\":" << speed.approachSpeedPercent;
+    json << ",\"" << prefix << "AccelerationMs\":" << speed.accelerationMs;
+    json << ",\"" << prefix << "DecelerationMs\":" << speed.decelerationMs;
+    json << ",\"" << prefix << "SlowdownDegrees\":" << speed.slowdownDegrees;
+    json << ",\"" << prefix << "SpeedEnabled\":" << (controller.variableSpeed(i) ? "true" : "false");
+    json << ",\"" << prefix << "SpeedOutputPercent\":" << controller.axes[i].speedOutputPercent;
+  }
+  json << '}';
+
   return json.str();
 }
 Response api(Controller &controller, Protocol &protocol, Settings &settings,
@@ -139,14 +175,17 @@ Response api(Controller &controller, Protocol &protocol, Settings &settings,
     auto name = protocol.rotorName;
     auto model = controller.model;
     bool enabled = controller.speedEnabled;
-    unsigned speed = controller.speedPercent;
+    auto speeds = controller.speeds;
     bool valid = true;
-    unsigned start = controller.startSpeedPercent, approach = controller.approachSpeedPercent,
-             acceleration = controller.accelerationMs, deceleration = controller.decelerationMs,
-             slowdown = controller.slowdownDegrees;
+    // Compile-time hardware configuration is read-only, including attempted aliases.
+    for (const auto &entry : form) {
+      if (entry.first == "drive" || entry.first == "display" || entry.first == "bluetooth" || entry.first == "pins" || entry.first == "build" || entry.first == "board" || entry.first == "boardProfile" ||
+          entry.first == "displayKind" || entry.first == "bluetoothEnabled" || entry.first == "driveInterface" ||
+          entry.first.find("userButton") == 0 || entry.first.find("build.") == 0) valid = false;
+    }
     if (has(form, "model")) {
       auto m = get(form, "model");
-      valid = m == "G5500" || m == "G800DXA";
+      valid = (m == "G5500" || m == "G800DXA") && valid;
       model = m == "G800DXA" ? Model::G800DXA : Model::G5500;
     }
     if (has(form, "rotorName")) {
@@ -169,26 +208,35 @@ Response api(Controller &controller, Protocol &protocol, Settings &settings,
       next.reportHost = get(form, "reportHost");
       valid = valid && (next.reportHost.empty() || ip(next.reportHost));
     }
-    if (has(form, "speedEnabled")) {
-      valid = boolean(get(form, "speedEnabled"), enabled) && valid;
+    if (has(form, "speedEnabled")) valid = boolean(get(form, "speedEnabled"), enabled) && valid;
+    if (has(form, "azSpeedEnabled")) {
+      bool alias = enabled;
+      valid = boolean(get(form, "azSpeedEnabled"), alias) && valid;
+      if (has(form, "speedEnabled") && alias != enabled) valid = false;
+      enabled = alias;
     }
-    if (has(form, "speedPercent")) {
-      valid = integer(get(form, "speedPercent"), speed, 25, 100) && valid;
-    }
-    if (has(form, "startSpeedPercent")) {
-      valid = integer(get(form, "startSpeedPercent"), start, 25, 100) && valid;
-    }
-    if (has(form, "approachSpeedPercent")) {
-      valid = integer(get(form, "approachSpeedPercent"), approach, 25, 100) && valid;
-    }
-    if (has(form, "accelerationMs")) {
-      valid = integer(get(form, "accelerationMs"), acceleration, 100, 10000) && valid;
-    }
-    if (has(form, "decelerationMs")) {
-      valid = integer(get(form, "decelerationMs"), deceleration, 100, 10000) && valid;
-    }
-    if (has(form, "slowdownDegrees")) {
-      valid = integer(get(form, "slowdownDegrees"), slowdown, 1, 90) && valid;
+    if (DRIVE_INTERFACE != DRIVE_YAESU && !enabled) valid = false;
+    if (has(form, "elSpeedEnabled")) valid = false; // PWM is part of the compiled interface.
+
+    for (unsigned i=0; i<2; ++i) {
+      auto &speed = speeds[i];
+      const std::string prefix = i ? "el" : "az";
+      auto value = [&](const char *legacy, unsigned &field, unsigned lo, unsigned hi) {
+        std::string key = prefix + char(std::toupper(legacy[0])) + (legacy+1);
+        unsigned aliased = field, prefixed = field;
+        const bool old = i == 0 && has(form, legacy), modern = has(form, key.c_str());
+        if (old) valid = integer(get(form, legacy), aliased, lo, hi) && valid;
+        if (modern) valid = integer(get(form, key.c_str()), prefixed, lo, hi) && valid;
+        if (old && modern && aliased != prefixed) valid = false;
+        if (modern || old) field = modern ? prefixed : aliased;
+      };
+      const unsigned minimum = DRIVE_INTERFACE == DRIVE_YAESU && i == 0 ? 25 : 1;
+      value("speedPercent", speed.speedPercent, minimum, 100);
+      value("startSpeedPercent", speed.startSpeedPercent, minimum, 100);
+      value("approachSpeedPercent", speed.approachSpeedPercent, minimum, 100);
+      value("accelerationMs", speed.accelerationMs, 100, 10000);
+      value("decelerationMs", speed.decelerationMs, 100, 10000);
+      value("slowdownDegrees", speed.slowdownDegrees, 1, 90);
     }
     valid = valid && next.n1mmPort != next.pstPort;
     if (valid) {
@@ -201,12 +249,7 @@ Response api(Controller &controller, Protocol &protocol, Settings &settings,
       settings = next;
       protocol.rotorName = name;
       controller.speedEnabled = enabled;
-      controller.speedPercent = speed;
-      controller.startSpeedPercent = start;
-      controller.approachSpeedPercent = approach;
-      controller.accelerationMs = acceleration;
-      controller.decelerationMs = deceleration;
-      controller.slowdownDegrees = slowdown;
+      controller.speeds = speeds;
       result = Result::Ok;
     }
   } else if (path == "/api/target") {

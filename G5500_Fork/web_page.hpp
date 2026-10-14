@@ -38,7 +38,7 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 @media(max-width:700px){.grid{grid-template-columns:1fr}.big{font-size:46px}.targetbig{font-size:30px}.sep{font-size:26px}}
 </style></head><body><div class="wrap">
 <div style="font-size:13px;color:#96a9b7;margin:2px 0 6px">G5500 Fork 0.1.0 · оригинал &copy; UA1CFM</div>
-<h1 id="modelTitle">YAESU G-5500 / ESP32-S3</h1>
+<h1 id="modelTitle">YAESU G-5500 / ESP32</h1>
 <nav class="nav">
 <a class="active" href="/">УПРАВЛЕНИЕ</a>
 <a href="/adc">ADC TEST</a>
@@ -155,16 +155,23 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div class="field"><label>UR5EQF UDP</label><input name="pstPort" type="number" min="1" max="65534" required></div>
 <div class="field"><label>Положение N1MM UDP</label><input name="reportPort" type="number" min="1" max="65535" required></div>
 <div class="field"><label>Дополнительный IP N1MM</label><input name="reportHost" placeholder="192.168.1.10"></div></div>
-<div id="speedSettings"><label><input name="speedEnabled" type="checkbox"> Управлять скоростью через внешний модуль 0–5 В</label>
-<div class="row">
+<div class="hint" id="buildInfo"></div>
+<div id="speedSettings"><label id="analogSpeedToggle"><input name="speedEnabled" type="checkbox"> Управлять скоростью через внешний модуль 0–5 В</label>
+<p>AZ</p><div class="row">
 <div class="field"><label>Рабочая скорость, %</label><input name="speedPercent" type="number" min="25" max="100" step="1" value="50" required></div>
 <div class="field"><label>Скорость старта, %</label><input name="startSpeedPercent" type="number" min="25" max="100" step="1" value="25" required></div>
 <div class="field"><label>Скорость у цели, %</label><input name="approachSpeedPercent" type="number" min="25" max="100" step="1" value="25" required></div>
 <div class="field"><label>Время разгона 0–100% рабочей скорости, мс</label><input name="accelerationMs" type="number" min="100" max="10000" step="1" value="2000" required></div>
 <div class="field"><label>Время торможения 100–0% рабочей скорости, мс</label><input name="decelerationMs" type="number" min="100" max="10000" step="1" value="1500" required></div>
 <div class="field"><label>Начинать замедление за, °</label><input name="slowdownDegrees" type="number" min="1" max="90" step="1" value="10" required></div>
-</div><p class="hint">Скорости старта и у цели ограничены рабочей скоростью. При реверсе сначала торможение, затем пауза 300 мс. STOP отключает привод сразу.</p>
-<div class="hint">Текущий выход скорости: <b id="speedOutput">0%</b></div></div>
+</div><div class="hint">Выход AZ: <b id="speedOutput">0%</b></div><div id="elSpeedSettings"><p>EL</p><div class="row">
+<div class="field"><label>Рабочая скорость, %</label><input name="elSpeedPercent" type="number" min="1" max="100" step="1" value="100" required></div>
+<div class="field"><label>Скорость старта, %</label><input name="elStartSpeedPercent" type="number" min="1" max="100" step="1" value="18" required></div>
+<div class="field"><label>Скорость у цели, %</label><input name="elApproachSpeedPercent" type="number" min="1" max="100" step="1" value="18" required></div>
+<div class="field"><label>Время разгона 0–100% рабочей скорости, мс</label><input name="elAccelerationMs" type="number" min="100" max="10000" step="1" value="1800" required></div>
+<div class="field"><label>Время торможения 100–0% рабочей скорости, мс</label><input name="elDecelerationMs" type="number" min="100" max="10000" step="1" value="1200" required></div>
+<div class="field"><label>Начинать замедление за, °</label><input name="elSlowdownDegrees" type="number" min="1" max="90" step="1" value="2" required></div>
+</div><div class="hint">Выход EL: <b id="elSpeedOutput">0%</b></div></div><p class="hint">Проценты задают выход привода. Замедление начинается перед зоной остановки ±5°. Реверс: торможение и пауза 300 мс. STOP выключает привод сразу.</p></div>
 <button class="btn" type="submit">Сохранить настройки</button></form></details></div>
 <div class="card"><div class="label">История RSSI домашнего Wi-Fi</div>
 <div class="row" style="margin-top:10px"><button class="btn rbtn active" data-r="hour">1 HOUR</button><button class="btn rbtn" data-r="day">1 DAY</button><button class="btn rbtn" data-r="week">1 WEEK</button><button class="btn rbtn" data-r="month">1 MONTH</button><button class="btn rbtn" data-r="year">1 YEAR</button></div>
@@ -194,11 +201,11 @@ function fillPreset(){
  f.elements.label.value=p.label;f.elements.az.value=p.target.az;f.elements.el.value=p.target.el;
 }
 async function savePreset(e){e.preventDefault();await forkPost('/api/preset',Object.fromEntries(new FormData(e.target)))}
-async function saveFork(e){e.preventDefault();const body=Object.fromEntries(new FormData(e.target));body.speedEnabled=e.target.elements.speedEnabled.checked?'true':'false';await forkPost('/api/settings',body)}
+async function saveFork(e){e.preventDefault();const body=Object.fromEntries(new FormData(e.target));if(window._forkState?.build?.drive==='YAESU')body.speedEnabled=e.target.elements.speedEnabled.checked?'true':'false';else delete body.speedEnabled;await forkPost('/api/settings',body)}
 function updateFork(j){
  const first=!window._forkState;window._forkState=j;
  const g800=j.model==='G800DXA';
- document.getElementById('modelTitle').textContent='YAESU '+(g800?'G-800DXA':'G-5500')+' / ESP32-S3';
+ document.getElementById('modelTitle').textContent='YAESU '+(g800?'G-800DXA':'G-5500')+' / '+(j.build?.board||'ESP32');
  document.getElementById('followMode').value=j.controlMode;
  document.getElementById('hourLeft').textContent=j.controlMode==='auto_1h'?'Осталось '+Math.ceil(j.remainingMs/60000)+' мин':'';
  document.getElementById('waitingTarget').textContent=j.pendingValid?'Ожидает: '+(j.pending.hasAz?'AZ '+j.pending.az.toFixed(1)+'° ':'')+(j.pending.hasEl&&!g800?'EL '+j.pending.el.toFixed(1)+'°':''):'Нет ожидающей цели';
@@ -208,10 +215,16 @@ function updateFork(j){
  j.presets.forEach((p,i)=>{const b=buttons.children[i];b.textContent=p.label;b.disabled=!p.valid;b.classList.toggle('active',j.presetSlot===i&&j.presetActive)});
  const elNodes=[document.getElementById('el').closest('.card'),document.getElementById('tel').closest('.field'),document.getElementById('el2p0').parentElement,document.getElementById('elp0').parentElement.parentElement,document.getElementById('calel').closest('.calhead'),document.getElementById('b_el0').parentElement,document.getElementById('b2_elo'),document.getElementById('b2_elf'),...Array.from(document.querySelectorAll('button')).filter(b=>b.textContent==='RESET EL'),...document.querySelectorAll('.el-setting,.movebtn[data-dir="U"],.movebtn[data-dir="D"]')];
  [...elNodes,...document.querySelectorAll('.el-help')].forEach(n=>{if(n)n.classList.toggle('hide',g800)});
- document.getElementById('speedSettings').classList.toggle('hide',!g800);
+ const independent=j.build?.drive!=='YAESU' && !!j.build;
+ document.getElementById('speedSettings').classList.toggle('hide',!g800&&!independent);
+ document.getElementById('analogSpeedToggle').classList.toggle('hide',independent);
+ document.getElementById('elSpeedSettings').classList.toggle('hide',g800||!independent);
+ document.getElementById('buildInfo').textContent=j.build?`${j.build.board} · ${j.build.drive} · ${j.build.display} · HC-05 ${j.build.bluetooth?'включён':'отключён'}`:'';
  document.getElementById('movementButtons').classList.toggle('az-only',g800);
  const f=document.getElementById('forkSettings');
  for(const key of ['model','rotorName','n1mmPort','pstPort','reportPort','reportHost','speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees'])if(first||!f.contains(document.activeElement))f.elements[key].value=j[key];
+ for(const key of ['speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees']){const elKey='el'+key[0].toUpperCase()+key.slice(1);if(first||!f.contains(document.activeElement))f.elements[elKey].value=j[elKey];if(key.endsWith('Percent'))f.elements[key].min=independent?1:25;}
+ document.getElementById('elSpeedOutput').textContent=(j.elSpeedOutputPercent||0).toFixed(1)+'%';
  document.getElementById('speedOutput').textContent=j.speedOutputPercent.toFixed(1)+'%';
  if(first||!f.contains(document.activeElement))f.elements.speedEnabled.checked=j.speedEnabled;
  document.querySelector('#presetEditor [name=az]').max=j.azMode===36?360:450;
@@ -291,7 +304,7 @@ markCalBtn('b_el135',j.elp135>=0);markCalBtn('b_el180',j.elp180>=0);
 ip.textContent=j.ip;mode.textContent=j.wifiMode;
 rssi.textContent=(j.rssi===null?'-':j.rssi+' dBm');
 sig.textContent=j.signal||'-';
-btstate.textContent=j.btConnected?'CONNECTED':'DISCONNECTED';
+btstate.textContent=j.build?.bluetooth===false?'Отключён в сборке':j.btConnected?'CONNECTED':'DISCONNECTED';
 btstate.style.color=j.btConnected?'#24d18d':'#e5a94f';
 if(document.activeElement!==ssid && !ssid.dataset.dirty) ssid.value=j.ssid||'';
 }catch(e){}}

@@ -45,18 +45,20 @@ void Application::controllerSetup() {
   diagnostics_.initRssiHistory();
 
   diagnostics_.dbgPrintln("");
-#if TFT_DISPLAY_ENABLED
-  diagnostics_.dbgPrintln("######## FIRMWARE v1.6.23 TFT TOUCH CAL + HC-05 ########");
-#else
-  diagnostics_.dbgPrintln("######## FIRMWARE v1.6.23 WEB + HC-05 ########");
-#endif
+  diagnostics_.dbgPrintln("######## G5500 CONTROLLER FORK ########");
+  diagnostics_.dbgPrint("[BUILD] ");
+  diagnostics_.dbgPrint(board::NAME);
+  diagnostics_.dbgPrint(" | display=");
+  diagnostics_.dbgPrint(DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE");
+  diagnostics_.dbgPrint(" | drive=");
+  diagnostics_.dbgPrintln(DRIVE_INTERFACE == DRIVE_YAESU ? "YAESU" : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960" : "SEPARATE_PWM");
   diagnostics_.dbgPrintln("[DIAG] Web console: /diaglog, RAM ring buffer 160 lines");
   diagnostics_.dbgPrint("[RESET REASON] ");
   diagnostics_.dbgPrintln(diagnostics_.bootReasonText());
   diagnostics_.dbgPrint("[RESET CODE] ");
   diagnostics_.dbgPrintln(String((int)diagnostics_.bootReasonCode()));
   diagnostics_.dbgPrintln("[V1559] USB debug alive");
-  diagnostics_.dbgPrintln("[V1559] internal BLE disabled; external HC-05 enabled");
+  diagnostics_.dbgPrintln(BLUETOOTH_ENABLED ? "External HC-05 enabled" : "External HC-05 disabled");
   network_.startWifi();
   network_.setupLoggerUdp();
 
@@ -91,7 +93,7 @@ void Application::controllerSetup() {
       "Fork modes: numerical remote targets wait in manual; jog commands always execute");
   diagnostics_.dbgPrintln(
       "Calibration: GS232 2-point + multi-point; separate AZ P36/P45 tables, shared EL");
-  diagnostics_.dbgPrintln("ADC averaging: 25 samples, matching LVBTrack smoothing depth");
+  diagnostics_.dbgPrintln("ADC: 25 measurements, median of 5 samples at 20ms; one-pass arrival zone 5deg");
   diagnostics_.dbgPrintln(
       "Manual axis behavior: AZ manual cancels AZ track only; EL manual cancels EL track only");
   diagnostics_.dbgPrintln("Boot outputs: LOW preloaded before pinMode(OUTPUT)");
@@ -110,6 +112,8 @@ void Application::controllerSetup() {
 #if TFT_DISPLAY_ENABLED
   diagnostics_.dbgPrintln("TFT: ILI9341 320x240 dashboard + XPT2046 touch calibration UI");
   diagnostics_.dbgPrintln("TFT calibration: 2-POINT / MULTI-POINT, P36/P45, AZ/EL capture + reset");
+#elif DISPLAY_KIND == DISPLAY_LCD1602
+  diagnostics_.dbgPrintln("LCD1602: current/target, mode/wait and PWM output bars; touch disabled");
 #else
   diagnostics_.dbgPrintln("Display and touch: disabled; Web control and calibration available");
 #endif
@@ -128,7 +132,7 @@ void Application::controllerSetup() {
 void Application::controllerLoop() {
   updatePosition();
   runtime_.controller.tick(millis()); // expire the hour before accepting any external command
-  if (confirmButton.sample(digitalRead(PIN_CONFIRM) == HIGH, millis())) {
+  if (PIN_CONFIRM >= 0 && confirmButton.sample(hardware_.buttonReleased(), millis())) {
     runtime_.controller.execute(millis());
   }
   network_.serviceLoggerUdp();

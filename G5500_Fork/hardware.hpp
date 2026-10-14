@@ -1,6 +1,8 @@
 // G5500 Fork; original by UA1CFM, modifications by RA3VLD. GPL-3.0.
 #pragma once
+#include <Arduino.h>
 #include "board.hpp"
+#include "position_filter.hpp"
 #include "runtime.hpp"
 namespace forkrot {
 
@@ -16,6 +18,8 @@ public:
     lastHeartbeatMs = millis();
   }
   int adcAvgMv(int pin);
+  int filteredMv(unsigned axis);
+  bool buttonReleased() const;
   void adcDiagRead(int pin, int &raw, int &mv);
   void rgbSet(uint8_t r, uint8_t g, uint8_t b);
   void flashRx();
@@ -31,7 +35,11 @@ public:
 private:
   void rgbStart(RgbState s);
   Runtime &runtime_;
-  bool pwmReady = false;
+  bool pwmReady = false, pwmFailed = false;
+  bool attached_[4] = {};
+  PositionFilter filters_[2];
+  bool preparePwm(bool enable);
+  void outputsOff();
   RgbState rgbState = RGB_IDLE;
   uint32_t rgbUntilMs = 0, lastHeartbeatMs = 0;
   bool pendingTxFlash = false;

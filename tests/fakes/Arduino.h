@@ -44,11 +44,13 @@ template <typename T> T constrain(T value, T minimum, T maximum) {
   return std::max(minimum, std::min(value, maximum));
 }
 
-inline constexpr int LOW = 0, HIGH = 1, OUTPUT = 1, INPUT_PULLUP = 2, ADC_11db = 3;
+inline constexpr int LOW = 0, HIGH = 1, OUTPUT = 1, INPUT = 0, INPUT_PULLUP = 2, ADC_11db = 3;
 struct GpioEvent { std::string operation; int pin; uint32_t value; };
 struct FakeHardware {
   uint32_t now = 0;
   bool attachSucceeds = true;
+  int failAttachAt = -1;
+  unsigned attachCalls = 0, readsMv = 0, readsRaw = 0;
   std::map<int, int> levels, millivolts;
   std::vector<GpioEvent> events;
 };
@@ -60,15 +62,15 @@ inline void digitalWrite(int pin, int level) {
 }
 inline int digitalRead(int pin) { return fakeHardware.levels[pin]; }
 inline void pinMode(int pin, int mode) { fakeHardware.events.push_back({"mode", pin, uint32_t(mode)}); }
-inline int analogReadMilliVolts(int pin) { return fakeHardware.millivolts[pin]; }
-inline int analogRead(int pin) { return fakeHardware.millivolts[pin]; }
+inline int analogReadMilliVolts(int pin) { ++fakeHardware.readsMv; return fakeHardware.millivolts[pin]; }
+inline int analogRead(int pin) { ++fakeHardware.readsRaw; return fakeHardware.millivolts[pin]; }
 inline void delayMicroseconds(unsigned) {}
 inline void analogReadResolution(unsigned) {}
 inline void analogSetPinAttenuation(int, int) {}
 inline void rgbLedWrite(int, int, int, int) {}
 inline bool ledcAttach(int pin, unsigned frequency, unsigned resolution) {
   fakeHardware.events.push_back({"attach", pin, frequency});
-  return fakeHardware.attachSucceeds && resolution == 10;
+  return int(fakeHardware.attachCalls++) != fakeHardware.failAttachAt && fakeHardware.attachSucceeds && resolution == 10;
 }
 inline void ledcWrite(int pin, uint32_t duty) { fakeHardware.events.push_back({"pwm", pin, duty}); }
 inline void ledcDetach(int pin) { fakeHardware.events.push_back({"detach", pin, 0}); }

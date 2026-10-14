@@ -1,12 +1,80 @@
 // G5500 Fork; original by UA1CFM, modifications by RA3VLD. GPL-3.0.
 #pragma once
-
-// Arduino IDE: set this to 0 for a controller without TFT and touch.
-// Build flags may override this default with -DTFT_DISPLAY_ENABLED=0.
+#ifdef ARDUINO
+#include <sdkconfig.h>
+#endif
+#define BOARD_AUTO 0
+#define BOARD_S3 1
+#define BOARD_S2_LEGACY 2
+#define BOARD_S2_MINI 3
+#define DISPLAY_NONE 0
+#define DISPLAY_ILI9341 1
+#define DISPLAY_LCD1602 2
+#define DRIVE_YAESU 0
+#define DRIVE_SEPARATE_PWM 1
+#define DRIVE_BTS7960 2
+#ifndef BOARD_PROFILE
+#define BOARD_PROFILE BOARD_AUTO
+#endif
+#ifndef DISPLAY_KIND
+#ifdef TFT_DISPLAY_ENABLED
+#define DISPLAY_KIND TFT_DISPLAY_ENABLED
+#else
+#define DISPLAY_KIND DISPLAY_NONE
+#endif
+#endif
 #ifndef TFT_DISPLAY_ENABLED
-#define TFT_DISPLAY_ENABLED 0
+#define TFT_DISPLAY_ENABLED (DISPLAY_KIND == DISPLAY_ILI9341)
 #endif
-
-#if TFT_DISPLAY_ENABLED != 0 && TFT_DISPLAY_ENABLED != 1
-#error "TFT_DISPLAY_ENABLED must be 0 or 1"
+#if TFT_DISPLAY_ENABLED != (DISPLAY_KIND == DISPLAY_ILI9341)
+#error "Conflicting DISPLAY_KIND and TFT_DISPLAY_ENABLED"
 #endif
+#ifndef BLUETOOTH_ENABLED
+#define BLUETOOTH_ENABLED 1
+#endif
+#ifndef DRIVE_INTERFACE
+#define DRIVE_INTERFACE DRIVE_YAESU
+#endif
+#ifndef BTS7960_PWM_INVERTED
+#define BTS7960_PWM_INVERTED 0 // 1: inverted RPWM/LPWM through optocouplers; ENABLE stays active HIGH
+#endif
+#ifndef USER_BUTTON_GPIO
+#define USER_BUTTON_GPIO 0
+#endif
+#ifndef USER_BUTTON_ACTIVE_LOW
+#define USER_BUTTON_ACTIVE_LOW 1
+#endif
+#ifndef USER_BUTTON_PULLUP
+#define USER_BUTTON_PULLUP 1
+#endif
+#ifndef AZ_STOP_TOLERANCE_DEG
+#define AZ_STOP_TOLERANCE_DEG 5.0f
+#endif
+#ifndef EL_STOP_TOLERANCE_DEG
+#define EL_STOP_TOLERANCE_DEG 5.0f
+#endif
+#if BOARD_PROFILE == BOARD_AUTO
+#if defined(ARDUINO_LOLIN_S2_MINI)
+#define SELECTED_BOARD BOARD_S2_MINI
+#elif CONFIG_IDF_TARGET_ESP32S2
+#define SELECTED_BOARD BOARD_S2_LEGACY
+#else
+#define SELECTED_BOARD BOARD_S3
+#endif
+#else
+#define SELECTED_BOARD BOARD_PROFILE
+#endif
+#if DISPLAY_KIND < 0 || DISPLAY_KIND > 2 || DRIVE_INTERFACE < 0 || DRIVE_INTERFACE > 2
+#error "Unknown display or drive interface"
+#endif
+#if BTS7960_PWM_INVERTED != 0 && BTS7960_PWM_INVERTED != 1
+#error "BTS7960_PWM_INVERTED must be 0 or 1"
+#endif
+#if BTS7960_PWM_INVERTED && DRIVE_INTERFACE != DRIVE_BTS7960
+#error "PWM inversion requires DRIVE_BTS7960"
+#endif
+#if (BLUETOOTH_ENABLED != 0 && BLUETOOTH_ENABLED != 1) || (USER_BUTTON_ACTIVE_LOW != 0 && USER_BUTTON_ACTIVE_LOW != 1) || (USER_BUTTON_PULLUP != 0 && USER_BUTTON_PULLUP != 1)
+#error "Boolean build flags must be 0 or 1"
+#endif
+static_assert(AZ_STOP_TOLERANCE_DEG > 0 && AZ_STOP_TOLERANCE_DEG <= 90, "Invalid AZ tolerance");
+static_assert(EL_STOP_TOLERANCE_DEG > 0 && EL_STOP_TOLERANCE_DEG <= 90, "Invalid EL tolerance");

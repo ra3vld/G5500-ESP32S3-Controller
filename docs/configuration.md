@@ -1,0 +1,52 @@
+# Конфигурация сборки и профили плат
+
+Один комплект исходников в `G5500_Fork` используется Arduino IDE/CLI и PlatformIO. Аппаратные параметры задаются в [build_config.hpp](../G5500_Fork/build_config.hpp) или через `-D`; веб и NVS их не изменяют. Модель поворотки, режим, калибровки, предустановки, Wi-Fi и параметры скорости остаются пользовательскими настройками.
+
+```cpp
+#define BOARD_PROFILE BOARD_AUTO
+#define DISPLAY_KIND DISPLAY_NONE
+#define BLUETOOTH_ENABLED 1
+#define DRIVE_INTERFACE DRIVE_YAESU
+#define BTS7960_PWM_INVERTED 0
+#define USER_BUTTON_GPIO 0
+#define USER_BUTTON_ACTIVE_LOW 1
+#define USER_BUTTON_PULLUP 1
+#define AZ_STOP_TOLERANCE_DEG 5.0f
+#define EL_STOP_TOLERANCE_DEG 5.0f
+```
+
+Изменяйте значения существующих определений под `#ifndef`, сохраняя эти защиты. `BOARD_AUTO` выбирает S2 Mini для `LOLIN S2 Mini`, прежнюю S2 для общего S2 и S3 для S3. Явные варианты: `BOARD_S3`, `BOARD_S2_MINI`, `BOARD_S2_LEGACY`. Arduino IDE должна использовать плату с соответствующим чипом; противоречие отклоняется при компиляции.
+
+| Параметр | Варианты |
+|---|---|
+| `DISPLAY_KIND` | `DISPLAY_NONE`, `DISPLAY_ILI9341`, `DISPLAY_LCD1602` |
+| `BLUETOOTH_ENABLED` | `1`: внешний HC-05; `0`: UART1 HC-05, его объект и GPIO исключены |
+| `DRIVE_INTERFACE` | `DRIVE_YAESU`, `DRIVE_SEPARATE_PWM`, `DRIVE_BTS7960` |
+| `BTS7960_PWM_INVERTED` | `0`: прямое подключение; `1`: инвертирующие оптоканалы RPWM/LPWM, только DRIVE_BTS7960; ENABLE остаётся активным HIGH |
+| `USER_BUTTON_GPIO` | свободный доступный GPIO; `-1` отключает кнопку |
+| `USER_BUTTON_ACTIVE_LOW` | `1`: нажатие LOW; `0`: нажатие HIGH |
+| `USER_BUTTON_PULLUP` | `1`: INPUT_PULLUP; `0`: INPUT и внешняя подтяжка |
+
+`TFT_DISPLAY_ENABLED=0/1` и `DISPLAY_ENABLED=0/1` в Arduino-скрипте сохранены как алиасы NONE/TFT. Несогласованные старый и новый флаги отклоняются. NONE и отключённый HC-05 не создают соответствующих объектов, не включают драйверы и не инициализируют их GPIO. LCD не включает TFT/touch.
+
+Распиновки находятся в плоских [board_s3.hpp](../G5500_Fork/board_s3.hpp), [board_s2_mini.hpp](../G5500_Fork/board_s2_mini.hpp) и [board_s2_legacy.hpp](../G5500_Fork/board_s2_legacy.hpp). Для иной разводки изменяйте заголовок нужного профиля. [board.hpp](../G5500_Fork/board.hpp) выбирает профиль и проверяет доступность GPIO, выходов, ADC1, конфликты активных устройств и достаточность каналов LEDC. Линии общей SPI-шины TFT/touch учитываются один раз.
+
+| Назначение | S3 DevKitC-1 N16R8 | LOLIN/WEMOS S2 Mini |
+|---|---:|---:|
+| ADC AZ / EL | 4 / 5 | 4 / 5 |
+| AZ отрицательное / положительное | 15 / 16 | 34 / 16 |
+| EL отрицательное / положительное | 18 / 17 | 18 / 17 |
+| AZ скорость либо ENABLE | 21 | 21 |
+| EL скорость либо ENABLE | 47 | 33 |
+| UART0 RX / TX | 44 / 43 | 37 / 39 |
+| HC-05 RX / TX / STATE | 6 / 7 / 3 | 6 / 7 / 3 |
+| Индикация | RGB48 | LED15 |
+| Flash / PSRAM | 16 МБ / 8 МБ OPI | 4 МБ / 2 МБ |
+
+TFT: MOSI10, SCK11, MISO2, CS12, DC13, RST14; XPT2046: CS8, IRQ9. LCD1602: RS8, E9, D4…D7=10…13, RW=GND. Это параллельный HD44780, не I²C-адаптер. Для LCD с логикой 5 В нужен отдельный согласующий TTL-буфер. В [прямой схеме IBT-2](hardware/independent-pwm-bts7960.md) внешнего буфера приводов нет: VCC модулей с HC/AHC питается от 3,3 В. В [изолированной схеме](hardware/independent-pwm-bts7960-isolated.md) используются шесть PC817C; четыре PWM инвертируются опцией `BTS7960_PWM_INVERTED=1`, два ENABLE аппаратно выключаются без входного сигнала.
+
+Прежний профиль S2 сохраняет LEFT15, UART0 44/43 и отсутствие EL PWM. Старые имена `esp32s2_4mb` / `esp32s2_4mb_headless` и Arduino-аргумент `s2` продолжают выбирать его. Два независимых привода в этом профиле отклоняются: для них используйте явный `s2-mini`. GPIO15 S2 Mini занят светодиодом, поэтому LEFT перенесён на GPIO34.
+
+У S3 N16R8 исключены GPIO Flash/OPI PSRAM 26…37, отсутствующие 22…25 и native USB 19/20. У S2 Mini проверяются выведенные на разъёмы GPIO; native USB 19/20 исключены. GPIO46 не разрешён для выходов или внутренней подтяжки. С2 Mini использует native USB CDC для диагностики и отдельные RX37/TX39 для GS-232 UART0; при отсутствии встроенного UART-моста нужен внешний USB-UART.
+
+Действие пользовательской кнопки — подтверждение ожидающей цели. Оно не связано с именем BOOT: GPIO0 является только значением по умолчанию. Дребезг 40 мс, одно событие на нажатие; удержанную при запуске кнопку сначала нужно отпустить. Для активного HIGH без внутренней подтяжки обеспечьте внешнюю подтяжку к GND. Аппаратный загрузчик ESP32 на GPIO0 сохраняет своё поведение.

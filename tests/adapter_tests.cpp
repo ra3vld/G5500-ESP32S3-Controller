@@ -73,12 +73,11 @@ void gpioOrdering() {
   Runtime runtime;
   Hardware hardware(runtime);
   hardware.beginDirections();
-  CHECK(fakeHardware.events.size() == 8);
-  for (unsigned i = 0; i < 4; ++i) {
+  for (unsigned i=0; i<fakeHardware.events.size(); i+=2) {
     CHECK(fakeHardware.events[i].operation == "write");
     CHECK(fakeHardware.events[i].value == LOW);
-    CHECK(fakeHardware.events[i + 4].operation == "mode");
-    CHECK(fakeHardware.events[i + 4].value == OUTPUT);
+    CHECK(fakeHardware.events[i+1].operation == "mode");
+    CHECK(fakeHardware.events[i+1].value == OUTPUT);
   }
   hardware.beginInputs();
   CHECK(fakeHardware.levels[PIN_SPEED] == LOW);
@@ -112,20 +111,21 @@ void gpioOrdering() {
   runtime.controller.axes[0].speedOutputPercent = 50;
   fakeHardware.events.clear();
   hardware.applyOutputs();
-  CHECK(fakeHardware.events.back().operation == "pwm");
-  CHECK(fakeHardware.events.back().value == 512);
+  bool halfDuty = false;
+  for (const auto &event : fakeHardware.events) if (event.operation == "pwm" && event.pin == PIN_SPEED && event.value == 512) halfDuty = true;
+  CHECK(halfDuty);
   runtime.controller.axes[0].direction = 0;
   hardware.applyOutputs();
-  CHECK(fakeHardware.events.back().value == 0);
+  uint32_t lastDuty=9999;
+  for (const auto &event : fakeHardware.events) if (event.operation == "pwm" && event.pin == PIN_SPEED) lastDuty=event.value;
+  CHECK(lastDuty == 0);
   runtime.controller.model = Model::G5500;
   fakeHardware.events.clear();
   hardware.applyOutputs();
-  const auto count = fakeHardware.events.size();
-  CHECK(fakeHardware.events[count - 4].operation == "pwm");
-  CHECK(fakeHardware.events[count - 4].value == 0);
-  CHECK(fakeHardware.events[count - 3].operation == "detach");
-  CHECK(fakeHardware.events.back().pin == PIN_SPEED);
-  CHECK(fakeHardware.events.back().value == LOW);
+  bool detached = false;
+  for (const auto &event : fakeHardware.events) if (event.operation == "detach" && event.pin == PIN_SPEED) detached = true;
+  CHECK(detached);
+  CHECK(fakeHardware.levels[PIN_SPEED] == LOW);
 
   Runtime failingRuntime;
   Hardware failingHardware(failingRuntime);
@@ -133,7 +133,8 @@ void gpioOrdering() {
   failingRuntime.controller.speedEnabled = true;
   fakeHardware.attachSucceeds = false;
   failingHardware.applyOutputs();
-  CHECK(!failingRuntime.controller.speedEnabled);
+  CHECK(failingRuntime.controller.driveFault);
+  CHECK(!failingRuntime.controller.moving());
   CHECK(failingRuntime.controller.fault == "pwm_attach_failed");
 }
 

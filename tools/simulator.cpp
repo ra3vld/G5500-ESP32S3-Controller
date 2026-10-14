@@ -19,11 +19,12 @@ int main(){
    unsigned ms=std::stoul(args);
    // Integrate the speed ramp at 20 ms even for accelerated simulation time.
    while(ms){
-   unsigned slice=c.model==Model::G800DXA&&c.speedEnabled?std::min(ms,20u):ms;
+   unsigned slice=(c.variableSpeed(0)||c.variableSpeed(1))?std::min(ms,20u):ms;
    float seconds=slice/1000.f;
-   const float azSpeed=c.model==Model::G800DXA&&c.speedEnabled?c.axes[0].speedOutputPercent/100.f:1.f;
+   const float azSpeed=c.variableSpeed(0)?c.axes[0].speedOutputPercent/100.f:1.f;
    az=std::max(0.f,std::min(c.maximum,az+c.axes[0].direction*6.f*seconds*azSpeed));
-   el=std::max(0.f,std::min(180.f,el+c.axes[1].direction*6.f*seconds));
+   const float elSpeed=c.variableSpeed(1)?c.axes[1].speedOutputPercent/100.f:1.f;
+   el=std::max(0.f,std::min(180.f,el+c.axes[1].direction*6.f*seconds*elSpeed));
    if(c.axes[0].tracking){if(c.axes[0].direction>0)az=std::min(az,c.axes[0].target);else if(c.axes[0].direction<0)az=std::max(az,c.axes[0].target);}
    if(c.axes[1].tracking){if(c.axes[1].direction>0)el=std::min(el,c.axes[1].target);else if(c.axes[1].direction<0)el=std::max(el,c.axes[1].target);}
    c.feedback(az,el,true,true);now+=slice;c.tick(now);ms-=slice;
