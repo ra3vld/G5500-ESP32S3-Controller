@@ -1,4 +1,4 @@
-// G5500 Fork; original by UA1CFM, modifications by RA3VLD. GPL-3.0.
+// G5500 Fork; original by UA1CFM. GPL-3.0.
 // G5500 Fork, GPL-3.0; shared by the ESP32 firmware and host simulator.
 #include "control.hpp"
 #include <algorithm>

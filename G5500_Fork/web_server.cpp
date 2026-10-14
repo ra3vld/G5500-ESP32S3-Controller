@@ -1,4 +1,4 @@
-// G5500 Fork; original by UA1CFM, modifications by RA3VLD. GPL-3.0.
+// G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "web_server.hpp"
 #include "web_page.hpp"
 #include "diagnostic_pages.hpp"

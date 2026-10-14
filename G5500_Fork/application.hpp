@@ -1,4 +1,4 @@
-// G5500 Fork; original by UA1CFM, modifications by RA3VLD. GPL-3.0.
+// G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
 #include "runtime.hpp"
 #include "input.hpp"

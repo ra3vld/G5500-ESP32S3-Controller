@@ -1,4 +1,4 @@
-// G5500 Fork; original by UA1CFM, modifications by RA3VLD. GPL-3.0.
+// G5500 Fork; original by UA1CFM. GPL-3.0.
 /* Fork modifications by RA3VLD, 2026-10-12. GPLv3; see docs/upstream.md. */
 /*
   G5500 ESP32-S3 Controller v1.6.23 RECONNECT SAFE TFT + XPT2046 TOUCH CAL + HC-05

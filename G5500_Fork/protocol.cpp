@@ -1,4 +1,4 @@
-// G5500 Fork; original by UA1CFM, modifications by RA3VLD. GPL-3.0.
+// G5500 Fork; original by UA1CFM. GPL-3.0.
 // Bounded, fully validated XML subset for N1MM/PST; no DTD or entities expansion.
 #include "protocol.hpp"
 #include <cctype>
