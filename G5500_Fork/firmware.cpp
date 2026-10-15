@@ -43,6 +43,9 @@ void Application::controllerSetup() {
   display_.initLocalDisplay();
   storage_.loadForkSettings(runtime_);
   loadPrefs();
+  diagnostics_.dbgPrintln(String("[WIFI NVS] load=") +
+                         (storage_.wifiCredentialsReadOk() ? "OK" : "namespace unavailable") +
+                         ", saved SSID=" + (network_.credentials().wifiSsid.length() ? "present" : "empty"));
   runtime_.controller.maximum = calibration_.activeAzMaxDeg();
   loadProfilePresets();
   hardware_.beginInputs();
@@ -59,7 +62,11 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrint(DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE");
   diagnostics_.dbgPrint(" | drive=");
   diagnostics_.dbgPrintln(DRIVE_INTERFACE == DRIVE_YAESU ? "YAESU" : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960" : "SEPARATE_PWM");
+#if SELECTED_BOARD == BOARD_ESP32
+  diagnostics_.dbgPrintln("[DIAG] /diaglog: fixed 2048-byte log; UART0 H4: RAM and Wi-Fi status");
+#else
   diagnostics_.dbgPrintln("[DIAG] Web console: /diaglog, RAM ring buffer 160 lines");
+#endif
   diagnostics_.dbgPrint("[RESET REASON] ");
   diagnostics_.dbgPrintln(diagnostics_.bootReasonText());
   diagnostics_.dbgPrint("[RESET CODE] ");
@@ -140,6 +147,7 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln("==============================");
 
   hardware_.startHeartbeat();
+  network_.captureSetupHeap();
 }
 void Application::controllerLoop() {
   updatePosition();

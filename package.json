@@ -2,7 +2,8 @@
   "name": "g5500-controller",
   "private": true,
   "scripts": {
-    "test:web": "node tools/check_web.cjs"
+    "test:web": "node tools/check_web.cjs",
+    "test:wifi-web": "node tools/check_wifi_web.cjs"
   },
   "engines": {
     "node": ">=20"

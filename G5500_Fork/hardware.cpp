@@ -289,6 +289,10 @@ void Hardware::beginDirections() {
 }
 void Hardware::beginAdc() {
   analogReadResolution(12);
+  // Arduino 3.x configures each ADC channel on its first read. Per-pin
+  // attenuation applied before that read is ignored and logs an error.
+  analogRead(PIN_AZ_ADC);
+  analogRead(PIN_EL_ADC);
   analogSetPinAttenuation(PIN_AZ_ADC, ADC_11db);
   analogSetPinAttenuation(PIN_EL_ADC, ADC_11db);
 }

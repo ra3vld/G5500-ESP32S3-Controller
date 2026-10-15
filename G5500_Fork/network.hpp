@@ -8,6 +8,7 @@
 #include "diagnostics.hpp"
 #include "input.hpp"
 #include "bluetooth.hpp"
+#include "heap_metrics.hpp"
 #include <WiFi.h>
 #include <WiFiUdp.h>
 namespace forkrot {
@@ -35,6 +36,7 @@ public:
   void serviceWifiReconnect();
   void setupLoggerUdp();
   void serviceLoggerUdp();
+  void captureSetupHeap() { heapAfterSetup_ = heapFreeBytes(); }
 
 private:
   void sendReply(const String &s);
@@ -42,6 +44,7 @@ private:
   void rotctldSend(const String &s);
   void processRotctldCommand(String cmd);
   void restoreApOnlyAfterReconnectFail();
+  void sendHeapDiagnostics();
   Runtime &runtime_;
   DeviceActions &actions_;
   Calibration &calibration_;
@@ -53,6 +56,7 @@ private:
   WiFiClient rotctldClient_;
   Bluetooth bluetooth_;
   uint32_t lastBtDropped_ = 0;
+  bool btReady_ = false;
   WiFiUDP n1mmUdp, pstUdp;
   enum GsReplyPort : uint8_t { GS_REPLY_USB = 0, GS_REPLY_BLUETOOTH = 1 };
   GsReplyPort gsReplyPort = GS_REPLY_USB;
@@ -66,5 +70,7 @@ private:
   ReportPeer reportPeers[8];
   uint8_t nextReportPeer = 0;
   uint32_t lastReportMs = 0;
+  uint32_t heapBeforeBt_ = 0, heapAfterBt_ = 0, heapAfterAp_ = 0, heapAfterWifi_ = 0,
+           heapAfterSetup_ = 0;
 };
 } // namespace forkrot

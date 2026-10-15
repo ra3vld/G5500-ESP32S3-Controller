@@ -10,10 +10,10 @@ const char *Storage::calNamespace(const Runtime &runtime) {
 
 void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredentials &credentials) {
   auto &calibrationState = calibration.state();
-  prefs_.begin("g5500", true);
-  credentials.wifiSsid = prefs_.getString("ssid", "");
-  credentials.wifiPass = prefs_.getString("pass", "");
-  credentials.apPass = prefs_.getString("appass", AP_PASS);
+  wifiCredentialsReadOk_ = prefs_.begin("g5500", true);
+  credentials.wifiSsid = wifiCredentialsReadOk_ ? prefs_.getString("ssid", "") : String("");
+  credentials.wifiPass = wifiCredentialsReadOk_ ? prefs_.getString("pass", "") : String("");
+  credentials.apPass = wifiCredentialsReadOk_ ? prefs_.getString("appass", AP_PASS) : String(AP_PASS);
 
   // v1.6.23 format 4: independent P36/P45 + explicit two-point endpoint flags.
   prefs_.end();
@@ -241,11 +241,29 @@ void Storage::saveCal(const Runtime &runtime, Calibration &calibration) {
   prefs_.end();
 }
 
-void Storage::saveWifi(String s, String p) {
-  prefs_.begin("g5500", false);
-  prefs_.putString("ssid", s);
-  prefs_.putString("pass", p);
+WifiSaveResult Storage::saveWifi(const String &s, const String &p) {
+  if (!s.length() || s.length() > 32) return WifiSaveResult::InvalidSsid;
+  if (p.length() && (p.length() < 8 || p.length() > 64)) return WifiSaveResult::InvalidPassword;
+  if (p.length() == 64) {
+    for (size_t i = 0; i < p.length(); ++i) {
+      char c = p.c_str()[i];
+      if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+        return WifiSaveResult::InvalidPassword;
+    }
+  }
+  if (!prefs_.begin("g5500", false)) return WifiSaveResult::OpenFailed;
+  const size_t ssidWritten = prefs_.putString("ssid", s);
+  const size_t passwordWritten = prefs_.putString("pass", p);
   prefs_.end();
+  if (ssidWritten != s.length() || passwordWritten != p.length()) return WifiSaveResult::WriteFailed;
+
+  // Reopen NVS rather than trusting the request or an in-memory copy. An empty
+  // password returns zero even on success, so read back both keys with a sentinel.
+  if (!prefs_.begin("g5500", true)) return WifiSaveResult::VerifyFailed;
+  const bool verified = prefs_.getString("ssid", "\x01") == s &&
+                        prefs_.getString("pass", "\x01") == p;
+  prefs_.end();
+  return verified ? WifiSaveResult::Ok : WifiSaveResult::VerifyFailed;
 }
 
 void Storage::saveApPassword(const String &p) {

@@ -1,7 +1,23 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "network.hpp"
+#include <cstdio>
 namespace forkrot {
 using namespace board;
+void Network::sendHeapDiagnostics() {
+  char reply[320];
+  std::snprintf(reply, sizeof reply,
+      "HEAP free=%lu min=%lu max=%lu beforeBT=%lu afterBT=%lu afterAP=%lu afterWiFi=%lu setup=%lu\r\n"
+      "WIFI status=%d savedSSID=%s NVS=%s BTready=%s BTclient=%s\r\n",
+      static_cast<unsigned long>(heapFreeBytes()), static_cast<unsigned long>(heapMinBytes()),
+      static_cast<unsigned long>(heapMaxBlockBytes()), static_cast<unsigned long>(heapBeforeBt_),
+      static_cast<unsigned long>(heapAfterBt_), static_cast<unsigned long>(heapAfterAp_),
+      static_cast<unsigned long>(heapAfterWifi_), static_cast<unsigned long>(heapAfterSetup_),
+      int(WiFi.status()), credentials_.wifiSsid.length() ? "yes" : "no",
+      diagnostics_.wifiCredentialsReadOk() ? "OK" : "unavailable",
+      btReady_ ? "yes" : "no", bluetooth_.connected() ? "yes" : "no");
+  if (gsReplyPort == GS_REPLY_USB) Serial0.print(reply); // no growing String or log snapshot
+  else bluetooth_.send(reply);
+}
 void Network::sendReply(const String &s) {
   if (gsReplyPort == GS_REPLY_BLUETOOTH) {
     if (!bluetooth_.send(s)) diagnostics_.dbgPrintln("[BT TX] dropped: disconnected or queue full");
@@ -69,6 +85,10 @@ void Network::processGs232Command(String cmd) {
   }
   if (cmd == "H3") {
     sendReply(String("CAL=") + calibration_.calibrationModeName() + "\r\n");
+    return;
+  }
+  if (cmd == "H4") {
+    sendHeapDiagnostics();
     return;
   }
 }
@@ -265,24 +285,22 @@ void Network::startWifi() {
                                                 : WiFi.softAP(AP_SSID);
   delay(300);
 
-#if FORK_NATIVE_USB
   diagnostics_.dbgPrintln("[V1559] AP-only start");
   diagnostics_.dbgPrint("[V1559] AP start = ");
   diagnostics_.dbgPrintln(apOk ? "OK" : "FAILED");
   diagnostics_.dbgPrint("[V1559] AP IP = ");
   diagnostics_.dbgPrintln(WiFi.softAPIP().toString());
-#endif
+  heapAfterAp_ = heapFreeBytes();
 
   // Try home Wi-Fi once, only if credentials are stored.
   if (credentials_.wifiSsid.length()) {
-#if FORK_NATIVE_USB
     diagnostics_.dbgPrint("[V1559] one STA attempt: ");
     diagnostics_.dbgPrintln(credentials_.wifiSsid);
-#endif
 
     WiFi.mode(WIFI_AP_STA);
     delay(100);
-    WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
+    const auto initialStatus = WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
+    diagnostics_.dbgPrintln(String("[WIFI] begin status=") + String(int(initialStatus)));
 
     uint32_t t0 = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - t0 < 8000) {
@@ -290,13 +308,12 @@ void Network::startWifi() {
     }
 
     if (WiFi.status() == WL_CONNECTED) {
-#if FORK_NATIVE_USB
       diagnostics_.dbgPrint("[V1559] LAN connected = ");
       diagnostics_.dbgPrintln(WiFi.localIP().toString());
       diagnostics_.dbgPrint("[V1559] AP remains = ");
       diagnostics_.dbgPrintln(WiFi.softAPIP().toString());
-#endif
     } else {
+      diagnostics_.dbgPrintln(String("[WIFI] STA attempt failed, status=") + String(int(WiFi.status())));
       // Home network not available: completely stop STA and restore AP-only.
       WiFi.disconnect(true, false);
       delay(150);
@@ -311,25 +328,20 @@ void Network::startWifi() {
       }
       delay(250);
 
-#if FORK_NATIVE_USB
       diagnostics_.dbgPrintln("[V1559] LAN unavailable -> AP ONLY");
       diagnostics_.dbgPrint("[V1559] AP restored = ");
       diagnostics_.dbgPrintln(WiFi.softAPIP().toString());
-#endif
     }
   } else {
-#if FORK_NATIVE_USB
     diagnostics_.dbgPrintln("[V1559] no saved LAN credentials -> AP ONLY");
-#endif
   }
 
   tcpServer_.begin();
   actions_.setupWeb();
+  heapAfterWifi_ = heapFreeBytes();
 
-#if FORK_NATIVE_USB
   diagnostics_.dbgPrintln(
       "[WIFI] safe auto-reconnect: 30 s interval, 8 s attempt, AP-only fallback");
-#endif
 }
 
 void Network::restoreApOnlyAfterReconnectFail() {
@@ -361,10 +373,8 @@ void Network::serviceWifiReconnect() {
   // LAN came back: remain in AP+STA and arm the timer for a future loss.
   if (WiFi.status() == WL_CONNECTED) {
     if (wifiReconnectTryActive) {
-#if FORK_NATIVE_USB
       diagnostics_.dbgPrint("[WIFI] reconnect OK, LAN IP = ");
       diagnostics_.dbgPrintln(WiFi.localIP().toString());
-#endif
     }
     wifiReconnectTryActive = false;
     wifiReconnectMs = now;
@@ -378,9 +388,7 @@ void Network::serviceWifiReconnect() {
       return;
     }
 
-#if FORK_NATIVE_USB
     diagnostics_.dbgPrintln("[WIFI] reconnect timeout -> restore AP ONLY");
-#endif
 
     wifiReconnectTryActive = false;
     wifiReconnectMs = now;
@@ -399,10 +407,8 @@ void Network::serviceWifiReconnect() {
   }
 
   // One controlled STA attempt. AP remains available while the attempt runs.
-#if FORK_NATIVE_USB
   diagnostics_.dbgPrint("[WIFI] reconnect attempt: ");
   diagnostics_.dbgPrintln(credentials_.wifiSsid);
-#endif
 
   if (WiFi.getMode() != WIFI_AP_STA) {
     WiFi.mode(WIFI_AP_STA);
@@ -496,7 +502,10 @@ void Network::serviceLoggerUdp() {
 }
 void Network::beginSerial() {
   Serial0.begin(9600, SERIAL_8N1, PIN_UART_RX, PIN_UART_TX);
-  if (!bluetooth_.begin()) diagnostics_.dbgPrintln("[BT] initialization failed; USB and network remain available");
+  heapBeforeBt_ = heapFreeBytes();
+  btReady_ = bluetooth_.begin();
+  if (!btReady_) diagnostics_.dbgPrintln("[BT] initialization failed; USB and network remain available");
+  heapAfterBt_ = heapFreeBytes();
 }
 
 } // namespace forkrot

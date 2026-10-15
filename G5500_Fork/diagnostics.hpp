@@ -3,11 +3,13 @@
 #include "board.hpp"
 #include "storage.hpp"
 #include "esp_system.h"
+#include "byte_log.hpp"
 namespace forkrot {
 enum class RssiPeriod { Hour, Day, Week, Month, Year };
 class Diagnostics {
 public:
   explicit Diagnostics(Storage &storage) : storage_(storage) {}
+  bool wifiCredentialsReadOk() const { return storage_.wifiCredentialsReadOk(); }
   void beginNativeUsb();
   void readBootReason();
   int bootReasonCode() const {
@@ -42,11 +44,15 @@ private:
   RssiHistory rssi_;
   esp_reset_reason_t bootResetReason = ESP_RST_UNKNOWN;
   String bootResetReasonText = "UNKNOWN";
+#if SELECTED_BOARD == BOARD_ESP32
+  ByteLog<2048> diagLog_;
+#else
   static constexpr uint16_t DIAG_MAX_LINES = 160;
   static constexpr uint16_t DIAG_MAX_LINE_LEN = 220;
   String diagLines[DIAG_MAX_LINES];
   uint16_t diagHead = 0;
   uint16_t diagCount = 0;
   String diagPending;
+#endif
 };
 } // namespace forkrot

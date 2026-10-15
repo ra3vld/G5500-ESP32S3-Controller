@@ -8,11 +8,13 @@
 #include "display_state.hpp"
 #include "diagnostics_state.hpp"
 namespace forkrot {
+enum class WifiSaveResult { Ok, InvalidSsid, InvalidPassword, OpenFailed, WriteFailed, VerifyFailed };
 class Storage {
 public:
   void loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredentials &credentials);
   void saveCal(const Runtime &runtime, Calibration &calibration);
-  void saveWifi(String s, String p);
+  WifiSaveResult saveWifi(const String &s, const String &p);
+  bool wifiCredentialsReadOk() const { return wifiCredentialsReadOk_; }
   void saveApPassword(const String &p);
   void loadTouchCalibration(TouchCalibration &touchCalibration);
   void saveTouchCalibration(const TouchCalibration &touchCalibration);
@@ -33,5 +35,6 @@ private:
   const char *presetNamespace(const Runtime &runtime);
   static constexpr uint8_t RESET_HISTORY_MAX = 20;
   Preferences prefs_;
+  bool wifiCredentialsReadOk_ = false;
 };
 } // namespace forkrot

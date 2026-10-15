@@ -63,23 +63,22 @@ bool ip(const std::string &s) {
   }
   return count == 4 && !s.empty() && s.back() != '.';
 }
-std::string targetJson(Target t) {
-  std::ostringstream json;
-  json << "{\"az\":" << t.az << ",\"el\":" << t.el << ",\"hasAz\":" << (t.hasAz ? "true" : "false")
+void writeTargetJson(JsonWriter &json, Target t) {
+  json << "{\"az\":";
+  json.decimal(t.az, -1) << ",\"el\":";
+  json.decimal(t.el, -1) << ",\"hasAz\":" << (t.hasAz ? "true" : "false")
        << ",\"hasEl\":" << (t.hasEl ? "true" : "false") << '}';
-  return json.str();
 }
 } // namespace
-std::string stateJson(const Controller &controller, const Protocol &protocol,
-                      const Settings &settings, uint32_t now) {
-  std::ostringstream json;
-  json << std::fixed << std::setprecision(2);
-  json << "{\"model\":" << jsonQuote(controller.model == Model::G5500 ? "G5500" : "G800DXA")
-       << ",\"controlMode\":" << jsonQuote(Controller::modeName(controller.mode))
+bool writeStateJson(JsonWriter &json, const Controller &controller, const Protocol &protocol,
+                    const Settings &settings, uint32_t now, bool appendMembers) {
+  json << (appendMembers ? ",\"model\":" : "{\"model\":") << jsonQuoted(controller.model == Model::G5500 ? "G5500" : "G800DXA")
+       << ",\"controlMode\":" << jsonQuoted(Controller::modeName(controller.mode))
        << ",\"remainingMs\":" << controller.remaining(now)
        << ",\"pendingValid\":" << (controller.pendingValid ? "true" : "false")
-       << ",\"pending\":" << targetJson(controller.pending)
-       << ",\"presetActive\":" << (controller.presetActive ? "true" : "false")
+       << ",\"pending\":";
+  writeTargetJson(json, controller.pending);
+  json << ",\"presetActive\":" << (controller.presetActive ? "true" : "false")
        << ",\"presetSlot\":" << controller.presetSlot
        << ",\"speedEnabled\":" << ((DRIVE_INTERFACE != DRIVE_YAESU || controller.speedEnabled) ? "true" : "false")
        << ",\"speedPercent\":" << controller.speedPercent
@@ -89,27 +88,29 @@ std::string stateJson(const Controller &controller, const Protocol &protocol,
        << ",\"decelerationMs\":" << controller.decelerationMs
        << ",\"slowdownDegrees\":" << controller.slowdownDegrees
        << ",\"speedOutputPercent\":" << controller.axes[0].speedOutputPercent
-       << ",\"fault\":" << jsonQuote(controller.fault)
-       << ",\"rotorName\":" << jsonQuote(protocol.rotorName)
+       << ",\"fault\":" << jsonQuoted(controller.fault)
+       << ",\"rotorName\":" << jsonQuoted(protocol.rotorName)
        << ",\"n1mmPort\":" << settings.n1mmPort << ",\"pstPort\":" << settings.pstPort
        << ",\"reportPort\":" << settings.reportPort
-       << ",\"reportHost\":" << jsonQuote(settings.reportHost)
-       << ",\"n1mmReport\":" << jsonQuote(protocol.positionReport(controller.axes[0].current))
+       << ",\"reportHost\":" << jsonQuoted(settings.reportHost)
+       << ",\"n1mmReport\":\"" << jsonEscaped(protocol.rotorName) << '@'
+       << int(std::lround(heading(controller.axes[0].current) * 10)) % 3600 << '"'
        << ",\"presets\":[";
   for (unsigned i = 0; i < 4; ++i) {
     if (i) {
       json << ',';
     }
-    json << "{\"slot\":" << i + 1 << ",\"label\":" << jsonQuote(controller.presets[i].label)
-         << ",\"target\":" << targetJson(controller.presets[i].target)
-         << ",\"valid\":" << (controller.valid(controller.presets[i].target) ? "true" : "false")
+    json << "{\"slot\":" << i + 1 << ",\"label\":" << jsonQuoted(controller.presets[i].label)
+         << ",\"target\":";
+    writeTargetJson(json, controller.presets[i].target);
+    json << ",\"valid\":" << (controller.valid(controller.presets[i].target) ? "true" : "false")
          << '}';
   }
-  json << "],\"build\":{\"board\":" << jsonQuote(board::NAME)
-       << ",\"display\":" << jsonQuote(DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE")
+  json << "],\"build\":{\"board\":" << jsonQuoted(board::NAME)
+       << ",\"display\":" << jsonQuoted(DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE")
        << ",\"bluetooth\":" << (BLUETOOTH_ENABLED ? "true" : "false")
-       << ",\"bluetoothBackend\":" << jsonQuote(board::BLUETOOTH_BACKEND_NAME)
-       << ",\"drive\":" << jsonQuote(DRIVE_INTERFACE == DRIVE_YAESU ? "YAESU" : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960" : "SEPARATE_PWM")
+       << ",\"bluetoothBackend\":" << jsonQuoted(board::BLUETOOTH_BACKEND_NAME)
+       << ",\"drive\":" << jsonQuoted(DRIVE_INTERFACE == DRIVE_YAESU ? "YAESU" : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960" : "SEPARATE_PWM")
        << ",\"userButtonGpio\":" << USER_BUTTON_GPIO << ",\"userButtonActiveLow\":" << (USER_BUTTON_ACTIVE_LOW ? "true" : "false")
        << ",\"userButtonPullup\":" << (USER_BUTTON_PULLUP ? "true" : "false")
        << ",\"pins\":{\"azAdc\":" << board::PIN_AZ_ADC << ",\"elAdc\":" << board::PIN_EL_ADC
@@ -142,7 +143,14 @@ std::string stateJson(const Controller &controller, const Protocol &protocol,
   }
   json << '}';
 
-  return json.str();
+  return json.good();
+}
+std::string stateJson(const Controller &controller, const Protocol &protocol,
+                      const Settings &settings, uint32_t now) {
+  char buffer[STATUS_JSON_CAPACITY];
+  JsonWriter json(buffer, sizeof buffer);
+  if (!writeStateJson(json, controller, protocol, settings, now)) return "{\"error\":\"status_too_large\"}";
+  return std::string(json.data(), json.size());
 }
 Response api(Controller &controller, Protocol &protocol, Settings &settings,
              const std::string &path, const Form &form, uint32_t now) {

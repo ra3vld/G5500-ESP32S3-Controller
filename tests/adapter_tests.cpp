@@ -244,7 +244,7 @@ void storageCompatibility() {
   }
   CHECK(calibration.state().az45CalMv[5] == 2600);
 
-  storage.saveWifi("AnotherNetwork", "");
+  CHECK(storage.saveWifi("AnotherNetwork", "") == WifiSaveResult::Ok);
   storage.saveApPassword("local-test-only");
   CHECK(std::get<String>(legacy["ssid"]) == String("AnotherNetwork"));
   CHECK(std::get<String>(legacy["appass"]) == String("local-test-only"));
@@ -268,6 +268,54 @@ void storageCompatibility() {
   storage.loadTouchCalibration(reloaded);
   CHECK(!reloaded.touchCalValid);
 }
+
+void wifiPersistenceFailures() {
+  Preferences::database.clear();
+  Preferences::opened.clear();
+  Storage storage;
+  CHECK(storage.saveWifi("", "test-password") == WifiSaveResult::InvalidSsid);
+  CHECK(storage.saveWifi(String(std::string(33, 's')), "test-password") == WifiSaveResult::InvalidSsid);
+  CHECK(storage.saveWifi("Test network", "short") == WifiSaveResult::InvalidPassword);
+  CHECK(storage.saveWifi("Test network", String(std::string(64, 'z'))) == WifiSaveResult::InvalidPassword);
+  CHECK(Preferences::opened.empty());
+
+  Preferences::beginSucceeds = false;
+  CHECK(storage.saveWifi("Test network", "test-password") == WifiSaveResult::OpenFailed);
+  CHECK(Preferences::database.empty());
+  Preferences::beginSucceeds = true;
+  CHECK(storage.saveWifi("Test network", "test-password") == WifiSaveResult::Ok);
+
+  // New Storage object and full boot load exercise persistence, not RAM state.
+  Runtime rebootRuntime;
+  Calibration rebootCalibration(rebootRuntime.controller);
+  WifiCredentials reloaded;
+  Storage rebootStorage;
+  rebootStorage.loadPrefs(rebootRuntime, rebootCalibration, reloaded);
+  CHECK(rebootStorage.wifiCredentialsReadOk());
+  CHECK(reloaded.wifiSsid == String("Test network"));
+  CHECK(reloaded.wifiPass == String("test-password"));
+
+  Preferences::failedStringKey = "ssid";
+  CHECK(storage.saveWifi("Changed network", "test-password") == WifiSaveResult::WriteFailed);
+  Preferences::failedStringKey = "pass";
+  CHECK(storage.saveWifi("Test network", "another-password") == WifiSaveResult::WriteFailed);
+  // Empty passwords return zero both for success and failure. Readback must
+  // catch a failed write instead of treating zero as proof of success.
+  CHECK(storage.saveWifi("Test network", "") == WifiSaveResult::VerifyFailed);
+  Preferences::failedStringKey.clear();
+  CHECK(storage.saveWifi("Open network", "") == WifiSaveResult::Ok);
+  rebootStorage.loadPrefs(rebootRuntime, rebootCalibration, reloaded);
+  CHECK(reloaded.wifiSsid == String("Open network"));
+  CHECK(reloaded.wifiPass.length() == 0);
+
+  Preferences::readOnlyBeginSucceeds = false;
+  CHECK(storage.saveWifi("Test network", "test-password") == WifiSaveResult::VerifyFailed);
+  Preferences::readOnlyBeginSucceeds = true;
+  Preferences::corruptStringKey = "pass";
+  CHECK(storage.saveWifi("Test network", "test-password") == WifiSaveResult::VerifyFailed);
+  Preferences::corruptStringKey.clear();
+  CHECK(storage.saveWifi("Hex PSK network", String(std::string(64, 'a'))) == WifiSaveResult::Ok);
+}
 }
 
 int main() {
@@ -275,6 +323,7 @@ int main() {
     calibrationMath();
     gpioOrdering();
     storageCompatibility();
+    wifiPersistenceFailures();
     std::cout << "PASS: " << checks << " calibration, GPIO ordering and typed NVS checks\n";
     return 0;
   } catch (const std::exception &error) {

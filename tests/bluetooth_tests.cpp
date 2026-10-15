@@ -14,8 +14,16 @@ int main() { try {
 #if BLUETOOTH_BACKEND == BT_ESP32_SPP
   CHECK(bt.begin()); CHECK(fakeSpp.name == "G5500-Rotator");
   CHECK(!fakeSpp.input && !fakeSpp.output && !fakeSpp.master && fakeSpp.bleDisabled);
+  CHECK(fakeSpp.callbackMode && fakeSpp.starts == 1);
+  esp_bt_gap_cb_param_t gap; fakeGapCallback(ESP_BT_GAP_CFM_REQ_EVT, &gap);
+  CHECK(fakeSpp.pairingConfirmed);
   CHECK(!bt.connected()); CHECK(!bt.send("reply")); CHECK(fakeHardware.events.empty());
+  esp_spp_cb_param_t failedOpen; failedOpen.srv_open.status = -1; failedOpen.srv_open.handle = 1;
+  fakeSpp.callback(ESP_SPP_SRV_OPEN_EVT, &failedOpen); CHECK(!bt.connected());
   sppConnect(7); CHECK(bt.connected());
+  sppConnect(8); CHECK(bt.connected() && fakeSpp.disconnected.back() == 8);
+  sppFeed("M180\r", 8); CHECK(!bt.receive(command));
+  fakeSpp.client = 7;
   sppFeed("C\r\nC2\n"); CHECK(bt.receive(command) && command == "C");
   CHECK(bt.receive(command) && command == "C2"); CHECK(!bt.receive(command));
   sppFeed(std::string(513, 'M') + "\rC\r"); CHECK(bt.receive(command) && command == "C");
@@ -37,7 +45,7 @@ int main() { try {
   sppComplete(7, true); bt.service(); CHECK(fakeSpp.writes.size() == 1);
   sppCongestion(7, false); bt.service(); CHECK(fakeSpp.writes.size() == 2);
   sppFeed("M0"); CHECK(!bt.receive(command));
-  sppFeed("90\r"); sppClose(7); CHECK(!bt.connected()); CHECK(fakeSpp.rx.empty());
+  sppFeed("90\r"); sppClose(7); CHECK(!bt.connected());
   sppConnect(9); bt.service(); CHECK(fakeSpp.writes.size() == 2); // old TX queue discarded
   sppFeed("C\r"); CHECK(bt.receive(command) && command == "C");
   CHECK(bt.send("new peer")); CHECK(fakeSpp.writes.back().first == 9);
@@ -65,6 +73,10 @@ int main() { try {
   CHECK(received + bt.droppedCommands() - droppedBefore == 2000);
   fakeSpp.beginOk = false; Bluetooth failed; CHECK(!failed.begin());
   CHECK(!failed.connected()); CHECK(!failed.receive(command)); CHECK(!failed.send("reply"));
+  fakeSpp.beginOk = true; fakeSpp.startOk = false;
+  const auto startupBegin = fakeHardware.now;
+  Bluetooth failedServer; CHECK(!failedServer.begin());
+  CHECK(!failedServer.connected() && uint32_t(fakeHardware.now - startupBegin) == 1500);
 #elif BLUETOOTH_BACKEND == BT_HC05
   CHECK(bt.begin()); CHECK(fakeUart.number == 1 && fakeUart.baud == 9600);
   CHECK(fakeUart.rxPin == board::PIN_HC05_RX && fakeUart.txPin == board::PIN_HC05_TX);

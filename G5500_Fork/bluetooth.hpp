@@ -4,7 +4,8 @@
 #include "input.hpp"
 #include <Arduino.h>
 #if BLUETOOTH_BACKEND == BT_ESP32_SPP
-#include <BluetoothSerial.h>
+#include <esp_spp_api.h>
+#include <esp_gap_bt_api.h>
 #include <atomic>
 #elif BLUETOOTH_BACKEND == BT_HC05
 #include <HardwareSerial.h>
@@ -27,14 +28,19 @@ public:
 private:
 #if BLUETOOTH_BACKEND != BT_NONE
   LineBuffer receiver_;
+#if BLUETOOTH_BACKEND == BT_ESP32_SPP
+  std::atomic<bool> ready_{false};
+#else
   bool ready_ = false;
+#endif
 #endif
 #if BLUETOOTH_BACKEND == BT_HC05
   HardwareSerial serial_{1};
 #elif BLUETOOTH_BACKEND == BT_ESP32_SPP
-  BluetoothSerial serial_;
   static Bluetooth *owner_;
   static void onEvent(esp_spp_cb_event_t event, esp_spp_cb_param_t *param);
+  static void onGapEvent(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
+  void onData(const uint8_t *bytes, size_t size);
   std::atomic<uint32_t> client_{0}, session_{0};
   std::atomic<bool> writing_{false}, congested_{false};
   uint32_t seenSession_ = 0;

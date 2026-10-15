@@ -15,6 +15,9 @@ static auto &HWCDCSerial = Serial;
 
 namespace forkrot {
 void Diagnostics::diagStoreLine(String line) {
+#if SELECTED_BOARD == BOARD_ESP32
+  diagLog_.append({line.c_str(), line.length()}, true);
+#else
   line.replace("\r", "");
   if (line.length() > DIAG_MAX_LINE_LEN) {
     line = line.substring(0, DIAG_MAX_LINE_LEN - 3) + "...";
@@ -24,9 +27,13 @@ void Diagnostics::diagStoreLine(String line) {
   if (diagCount < DIAG_MAX_LINES) {
     diagCount++;
   }
+#endif
 }
 
 void Diagnostics::diagMirror(const String &s, bool newline) {
+#if SELECTED_BOARD == BOARD_ESP32
+  diagLog_.append({s.c_str(), s.length()}, newline);
+#else
   for (size_t i = 0; i < s.length(); i++) {
     char ch = s[i];
     if (ch == '\r') {
@@ -47,19 +54,28 @@ void Diagnostics::diagMirror(const String &s, bool newline) {
     diagStoreLine(diagPending);
     diagPending = "";
   }
+#endif
 }
 
 void Diagnostics::diagClear() {
+#if SELECTED_BOARD == BOARD_ESP32
+  diagLog_.clear();
+#else
   for (uint16_t i = 0; i < DIAG_MAX_LINES; i++) {
     diagLines[i] = "";
   }
   diagHead = 0;
   diagCount = 0;
   diagPending = "";
+#endif
 }
 
 String Diagnostics::diagSnapshot() {
   String out;
+#if SELECTED_BOARD == BOARD_ESP32
+  if (!out.reserve(diagLog_.size())) return "[DIAG] not enough memory for snapshot\n";
+  diagLog_.copyTo(out);
+#else
   out.reserve(8192);
   uint16_t start = (diagHead + DIAG_MAX_LINES - diagCount) % DIAG_MAX_LINES;
   for (uint16_t i = 0; i < diagCount; i++) {
@@ -70,6 +86,7 @@ String Diagnostics::diagSnapshot() {
   if (diagPending.length()) {
     out += diagPending;
   }
+#endif
   return out;
 }
 

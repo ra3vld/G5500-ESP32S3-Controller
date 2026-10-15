@@ -1,6 +1,7 @@
 // G5500 Fork; original by UA1CFM, modifications by RA3VLD. GPL-3.0.
 #pragma once
 #include "protocol.hpp"
+#include "json_writer.hpp"
 #include <map>
 namespace forkrot {
 struct Settings {
@@ -15,6 +16,8 @@ using Form = std::map<std::string, std::string>;
 std::string jsonQuote(const std::string &s);
 std::string stateJson(const Controller &c, const Protocol &p, const Settings &settings,
                       uint32_t now);
+bool writeStateJson(JsonWriter &json, const Controller &c, const Protocol &p,
+                    const Settings &settings, uint32_t now, bool appendMembers = false);
 Response api(Controller &c, Protocol &p, Settings &settings, const std::string &path,
              const Form &form, uint32_t now);
 Form decodeForm(const std::string &input);

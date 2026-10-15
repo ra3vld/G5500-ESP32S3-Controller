@@ -68,11 +68,7 @@ if a.pwm_inverted is not None:
     flags=[f for f in flags if not f.startswith('-DBTS7960_PWM_INVERTED=')]
     flags.append('-DBTS7960_PWM_INVERTED='+a.pwm_inverted)
 deps='' if kind==0 else 'arduino-libraries/LiquidCrystal @ 1.0.7' if kind==2 else option('display_tft','lib_deps')
-# LDF cannot consistently expand the derived backend macro. Select the bundled
-# core library explicitly; disabling Bluetooth also removes this dependency.
-bt=macros.get('BLUETOOTH_ENABLED',re.search(r'^#define BLUETOOTH_ENABLED (\d+)',header,re.M).group(1))
-if a.bluetooth is not None:bt=a.bluetooth
-if option(section,'board') == 'esp32dev' and bt == '1':deps+='\nBluetoothSerial'
+# Classic SPP uses IDF directly; no additional Bluetooth library is needed.
 work=ROOT/'build/platformio-config';work.mkdir(parents=True,exist_ok=True)
 path=work/(a.env+'.ini')
 path.write_text(f'[platformio]\nextra_configs = {ROOT}/platformio.ini\nsrc_dir = {ROOT}/G5500_Fork\n[env:selected]\nextends = {section}\nbuild_flags = '+ ' '.join(flags)+'\nlib_deps =\n'+''.join(' '+line+'\n' for line in deps.splitlines() if line.strip()))

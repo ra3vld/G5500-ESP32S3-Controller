@@ -20,6 +20,6 @@ out.mkdir(parents=True, exist_ok=True)
 for f in source.iterdir():
     if f.suffix in {'.ino', '.cpp', '.hpp', '.h'} and not f.name.endswith('.ino.cpp'):
         shutil.copy2(f, out / f.name)
-partitions = 'partitions_esp32.csv' if a.target == 'esp32' else 'partitions_s2.csv' if a.target != 's3' else 'partitions.csv'
+partitions = 'partitions_esp32.csv' if a.target == 'esp32' else 'partitions_s2.csv' if a.target != 's3' else 'partitions_s3.csv'
 shutil.copy2(source / partitions, out / 'partitions.csv')
 print(out / 'G5500_Fork.ino')

@@ -5,7 +5,10 @@
 namespace forkrot {
 using namespace board;
 void WebInterface::setupWeb() {
-  web_.on("/", HTTP_GET, [this] { web_.send_P(200, "text/html; charset=utf-8", WEB_PAGE); });
+  web_.on("/", HTTP_GET, [this] {
+    web_.sendHeader("Cache-Control", "no-store");
+    web_.send_P(200, "text/html; charset=utf-8", WEB_PAGE);
+  });
   web_.on("/diaglog", HTTP_GET,
           [this] { web_.send_P(200, "text/html; charset=utf-8", DIAG_PAGE); });
   web_.on("/api/diaglog", HTTP_GET,
@@ -209,12 +212,28 @@ void WebInterface::setupWeb() {
     actions_.saveCal();
     web_.send(200, "text/plain", "RESET OK");
   });
-  web_.on("/api/wifi", HTTP_GET, [this] {
-    storage_.saveWifi(web_.arg("ssid"), web_.arg("pass"));
-    web_.send(200, "text/plain", "Saved");
-    delay(500);
-    ESP.restart();
-  });
+  const auto saveWifi = [this] {
+    const String ssid = web_.arg("ssid"), password = web_.arg("pass");
+    const auto result = storage_.saveWifi(ssid, password);
+    if (result != WifiSaveResult::Ok) {
+      diagnostics_.dbgPrintln(String("[WIFI NVS] save failed, stage=") +
+                             (result == WifiSaveResult::InvalidSsid ? "invalid_ssid" :
+                              result == WifiSaveResult::InvalidPassword ? "invalid_password" :
+                              result == WifiSaveResult::OpenFailed ? "open" :
+                              result == WifiSaveResult::WriteFailed ? "write" : "verify"));
+      const bool invalid = result == WifiSaveResult::InvalidSsid || result == WifiSaveResult::InvalidPassword;
+      const char *message = result == WifiSaveResult::InvalidSsid ? "SSID должен содержать от 1 до 32 байт." :
+                            result == WifiSaveResult::InvalidPassword ? "Пароль должен содержать 8–63 символа, 64 шестнадцатеричные цифры или быть пустым для открытой сети." :
+                            "Не удалось сохранить настройки Wi-Fi. Перезагрузка отменена.";
+      web_.send(invalid ? 400 : 500, "text/plain; charset=utf-8", message);
+      return;
+    }
+    diagnostics_.dbgPrintln("[WIFI NVS] credentials saved and verified; restarting");
+    web_.send(200, "text/plain; charset=utf-8", "Настройки Wi-Fi сохранены. Контроллер перезагружается; затем снова подключитесь к G5500-Rotator.");
+    restart_.request(millis());
+  };
+  web_.on("/api/wifi", HTTP_POST, saveWifi);
+  web_.on("/api/wifi", HTTP_GET, saveWifi);
   web_.on("/api/ap", HTTP_GET, [this] {
     String p = web_.arg("pass");
     if (p.length() != 0 && (p.length() < 8 || p.length() > 63)) {
@@ -223,8 +242,7 @@ void WebInterface::setupWeb() {
     }
     storage_.saveApPassword(p);
     web_.send(200, "text/plain", p.length() ? "AP password saved" : "AP set to open");
-    delay(500);
-    ESP.restart();
+    restart_.request(millis());
   });
   web_.on("/api/resetreason", HTTP_GET, [this] {
     String j = "{\"reason\":\"" + diagnostics_.bootReasonText() +
@@ -252,6 +270,7 @@ void WebInterface::setupWeb() {
     }
   });
   web_.on("/api/status", HTTP_GET, [this] {
+    web_.sendHeader("Cache-Control", "no-store");
     auto &calibrationState = calibration_.state();
     actions_.updatePosition();
     bool staOk = (WiFi.status() == WL_CONNECTED);
@@ -276,47 +295,46 @@ void WebInterface::setupWeb() {
     int az2f = calibration_.activeAzFSet() ? calibration_.activeAz2Full() : -1;
     calibrationState.cal.valid = calibration_.selectedCalibrationValid();
 
-    String j =
-        "{\"az\":" + String(runtime_.currentAz, 2) + ",\"el\":" + String(runtime_.currentEl, 2) +
-        ",\"targetAz\":" + String(runtime_.targetAz, 2) +
-        ",\"targetEl\":" + String(runtime_.targetEl, 2) +
-        ",\"targetValid\":" + (runtime_.targetValid ? "true" : "false") +
-        ",\"targetAgeMs\":" + String(targetAge) +
-        ",\"calibrated\":" + (calibrationState.cal.valid ? "true" : "false") +
-        ",\"selectedCalOk\":" + (calibration_.selectedCalibrationValid() ? "true" : "false") +
-        ",\"azMode\":" + String(calibrationState.gsAzMode) +
-        ",\"azLinear\":" + (azLin ? "true" : "false") +
-        ",\"azLinear36\":" + (calibrationState.az36LinearValid ? "true" : "false") +
-        ",\"azLinear45\":" + (calibrationState.az45LinearValid ? "true" : "false") +
-        ",\"elLinear\":" + (calibrationState.elLinearValid ? "true" : "false") +
-        ",\"azMulti\":" + (azMul ? "true" : "false") +
-        ",\"azMulti36\":" + (calibrationState.az36MultiValid ? "true" : "false") +
-        ",\"azMulti45\":" + (calibrationState.az45MultiValid ? "true" : "false") +
-        ",\"elMulti\":" + (calibrationState.elMultiValid ? "true" : "false") + ",\"calMode\":\"" +
-        String(calibrationState.calibrationMode == CAL_MULTI_POINT ? "multi" : "2") + "\"" +
-        ",\"az2p0\":" + String(az2z) + ",\"az2pf\":" + String(az2f) +
-        ",\"el2p0\":" + String(calibrationState.elOSet ? calibrationState.cal.el0 : -1) +
-        ",\"el2pf\":" + String(calibrationState.elFSet ? calibrationState.cal.elMax : -1) +
-        ",\"motion\":\"" + hardware_.motion() + "\"" + ",\"azp0\":" + String(azTbl[0]) +
-        ",\"azp90\":" + String(azTbl[1]) + ",\"azp180\":" + String(azTbl[2]) +
-        ",\"azp270\":" + String(azTbl[3]) + ",\"azp360\":" + String(azTbl[4]) +
-        ",\"azp450\":" + String(az450v) + ",\"elp0\":" + String(calibrationState.elCalMv[0]) +
-        ",\"elp45\":" + String(calibrationState.elCalMv[1]) +
-        ",\"elp90\":" + String(calibrationState.elCalMv[2]) +
-        ",\"elp135\":" + String(calibrationState.elCalMv[3]) +
-        ",\"elp180\":" + String(calibrationState.elCalMv[4]) + ",\"ip\":\"" + ip +
-        "\",\"apIp\":\"" + apIp + "\",\"staIp\":\"" + staIp + "\",\"wifiMode\":\"" + mode +
-        "\",\"ssid\":" +
-        String(forkrot::jsonQuote(network_.credentials().wifiSsid.c_str()).c_str()) +
-        ",\"rssi\":" + rssiJson + ",\"signal\":\"" + signal +
-        "\",\"btConnected\":" + (network_.bluetoothConnected() ? "true" : "false") +
-        ",\"resetReason\":\"" + diagnostics_.bootReasonText() + "\"}";
-    auto extra = forkrot::stateJson(runtime_.controller, runtime_.protocol, runtime_.loggerSettings,
-                                    millis());
-    j.remove(j.length() - 1);
-    j += ",";
-    j += extra.c_str() + 1;
-    web_.send(200, "application/json", j);
+    JsonWriter j(statusBuffer_, sizeof statusBuffer_);
+    j << "{\"az\":" << runtime_.currentAz << ",\"el\":" << runtime_.currentEl
+      << ",\"targetAz\":" << runtime_.targetAz << ",\"targetEl\":" << runtime_.targetEl
+      << ",\"targetValid\":" << (runtime_.targetValid ? "true" : "false")
+      << ",\"targetAgeMs\":" << targetAge
+      << ",\"calibrated\":" << (calibrationState.cal.valid ? "true" : "false")
+      << ",\"selectedCalOk\":" << (calibration_.selectedCalibrationValid() ? "true" : "false")
+      << ",\"azMode\":" << calibrationState.gsAzMode
+      << ",\"azLinear\":" << (azLin ? "true" : "false")
+      << ",\"azLinear36\":" << (calibrationState.az36LinearValid ? "true" : "false")
+      << ",\"azLinear45\":" << (calibrationState.az45LinearValid ? "true" : "false")
+      << ",\"elLinear\":" << (calibrationState.elLinearValid ? "true" : "false")
+      << ",\"azMulti\":" << (azMul ? "true" : "false")
+      << ",\"azMulti36\":" << (calibrationState.az36MultiValid ? "true" : "false")
+      << ",\"azMulti45\":" << (calibrationState.az45MultiValid ? "true" : "false")
+      << ",\"elMulti\":" << (calibrationState.elMultiValid ? "true" : "false")
+      << ",\"calMode\":" << jsonQuoted(calibrationState.calibrationMode == CAL_MULTI_POINT ? "multi" : "2")
+      << ",\"az2p0\":" << az2z << ",\"az2pf\":" << az2f
+      << ",\"el2p0\":" << (calibrationState.elOSet ? calibrationState.cal.el0 : -1)
+      << ",\"el2pf\":" << (calibrationState.elFSet ? calibrationState.cal.elMax : -1)
+      << ",\"motion\":" << jsonQuoted(hardware_.motion().c_str())
+      << ",\"azp0\":" << azTbl[0] << ",\"azp90\":" << azTbl[1]
+      << ",\"azp180\":" << azTbl[2] << ",\"azp270\":" << azTbl[3]
+      << ",\"azp360\":" << azTbl[4] << ",\"azp450\":" << az450v
+      << ",\"elp0\":" << calibrationState.elCalMv[0] << ",\"elp45\":" << calibrationState.elCalMv[1]
+      << ",\"elp90\":" << calibrationState.elCalMv[2] << ",\"elp135\":" << calibrationState.elCalMv[3]
+      << ",\"elp180\":" << calibrationState.elCalMv[4]
+      << ",\"ip\":" << jsonQuoted(ip.c_str()) << ",\"apIp\":" << jsonQuoted(apIp.c_str())
+      << ",\"staIp\":" << jsonQuoted(staIp.c_str()) << ",\"wifiMode\":" << jsonQuoted(mode.c_str())
+      << ",\"ssid\":" << jsonQuoted(network_.credentials().wifiSsid.c_str())
+      << ",\"rssi\":" << rssiJson.c_str() << ",\"signal\":" << jsonQuoted(signal.c_str())
+      << ",\"btConnected\":" << (network_.bluetoothConnected() ? "true" : "false")
+      << ",\"resetReason\":" << jsonQuoted(diagnostics_.bootReasonText().c_str())
+      << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMinFree\":" << heapMinBytes()
+      << ",\"heapMaxBlock\":" << heapMaxBlockBytes() << ",\"httpWriteFailures\":" << httpWriteFailures_;
+    if (!writeStateJson(j, runtime_.controller, runtime_.protocol, runtime_.loggerSettings, millis(), true)) {
+      web_.send(503, "application/json", "{\"error\":\"status_too_large\"}");
+      return;
+    }
+    web_.sendBuffer(200, "application/json", j.data(), j.size());
   });
   setupForkWeb();
   web_.begin();

@@ -181,7 +181,8 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div>Home IP: <b id="ip">-</b></div><div>AP IP: <b>192.168.4.1</b></div><div>TCP rotctld: <b>4533</b></div><div>Mode: <b id="mode">-</b></div><div>Home Wi-Fi RSSI: <b id="rssi">-</b></div><div>Signal: <b id="sig">-</b></div><div><span id="btlabel">Bluetooth</span>: <b id="btstate">-</b></div><div id="bttransport">-</div></div>
 <div class="field" style="margin-top:10px"><label>Wi‑Fi SSID</label><input id="ssid"></div>
 <div class="field" style="margin-top:8px"><label>Wi‑Fi password</label><input id="pass" type="password"></div>
-<button class="btn good" style="margin-top:10px" onclick="wifi()">Save Wi‑Fi + reboot</button>
+<button id="wifiSaveButton" class="btn good" style="margin-top:10px" onclick="wifi()">Save Wi‑Fi + reboot</button>
+<div id="wifiMessage" class="hint" role="status" aria-live="polite"></div>
 <div class="field" style="margin-top:14px"><label>Access Point password (8..63 chars; empty = open AP)</label><input id="appass" type="password" minlength="8" maxlength="63" placeholder="leave empty for open AP"></div>
 <button class="btn good" style="margin-top:10px" onclick="saveAp()">Save AP password + reboot</button></div>
 </div>
@@ -269,7 +270,23 @@ function markCalBtn(id, ok){
   b.classList.toggle('done', !!ok);
   b.classList.toggle('warn', !ok);
 }
-async function wifi(){if(!ssid.value)return;if(confirm('Сохранить Wi‑Fi и перезагрузить контроллер?'))await q('/api/wifi?ssid='+encodeURIComponent(ssid.value)+'&pass='+encodeURIComponent(pass.value))}
+async function wifi(){
+ const message=document.getElementById('wifiMessage');
+ const button=document.getElementById('wifiSaveButton');
+ if(button.disabled)return;
+ const network=document.getElementById('ssid').value,password=document.getElementById('pass').value;
+ if(!network){message.textContent='Укажите SSID сети Wi-Fi.';return;}
+ if(!confirm('Сохранить Wi‑Fi и перезагрузить контроллер?'))return;
+ button.disabled=true;
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);
+ message.textContent='Сохранение настроек Wi-Fi…';
+ try{
+  const response=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({ssid:network,pass:password}),cache:'no-store',signal:controller.signal});
+  message.textContent=await response.text()||'Не удалось сохранить настройки Wi-Fi.';
+  if(response.ok)document.getElementById('pass').value='';
+ }catch(e){message.textContent='Ответ не получен. Подключитесь к G5500-Rotator, обновите страницу и проверьте сохранённый SSID.';}
+ finally{clearTimeout(timeout);button.disabled=false;}
+}
 async function saveAp(){
   const p=appass.value;
   if(p.length>0 && p.length<8){alert('Пароль AP должен быть минимум 8 символов или пустым для открытой точки доступа.');return;}
@@ -277,7 +294,12 @@ async function saveAp(){
     await q('/api/ap?pass='+encodeURIComponent(p));
 }
 function pct(v,m){v=Math.max(0,Math.min(m,v));return(v/m*100).toFixed(1)+'%'}
-async function upd(){try{let j=await (await fetch('/api/status',{cache:'no-store'})).json();
+let statusPending=false;
+async function upd(){
+if(statusPending)return;
+statusPending=true;
+const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5000);
+try{let j=await (await fetch('/api/status',{cache:'no-store',signal:controller.signal})).json();
 az.textContent=Number(j.az).toFixed(1);el.textContent=Number(j.el).toFixed(1);
 updateFork(j);
 azt.textContent=j.targetValid?Number(j.targetAz).toFixed(1):'---';
@@ -311,7 +333,7 @@ sig.textContent=j.signal||'-';
 btstate.textContent=j.build?.bluetooth===false?'Отключён в сборке':j.btConnected?'CONNECTED':'DISCONNECTED';
 btstate.style.color=j.btConnected?'#24d18d':'#e5a94f';
 if(document.activeElement!==ssid && !ssid.dataset.dirty) ssid.value=j.ssid||'';
-}catch(e){}}
+}catch(e){}finally{clearTimeout(timeout);statusPending=false;}}
 let rrange='hour';
 function drawRssi(j){
  const c=document.getElementById('rchart'),x=c.getContext('2d'),w=c.width,h=c.height;

@@ -6,6 +6,10 @@ CORE_SOURCES="G5500_Fork/control.cpp G5500_Fork/protocol.cpp G5500_Fork/input.cp
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tools/simulator.cpp -o build/simulator
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/core_tests.cpp -o build/core_tests
 ./build/core_tests
+for board in 1 4; do
+  ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=$board -I G5500_Fork $CORE_SOURCES tests/status_memory_tests.cpp -o build/status_memory_tests
+  ./build/status_memory_tests
+done
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/adapter_tests.cpp -o build/adapter_tests
 ./build/adapter_tests
 for flags in '-DBOARD_PROFILE=4' '-DBOARD_PROFILE=4 -DBLUETOOTH_ENABLED=0' '-DBOARD_PROFILE=1'; do

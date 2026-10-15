@@ -56,7 +56,7 @@ def build(tool,board,display,bt,drive):
     work=work_root/name;work.mkdir(parents=True,exist_ok=True)
     flags=f'-DBOARD_PROFILE={dict(s3=1,s2=2,**{"s2-mini":3,"esp32":4})[board]} -DDISPLAY_KIND={display} -DTFT_DISPLAY_ENABLED={int(display==1)} -DBLUETOOTH_ENABLED={bt} -DDRIVE_INTERFACE={drive}'
     app_size = 0x640000 if board=='s3' else 0x300000 if board=='esp32' else 0x1e0000
-    partition_file = 'partitions.csv' if board=='s3' else 'partitions_esp32.csv' if board=='esp32' else 'partitions_s2.csv'
+    partition_file = 'partitions_s3.csv' if board=='s3' else 'partitions_esp32.csv' if board=='esp32' else 'partitions_s2.csv'
     if tool=='arduino':
         sketch=work/'G5500_Fork';sketch.mkdir(exist_ok=True)
         for f in source.iterdir():
@@ -81,9 +81,6 @@ def build(tool,board,display,bt,drive):
             if a.library_dir:deps='lib_extra_dirs = '+str(a.library_dir.resolve())+'\n'
             elif display==2:deps='lib_deps = arduino-libraries/LiquidCrystal @ 1.0.7\n'
             else:deps='lib_deps =\n adafruit/Adafruit GFX Library @ 1.12.1\n adafruit/Adafruit ILI9341 @ 1.6.2\n adafruit/Adafruit BusIO @ 1.17.2\n https://github.com/PaulStoffregen/XPT2046_Touchscreen/archive/refs/tags/v1.4.zip\n'
-        if board=='esp32' and bt:
-            if 'lib_deps =' in deps:deps=deps.replace('lib_deps =','lib_deps =\n BluetoothSerial',1)
-            else:deps+='lib_deps = BluetoothSerial\n'
         config.write_text(f'[platformio]\nsrc_dir = {snapshot}\nbuild_dir = {work}/objects\nlibdeps_dir = {work}/libdeps\n[env:matrix]\nplatform = {a.platform}\nboard = '+('esp32-s3-devkitc-1' if board=='s3' else 'lolin_s2_mini' if board=='s2-mini' else 'esp32dev' if board=='esp32' else 'esp32-s2-saola-1')+f'\nframework = arduino\nboard_build.flash_mode = '+('dio' if board in ('s2-mini','esp32') else 'qio')+('\nboard_build.f_flash = 40000000L' if board=='esp32' else '')+f'\nboard_upload.flash_size = '+('16MB' if board=='s3' else '4MB')+f'\nboard_build.partitions = {source}/'+partition_file+'\n'+memory+'build_flags = '+extra+' '+flags+'\nlib_ldf_mode = chain+\n'+deps)
         cmd=[a.pio,'run','-c',str(config),'-e','matrix','-j',str(a.jobs)]
         binary=work/'objects/matrix/firmware.bin'

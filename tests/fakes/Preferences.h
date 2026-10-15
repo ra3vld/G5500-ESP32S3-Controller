@@ -10,9 +10,12 @@ public:
   using Database = std::map<std::string, std::map<std::string, Value>>;
   inline static Database database;
   inline static std::vector<std::pair<std::string, bool>> opened;
+  inline static bool beginSucceeds = true, readOnlyBeginSucceeds = true;
+  inline static std::string failedStringKey, corruptStringKey;
 
   bool begin(const char *name, bool readOnly = false) {
     if (active_) { throw std::runtime_error("nested NVS begin"); }
+    if (!beginSucceeds || (readOnly && !readOnlyBeginSucceeds)) { return false; }
     name_ = name;
     active_ = true;
     readOnly_ = readOnly;
@@ -44,7 +47,13 @@ public:
   void putULong64(const char *key, uint64_t value) { put(key, value); }
   void putBool(const char *key, bool value) { put(key, value); }
   void putFloat(const char *key, float value) { put(key, value); }
-  void putString(const char *key, String value) { put(key, std::move(value)); }
+  size_t putString(const char *key, String value) {
+    writable();
+    if (failedStringKey == key) { return 0; }
+    const auto length = value.length();
+    put(key, corruptStringKey == key ? String("verification mismatch") : std::move(value));
+    return length;
+  }
   void putBytes(const char *key, const void *value, size_t length) {
     const auto bytes = static_cast<const uint8_t *>(value);
     put(key, Bytes(bytes, bytes + length));
