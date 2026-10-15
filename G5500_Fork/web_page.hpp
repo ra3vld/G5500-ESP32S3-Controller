@@ -3,7 +3,7 @@
 #ifndef ARDUINO
 #define PROGMEM
 #endif
-static const char WEB_PAGE[] PROGMEM = R"HTML(
+static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 <!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>G5500 Fork — управление повороткой</title>
@@ -179,7 +179,11 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <canvas id="rchart" width="900" height="260"></canvas>
 <div class="kv" style="margin-top:10px"><div>MIN: <b id="rmin">-</b></div><div>MAX: <b id="rmax">-</b></div><div>AVG: <b id="ravg">-</b></div><div>Points: <b id="rcount">0</b></div></div></div>
 <div class="card"><div class="label">Подключение</div><div class="kv" style="margin-top:10px">
-<div>Home IP: <b id="ip">-</b></div><div>AP IP: <b>192.168.4.1</b></div><div>TCP rotctld: <b>4533</b></div><div>Mode: <b id="mode">-</b></div><div>Home Wi-Fi RSSI: <b id="rssi">-</b></div><div>Signal: <b id="sig">-</b></div><div><span id="btlabel">Bluetooth</span>: <b id="btstate">-</b></div><div id="bttransport">-</div></div>
+<div>Home IP: <b id="ip">-</b></div><div>AP IP: <b id="apip">-</b></div><div>TCP rotctld: <b>4533</b></div><div>Mode: <b id="mode">-</b></div><div>Home Wi-Fi RSSI: <b id="rssi">-</b></div><div>Signal: <b id="sig">-</b></div>
+<div id="btlinkrow" class="hide">Bluetooth-соединение: <b id="btlinkstate" role="status">-</b></div>
+<div><span id="btlabel">Bluetooth</span>: <b id="btstate" role="status">-</b></div><div id="bttransport">-</div>
+<div id="btmacrow" class="hide" style="grid-column:1/-1">Bluetooth MAC: <b id="btmac" style="font-family:monospace;user-select:all;white-space:nowrap">-</b></div></div>
+<div id="bthelp" class="hint hide">Этот MAC нужен в Look4Sat. Подключение видно и без передачи команд; сопряжение в Android само по себе не означает активное соединение.</div>
 <div class="field" style="margin-top:10px"><label>Wi‑Fi SSID</label><input id="ssid"></div>
 <div class="field" style="margin-top:8px"><label>Wi‑Fi password</label><input id="pass" type="password"></div>
 <button id="wifiSaveButton" class="btn good" style="margin-top:10px" onclick="wifi()">Save Wi‑Fi + reboot</button>
@@ -223,9 +227,14 @@ function updateFork(j){
  document.getElementById('elSpeedSettings').classList.toggle('hide',g800||!independent);
  const btBackend=j.build?.bluetoothBackend||(j.build?.bluetooth===false?'NONE':'HC05');
  const btName=btBackend==='ESP32_SPP'?'Встроенный Bluetooth SPP':btBackend==='HC05'?'HC-05':'Bluetooth отключён';
+ const nativeBt=btBackend==='ESP32_SPP';
  document.getElementById('buildInfo').textContent=j.build?`${j.build.board} · ${j.build.drive} · ${j.build.display} · ${btName}`:'';
- document.getElementById('btlabel').textContent=btName;
+ document.getElementById('btlabel').textContent=nativeBt?'Канал SPP':btName;
  document.getElementById('bttransport').textContent=btBackend==='ESP32_SPP'?'G5500-Rotator · SPP / виртуальный COM':btBackend==='HC05'?'HC-05 UART: 9600 baud':'';
+ for(const id of ['btlinkrow','btmacrow','bthelp'])document.getElementById(id).classList.toggle('hide',!nativeBt);
+ const btLink=!!(j.btLinkConnected??j.btConnected),linkState=document.getElementById('btlinkstate');
+ linkState.textContent=btLink?'Подключено':'Нет подключения';linkState.style.color=btLink?'#24d18d':'#e5a94f';
+ document.getElementById('btmac').textContent=j.btMac||'Недоступен';
  document.getElementById('movementButtons').classList.toggle('az-only',g800);
  const f=document.getElementById('forkSettings');
  for(const key of ['model','rotorName','n1mmPort','pstPort','reportPort','reportHost','speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees'])if(first||!f.contains(document.activeElement))f.elements[key].value=j[key];
@@ -285,7 +294,7 @@ async function wifi(){
   const response=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({ssid:network,pass:password}),cache:'no-store',signal:controller.signal});
   message.textContent=await response.text()||'Не удалось сохранить настройки Wi-Fi.';
   if(response.ok)document.getElementById('pass').value='';
- }catch(e){message.textContent='Ответ не получен. Подключитесь к G5500-Rotator, обновите страницу и проверьте сохранённый SSID.';}
+ }catch(e){message.textContent='Ответ не получен. Проверьте адрес контроллера в домашней сети. Если подключения нет, используйте G5500-Rotator и проверьте SSID.';}
  finally{clearTimeout(timeout);button.disabled=false;}
 }
 async function saveAp(){
@@ -328,7 +337,7 @@ markCalBtn('b_az0',j.azp0>=0);markCalBtn('b_az90',j.azp90>=0);markCalBtn('b_az18
 markCalBtn('b_az270',j.azp270>=0);markCalBtn('b_az360',j.azp360>=0);markCalBtn('b_az450',j.azMode===45&&j.azp450>=0);
 markCalBtn('b_el0',j.elp0>=0);markCalBtn('b_el45',j.elp45>=0);markCalBtn('b_el90',j.elp90>=0);
 markCalBtn('b_el135',j.elp135>=0);markCalBtn('b_el180',j.elp180>=0);
-ip.textContent=j.ip;mode.textContent=j.wifiMode;
+ip.textContent=j.ip;document.getElementById('apip').textContent=j.apIp||'-';mode.textContent=j.wifiMode;
 rssi.textContent=(j.rssi===null?'-':j.rssi+' dBm');
 sig.textContent=j.signal||'-';
 btstate.textContent=j.build?.bluetooth===false?'Отключён в сборке':j.btConnected?'CONNECTED':'DISCONNECTED';

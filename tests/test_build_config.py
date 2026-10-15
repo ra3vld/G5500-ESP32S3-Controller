@@ -23,7 +23,7 @@ class BuildConfigTests(unittest.TestCase):
             if path.suffix in {'.hpp', '.h', '.cpp', '.ino', '.csv'} and not path.name.endswith('.ino.cpp'):
                 shutil.copy2(path, self.source / path.name)
         (self.root / 'tools').mkdir()
-        for name in ['build_platformio.py', 'prepare_sketch.py']:
+        for name in ['build_platformio.py', 'prepare_sketch.py', 'generate_web_assets.py']:
             shutil.copy2(ROOT / 'tools' / name, self.root / 'tools' / name)
         shutil.copy2(ROOT / 'platformio.ini', self.root / 'platformio.ini')
 

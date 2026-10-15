@@ -9,6 +9,7 @@ const source=fs.readFileSync(path.join(root,'G5500_Fork/web_page.hpp'),'utf8');
 const html=source.split('R"HTML(')[1].split(')HTML";')[0];
 const status=JSON.parse(execFileSync(path.join(root,'build/simulator'),{input:'step 0\n',encoding:'utf8'}).trim()).state;
 status.ssid='Saved network';
+status.wifiMode='Wi-Fi Client';status.apIp='-';
 
 (async()=>{
  const browser=await chromium.launch({...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),headless:true,args:['--no-sandbox']});
@@ -34,6 +35,11 @@ status.ssid='Saved network';
   });
   await page.goto('http://controller.test/');
   await page.waitForFunction(()=>document.getElementById('ssid').value==='Saved network');
+  assert.equal(await page.locator('#apip').textContent(),'-');
+  assert.equal(await page.locator('#mode').textContent(),'Wi-Fi Client');
+  status.wifiMode='Access Point';status.apIp='192.168.4.1';
+  await page.waitForFunction(()=>document.getElementById('apip').textContent==='192.168.4.1');
+  assert.equal(await page.locator('#mode').textContent(),'Access Point');
   const ssid='Тестовая сеть & +',password='dummy=&+?% password';
   await page.locator('#ssid').fill(ssid);
   await page.locator('#pass').fill(password);
@@ -75,6 +81,6 @@ status.ssid='Saved network';
   await page.clock.runFor(3000);
   assert.ok(statusRequests<=initialStatusRequests+1,'status polling must not overlap requests');
   assert.deepEqual(errors,[]);
-  console.log('PASS: Wi-Fi POST, encoded credentials, failure/success, stalled save timeout, duplicate-save guard and single status request');
+  console.log('PASS: STA/AP status, Wi-Fi POST, encoded credentials, failure/success, stalled save timeout, duplicate-save guard and single status request');
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

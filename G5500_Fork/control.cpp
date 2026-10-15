@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cerrno>
+#include <charconv>
 #include <cstdio>
 namespace forkrot {
 namespace {
@@ -180,6 +181,13 @@ void Controller::stop(int axis) {
     }
   }
 }
+void Controller::stopNow(int axis, uint32_t now) {
+  if (axis < -1 || axis > 1) return;
+  stop(axis);
+  // Apply STOP without running unrelated tick paths (which can set a fault
+  // string). Preserve output()'s reverse dead-time and previous direction.
+  for (unsigned i = 0; i < 2; ++i) if (axis < 0 || unsigned(axis) == i) output(i, 0, now);
+}
 Result Controller::execute(uint32_t now) {
   expire(now);
   if (presetActive) {
@@ -271,14 +279,14 @@ Result Controller::preset(unsigned slot, uint32_t now) {
   }
   return result;
 }
-Result Controller::sequence(const std::vector<Target> &points, uint32_t interval, uint32_t now) {
+Result Controller::sequence(const Target *points, size_t count, uint32_t interval, uint32_t now) {
   expire(now);
-  if (points.empty() || points.size() > 16 || interval < kMinimumSequenceIntervalMs ||
+  if (!count || count > 16 || interval < kMinimumSequenceIntervalMs ||
       interval > kMaximumSequenceIntervalMs) {
     return Result::Invalid;
   }
-  for (auto point : points) {
-    if (!valid(point)) {
+  for (size_t i = 0; i < count; ++i) {
+    if (!valid(points[i])) {
       return Result::Invalid;
     }
   }
@@ -288,14 +296,14 @@ Result Controller::sequence(const std::vector<Target> &points, uint32_t interval
   cancelSequence();
   sequenceIntervalMs_ = interval;
   if (mode == Mode::Manual) {
-    pendingSequence_ = points;
+    pendingSequence_.assign(points, count);
     pending = points[0];
     pendingValid = true;
     return Result::Pending;
   }
   auto result = start(points[0], now);
   if (result == Result::Ok) {
-    sequence_ = points;
+    sequence_.assign(points, count);
     sequenceIndex_ = 0;
     sequenceAdvancedAt_ = now;
     pendingValid = false;
@@ -448,23 +456,21 @@ void Controller::tick(uint32_t now) {
   }
 }
 
-bool number(const std::string &text, float &result) {
-  if (text.empty()) {
-    return false;
+bool number(std::string_view text, float &result) {
+  while (!text.empty() && (text.front() == ' ' || text.front() == '\t' || text.front() == '\r' || text.front() == '\n')) text.remove_prefix(1);
+  while (!text.empty() && (text.back() == ' ' || text.back() == '\t' || text.back() == '\r' || text.back() == '\n')) text.remove_suffix(1);
+  if (!text.empty() && text.front() == '+') {
+    text.remove_prefix(1);
+    if (!text.empty() && (text.front() == '+' || text.front() == '-')) return false;
   }
-  char *end = nullptr;
-  errno = 0;
-  std::string value = text;
-  std::replace(value.begin(), value.end(), ',', '.');
-  result = std::strtof(value.c_str(), &end);
-  if (end == value.c_str() || errno || !std::isfinite(result)) {
-    return false;
-  }
-  while (*end == ' ' || *end == '\r' || *end == '\n' || *end == '\t') {
-    ++end;
-  }
-  return *end == 0;
+  // Bounded decimal input, including the decimal comma used by R4UAB.
+  if (text.empty() || text.size() > 63) return false;
+  char value[64];
+  for (size_t i = 0; i < text.size(); ++i) value[i] = text[i] == ',' ? '.' : text[i];
+  const auto parsed = std::from_chars(value, value + text.size(), result);
+  return parsed.ec == std::errc() && parsed.ptr == value + text.size() && std::isfinite(result);
 }
+
 float heading(float angle) {
   angle = std::fmod(angle, 360.f);
   return angle < 0 ? angle + 360 : angle;

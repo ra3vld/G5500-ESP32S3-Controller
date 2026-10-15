@@ -4,6 +4,7 @@
 #include "storage.hpp"
 #include "esp_system.h"
 #include "byte_log.hpp"
+#include "json_writer.hpp"
 namespace forkrot {
 enum class RssiPeriod { Hour, Day, Week, Month, Year };
 class Diagnostics {
@@ -21,9 +22,13 @@ public:
   void addResetHistoryEntry() {
     storage_.addResetHistoryEntry((int)bootResetReason, bootResetReasonText);
   }
-  String historyJson(RssiPeriod period);
+  bool writeHistoryJson(JsonWriter &j, RssiPeriod period);
   void diagClear();
   String diagSnapshot();
+#if SELECTED_BOARD == BOARD_ESP32
+  size_t copyLog(char *out, size_t capacity) const { return diagLog_.copyTo(out, capacity); }
+#endif
+  void dbgView(std::string_view text, bool newline = false);
   void dbgPrint(const String &s);
   void dbgPrintln(const String &s);
   void dbgPstRx(const String &s);
@@ -38,7 +43,7 @@ private:
   String resetReasonToText(esp_reset_reason_t r);
   void rssiPush(int8_t *buf, uint16_t size, uint16_t &pos, uint16_t &count, int8_t v);
   int8_t rssiAvg(int32_t sum, uint16_t cnt);
-  String rssiHistoryJson(const int8_t *buf, uint16_t size, uint16_t pos, uint16_t count,
+  bool rssiHistoryJson(JsonWriter &j, const int8_t *buf, uint16_t size, uint16_t pos, uint16_t count,
                          const char *range);
   Storage &storage_;
   RssiHistory rssi_;

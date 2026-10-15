@@ -1,22 +1,108 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "network.hpp"
+#include "wifi_memory.hpp"
+#include "tcp_memory.hpp"
+#include "runtime_metrics.hpp"
+#include <esp_app_desc.h>
 #include <cstdio>
+#include "write_budget.hpp"
+#include <cerrno>
 namespace forkrot {
 using namespace board;
-void Network::sendHeapDiagnostics() {
-  char reply[320];
-  std::snprintf(reply, sizeof reply,
-      "HEAP free=%lu min=%lu max=%lu beforeBT=%lu afterBT=%lu afterAP=%lu afterWiFi=%lu setup=%lu\r\n"
-      "WIFI status=%d savedSSID=%s NVS=%s BTready=%s BTclient=%s\r\n",
-      static_cast<unsigned long>(heapFreeBytes()), static_cast<unsigned long>(heapMinBytes()),
-      static_cast<unsigned long>(heapMaxBlockBytes()), static_cast<unsigned long>(heapBeforeBt_),
-      static_cast<unsigned long>(heapAfterBt_), static_cast<unsigned long>(heapAfterAp_),
-      static_cast<unsigned long>(heapAfterWifi_), static_cast<unsigned long>(heapAfterSetup_),
-      int(WiFi.status()), credentials_.wifiSsid.length() ? "yes" : "no",
-      diagnostics_.wifiCredentialsReadOk() ? "OK" : "unavailable",
-      btReady_ ? "yes" : "no", bluetooth_.connected() ? "yes" : "no");
-  if (gsReplyPort == GS_REPLY_USB) Serial0.print(reply); // no growing String or log snapshot
-  else bluetooth_.send(reply);
+void Network::serviceHeapDiagnostics() {
+  heapDiagnostics_.service(millis(),
+      [this](uint8_t page, char *reply, size_t capacity) {
+        return formatHeapDiagnostics(page, reply, capacity);
+      }, [this](DiagnosticStream::Port port, const char *data, size_t size) -> size_t {
+        if (port == DiagnosticStream::Port::Bluetooth)
+          return bluetooth_.send(std::string_view(data, size)) ? size : 0;
+        const int available = Serial0.availableForWrite();
+        if (available <= 0) return 0;
+        const size_t count = size_t(available) < size ? size_t(available) : size;
+        return Serial0.write(reinterpret_cast<const uint8_t *>(data), count);
+      });
+}
+int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
+  switch (page) {
+  case 0: {
+    char elf[13];
+    const auto *app = esp_app_get_description();
+    for (unsigned i = 0; i < 6; ++i)
+      std::snprintf(elf + i * 2, sizeof elf - i * 2, "%02x", unsigned(app->app_elf_sha256[i]));
+    return std::snprintf(reply, capacity,
+        "HEAP free=%lu min=%lu max=%lu beforeBT=%lu afterBT=%lu afterAP=%lu afterWiFi=%lu setup=%lu elf=%s\r\n",
+        static_cast<unsigned long>(heapFreeBytes()), static_cast<unsigned long>(heapMinBytes()),
+        static_cast<unsigned long>(heapMaxBlockBytes()), static_cast<unsigned long>(heapBeforeBt_),
+        static_cast<unsigned long>(heapAfterBt_), static_cast<unsigned long>(heapAfterAp_),
+        static_cast<unsigned long>(heapAfterWifi_), static_cast<unsigned long>(heapAfterSetup_), elf);
+  }
+  case 1:
+    return std::snprintf(reply, capacity,
+        "WIFI status=%d savedSSID=%s NVS=%s BTready=%s BTclient=%s BTlink=%s profile=%s\r\n",
+        int(WiFi.status()), credentials_.wifiSsid.length() ? "yes" : "no",
+        diagnostics_.wifiCredentialsReadOk() ? "OK" : "unavailable",
+        btReady_ ? "yes" : "no", bluetooth_.connected() ? "yes" : "no",
+        bluetooth_.linkConnected() ? "yes" : "no", compactWifi_ ? "compact" : "standard");
+  case 2: {
+    const IPAddress ap = (WiFi.getMode() & WIFI_AP) ? WiFi.softAPIP() : IPAddress();
+    const IPAddress sta = WiFi.localIP();
+    return std::snprintf(reply, capacity, "IP ap=%u.%u.%u.%u sta=%u.%u.%u.%u rssi=%d\r\n",
+        unsigned(ap[0]), unsigned(ap[1]), unsigned(ap[2]), unsigned(ap[3]),
+        unsigned(sta[0]), unsigned(sta[1]), unsigned(sta[2]), unsigned(sta[3]), int(WiFi.RSSI()));
+  }
+  case 3:
+    return std::snprintf(reply, capacity,
+        "HTTP accepted=%lu rxFailures=%lu rejected=%lu txFailures=%lu cause=%s errno=%d bytes=%lu/%lu requests=%lu\r\n",
+        static_cast<unsigned long>(http_.accepted),
+        static_cast<unsigned long>(http_.readFailures), static_cast<unsigned long>(http_.rejected),
+        static_cast<unsigned long>(http_.writeFailures), http_.writeCause, http_.writeErrno,
+        static_cast<unsigned long>(http_.writeBytes), static_cast<unsigned long>(http_.writeSize),
+        static_cast<unsigned long>(http_.requests));
+  case 4: {
+    const auto tcp = tcpMemory();
+    return std::snprintf(reply, capacity, "TCP stats=%s active=%u closing=%u timewait=%u pcbBytes=%u\r\n",
+        tcp.available ? "OK" : "unavailable", unsigned(tcp.active), unsigned(tcp.closing),
+        unsigned(tcp.timewait), unsigned(tcp.pcbBytes));
+  }
+  case 5: {
+    const auto mode = WiFi.getMode();
+    return std::snprintf(reply, capacity, "WIFI runtimeMode=%s apClients=%u\r\n",
+        mode == WIFI_STA ? "STA" : mode == WIFI_AP ? "AP" : mode == WIFI_AP_STA ? "AP+STA" : "OFF",
+        (mode & WIFI_AP) ? unsigned(WiFi.softAPgetStationNum()) : 0);
+  }
+  case 6:
+    return std::snprintf(reply, capacity,
+        "RUNTIME allocHook=%s allocFailures=%lu maxFailed=%lu loopMaxUs=%lu loopsOver20ms=%lu stackMin=%lu btRxDropped=%lu\r\n",
+        runtimeMetrics.hookReady ? "OK" : "unavailable",
+        static_cast<unsigned long>(runtimeMetrics.allocationFailures.load()),
+        static_cast<unsigned long>(runtimeMetrics.largestFailedAllocation.load()),
+        static_cast<unsigned long>(runtimeMetrics.loopMaxUs),
+        static_cast<unsigned long>(runtimeMetrics.loopsOver20ms),
+        static_cast<unsigned long>(uxTaskGetStackHighWaterMark(nullptr)),
+        static_cast<unsigned long>(bluetooth_.droppedCommands()));
+  case 7: case 8: {
+    const auto &failure = runtimeMetrics.failures[page - 7];
+    if (!failure.ready()) return 0;
+    return std::snprintf(reply, capacity,
+        "OOM size=%lu caps=%lx free=%lu max=%lu task=%s fn=%s pc=%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%08lx\r\n",
+        static_cast<unsigned long>(failure.size), static_cast<unsigned long>(failure.caps),
+        static_cast<unsigned long>(failure.freeBytes), static_cast<unsigned long>(failure.largestBlock),
+        failure.task, failure.function,
+        static_cast<unsigned long>(failure.pc[0]), static_cast<unsigned long>(failure.pc[1]),
+        static_cast<unsigned long>(failure.pc[2]), static_cast<unsigned long>(failure.pc[3]),
+        static_cast<unsigned long>(failure.pc[4]), static_cast<unsigned long>(failure.pc[5]),
+        static_cast<unsigned long>(failure.pc[6]), static_cast<unsigned long>(failure.pc[7]));
+  }
+  default: {
+    constexpr uint32_t psramCaps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+    const auto total = heap_caps_get_total_size(psramCaps);
+    return std::snprintf(reply, capacity, "PSRAM available=%s total=%lu free=%lu min=%lu max=%lu\r\n",
+        total ? "yes" : "no", static_cast<unsigned long>(total),
+        static_cast<unsigned long>(heap_caps_get_free_size(psramCaps)),
+        static_cast<unsigned long>(heap_caps_get_minimum_free_size(psramCaps)),
+        static_cast<unsigned long>(heap_caps_get_largest_free_block(psramCaps)));
+  }
+  }
 }
 void Network::sendReply(const String &s) {
   if (gsReplyPort == GS_REPLY_BLUETOOTH) {
@@ -30,9 +116,9 @@ void Network::sendReply(const String &s) {
   hardware_.flashTx();
 }
 
-void Network::processGs232Command(String cmd) {
+void Network::processGs232Command(std::string_view input) {
   actions_.updatePosition();
-  auto packet = runtime_.protocol.line(cmd.c_str(), millis());
+  auto packet = runtime_.protocol.line(input, millis());
   if (packet.matched) {
     if (packet.result == forkrot::Result::Ok || packet.result == forkrot::Result::Pending) {
       runtime_.targetValid = true;
@@ -46,6 +132,8 @@ void Network::processGs232Command(String cmd) {
     return;
   }
 
+  if (input.size() > 32) return;
+  String cmd(input.data(), input.size());
   cmd.trim();
   if (!cmd.length()) {
     return;
@@ -88,20 +176,23 @@ void Network::processGs232Command(String cmd) {
     return;
   }
   if (cmd == "H4") {
-    sendHeapDiagnostics();
+    heapDiagnostics_.start(gsReplyPort == GS_REPLY_USB ? DiagnosticStream::Port::Usb
+                                                      : DiagnosticStream::Port::Bluetooth, millis());
     return;
   }
 }
 
 void Network::handlePstRotatorSerial() {
   static forkrot::LineBuffer receiver;
-  std::string command;
-  while (Serial0.available()) {
+  std::string_view command;
+  const uint32_t started = millis();
+  unsigned commands = 0;
+  for (unsigned bytes = 0; bytes < 128 && commands < 4 && Serial0.available() && uint32_t(millis() - started) < 2; ++bytes) {
     if (receiver.feed((char)Serial0.read(), command)) {
+      ++commands;
       gsReplyPort = GS_REPLY_USB;
-      String cmd(command.c_str());
-      diagnostics_.dbgPstRx(cmd);
-      processGs232Command(cmd);
+      diagnostics_.dbgView("[PST RX] "); diagnostics_.dbgView(command, true);
+      processGs232Command(command);
     }
   }
 }
@@ -109,25 +200,32 @@ void Network::handlePstRotatorSerial() {
 void Network::handleBluetoothSerial() {
   uint32_t dropped = bluetooth_.droppedCommands();
   if (dropped != lastBtDropped_) {
-    diagnostics_.dbgPrintln("[BT RX] dropped complete commands: queue full");
+    diagnostics_.dbgPrintln("[BT RX] dropped complete commands: queue capacity");
     lastBtDropped_ = dropped;
   }
-  std::string command;
-  while (bluetooth_.receive(command)) {
+  char bytes[512]; size_t size;
+  const uint32_t started = millis();
+  for (unsigned count = 0; count < 4 && uint32_t(millis() - started) < 2 && bluetooth_.receive(bytes, sizeof bytes, size); ++count) {
     gsReplyPort = GS_REPLY_BLUETOOTH;
-    String cmd(command.c_str());
-    diagnostics_.dbgPrint("[BT RX] ");
-    diagnostics_.dbgPrintln(cmd);
-    processGs232Command(cmd);
+    std::string_view command(bytes, size);
+    diagnostics_.dbgView("[BT RX] "); diagnostics_.dbgView(command, true);
+    processGs232Command(command);
   }
 }
 
 void Network::rotctldSend(const String &s) {
   bool sent = false;
   if (rotctldClient_ && rotctldClient_.connected()) {
-    rotctldClient_.print(s);
-    hardware_.flashTx();
-    sent = true;
+    const int socket = rotctldClient_.fd();
+    const auto written = writeWithinBudget(s.c_str(), s.length(), millis(), 5,
+        [socket](const char *data, size_t size) {
+          int count = ::send(socket, data, size, MSG_DONTWAIT);
+          if (count >= 0) return count;
+          return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR || errno == ENOMEM || errno == ENOBUFS ? -2 : -1;
+        }, [] { return millis(); }, [] { delay(1); });
+    sent = written == s.length();
+    if (sent) hardware_.flashTx();
+    else rotctldClient_.stop(); // no partial reply carried into the next session
   }
 #if FORK_NATIVE_USB
   if (sent) {
@@ -140,9 +238,9 @@ void Network::rotctldSend(const String &s) {
 #endif
 }
 
-void Network::processRotctldCommand(String cmd) {
+void Network::processRotctldCommand(std::string_view input) {
   actions_.updatePosition();
-  auto packet = runtime_.protocol.line(cmd.c_str(), millis(), true);
+  auto packet = runtime_.protocol.line(input, millis(), true);
   if (packet.matched) {
     if (packet.result == forkrot::Result::Ok || packet.result == forkrot::Result::Pending) {
       runtime_.targetValid = true;
@@ -156,6 +254,8 @@ void Network::processRotctldCommand(String cmd) {
     return;
   }
 
+  if (input.size() > 32) return;
+  String cmd(input.data(), input.size());
   cmd.trim();
   if (!cmd.length()) {
     return;
@@ -211,7 +311,6 @@ void Network::processRotctldCommand(String cmd) {
   // Quit current network session.
   if (cmd == "q" || cmd == "Q" || lower == "\\quit" || lower == "quit") {
     rotctldSend("RPRT 0\n");
-    delay(5);
     rotctldClient_.stop();
     return;
   }
@@ -254,169 +353,85 @@ void Network::handleRotctldTcp() {
     }
   }
 
-  std::string command;
-  while (rotctldClient_.connected() && rotctldClient_.available()) {
-    if (receiver.feed((char)rotctldClient_.read(), command)) {
-      processRotctldCommand(String(command.c_str()));
+  std::string_view command;
+  const uint32_t started = millis();
+  unsigned commands = 0;
+  for (unsigned bytes = 0; bytes < 128 && commands < 4 && rotctldClient_ && uint32_t(millis() - started) < 2; ++bytes) {
+    char byte;
+    const int count = ::recv(rotctldClient_.fd(), &byte, 1, MSG_DONTWAIT);
+    if (count != 1) {
+      if (count == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) rotctldClient_.stop();
+      break;
     }
+    if (receiver.feed(byte, command)) { ++commands; processRotctldCommand(command); }
   }
 }
 
 void Network::startWifi() {
-  // SAFE Wi-Fi logic:
-  // 1) Start the controller AP.
-  // 2) If saved home Wi-Fi credentials exist, try STA only ONCE.
-  // 3) If home Wi-Fi is unavailable, stop STA completely and return to AP-only.
-  // This prevents repeated STA scans from making the SoftAP disappear.
-
   WiFi.persistent(false);
+#if BLUETOOTH_BACKEND == BT_ESP32_SPP
+  const esp_err_t initResult = initCompactWifi();
+  compactWifi_ = initResult == ESP_OK;
+  diagnostics_.dbgPrintln(compactWifi_ ? "[WIFI] compact buffers: static RX 2, dynamic RX/TX 4/2, aggregation off"
+                                      : "[WIFI] compact init failed; trying Arduino defaults");
+#endif
   WiFi.setSleep(false);
-
-  // Start with AP only.
-  WiFi.mode(WIFI_AP);
-  delay(250);
-
-  IPAddress apIP(192, 168, 4, 1);
-  IPAddress apGW(192, 168, 4, 1);
-  IPAddress apMask(255, 255, 255, 0);
-  WiFi.softAPConfig(apIP, apGW, apMask);
-
-  bool apOk = credentials_.apPass.length() >= 8 ? WiFi.softAP(AP_SSID, credentials_.apPass.c_str())
-                                                : WiFi.softAP(AP_SSID);
-  delay(300);
-
-  diagnostics_.dbgPrintln("[V1559] AP-only start");
-  diagnostics_.dbgPrint("[V1559] AP start = ");
-  diagnostics_.dbgPrintln(apOk ? "OK" : "FAILED");
-  diagnostics_.dbgPrint("[V1559] AP IP = ");
-  diagnostics_.dbgPrintln(WiFi.softAPIP().toString());
-  heapAfterAp_ = heapFreeBytes();
-
-  // Try home Wi-Fi once, only if credentials are stored.
+  // The policy below owns retries; Arduino's event callback must not launch
+  // an independent reconnect after we deliberately return to AP-only mode.
+  WiFi.setAutoReconnect(false);
   if (credentials_.wifiSsid.length()) {
-    diagnostics_.dbgPrint("[V1559] one STA attempt: ");
-    diagnostics_.dbgPrintln(credentials_.wifiSsid);
-
-    WiFi.mode(WIFI_AP_STA);
-    delay(100);
-    const auto initialStatus = WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
-    diagnostics_.dbgPrintln(String("[WIFI] begin status=") + String(int(initialStatus)));
-
-    uint32_t t0 = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 8000) {
-      delay(100);
+    diagnostics_.dbgPrintln("[WIFI] starting STA; AP reserved for fallback");
+    if (WiFi.mode(WIFI_STA)) {
+      WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
+      const uint32_t started = millis();
+      while (WiFi.status() != WL_CONNECTED && uint32_t(millis() - started) < WifiFallback::AttemptMs)
+        delay(100);
     }
-
-    if (WiFi.status() == WL_CONNECTED) {
-      diagnostics_.dbgPrint("[V1559] LAN connected = ");
-      diagnostics_.dbgPrintln(WiFi.localIP().toString());
-      diagnostics_.dbgPrint("[V1559] AP remains = ");
-      diagnostics_.dbgPrintln(WiFi.softAPIP().toString());
-    } else {
-      diagnostics_.dbgPrintln(String("[WIFI] STA attempt failed, status=") + String(int(WiFi.status())));
-      // Home network not available: completely stop STA and restore AP-only.
-      WiFi.disconnect(true, false);
-      delay(150);
-      WiFi.mode(WIFI_AP);
-      delay(150);
-
-      WiFi.softAPConfig(apIP, apGW, apMask);
-      if (credentials_.apPass.length() >= 8) {
-        WiFi.softAP(AP_SSID, credentials_.apPass.c_str());
-      } else {
-        WiFi.softAP(AP_SSID);
-      }
-      delay(250);
-
-      diagnostics_.dbgPrintln("[V1559] LAN unavailable -> AP ONLY");
-      diagnostics_.dbgPrint("[V1559] AP restored = ");
-      diagnostics_.dbgPrintln(WiFi.softAPIP().toString());
-    }
-  } else {
-    diagnostics_.dbgPrintln("[V1559] no saved LAN credentials -> AP ONLY");
   }
-
+  const bool connected = WiFi.status() == WL_CONNECTED;
+  if (connected) {
+    diagnostics_.dbgPrint("[WIFI] STA connected, AP off, IP = ");
+    diagnostics_.dbgPrintln(WiFi.localIP().toString());
+  } else {
+    restoreApOnlyAfterReconnectFail();
+  }
+  wifiFallback_.reset(millis(), connected);
   tcpServer_.begin();
   actions_.setupWeb();
   heapAfterWifi_ = heapFreeBytes();
-
-  diagnostics_.dbgPrintln(
-      "[WIFI] safe auto-reconnect: 30 s interval, 8 s attempt, AP-only fallback");
+  diagnostics_.dbgPrintln("[WIFI] STA preferred; AP fallback, retry 30s, attempt 8s");
 }
 
 void Network::restoreApOnlyAfterReconnectFail() {
-  // Stop the failed STA side completely and return to the same stable
-  // AP-only state used by startWifi(). No long delay is used here because
-  // rotator control must continue to run.
-  WiFi.disconnect(true, false);
-  WiFi.mode(WIFI_AP);
-
-  IPAddress apIP(192, 168, 4, 1);
-  IPAddress apGW(192, 168, 4, 1);
-  IPAddress apMask(255, 255, 255, 0);
-  WiFi.softAPConfig(apIP, apGW, apMask);
-
-  if (credentials_.apPass.length() >= 8) {
-    WiFi.softAP(AP_SSID, credentials_.apPass.c_str());
-  } else {
-    WiFi.softAP(AP_SSID);
+  // No driver deinit/reinit: keep the compact buffer configuration. The mode
+  // transition stops the failed STA and releases its connection state.
+  if (WiFi.getMode() & WIFI_STA) WiFi.disconnect(false, false);
+  if (!WiFi.mode(WIFI_AP)) {
+    diagnostics_.dbgPrintln("[WIFI] AP mode failed");
+    return;
   }
+  const IPAddress apIP(192, 168, 4, 1), apMask(255, 255, 255, 0);
+  const bool configured = WiFi.softAPConfig(apIP, apIP, apMask);
+  const bool started = credentials_.apPass.length() >= 8
+      ? WiFi.softAP(AP_SSID, credentials_.apPass.c_str()) : WiFi.softAP(AP_SSID);
+  heapAfterAp_ = heapFreeBytes(); // zero means AP has not been started this boot
+  diagnostics_.dbgPrintln(configured && started ? "[WIFI] fallback AP ready at 192.168.4.1"
+                                               : "[WIFI] fallback AP failed");
 }
 
 void Network::serviceWifiReconnect() {
-  if (!credentials_.wifiSsid.length()) {
-    return;
-  }
-
-  uint32_t now = millis();
-
-  // LAN came back: remain in AP+STA and arm the timer for a future loss.
-  if (WiFi.status() == WL_CONNECTED) {
-    if (wifiReconnectTryActive) {
-      diagnostics_.dbgPrint("[WIFI] reconnect OK, LAN IP = ");
-      diagnostics_.dbgPrintln(WiFi.localIP().toString());
-    }
-    wifiReconnectTryActive = false;
-    wifiReconnectMs = now;
-    return;
-  }
-
-  // A reconnect attempt is running. Give it at most 8 seconds.
-  // This is non-blocking: the normal control loop continues to execute.
-  if (wifiReconnectTryActive) {
-    if ((uint32_t)(now - wifiReconnectTryStartedMs) < WIFI_RECONNECT_TIMEOUT_MS) {
-      return;
-    }
-
-    diagnostics_.dbgPrintln("[WIFI] reconnect timeout -> restore AP ONLY");
-
-    wifiReconnectTryActive = false;
-    wifiReconnectMs = now;
+  const auto action = wifiFallback_.update(millis(), credentials_.wifiSsid.length() != 0,
+      WiFi.status() == WL_CONNECTED, (WiFi.getMode() & WIFI_AP) != 0);
+  if (action == WifiAction::StopAp) {
+    if (WiFi.mode(WIFI_STA)) diagnostics_.dbgPrintln("[WIFI] STA connected; fallback AP stopped");
+    else diagnostics_.dbgPrintln("[WIFI] failed to stop fallback AP");
+  } else if (action == WifiAction::StartAp) {
     restoreApOnlyAfterReconnectFail();
-    return;
+  } else if (action == WifiAction::StartSta) {
+    diagnostics_.dbgPrintln("[WIFI] STA reconnect attempt; AP remains during attempt");
+    if (WiFi.mode(WIFI_AP_STA))
+      WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
   }
-
-  // First observation after boot/loss: start the 30-second retry interval.
-  if (wifiReconnectMs == 0) {
-    wifiReconnectMs = now;
-    return;
-  }
-
-  if ((uint32_t)(now - wifiReconnectMs) < WIFI_RECONNECT_MS) {
-    return;
-  }
-
-  // One controlled STA attempt. AP remains available while the attempt runs.
-  diagnostics_.dbgPrint("[WIFI] reconnect attempt: ");
-  diagnostics_.dbgPrintln(credentials_.wifiSsid);
-
-  if (WiFi.getMode() != WIFI_AP_STA) {
-    WiFi.mode(WIFI_AP_STA);
-  }
-
-  wifiReconnectTryActive = true;
-  wifiReconnectTryStartedMs = now;
-  WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
 }
 
 void Network::setupLoggerUdp() {
@@ -433,22 +448,15 @@ void Network::setupLoggerUdp() {
 }
 
 void Network::serviceLoggerUdp() {
-  for (WiFiUDP *socket : {&n1mmUdp, &pstUdp}) {
-    for (unsigned count = 0; count < 4; ++count) {
-      int size = socket->parsePacket();
-      if (size <= 0) {
-        break;
-      }
-      IPAddress sender = socket->remoteIP();
-      if (size > 4096) {
-        while (socket->available()) {
-          socket->read();
-        }
-        continue;
-      }
-      std::string text(size, '\0');
-      int got = socket->read(reinterpret_cast<uint8_t *>(&text[0]), size);
-      text.resize(got > 0 ? got : 0);
+  const uint32_t started = millis();
+  for (DatagramSocket *socket : {&n1mmUdp, &pstUdp}) {
+    for (unsigned count = 0; count < 2 && uint32_t(millis() - started) < 2; ++count) {
+      Datagram received;
+      const auto result = socket->receive(received);
+      if (result == DatagramResult::Empty) break;
+      if (result == DatagramResult::Dropped) continue;
+      const IPAddress sender(received.address);
+      const auto text = received.text();
       auto packet = runtime_.protocol.datagram(text, millis());
       if (packet.result == forkrot::Result::Invalid) {
         diagnostics_.dbgPrintln("[UDP] rejected invalid packet");
@@ -461,7 +469,7 @@ void Network::serviceLoggerUdp() {
           runtime_.targetValid = true;
         }
       }
-      if (packet.matched && text.find("N1MMRotor") != std::string::npos) {
+      if (packet.matched && text.find("N1MMRotor") != std::string_view::npos) {
         bool known = false;
         for (auto peer : reportPeers) {
           if (peer.used && peer.address == sender) {
@@ -474,29 +482,23 @@ void Network::serviceLoggerUdp() {
         }
       }
       if (!packet.reply.empty()) {
-        socket->beginPacket(sender, runtime_.loggerSettings.pstPort + 1);
-        socket->write(reinterpret_cast<const uint8_t *>(packet.reply.data()), packet.reply.size());
-        socket->endPacket();
-        hardware_.flashTx();
+        if (socket->send(uint32_t(sender), runtime_.loggerSettings.pstPort + 1, packet.reply))
+          hardware_.flashTx();
       }
     }
   }
   if (uint32_t(millis() - lastReportMs) >= 500) {
     lastReportMs = millis();
-    String message = runtime_.protocol.positionReport(runtime_.currentAz).c_str();
+    const auto message = runtime_.protocol.positionReport(runtime_.currentAz);
     for (auto peer : reportPeers) {
       if (peer.used) {
-        n1mmUdp.beginPacket(peer.address, runtime_.loggerSettings.reportPort);
-        n1mmUdp.print(message);
-        n1mmUdp.endPacket();
+        n1mmUdp.send(uint32_t(peer.address), runtime_.loggerSettings.reportPort, message);
       }
     }
     IPAddress host;
     if (!runtime_.loggerSettings.reportHost.empty() &&
-        host.fromString(runtime_.loggerSettings.reportHost.c_str())) {
-      n1mmUdp.beginPacket(host, runtime_.loggerSettings.reportPort);
-      n1mmUdp.print(message);
-      n1mmUdp.endPacket();
+        host.fromString(runtime_.loggerSettings.reportHost.c_str()) && host.type() == IPv4) {
+      n1mmUdp.send(uint32_t(host), runtime_.loggerSettings.reportPort, message);
     }
   }
 }

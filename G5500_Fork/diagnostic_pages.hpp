@@ -3,7 +3,7 @@
 #ifndef ARDUINO
 #define PROGMEM
 #endif
-static const char ADC_TEST_PAGE[] PROGMEM = R"HTML(
+static constexpr char ADC_TEST_PAGE[] PROGMEM = R"HTML(
 <!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>G5500 ADC TEST v1.6.23</title>
@@ -114,7 +114,7 @@ setInterval(upd,350);upd();draw();
 </script></body></html>
 )HTML";
 
-static const char RESET_DIAG_PAGE[] PROGMEM = R"HTML(
+static constexpr char RESET_DIAG_PAGE[] PROGMEM = R"HTML(
 <!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>G5500 RESET DIAG v1.6.23</title>
@@ -209,7 +209,7 @@ setInterval(upd,1000);upd();histUpd();
 </script></body></html>
 )HTML";
 
-static const char DIAG_PAGE[] PROGMEM = R"HTML(
+static constexpr char DIAG_PAGE[] PROGMEM = R"HTML(
 <!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>G5500 Diagnostic Console v1.6.23</title>

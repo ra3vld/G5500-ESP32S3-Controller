@@ -3,6 +3,8 @@
 import argparse
 import pathlib
 import shutil
+import subprocess
+import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--target', choices=['s3', 's2', 's2-mini', 'esp32'], required=True)
@@ -10,6 +12,7 @@ p.add_argument('--output', type=pathlib.Path)
 a = p.parse_args()
 out = a.output or ROOT / 'build' / ('arduino-' + a.target) / 'G5500_Fork'
 source = ROOT / 'G5500_Fork'
+subprocess.run([sys.executable, str(ROOT / 'tools/generate_web_assets.py'), '--check'], check=True)
 if out.name != source.name:
     p.error('Arduino sketch directory must be named G5500_Fork')
 if out.resolve() == source.resolve():

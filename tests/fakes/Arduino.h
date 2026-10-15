@@ -31,6 +31,12 @@ public:
   }
   const char *c_str() const { return value_.c_str(); }
   size_t length() const { return value_.size(); }
+  void replace(const char *from, const char *to) {
+    const size_t length = std::strlen(from);
+    if (!length) return;
+    for (size_t pos = 0; (pos = value_.find(from, pos)) != std::string::npos; pos += std::strlen(to))
+      value_.replace(pos, length, to);
+  }
   String &operator+=(const String &other) { value_ += other.value_; return *this; }
   String &operator+=(char value) { value_ += value; return *this; }
   friend String operator+(String left, const String &right) { return left += right; }

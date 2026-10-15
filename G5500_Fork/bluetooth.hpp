@@ -2,6 +2,7 @@
 #pragma once
 #include "board.hpp"
 #include "input.hpp"
+#include "packet_queue.hpp"
 #include <Arduino.h>
 #if BLUETOOTH_BACKEND == BT_ESP32_SPP
 #include <esp_spp_api.h>
@@ -15,8 +16,17 @@ class Bluetooth {
 public:
   bool begin();
   bool connected();
-  bool receive(std::string &command);
-  bool send(const String &reply);
+  bool linkConnected();
+  bool macAddress(char (&address)[18]) const;
+  bool receive(char *out, size_t capacity, size_t &size);
+  bool receive(std::string &command) {
+    char bytes[512]; size_t size;
+    if (!receive(bytes, sizeof bytes, size)) return false;
+    command.assign(bytes, size); return true;
+  }
+  bool send(std::string_view reply);
+  bool send(const String &reply) { return send(std::string_view(reply.c_str(), reply.length())); }
+  bool send(const char *reply) { return send(std::string_view(reply)); }
   void service();
   uint32_t droppedCommands() const {
 #if BLUETOOTH_BACKEND == BT_ESP32_SPP
@@ -43,15 +53,19 @@ private:
   void onData(const uint8_t *bytes, size_t size);
   std::atomic<uint32_t> client_{0}, session_{0};
   std::atomic<bool> writing_{false}, congested_{false};
+  // Only GAP callbacks touch the handles; the main loop reads the atomic count.
+#ifdef CONFIG_BTDM_CTRL_BR_EDR_MAX_ACL_CONN
+  static constexpr unsigned ACL_SLOTS = CONFIG_BTDM_CTRL_BR_EDR_MAX_ACL_CONN;
+#else
+  static constexpr unsigned ACL_SLOTS = 2;
+#endif
+  uint32_t aclHandles_[ACL_SLOTS]{}; // handle + 1; zero means unused
+  std::atomic<unsigned> aclCount_{0};
   uint32_t seenSession_ = 0;
-  struct RxLine { std::string command; uint32_t session = 0; };
-  // One producer (Bluetooth callback), one consumer (the main loop).
-  static constexpr unsigned RX_SLOTS = 8;
-  RxLine commands_[RX_SLOTS];
-  std::atomic<uint32_t> rxHead_{0}, rxTail_{0}, rxDropped_{0};
-  static constexpr unsigned TX_SLOTS = 8;
-  String replies_[TX_SLOTS];
-  unsigned txHead_ = 0, txCount_ = 0;
+  PacketQueue<1024, 8> commands_;
+  PacketQueue<512, 8> replies_;
+  std::atomic<uint32_t> rxDropped_{0};
+
 #endif
 };
 }

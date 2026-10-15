@@ -1,5 +1,6 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
+#include "json_writer.hpp"
 #include <Arduino.h>
 #include <Preferences.h>
 #include "runtime.hpp"
@@ -23,7 +24,7 @@ public:
   void loadProfilePresets(Runtime &runtime);
   void saveProfilePresets(const Runtime &runtime);
   void addResetHistoryEntry(int bootResetReason, const String &bootResetReasonText);
-  String resetHistoryJson();
+  bool writeResetHistoryJson(JsonWriter &j);
   void clearResetHistory();
   void saveCalibrationMode(Model model, CalibrationMode mode);
   void saveAzMode(Model model, uint8_t mode);

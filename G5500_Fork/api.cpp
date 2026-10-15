@@ -1,7 +1,6 @@
 #include "api.hpp"
 #include "board.hpp"
-#include <sstream>
-#include <iomanip>
+#include <array>
 #include <cmath>
 #include <cctype>
 #include <cstdio>
@@ -24,14 +23,16 @@ std::string jsonQuote(const std::string &s) {
   return out + '"';
 }
 namespace {
-std::string get(const Form &form, const char *key) {
-  auto it = form.find(key);
-  return it == form.end() ? "" : it->second;
+std::string_view get(FormView form, const char *key) {
+  // Match the previous map adapter: the last duplicate wins.
+  for (size_t i = form.count; i; --i) if (form.entries[i - 1].first == key) return form.entries[i - 1].second;
+  return {};
 }
-bool has(const Form &form, const char *key) {
-  return form.find(key) != form.end();
+bool has(FormView form, const char *key) {
+  for (const auto &entry : form) if (entry.first == key) return true;
+  return false;
 }
-bool integer(const std::string &s, unsigned &v, unsigned lo, unsigned hi) {
+bool integer(std::string_view s, unsigned &v, unsigned lo, unsigned hi) {
   float n;
   if (!number(s, n) || std::floor(n) != n || n < lo || n > hi) {
     return false;
@@ -39,7 +40,7 @@ bool integer(const std::string &s, unsigned &v, unsigned lo, unsigned hi) {
   v = unsigned(n);
   return true;
 }
-bool boolean(const std::string &s, bool &v) {
+bool boolean(std::string_view s, bool &v) {
   if (s == "true" || s == "1") {
     v = true;
     return true;
@@ -50,18 +51,16 @@ bool boolean(const std::string &s, bool &v) {
   }
   return false;
 }
-bool ip(const std::string &s) {
-  std::istringstream st(s);
-  std::string part;
-  int count = 0;
-  while (std::getline(st, part, '.')) {
-    unsigned v;
-    if (!integer(part, v, 0, 255)) {
-      return false;
-    }
-    ++count;
+bool ip(std::string_view s) {
+  for (unsigned i = 0; i < 4; ++i) {
+    auto dot = s.find('.');
+    unsigned value;
+    if (!integer(s.substr(0, dot), value, 0, 255)) return false;
+    if (i == 3) return dot == s.npos;
+    if (dot == s.npos) return false;
+    s.remove_prefix(dot + 1);
   }
-  return count == 4 && !s.empty() && s.back() != '.';
+  return false;
 }
 void writeTargetJson(JsonWriter &json, Target t) {
   json << "{\"az\":";
@@ -152,8 +151,8 @@ std::string stateJson(const Controller &controller, const Protocol &protocol,
   if (!writeStateJson(json, controller, protocol, settings, now)) return "{\"error\":\"status_too_large\"}";
   return std::string(json.data(), json.size());
 }
-Response api(Controller &controller, Protocol &protocol, Settings &settings,
-             const std::string &path, const Form &form, uint32_t now) {
+Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
+                 std::string_view path, FormView form, uint32_t now) {
   Result result = Result::Invalid;
   if (path == "/api/mode") {
     auto m = get(form, "mode");
@@ -174,7 +173,7 @@ Response api(Controller &controller, Protocol &protocol, Settings &settings,
         float az, el = 0;
         if (number(get(form, "az"), az) &&
             (controller.model == Model::G800DXA || number(get(form, "el"), el))) {
-          result = controller.savePreset(slot - 1, get(form, "label"),
+          result = controller.savePreset(slot - 1, std::string(get(form, "label")),
                                          {az, el, true, controller.model == Model::G5500});
         }
       }
@@ -229,13 +228,14 @@ Response api(Controller &controller, Protocol &protocol, Settings &settings,
 
     for (unsigned i=0; i<2; ++i) {
       auto &speed = speeds[i];
-      const std::string prefix = i ? "el" : "az";
+      const char *prefix = i ? "el" : "az";
       auto value = [&](const char *legacy, unsigned &field, unsigned lo, unsigned hi) {
-        std::string key = prefix + char(std::toupper(legacy[0])) + (legacy+1);
+        char key[32];
+        std::snprintf(key, sizeof key, "%s%c%s", prefix, std::toupper(legacy[0]), legacy + 1);
         unsigned aliased = field, prefixed = field;
-        const bool old = i == 0 && has(form, legacy), modern = has(form, key.c_str());
+        const bool old = i == 0 && has(form, legacy), modern = has(form, key);
         if (old) valid = integer(get(form, legacy), aliased, lo, hi) && valid;
-        if (modern) valid = integer(get(form, key.c_str()), prefixed, lo, hi) && valid;
+        if (modern) valid = integer(get(form, key), prefixed, lo, hi) && valid;
         if (old && modern && aliased != prefixed) valid = false;
         if (modern || old) field = modern ? prefixed : aliased;
       };
@@ -286,6 +286,14 @@ Response api(Controller &controller, Protocol &protocol, Settings &settings,
               (result == Result::Ok || result == Result::Pending ? "true" : "false") +
               ",\"result\":" + jsonQuote(Controller::resultName(result)) + "}"};
 }
+Response api(Controller &controller, Protocol &protocol, Settings &settings,
+             const std::string &path, const Form &form, uint32_t now) {
+  std::array<FormArgument, 32> arguments;
+  if (form.size() > arguments.size()) return {400, "{\"ok\":false,\"result\":\"invalid\"}"};
+  size_t count = 0;
+  for (const auto &entry : form) arguments[count++] = {entry.first, entry.second};
+  return apiView(controller, protocol, settings, path, {arguments.data(), count}, now);
+}
 Form decodeForm(const std::string &input) {
   auto decode = [](const std::string &s) {
     std::string json;
@@ -303,13 +311,14 @@ Form decodeForm(const std::string &input) {
     return json;
   };
   Form form;
-  std::istringstream st(input);
-  std::string part;
-  while (std::getline(st, part, '&')) {
+  size_t start = 0;
+  while (start < input.size()) {
+    auto end = input.find('&', start);
+    auto part = input.substr(start, end == input.npos ? input.size() - start : end - start);
     auto pos = part.find('=');
-    if (pos != std::string::npos) {
-      form[decode(part.substr(0, pos))] = decode(part.substr(pos + 1));
-    }
+    if (pos != std::string::npos) form[decode(part.substr(0, pos))] = decode(part.substr(pos + 1));
+    if (end == input.npos) break;
+    start = end + 1;
   }
   return form;
 }

@@ -21,12 +21,14 @@
 
 #include "firmware.hpp"
 #include "application.hpp"
+#include "runtime_metrics.hpp"
 #if SELECTED_BOARD == BOARD_ESP32
 #include <esp_log.h>
 #endif
 namespace forkrot {
 using namespace board;
 void Application::controllerSetup() {
+  beginRuntimeMetrics();
   diagnostics_.readBootReason();
 
   hardware_.beginDirections();
@@ -137,7 +139,7 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln("Display and touch: disabled; Web control and calibration available");
 #endif
   diagnostics_.dbgPrint("[WiFi AP]  ");
-  diagnostics_.dbgPrintln(WiFi.softAPIP().toString());
+  diagnostics_.dbgPrintln((WiFi.getMode() & WIFI_AP) ? WiFi.softAPIP().toString() : "off (STA preferred)");
   if (WiFi.status() == WL_CONNECTED) {
     diagnostics_.dbgPrint("[WiFi LAN] ");
     diagnostics_.dbgPrintln(WiFi.localIP().toString());
@@ -150,6 +152,7 @@ void Application::controllerSetup() {
   network_.captureSetupHeap();
 }
 void Application::controllerLoop() {
+  const uint32_t startedUs = micros();
   updatePosition();
   runtime_.controller.tick(millis()); // expire the hour before accepting any external command
   if (PIN_CONFIRM >= 0 && confirmButton.sample(hardware_.buttonReleased(), millis())) {
@@ -159,6 +162,7 @@ void Application::controllerLoop() {
   network_.handlePstRotatorSerial(); // UART0 USB / PSTROTATOR / GS-232
   network_.handleBluetoothSerial(); // selected Bluetooth transport / GS-232B
   network_.handleRotctldTcp();       // Wi-Fi TCP 4533 / Look4Sat / Hamlib rotctld
+  network_.serviceHeapDiagnostics();
   web_server_.service();
   network_.serviceWifiReconnect();
   diagnostics_.serviceRssiHistory();
@@ -166,6 +170,7 @@ void Application::controllerLoop() {
   display_.serviceTouch();
   display_.updateLocalDisplay();
   hardware_.updateRgb();
+  runtimeMetrics.recordLoop(uint32_t(micros() - startedUs));
   delay(5);
 }
 } // namespace forkrot

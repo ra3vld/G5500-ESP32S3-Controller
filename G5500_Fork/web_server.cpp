@@ -2,25 +2,48 @@
 #include "web_server.hpp"
 #include "web_page.hpp"
 #include "diagnostic_pages.hpp"
+#include "web_assets.hpp"
+#include "web_encoding.hpp"
+#include "tcp_memory.hpp"
+#include "runtime_metrics.hpp"
 namespace forkrot {
 using namespace board;
+void WebInterface::sendHtml(const char *raw, size_t rawSize, const unsigned char *gzip, size_t gzipSize) {
+  const String encoding = web_.header("Accept-Encoding");
+  web_.sendHeader("Vary", "Accept-Encoding");
+  if (acceptsGzip(encoding.c_str())) {
+    web_.sendHeader("Content-Encoding", "gzip");
+    web_.sendPage(200, "text/html; charset=utf-8", reinterpret_cast<const char *>(gzip), gzipSize);
+  } else {
+    web_.sendPage(200, "text/html; charset=utf-8", raw, rawSize);
+  }
+}
 void WebInterface::setupWeb() {
+  static const char *requestHeaders[] = {"Accept-Encoding"};
+  web_.collectHeaders(requestHeaders, 1);
   web_.on("/", HTTP_GET, [this] {
     web_.sendHeader("Cache-Control", "no-store");
-    web_.send_P(200, "text/html; charset=utf-8", WEB_PAGE);
+    sendHtml(WEB_PAGE, sizeof WEB_PAGE - 1, WEB_PAGE_GZIP, sizeof WEB_PAGE_GZIP);
   });
   web_.on("/diaglog", HTTP_GET,
-          [this] { web_.send_P(200, "text/html; charset=utf-8", DIAG_PAGE); });
+          [this] { sendHtml(DIAG_PAGE, sizeof DIAG_PAGE - 1, DIAG_PAGE_GZIP, sizeof DIAG_PAGE_GZIP); });
   web_.on("/api/diaglog", HTTP_GET,
-          [this] { web_.send(200, "text/plain; charset=utf-8", diagnostics_.diagSnapshot()); });
+          [this] {
+#if SELECTED_BOARD == BOARD_ESP32
+            const size_t count = diagnostics_.copyLog(statusBuffer_, sizeof statusBuffer_);
+            web_.sendBuffer(200, "text/plain; charset=utf-8", statusBuffer_, count);
+#else
+            web_.send(200, "text/plain; charset=utf-8", diagnostics_.diagSnapshot());
+#endif
+          });
   web_.on("/api/diaglog/clear", HTTP_GET, [this] {
     diagnostics_.diagClear();
     web_.send(200, "text/plain", "OK");
   });
   web_.on("/resetdiag", HTTP_GET,
-          [this] { web_.send_P(200, "text/html; charset=utf-8", RESET_DIAG_PAGE); });
+          [this] { sendHtml(RESET_DIAG_PAGE, sizeof RESET_DIAG_PAGE - 1, RESET_DIAG_PAGE_GZIP, sizeof RESET_DIAG_PAGE_GZIP); });
   web_.on("/adc", HTTP_GET,
-          [this] { web_.send_P(200, "text/html; charset=utf-8", ADC_TEST_PAGE); });
+          [this] { sendHtml(ADC_TEST_PAGE, sizeof ADC_TEST_PAGE - 1, ADC_TEST_PAGE_GZIP, sizeof ADC_TEST_PAGE_GZIP); });
   web_.on("/api/adcdiag", HTTP_GET, [this] {
     int azRaw = 0, azMv = 0, elRaw = 0, elMv = 0;
     hardware_.adcDiagRead(PIN_AZ_ADC, azRaw, azMv);
@@ -34,23 +57,14 @@ void WebInterface::setupWeb() {
     web_.send(200, "application/json", j);
   });
   web_.on("/api/move", HTTP_GET, [this] {
-    forkrot::Form form;
-    form["d"] = web_.arg("d").c_str();
-    auto r = forkrot::api(runtime_.controller, runtime_.protocol, runtime_.loggerSettings,
-                          "/api/move", form, millis());
+    auto r = callApi("/api/move");
     runtime_.controller.tick(millis());
     hardware_.applyOutputs();
     web_.send(r.status, "application/json", r.body.c_str());
   });
   web_.on("/api/target", HTTP_GET, [this] {
-    forkrot::Form form;
-    form["az"] = web_.arg("az").c_str();
-    if (web_.hasArg("el")) {
-      form["el"] = web_.arg("el").c_str();
-    }
     actions_.updatePosition();
-    auto response = forkrot::api(runtime_.controller, runtime_.protocol, runtime_.loggerSettings,
-                                 "/api/target", form, millis());
+    auto response = callApi("/api/target");
     runtime_.controller.tick(millis());
     hardware_.applyOutputs();
     runtime_.targetValid = true;
@@ -229,7 +243,7 @@ void WebInterface::setupWeb() {
       return;
     }
     diagnostics_.dbgPrintln("[WIFI NVS] credentials saved and verified; restarting");
-    web_.send(200, "text/plain; charset=utf-8", "Настройки Wi-Fi сохранены. Контроллер перезагружается; затем снова подключитесь к G5500-Rotator.");
+    web_.send(200, "text/plain; charset=utf-8", "Настройки Wi-Fi сохранены. После перезагрузки откройте адрес контроллера в домашней сети. Если подключение не удалось, появится G5500-Rotator.");
     restart_.request(millis());
   };
   web_.on("/api/wifi", HTTP_POST, saveWifi);
@@ -250,24 +264,22 @@ void WebInterface::setupWeb() {
     web_.send(200, "application/json", j);
   });
   web_.on("/api/resethistory", HTTP_GET,
-          [this] { web_.send(200, "application/json", storage_.resetHistoryJson()); });
+          [this] {
+            JsonWriter j(statusBuffer_, sizeof statusBuffer_);
+            storage_.writeResetHistoryJson(j);
+            sendJson(j);
+          });
   web_.on("/api/resethistory/clear", HTTP_GET, [this] {
     storage_.clearResetHistory();
     web_.send(200, "text/plain", "OK");
   });
   web_.on("/api/rssi", HTTP_GET, [this] {
-    String r = web_.arg("range");
-    if (r == "day") {
-      web_.send(200, "application/json", diagnostics_.historyJson(RssiPeriod::Day));
-    } else if (r == "week") {
-      web_.send(200, "application/json", diagnostics_.historyJson(RssiPeriod::Week));
-    } else if (r == "month") {
-      web_.send(200, "application/json", diagnostics_.historyJson(RssiPeriod::Month));
-    } else if (r == "year") {
-      web_.send(200, "application/json", diagnostics_.historyJson(RssiPeriod::Year));
-    } else {
-      web_.send(200, "application/json", diagnostics_.historyJson(RssiPeriod::Hour));
-    }
+    const String range = web_.arg("range");
+    const auto period = range == "day" ? RssiPeriod::Day : range == "week" ? RssiPeriod::Week :
+                        range == "month" ? RssiPeriod::Month : range == "year" ? RssiPeriod::Year : RssiPeriod::Hour;
+    JsonWriter j(statusBuffer_, sizeof statusBuffer_);
+    diagnostics_.writeHistoryJson(j, period);
+    sendJson(j);
   });
   web_.on("/api/status", HTTP_GET, [this] {
     web_.sendHeader("Cache-Control", "no-store");
@@ -275,9 +287,10 @@ void WebInterface::setupWeb() {
     actions_.updatePosition();
     bool staOk = (WiFi.status() == WL_CONNECTED);
     String staIp = staOk ? WiFi.localIP().toString() : "-";
-    String apIp = WiFi.softAPIP().toString();
+    const bool apEnabled = (WiFi.getMode() & WIFI_AP) != 0;
+    String apIp = apEnabled ? WiFi.softAPIP().toString() : "-";
     String ip = staOk ? staIp : apIp;
-    String mode = staOk ? "AP + Wi-Fi Client" : "Access Point";
+    const char *mode = staOk ? (apEnabled ? "AP + Wi-Fi Client" : "Wi-Fi Client") : apEnabled ? "Access Point" : "Disconnected";
     int rssi = staOk ? WiFi.RSSI() : 0;
     String signal = !staOk
                         ? "-"
@@ -295,6 +308,8 @@ void WebInterface::setupWeb() {
     int az2f = calibration_.activeAzFSet() ? calibration_.activeAz2Full() : -1;
     calibrationState.cal.valid = calibration_.selectedCalibrationValid();
 
+    char btMac[18];
+    network_.bluetoothMac(btMac);
     JsonWriter j(statusBuffer_, sizeof statusBuffer_);
     j << "{\"az\":" << runtime_.currentAz << ",\"el\":" << runtime_.currentEl
       << ",\"targetAz\":" << runtime_.targetAz << ",\"targetEl\":" << runtime_.targetEl
@@ -323,13 +338,23 @@ void WebInterface::setupWeb() {
       << ",\"elp90\":" << calibrationState.elCalMv[2] << ",\"elp135\":" << calibrationState.elCalMv[3]
       << ",\"elp180\":" << calibrationState.elCalMv[4]
       << ",\"ip\":" << jsonQuoted(ip.c_str()) << ",\"apIp\":" << jsonQuoted(apIp.c_str())
-      << ",\"staIp\":" << jsonQuoted(staIp.c_str()) << ",\"wifiMode\":" << jsonQuoted(mode.c_str())
+      << ",\"staIp\":" << jsonQuoted(staIp.c_str()) << ",\"wifiMode\":" << jsonQuoted(mode)
       << ",\"ssid\":" << jsonQuoted(network_.credentials().wifiSsid.c_str())
       << ",\"rssi\":" << rssiJson.c_str() << ",\"signal\":" << jsonQuoted(signal.c_str())
       << ",\"btConnected\":" << (network_.bluetoothConnected() ? "true" : "false")
+      << ",\"btLinkConnected\":" << (network_.bluetoothLinkConnected() ? "true" : "false")
+      << ",\"btMac\":" << jsonQuoted(btMac)
       << ",\"resetReason\":" << jsonQuoted(diagnostics_.bootReasonText().c_str())
       << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMinFree\":" << heapMinBytes()
-      << ",\"heapMaxBlock\":" << heapMaxBlockBytes() << ",\"httpWriteFailures\":" << httpWriteFailures_;
+      << ",\"heapMaxBlock\":" << heapMaxBlockBytes() << ",\"httpWriteFailures\":" << web_.diagnostics().writeFailures;
+    j << ",\"httpReadFailures\":" << web_.readFailures() << ",\"httpRejected\":" << web_.rejectedRequests()
+      << ",\"httpAccepted\":" << web_.acceptedRequests() << ",\"httpRequests\":" << web_.diagnostics().requests;
+    const auto tcp = tcpMemory();
+    j << ",\"tcpStatsAvailable\":" << (tcp.available ? "true" : "false")
+      << ",\"tcpActive\":" << tcp.active << ",\"tcpClosing\":" << tcp.closing << ",\"tcpTimeWait\":" << tcp.timewait;
+    j << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load()
+      << ",\"maxFailedAllocation\":" << runtimeMetrics.largestFailedAllocation.load()
+      << ",\"loopMaxUs\":" << runtimeMetrics.loopMaxUs << ",\"loopsOver20ms\":" << runtimeMetrics.loopsOver20ms;
     if (!writeStateJson(j, runtime_.controller, runtime_.protocol, runtime_.loggerSettings, millis(), true)) {
       web_.send(503, "application/json", "{\"error\":\"status_too_large\"}");
       return;
@@ -342,13 +367,8 @@ void WebInterface::setupWeb() {
 
 void WebInterface::setupForkWeb() {
   web_.on("/api/target", HTTP_POST, [this] {
-    forkrot::Form f;
-    for (unsigned i = 0; i < web_.args(); ++i) {
-      f[web_.argName(i).c_str()] = web_.arg(i).c_str();
-    }
     actions_.updatePosition();
-    auto r = forkrot::api(runtime_.controller, runtime_.protocol, runtime_.loggerSettings,
-                          "/api/target", f, millis());
+    auto r = callApi("/api/target");
     runtime_.controller.tick(millis());
     hardware_.applyOutputs();
     if (r.status == 200) {
@@ -360,15 +380,10 @@ void WebInterface::setupForkWeb() {
        {"/api/mode", "/api/execute", "/api/preset", "/api/preset/run", "/api/settings"}) {
     String path = route;
     web_.on(path, HTTP_POST, [this, path] {
-      forkrot::Form form;
-      for (unsigned i = 0; i < web_.args(); ++i) {
-        form[web_.argName(i).c_str()] = web_.arg(i).c_str();
-      }
       auto oldModel = runtime_.controller.model;
       auto oldSettings = runtime_.loggerSettings;
       actions_.updatePosition();
-      auto response = forkrot::api(runtime_.controller, runtime_.protocol, runtime_.loggerSettings,
-                                   path.c_str(), form, millis());
+      auto response = callApi(path.c_str());
       if (response.status == 200) {
         if (oldModel != runtime_.controller.model) {
           // Old calibration was already saved on each calibration edit.

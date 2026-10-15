@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <string_view>
+#include "fixed_vector.hpp"
 namespace forkrot {
 enum class Model { G5500, G800DXA };
 enum class Mode { Manual, Auto, AutoHour };
@@ -62,6 +64,7 @@ public:
   Result target(Target t, bool external, uint32_t now);
   Result jog(unsigned axis, int direction, bool external, uint32_t now);
   void stop(int axis = -1);
+  void stopNow(int axis, uint32_t now);
   Result execute(uint32_t now);
   Result setMode(Mode m, uint32_t now);
   void restoreMode(Mode m); // An expired/nonpersistent hour always boots manual.
@@ -69,7 +72,10 @@ public:
   void setMaximum(float value);
   Result preset(unsigned slot, uint32_t now);
   Result savePreset(unsigned slot, const std::string &label, Target t);
-  Result sequence(const std::vector<Target> &points, uint32_t interval, uint32_t now);
+  Result sequence(const Target *points, size_t count, uint32_t interval, uint32_t now);
+  Result sequence(const std::vector<Target> &points, uint32_t interval, uint32_t now) {
+    return sequence(points.data(), points.size(), interval, now);
+  }
   void cancelSequence();
   void tick(uint32_t now);
   uint32_t remaining(uint32_t now) const;
@@ -82,13 +88,13 @@ private:
   uint32_t autoHourStartedAt_ = 0, sequenceAdvancedAt_ = 0, sequenceIntervalMs_ = 0;
   uint32_t lastSpeedUpdateAt_ = 0;
   bool speedUpdateStarted_ = false;
-  std::vector<Target> sequence_, pendingSequence_;
+  FixedVector<Target, 16> sequence_, pendingSequence_;
   size_t sequenceIndex_ = 0;
   Result start(Target t, uint32_t now, bool external = false);
   void output(unsigned axis, int dir, uint32_t now);
   void expire(uint32_t now);
 };
-bool number(const std::string &s, float &out);
+bool number(std::string_view s, float &out);
 float heading(float angle);
 float nearest(float angle, float current, float maximum, bool bidirectional = false);
 } // namespace forkrot

@@ -1,8 +1,10 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "bluetooth.hpp"
+#include <cstring>
 #if BLUETOOTH_BACKEND == BT_ESP32_SPP
 #include <esp32-hal-bt.h>
 #include <esp_bt_main.h>
+#include <esp_bt_device.h>
 // Tell Arduino's startup not to release memory needed by our Classic host.
 #if __has_include(<esp32-hal-alloc-bt-classic-mem.h>)
 #include <esp32-hal-alloc-bt-classic-mem.h>
@@ -46,21 +48,33 @@ void Bluetooth::onEvent(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
   }
 }
 void Bluetooth::onGapEvent(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param) {
+  if (!owner_) return;
+  auto &self = *owner_;
+  if (event == ESP_BT_GAP_ACL_CONN_CMPL_STAT_EVT && param->acl_conn_cmpl_stat.stat == ESP_BT_STATUS_SUCCESS) {
+    const uint32_t key = uint32_t(param->acl_conn_cmpl_stat.handle) + 1;
+    for (auto handle : self.aclHandles_) if (handle == key) return;
+    for (auto &handle : self.aclHandles_) if (!handle) {
+      handle = key;
+      self.aclCount_.fetch_add(1);
+      break;
+    }
+  } else if (event == ESP_BT_GAP_ACL_DISCONN_CMPL_STAT_EVT) {
+    const uint32_t key = uint32_t(param->acl_disconn_cmpl_stat.handle) + 1;
+    for (auto &handle : self.aclHandles_) if (handle == key) {
+      handle = 0;
+      self.aclCount_.fetch_sub(1);
+      break;
+    }
+  }
   // Same no-input/no-output SSP pairing as before; no Bluetooth PIN in the UI.
   if (event == ESP_BT_GAP_CFM_REQ_EVT)
     esp_bt_gap_ssp_confirm_reply(param->cfm_req.bda, true);
 }
 void Bluetooth::onData(const uint8_t *bytes, size_t size) {
   for (size_t i = 0; i < size; ++i) {
-    std::string command;
-    if (!receiver_.feed(static_cast<char>(bytes[i]), command)) continue;
-    uint32_t head = rxHead_.load(std::memory_order_relaxed);
-    if (uint32_t(head - rxTail_.load(std::memory_order_acquire)) == RX_SLOTS) {
-      rxDropped_.fetch_add(1);
-      continue;
-    }
-    commands_[head % RX_SLOTS] = {std::move(command), session_.load()};
-    rxHead_.store(head + 1, std::memory_order_release);
+    std::string_view command;
+    if (receiver_.feed(static_cast<char>(bytes[i]), command) &&
+        !commands_.push(command, session_.load())) rxDropped_.fetch_add(1);
   }
 }
 #endif
@@ -106,61 +120,76 @@ bool Bluetooth::connected() {
   return false;
 #endif
 }
+bool Bluetooth::linkConnected() {
+#if BLUETOOTH_BACKEND == BT_ESP32_SPP
+  return aclCount_.load() != 0 || connected();
+#else
+  return connected();
+#endif
+}
+bool Bluetooth::macAddress(char (&address)[18]) const {
+  address[0] = '\0';
+#if BLUETOOTH_BACKEND == BT_ESP32_SPP
+  const uint8_t *mac = esp_bt_dev_get_address();
+  if (!mac) return false;
+  constexpr char hex[] = "0123456789ABCDEF";
+  for (unsigned i = 0; i < 6; ++i) {
+    address[i * 3] = hex[mac[i] >> 4];
+    address[i * 3 + 1] = hex[mac[i] & 15];
+    address[i * 3 + 2] = i == 5 ? '\0' : ':';
+  }
+  return true;
+#else
+  return false; // HC-05 does not expose its address over the data UART.
+#endif
+}
 void Bluetooth::service() {
 #if BLUETOOTH_BACKEND == BT_ESP32_SPP
   uint32_t session = session_.load();
   if (session != seenSession_) {
-    for (auto &reply : replies_) reply = String();
-    txHead_ = txCount_ = 0;
+    replies_.clear();
     seenSession_ = session;
   }
   uint32_t client = client_.load();
-  if (!ready_ || !client || !txCount_ || writing_.load() || congested_.load()) return;
-  const String &reply = replies_[txHead_];
+  if (!ready_ || !client || replies_.empty() || writing_.load() || congested_.load()) return;
+  char reply[512]; size_t size; uint32_t tag;
+  if (!replies_.pop(reply, sizeof reply, size, tag)) return;
   writing_.store(true);
-  // esp_spp_write queues a copy and returns immediately. BluetoothSerial::print can
-  // wait up to a second for its TX queue; keep that wait out of the control loop.
-  esp_err_t result = esp_spp_write(client, reply.length(),
-                                 reinterpret_cast<uint8_t *>(const_cast<char *>(reply.c_str())));
-  if (result != ESP_OK) writing_.store(false);
-  replies_[txHead_] = String();
-  txHead_ = (txHead_ + 1) % TX_SLOTS;
-  --txCount_;
+  // IDF copies the payload before returning; storage can be reused immediately.
+  if (esp_spp_write(client, size, reinterpret_cast<uint8_t *>(reply)) != ESP_OK)
+    writing_.store(false);
 #endif
 }
-bool Bluetooth::receive(std::string &command) {
+bool Bluetooth::receive(char *out, size_t capacity, size_t &size) {
   service();
 #if BLUETOOTH_BACKEND == BT_ESP32_SPP
   if (!ready_) return false;
-  uint32_t tail = rxTail_.load(std::memory_order_relaxed);
-  while (tail != rxHead_.load(std::memory_order_acquire)) {
-    auto &line = commands_[tail % RX_SLOTS];
-    uint32_t session = line.session;
-    command = std::move(line.command);
-    rxTail_.store(++tail, std::memory_order_release);
+  uint32_t session;
+  for (unsigned count = 0; count < 8 && commands_.pop(out, capacity, size, session); ++count)
     if (client_.load() && session == session_.load()) return true;
-  }
 #elif BLUETOOTH_BACKEND == BT_HC05
   if (!ready_) return false;
-  while (serial_.available()) {
+  std::string_view line;
+  for (unsigned count = 0; count < 128 && serial_.available(); ++count) {
     int byte = serial_.read();
-    if (byte >= 0 && receiver_.feed(static_cast<char>(byte), command)) return true;
+    if (byte >= 0 && receiver_.feed(static_cast<char>(byte), line)) {
+      if (line.size() > capacity) return false;
+      size = line.size(); std::memcpy(out, line.data(), size); return true;
+    }
   }
 #else
-  (void)command;
+  (void)out; (void)capacity; (void)size;
 #endif
   return false;
 }
-bool Bluetooth::send(const String &reply) {
+bool Bluetooth::send(std::string_view reply) {
 #if BLUETOOTH_BACKEND == BT_ESP32_SPP
   service();
-  if (!connected() || reply.length() > 512 || txCount_ == TX_SLOTS) return false;
-  replies_[(txHead_ + txCount_) % TX_SLOTS] = reply;
-  ++txCount_;
+  if (!connected() || reply.size() > 512 || !replies_.push(reply)) return false;
   service();
   return true;
 #elif BLUETOOTH_BACKEND == BT_HC05
-  return ready_ && serial_.print(reply) == reply.length();
+  return ready_ && serial_.write(reinterpret_cast<const uint8_t *>(reply.data()), reply.size()) == reply.size();
 #else
   (void)reply;
   return false;

@@ -7,6 +7,7 @@ import pathlib
 import subprocess
 import time
 import urllib.parse
+from generate_web_assets import pack_html
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -93,7 +94,7 @@ async def main(args):
             try: await writer.wait_closed()
             except ConnectionError: pass
     async def http(reader, writer):
-        status = 200; content_type='application/json'; body=b''
+        status = 200; content_type='application/json'; body=b''; extra_headers=''
         try:
             request = await asyncio.wait_for(reader.readline(), 5)
             method, url, _ = request.decode().strip().split(' ', 2)
@@ -110,6 +111,9 @@ async def main(args):
                 content_type='text/html; charset=utf-8'
                 source=(ROOT/'G5500_Fork/web_page.hpp').read_text()
                 body=source.split('R"HTML(',1)[1].split(')HTML";',1)[0].encode()
+                extra_headers='Vary: Accept-Encoding\r\n'
+                if 'gzip' in [part.strip().lower() for part in headers.get('accept-encoding','').split(',')]:
+                    body=pack_html(body);extra_headers+='Content-Encoding: gzip\r\n'
             elif path=='/api/status': body=json.dumps(core.state).encode()
             elif path=='/api/rssi': body=b'{"values":[],"min":null,"max":null,"avg":null,"count":0}'
             elif path=='/api/diaglog': content_type='text/plain';body=b'Host simulator: shared firmware core; virtual calibrated sensors.'
@@ -142,7 +146,7 @@ async def main(args):
                             if port not in new_ports: transport.close()
                         transports[:]=[retained[port] if port in retained else created[port] for port in new_ports]
         except (ValueError, TimeoutError, asyncio.IncompleteReadError): status=400;body=b'{"ok":false}'
-        writer.write(f'HTTP/1.1 {status} Result\r\nContent-Type: {content_type}\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n'.encode()+body)
+        writer.write(f'HTTP/1.1 {status} Result\r\nContent-Type: {content_type}\r\nContent-Length: {len(body)}\r\n{extra_headers}Connection: close\r\n\r\n'.encode()+body)
         try: await writer.drain()
         except ConnectionError: pass
         writer.close();await writer.wait_closed()

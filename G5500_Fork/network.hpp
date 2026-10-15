@@ -1,5 +1,6 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
+#include "http_diagnostics.hpp"
 #include "runtime.hpp"
 #include "board.hpp"
 #include "network_state.hpp"
@@ -9,8 +10,12 @@
 #include "input.hpp"
 #include "bluetooth.hpp"
 #include "heap_metrics.hpp"
+#include "datagram_socket.hpp"
+#include "wifi_fallback.hpp"
+#include "diagnostic_stream.hpp"
 #include <WiFi.h>
-#include <WiFiUdp.h>
+#include <WiFiClient.h>
+#include <WiFiServer.h>
 namespace forkrot {
 class Network {
 public:
@@ -30,21 +35,25 @@ public:
   }
   void handlePstRotatorSerial();
   bool bluetoothConnected() { return bluetooth_.connected(); }
+  bool bluetoothLinkConnected() { return bluetooth_.linkConnected(); }
+  bool bluetoothMac(char (&address)[18]) const { return bluetooth_.macAddress(address); }
   void handleBluetoothSerial();
+  void serviceHeapDiagnostics();
   void handleRotctldTcp();
   void startWifi();
   void serviceWifiReconnect();
   void setupLoggerUdp();
   void serviceLoggerUdp();
   void captureSetupHeap() { heapAfterSetup_ = heapFreeBytes(); }
+  void setHttpDiagnostics(const HttpDiagnostics &state) { http_ = state; }
 
 private:
   void sendReply(const String &s);
-  void processGs232Command(String cmd);
+  void processGs232Command(std::string_view input);
   void rotctldSend(const String &s);
-  void processRotctldCommand(String cmd);
+  void processRotctldCommand(std::string_view input);
   void restoreApOnlyAfterReconnectFail();
-  void sendHeapDiagnostics();
+  int formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity);
   Runtime &runtime_;
   DeviceActions &actions_;
   Calibration &calibration_;
@@ -57,12 +66,12 @@ private:
   Bluetooth bluetooth_;
   uint32_t lastBtDropped_ = 0;
   bool btReady_ = false;
-  WiFiUDP n1mmUdp, pstUdp;
+  bool compactWifi_ = false;
+  DatagramSocket n1mmUdp, pstUdp;
   enum GsReplyPort : uint8_t { GS_REPLY_USB = 0, GS_REPLY_BLUETOOTH = 1 };
   GsReplyPort gsReplyPort = GS_REPLY_USB;
-  static constexpr uint32_t WIFI_RECONNECT_MS = 30000, WIFI_RECONNECT_TIMEOUT_MS = 8000;
-  uint32_t wifiReconnectMs = 0, wifiReconnectTryStartedMs = 0;
-  bool wifiReconnectTryActive = false;
+  WifiFallback wifiFallback_;
+  DiagnosticStream heapDiagnostics_;
   struct ReportPeer {
     IPAddress address;
     bool used = false;
@@ -72,5 +81,6 @@ private:
   uint32_t lastReportMs = 0;
   uint32_t heapBeforeBt_ = 0, heapAfterBt_ = 0, heapAfterAp_ = 0, heapAfterWifi_ = 0,
            heapAfterSetup_ = 0;
+  HttpDiagnostics http_;
 };
 } // namespace forkrot

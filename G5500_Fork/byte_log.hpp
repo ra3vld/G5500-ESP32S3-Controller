@@ -20,6 +20,14 @@ public:
     if (newline) flush();
   }
   size_t size() const { return used_ + pending_; }
+  size_t copyTo(char *out, size_t capacity) const {
+    if (capacity <= size()) { if (capacity) out[0] = 0; return 0; }
+    size_t count = 0;
+    for (size_t i = 0; i < used_; ++i) out[count++] = bytes_[(start_ + i) % Capacity];
+    for (size_t i = 0; i < pending_; ++i) out[count++] = pendingBytes_[i];
+    out[count] = 0;
+    return count;
+  }
   template<class Output> void copyTo(Output &out) const {
     for (size_t i = 0; i < used_; ++i) out += bytes_[(start_ + i) % Capacity];
     for (size_t i = 0; i < pending_; ++i) out += pendingBytes_[i];

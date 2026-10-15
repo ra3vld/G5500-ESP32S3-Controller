@@ -17,6 +17,8 @@ struct FakeSpp {
   uint32_t client = 0;
   unsigned starts = 0;
   bool callbackMode = false, pairingConfirmed = false;
+  bool addressAvailable = true;
+  uint8_t address[6] = {0x02, 0x0a, 0xb0, 0xc1, 0x00, 0xff};
   std::vector<uint32_t> disconnected;
   std::string name;
   std::vector<std::pair<uint32_t, std::string>> writes;
@@ -45,10 +47,24 @@ inline constexpr int ESP_BLUEDROID_STATUS_UNINITIALIZED = 0, ESP_BLUEDROID_STATU
 inline int esp_bluedroid_get_status() { return ESP_BLUEDROID_STATUS_UNINITIALIZED; }
 inline esp_err_t esp_bluedroid_init() { return ESP_OK; }
 inline esp_err_t esp_bluedroid_enable() { return ESP_OK; }
-enum esp_bt_gap_cb_event_t { ESP_BT_GAP_CFM_REQ_EVT };
-struct esp_bt_gap_cb_param_t { struct { uint8_t bda[6]{}; } cfm_req; };
+inline constexpr int ESP_BT_STATUS_SUCCESS = 0;
+enum esp_bt_gap_cb_event_t { ESP_BT_GAP_CFM_REQ_EVT, ESP_BT_GAP_ACL_CONN_CMPL_STAT_EVT, ESP_BT_GAP_ACL_DISCONN_CMPL_STAT_EVT };
+struct esp_bt_gap_cb_param_t {
+  struct { uint8_t bda[6]{}; } cfm_req;
+  struct { int stat = ESP_BT_STATUS_SUCCESS; uint16_t handle = 0; } acl_conn_cmpl_stat;
+  struct { uint16_t handle = 0; } acl_disconn_cmpl_stat;
+};
 using esp_bt_gap_cb_t = void (*)(esp_bt_gap_cb_event_t, esp_bt_gap_cb_param_t *);
 inline esp_bt_gap_cb_t fakeGapCallback = nullptr;
+inline void aclConnect(uint16_t handle, bool success = true) {
+  esp_bt_gap_cb_param_t param; param.acl_conn_cmpl_stat.handle = handle;
+  param.acl_conn_cmpl_stat.stat = success ? ESP_BT_STATUS_SUCCESS : -1;
+  fakeGapCallback(ESP_BT_GAP_ACL_CONN_CMPL_STAT_EVT, &param);
+}
+inline void aclClose(uint16_t handle) {
+  esp_bt_gap_cb_param_t param; param.acl_disconn_cmpl_stat.handle = handle;
+  fakeGapCallback(ESP_BT_GAP_ACL_DISCONN_CMPL_STAT_EVT, &param);
+}
 inline esp_err_t esp_bt_gap_register_callback(esp_bt_gap_cb_t cb) { fakeGapCallback = cb; return ESP_OK; }
 inline esp_err_t esp_bt_gap_set_device_name(const char *name) { fakeSpp.name = name; return ESP_OK; }
 using esp_bt_io_cap_t = uint8_t;

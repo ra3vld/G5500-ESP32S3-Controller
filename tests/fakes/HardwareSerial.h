@@ -15,5 +15,6 @@ public:
   void begin(uint32_t baud, int, int rx, int tx) { fakeUart.baud = baud; fakeUart.rxPin = rx; fakeUart.txPin = tx; }
   int available() { return fakeUart.rx.size(); }
   int read() { int byte = fakeUart.rx.front(); fakeUart.rx.pop_front(); return byte; }
+  size_t write(const uint8_t *data, size_t size) { fakeUart.tx.append(reinterpret_cast<const char *>(data), size); return size; }
   size_t print(const String &reply) { fakeUart.tx += reply.c_str(); return reply.length(); }
 };

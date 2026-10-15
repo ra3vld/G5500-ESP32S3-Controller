@@ -1,6 +1,7 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
 #include <cmath>
+#include <charconv>
 #include <cstdio>
 #include <cstring>
 #include <string_view>
@@ -40,21 +41,24 @@ public:
   template<class T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
   JsonWriter &operator<<(T value) {
     char number[32];
-    if constexpr (std::is_signed_v<T>)
-      std::snprintf(number, sizeof number, "%lld", static_cast<long long>(value));
-    else
-      std::snprintf(number, sizeof number, "%llu", static_cast<unsigned long long>(value));
-    return *this << number;
+    using Number = std::conditional_t<std::is_signed_v<T>, long long, unsigned long long>;
+    const auto result = std::to_chars(number, number + sizeof number, static_cast<Number>(value));
+    if (result.ec != std::errc()) good_ = false;
+    else append({number, size_t(result.ptr - number)});
+    return *this;
   }
   JsonWriter &operator<<(float value) { return decimal(value, 2); }
   JsonWriter &operator<<(double value) { return decimal(value, 2); }
   JsonWriter &decimal(double value, int precision) {
     if (!std::isfinite(value)) return *this << "null";
     char number[64];
-    int count = precision < 0 ? std::snprintf(number, sizeof number, "%.6g", value)
-                              : std::snprintf(number, sizeof number, "%.*f", precision, value);
-    if (count < 0 || size_t(count) >= sizeof number) good_ = false;
-    else *this << number;
+    // newlib printf's float conversion keeps per-task big-integer allocations.
+    // GCC's float/double to_chars uses Ryu with caller-owned output storage.
+    const auto result = std::to_chars(number, number + sizeof number - 1, value,
+        precision < 0 ? std::chars_format::general : std::chars_format::fixed,
+        precision < 0 ? 6 : precision);
+    if (result.ec != std::errc()) good_ = false;
+    else append({number, size_t(result.ptr - number)});
     return *this;
   }
 private:
@@ -71,5 +75,5 @@ private:
   size_t capacity_, size_ = 0;
   bool good_ = true;
 };
-inline constexpr size_t STATUS_JSON_CAPACITY = 6144;
+inline constexpr size_t STATUS_JSON_CAPACITY = 5120;
 } // namespace forkrot

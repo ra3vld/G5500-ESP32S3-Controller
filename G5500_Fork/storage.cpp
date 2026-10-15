@@ -432,7 +432,7 @@ void Storage::addResetHistoryEntry(int bootResetReason, const String &bootResetR
   prefs_.end();
 }
 
-String Storage::resetHistoryJson() {
+bool Storage::writeResetHistoryJson(JsonWriter &j) {
   prefs_.begin("g5500rst", true);
   uint8_t head = prefs_.getUChar("head", 0);
   uint8_t count = prefs_.getUChar("count", 0);
@@ -443,7 +443,7 @@ String Storage::resetHistoryJson() {
     count = RESET_HISTORY_MAX;
   }
 
-  String j = "{\"count\":" + String(count) + ",\"entries\":[";
+  j << "{\"count\":" << count << ",\"entries\":[";
   for (uint8_t n = 0; n < count; n++) {
     int idx = (int)head - 1 - (int)n;
     while (idx < 0) {
@@ -460,14 +460,13 @@ String Storage::resetHistoryJson() {
     int code = prefs_.getInt(kc, 0);
 
     if (n) {
-      j += ",";
+      j << ',';
     }
-    j += "{\"epoch\":" + String((unsigned long long)epoch) + ",\"reason\":\"" + reason +
-         "\",\"code\":" + String(code) + "}";
+    j << "{\"epoch\":" << epoch << ",\"reason\":" << jsonQuoted(reason.c_str()) << ",\"code\":" << code << '}';
   }
-  j += "]}";
+  j << "]}";
   prefs_.end();
-  return j;
+  return j.good();
 }
 
 void Storage::clearResetHistory() {

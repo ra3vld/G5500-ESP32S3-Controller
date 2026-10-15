@@ -13,6 +13,15 @@ struct Response {
   std::string body;
 };
 using Form = std::map<std::string, std::string>;
+using FormArgument = std::pair<std::string_view, std::string_view>;
+struct FormView {
+  const FormArgument *entries;
+  size_t count;
+  const FormArgument *begin() const { return entries; }
+  const FormArgument *end() const { return entries + count; }
+};
+Response apiView(Controller &c, Protocol &p, Settings &settings, std::string_view path,
+                 FormView form, uint32_t now);
 std::string jsonQuote(const std::string &s);
 std::string stateJson(const Controller &c, const Protocol &p, const Settings &settings,
                       uint32_t now);

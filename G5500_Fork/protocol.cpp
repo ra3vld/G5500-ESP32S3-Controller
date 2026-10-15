@@ -4,12 +4,13 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
-#include <sstream>
+#include <array>
+#include "json_writer.hpp"
 #include <algorithm>
 namespace forkrot {
 
 namespace {
-std::string trim(std::string s) {
+std::string_view trimView(std::string_view s) {
   size_t a = 0, b = s.size();
   while (a < b && (std::isspace((unsigned char)s[a]) || s[a] == 0)) {
     ++a;
@@ -20,107 +21,82 @@ std::string trim(std::string s) {
   return s.substr(a, b - a);
 }
 struct Node {
-  std::string name, text;
-  std::vector<Node> children;
+  std::string_view name, text;
+  Node *next = nullptr;
+  struct Children {
+    Node *first = nullptr;
+    bool empty() const { return !first; }
+    struct Iterator {
+      Node *node;
+      const Node &operator*() const { return *node; }
+      Iterator &operator++() { node = node->next; return *this; }
+      bool operator!=(Iterator other) const { return node != other.node; }
+    };
+    Iterator begin() const { return {first}; }
+    Iterator end() const { return {nullptr}; }
+  } children;
 };
 class Xml {
-  const std::string &input_;
-  size_t position_ = 0;
-  unsigned nodeCount_ = 0;
+  std::string_view input_;
+  size_t position_ = 0, used_ = 0;
+  std::array<Node, 39> nodes_{}; // root + 39 children; views point into the UDP packet
   void ws() {
-    while (position_ < input_.size() && std::isspace((unsigned char)input_[position_])) {
-      ++position_;
-    }
+    while (position_ < input_.size() && std::isspace((unsigned char)input_[position_])) ++position_;
   }
-  std::string name() {
+  std::string_view name() {
     size_t start = position_;
     while (position_ < input_.size() &&
            (std::isalnum((unsigned char)input_[position_]) || input_[position_] == '_' ||
-            input_[position_] == '+' || input_[position_] == '-')) {
-      ++position_;
-    }
+            input_[position_] == '+' || input_[position_] == '-')) ++position_;
     return input_.substr(start, position_ - start);
   }
   bool node(Node &n, unsigned depth) {
-    if (depth > 3 || ++nodeCount_ > 40 || position_ >= input_.size() ||
-        input_[position_++] != '<') {
-      return false;
-    }
+    if (depth > 3 || position_ >= input_.size() || input_[position_++] != '<') return false;
     n.name = name();
-    if (n.name.empty() || position_ >= input_.size()) {
-      return false;
-    }
-    if (input_.compare(position_, 2, "/>") == 0) {
-      position_ += 2;
-      return true;
-    }
-    if (input_[position_++] != '>') {
-      return false;
-    }
+    if (n.name.empty() || n.name.size() > 32 || position_ >= input_.size()) return false;
+    if (input_.compare(position_, 2, "/>") == 0) { position_ += 2; return true; }
+    if (input_[position_++] != '>') return false;
+    size_t textStart = position_;
+    Node **tail = &n.children.first;
     for (;;) {
-      if (position_ >= input_.size()) {
-        return false;
-      }
+      if (position_ >= input_.size()) return false;
       if (input_.compare(position_, 2, "</") == 0) {
+        const auto text = trimView(input_.substr(textStart, position_ - textStart));
+        if (!n.children.empty() && !text.empty()) return false;
+        n.text = text;
         position_ += 2;
-        auto end = name();
-        if (end != n.name || position_ >= input_.size() || input_[position_++] != '>') {
-          return false;
-        }
-        n.text = trim(n.text);
+        if (name() != n.name || position_ >= input_.size() || input_[position_++] != '>') return false;
         return true;
       }
       if (input_[position_] == '<') {
-        Node child;
-        if (!node(child, depth + 1)) {
-          return false;
-        }
-        n.children.push_back(child);
-      } else {
-        n.text += input_[position_++];
-      }
+        if (!trimView(input_.substr(textStart, position_ - textStart)).empty() || used_ == nodes_.size()) return false;
+        Node &child = nodes_[used_++];
+        if (!node(child, depth + 1)) return false;
+        for (const auto &other : n.children) if (other.name == child.name) return false;
+        *tail = &child;
+        tail = &child.next;
+        textStart = position_;
+      } else ++position_;
     }
   }
-
 public:
-  explicit Xml(const std::string &input) : input_(input) {}
-  bool parse(Node &n) {
+  explicit Xml(std::string_view input) : input_(input) {}
+  bool parse(Node &root) {
     ws();
     if (input_.compare(position_, 5, "<?xml") == 0) {
       size_t end = input_.find("?>", position_);
-      if (end == std::string::npos) {
-        return false;
-      }
+      if (end == input_.npos) return false;
       position_ = end + 2;
       ws();
     }
-    if (!node(n, 0)) {
-      return false;
-    }
+    if (!node(root, 0)) return false;
     ws();
     return position_ == input_.size();
   }
 };
-const Node *field(const Node &n, const std::string &key) {
-  for (const auto &c : n.children) {
-    if (c.name == key) {
-      return &c;
-    }
-  }
+const Node *field(const Node &n, std::string_view key) {
+  for (const auto &c : n.children) if (c.name == key) return &c;
   return nullptr;
-}
-bool unique(const Node &n) {
-  for (size_t i = 0; i < n.children.size(); ++i) {
-    if (!unique(n.children[i])) {
-      return false;
-    }
-    for (size_t j = i + 1; j < n.children.size(); ++j) {
-      if (n.children[i].name == n.children[j].name) {
-        return false;
-      }
-    }
-  }
-  return true;
 }
 bool flag(const Node *n, bool &b) {
   if (!n) {
@@ -133,25 +109,30 @@ bool flag(const Node *n, bool &b) {
   b = n->text == "1";
   return true;
 }
-std::vector<std::string> words(std::string s) {
-  std::istringstream stream(s);
-  std::vector<std::string> v;
-  std::string word;
-  while (stream >> word) {
-    v.push_back(word);
+struct Words : FixedVector<std::string_view, 34> { bool valid = true; };
+Words words(std::string_view text) {
+  Words out;
+  while (!text.empty()) {
+    while (!text.empty() && std::isspace((unsigned char)text.front())) text.remove_prefix(1);
+    if (text.empty()) break;
+    size_t end = 0;
+    while (end < text.size() && !std::isspace((unsigned char)text[end])) ++end;
+    if (!out.push_back(text.substr(0, end))) { out.valid = false; break; }
+    text.remove_prefix(end);
   }
-  return v;
+  return out;
 }
 } // namespace
-Packet Protocol::datagram(const std::string &input, uint32_t now) {
+Packet Protocol::datagram(std::string_view input, uint32_t now) {
   Packet packet;
-  auto text = trim(input);
+  auto text = trimView(input);
   if (text.size() > 4096 || text.find("<!") != std::string::npos ||
       text.find('&') != std::string::npos) {
     return packet;
   }
   Node root;
-  if (!Xml(text).parse(root) || !unique(root)) {
+  Xml xml(text);
+  if (!xml.parse(root)) {
     return packet;
   }
   if (root.name == "N1MMRotor") {
@@ -186,12 +167,13 @@ Packet Protocol::datagram(const std::string &input, uint32_t now) {
       return packet;
     }
     bool match = false;
-    std::istringstream names(rotor->text);
-    std::string name;
-    while (std::getline(names, name, ',')) {
-      if (trim(name) == rotorName || trim(name) == "*") {
-        match = true;
-      }
+    auto names = rotor->text;
+    while (!names.empty()) {
+      auto comma = names.find(',');
+      auto name = trimView(names.substr(0, comma));
+      if (name == rotorName || name == "*") match = true;
+      if (comma == names.npos) break;
+      names.remove_prefix(comma + 1);
     }
     if (!match) {
       packet.result = Result::Ignored;
@@ -253,7 +235,7 @@ Packet Protocol::datagram(const std::string &input, uint32_t now) {
     if (!flag(n, b)) {
       return packet;
     }
-    if ((std::string(tag) == "STOP" || std::string(tag) == "STOPR") && b) {
+    if ((std::string_view(tag) == "STOP" || std::string_view(tag) == "STOPR") && b) {
       stop = true;
     }
   }
@@ -302,8 +284,10 @@ Packet Protocol::datagram(const std::string &input, uint32_t now) {
                                                                     : controller_.axes[0].target;
     }
     char b[40];
-    std::snprintf(b, sizeof b, "%s:%.1f\r", query == "AZ?" ? "AZ" : "TGA", heading(value));
-    packet.reply = b;
+    JsonWriter reply(b, sizeof b);
+    reply << (query == "AZ?" ? "AZ:" : "TGA:");
+    reply.decimal(heading(value), 1) << '\r';
+    packet.reply.assign(reply.data(), reply.size());
     packet.result = Result::Ok;
     return packet;
   }
@@ -359,24 +343,28 @@ std::string Protocol::positionReport(float mechanicalAz) const {
   // Real N1MM Logger+ decodes the heading in tenths of a degree.
   return rotorName + "@" + std::to_string(int(std::lround(heading(mechanicalAz) * 10)) % 3600);
 }
-Packet Protocol::line(const std::string &input, uint32_t now, bool tcp) {
+Packet Protocol::line(std::string_view input, uint32_t now, bool tcp) {
   if (loadedStopEpoch_ != controller_.stopEpoch) {
     loadedSequence_.clear();
     loadedSequenceStarted_ = false;
     loadedStopEpoch_ = controller_.stopEpoch;
   }
   Packet packet;
-  auto text = trim(input);
+  auto text = trimView(input);
   if (text.empty() || text.size() > 512) {
     return packet;
   }
   auto v = words(text);
-  std::string cmd = v[0], u = cmd;
-  std::transform(u.begin(), u.end(), u.begin(), [](unsigned char ch) { return std::toupper(ch); });
+  if (!v.valid || v.empty()) return packet;
+  std::string_view cmd = v[0];
+  char upper[16];
+  const size_t commandLength = std::min(cmd.size(), sizeof upper);
+  for (size_t i = 0; i < commandLength; ++i) upper[i] = std::toupper((unsigned char)cmd[i]);
+  std::string_view u(upper, commandLength);
   if (u == "SET_POS" || u == "\\SET_POS" || u == "GET_POS" || u == "\\GET_POS" || u == "STOP" ||
       u == "\\STOP") {
-    std::transform(cmd.begin(), cmd.end(), cmd.begin(),
-                   [](unsigned char ch) { return std::tolower(ch); });
+    for (size_t i = 0; i < commandLength; ++i) upper[i] = std::tolower((unsigned char)upper[i]);
+    cmd = {upper, commandLength};
   }
   bool ham = (cmd == "P" && v.size() > 1) || cmd == "p" || cmd == "\\set_pos" || cmd == "set_pos" ||
              cmd == "\\get_pos" || cmd == "get_pos" || cmd == "\\stop" || cmd == "stop" ||
@@ -385,9 +373,10 @@ Packet Protocol::line(const std::string &input, uint32_t now, bool tcp) {
   packet.result = Result::Ok;
   char b[100];
   if (cmd == "p" || cmd == "\\get_pos" || cmd == "get_pos") {
-    std::snprintf(b, sizeof b, "%.6f\n%.6f\n", controller_.axes[0].current,
-                  controller_.axes[1].current);
-    packet.reply = b;
+    JsonWriter reply(b, sizeof b);
+    reply.decimal(controller_.axes[0].current, 6) << '\n';
+    reply.decimal(controller_.axes[1].current, 6) << '\n';
+    packet.reply.assign(reply.data(), reply.size());
     return packet;
   }
   if (u == "C" || u == "C2" || u == "B") {
@@ -422,25 +411,28 @@ Packet Protocol::line(const std::string &input, uint32_t now, bool tcp) {
   } else if (u[0] == 'M' || u[0] == 'W') {
     bool hasEl = u[0] == 'W';
     auto args = words(text.substr(1));
-    std::vector<float> nums;
+    FixedVector<float, 33> nums;
+    if (!args.valid) packet.result = Result::Invalid;
     for (auto a : args) {
       float value;
       if (!number(a, value)) {
         packet.result = Result::Invalid;
         break;
       }
-      nums.push_back(value);
+      if (!nums.push_back(value)) { packet.result = Result::Invalid; break; }
     }
     if (packet.result == Result::Ok) {
       if (nums.size() == (hasEl ? 2u : 1u)) {
         packet.result = controller_.target({nums[0], hasEl ? nums[1] : 0, true, hasEl}, true, now);
       } else if (nums.size() >= (hasEl ? 3u : 2u) && (!hasEl || (nums.size() - 1) % 2 == 0) &&
                  nums[0] >= 1 && nums[0] <= 999 && std::floor(nums[0]) == nums[0]) {
-        std::vector<Target> points;
+        FixedVector<Target, 16> points;
         for (size_t i = 1; i < nums.size(); i += hasEl ? 2 : 1) {
-          points.push_back({nums[i], hasEl ? nums[i + 1] : 0, true, hasEl});
+          if (!points.push_back({nums[i], hasEl ? nums[i + 1] : 0, true, hasEl})) {
+            packet.result = Result::Invalid; break;
+          }
         }
-        bool valid = points.size() <= 16;
+        bool valid = packet.result == Result::Ok;
         for (auto t : points) {
           valid = valid && controller_.valid(t);
         }
@@ -460,7 +452,7 @@ Packet Protocol::line(const std::string &input, uint32_t now, bool tcp) {
       }
     }
   } else if (u == "T") {
-    packet.result = controller_.sequence(loadedSequence_, loadedIntervalMs_, now);
+    packet.result = controller_.sequence(loadedSequence_.data(), loadedSequence_.size(), loadedIntervalMs_, now);
     if (packet.result == Result::Ok || packet.result == Result::Pending) loadedSequenceStarted_ = true;
   } else if (u == "N") {
     packet.reply = "N=" + std::to_string(controller_.sequenceIndex()) + "/" +

@@ -90,6 +90,24 @@ String Diagnostics::diagSnapshot() {
   return out;
 }
 
+void Diagnostics::dbgView(std::string_view text, bool newline) {
+#if SELECTED_BOARD == BOARD_ESP32
+  diagLog_.append(text, newline);
+#else
+  // Other boards retain their existing 160-line log behavior.
+  String line;
+  if (line.reserve(text.size())) {
+    for (char ch : text) line += ch;
+    diagMirror(line, newline);
+  }
+#if FORK_NATIVE_USB
+  if (HWCDCSerial) {
+    HWCDCSerial.write(reinterpret_cast<const uint8_t *>(text.data()), text.size());
+    if (newline) HWCDCSerial.println();
+  }
+#endif
+#endif
+}
 void Diagnostics::dbgPrint(const String &s) {
   diagMirror(s, false);
 #if FORK_NATIVE_USB
@@ -267,47 +285,32 @@ void Diagnostics::serviceRssiHistory() {
   }
 }
 
-String Diagnostics::rssiHistoryJson(const int8_t *buf, uint16_t size, uint16_t pos, uint16_t count,
+bool Diagnostics::rssiHistoryJson(JsonWriter &j, const int8_t *buf, uint16_t size, uint16_t pos, uint16_t count,
                                     const char *range) {
-  String j;
-  j.reserve(2600);
-  j = "{\"range\":\"";
-  j += range;
-  j += "\",\"values\":[";
+  j << "{\"range\":" << jsonQuoted(range) << ",\"values\":[";
   int minv = 0, maxv = -127;
   long sum = 0;
   uint16_t valid = 0;
+  count = std::min(count, size);
   uint16_t start = (count < size) ? 0 : pos;
   for (uint16_t i = 0; i < count; i++) {
-    uint16_t idx = (uint16_t)((start + i) % size);
-    int8_t v = buf[idx];
-    if (i) {
-      j += ',';
-    }
-    if (v == RSSI_EMPTY) {
-      j += "null";
-    } else {
-      j += String((int)v);
-      int iv = (int)v;
-      if (!valid || iv < minv) {
-        minv = iv;
-      }
-      if (!valid || iv > maxv) {
-        maxv = iv;
-      }
-      sum += iv;
-      valid++;
+    int v = buf[(start + i) % size];
+    if (i) j << ',';
+    if (v == RSSI_EMPTY) j << "null";
+    else {
+      j << v;
+      if (!valid || v < minv) minv = v;
+      if (!valid || v > maxv) maxv = v;
+      sum += v; ++valid;
     }
   }
-  j += "],\"count\":" + String(count);
+  j << "],\"count\":" << count;
   if (valid) {
-    j += ",\"min\":" + String(minv) + ",\"max\":" + String(maxv) +
-         ",\"avg\":" + String((float)sum / valid, 1);
-  } else {
-    j += ",\"min\":null,\"max\":null,\"avg\":null";
-  }
-  j += "}";
-  return j;
+    j << ",\"min\":" << minv << ",\"max\":" << maxv << ",\"avg\":";
+    j.decimal(double(sum) / valid, 1);
+  } else j << ",\"min\":null,\"max\":null,\"avg\":null";
+  j << '}';
+  return j.good();
 }
 void Diagnostics::beginNativeUsb() {
 #if FORK_NATIVE_USB
@@ -318,20 +321,20 @@ void Diagnostics::readBootReason() {
   bootResetReason = esp_reset_reason();
   bootResetReasonText = resetReasonToText(bootResetReason);
 }
-String Diagnostics::historyJson(RssiPeriod period) {
+bool Diagnostics::writeHistoryJson(JsonWriter &j, RssiPeriod period) {
   if (period == RssiPeriod::Hour) {
-    return rssiHistoryJson(rssi_.rssiHour, 60, rssi_.rssiHourPos, rssi_.rssiHourCount, "hour");
+    return rssiHistoryJson(j, rssi_.rssiHour, 60, rssi_.rssiHourPos, rssi_.rssiHourCount, "hour");
   }
   if (period == RssiPeriod::Day) {
-    return rssiHistoryJson(rssi_.rssiDay, 288, rssi_.rssiDayPos, rssi_.rssiDayCount, "day");
+    return rssiHistoryJson(j, rssi_.rssiDay, 288, rssi_.rssiDayPos, rssi_.rssiDayCount, "day");
   }
   if (period == RssiPeriod::Week) {
-    return rssiHistoryJson(rssi_.rssiWeek, 336, rssi_.rssiWeekPos, rssi_.rssiWeekCount, "week");
+    return rssiHistoryJson(j, rssi_.rssiWeek, 336, rssi_.rssiWeekPos, rssi_.rssiWeekCount, "week");
   }
   if (period == RssiPeriod::Month) {
-    return rssiHistoryJson(rssi_.rssiMonth, 360, rssi_.rssiMonthPos, rssi_.rssiMonthCount, "month");
+    return rssiHistoryJson(j, rssi_.rssiMonth, 360, rssi_.rssiMonthPos, rssi_.rssiMonthCount, "month");
   }
-  return rssiHistoryJson(rssi_.rssiYear, 365, rssi_.rssiYearPos, rssi_.rssiYearCount, "year");
+  return rssiHistoryJson(j, rssi_.rssiYear, 365, rssi_.rssiYearPos, rssi_.rssiYearCount, "year");
 }
 
 } // namespace forkrot

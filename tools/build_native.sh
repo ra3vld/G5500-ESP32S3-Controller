@@ -2,10 +2,22 @@
 set -eu
 cd "$(dirname "$0")/.."
 mkdir -p build
+python3 tools/generate_web_assets.py --check
+python3 -m unittest discover -s tests -p web_assets_tests.py
 CORE_SOURCES="G5500_Fork/control.cpp G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/calibration.cpp"
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tools/simulator.cpp -o build/simulator
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/core_tests.cpp -o build/core_tests
 ./build/core_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/protocol_memory_tests.cpp -o build/protocol_memory_tests
+./build/protocol_memory_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -pthread -I tests/http_fakes -I G5500_Fork tests/wifi_fallback_tests.cpp -o build/wifi_fallback_tests
+./build/wifi_fallback_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/diagnostic_stream_tests.cpp -o build/diagnostic_stream_tests
+./build/diagnostic_stream_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/http_fakes -I tests/fakes -I G5500_Fork tests/http_ingress_tests.cpp -o build/http_ingress_tests
+./build/http_ingress_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -pthread -I G5500_Fork G5500_Fork/control.cpp G5500_Fork/protocol.cpp tests/datagram_socket_tests.cpp -Wl,--wrap=malloc -o build/datagram_socket_tests
+./build/datagram_socket_tests
 for board in 1 4; do
   ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=$board -I G5500_Fork $CORE_SOURCES tests/status_memory_tests.cpp -o build/status_memory_tests
   ./build/status_memory_tests

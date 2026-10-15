@@ -2,6 +2,7 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <string_view>
 namespace forkrot {
 class Button {
   bool rawReleased_ = true, stableReleased_ = true, armed_ = false;
@@ -11,14 +12,21 @@ public:
   bool sample(bool released, uint32_t now);
 };
 class LineBuffer {
-  std::string buffer_;
+  char buffer_[512];
+  size_t size_ = 0;
   bool discardingLine_ = false;
 
 public:
   void clear() {
-    buffer_.clear();
+    size_ = 0;
     discardingLine_ = false;
   }
-  bool feed(char byte, std::string &line);
+  bool feed(char byte, std::string_view &line);
+  bool feed(char byte, std::string &line) {
+    std::string_view view;
+    if (!feed(byte, view)) return false;
+    line.assign(view.data(), view.size());
+    return true;
+  }
 };
 } // namespace forkrot
