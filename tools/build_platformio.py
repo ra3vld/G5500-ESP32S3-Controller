@@ -46,9 +46,11 @@ for flag in flags:
     if flag.startswith('-D'):
         key,_,value=flag[2:].partition('=');macros[key]=value or '1'
 header=(ROOT/'G5500_Fork/build_config.hpp').read_text()
-# The two supported default branches are DISPLAY_NONE / a legacy TFT alias.
-# A user-edited direct DISPLAY_KIND wins unless a build flag overrides it.
-values=re.findall(r'^#define DISPLAY_KIND (\w+)',header,re.M)
+# Allow users to indent/align settings without breaking dependency selection.
+def defaults(name):
+    return re.findall(r'^\s*#\s*define\s+'+re.escape(name)+r'\s+(\w+)',header,re.M)
+# A user-edited DISPLAY_KIND wins unless a build flag overrides it.
+values=defaults('DISPLAY_KIND')
 display=macros.get('DISPLAY_KIND')
 if display is None:
     if 'TFT_DISPLAY_ENABLED' in macros:display=macros['TFT_DISPLAY_ENABLED']
