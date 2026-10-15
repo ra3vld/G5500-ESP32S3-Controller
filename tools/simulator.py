@@ -147,7 +147,7 @@ async def main(args):
         except ConnectionError: pass
         writer.close();await writer.wait_closed()
     servers=[await asyncio.start_server(http,args.host,args.http_port),await asyncio.start_server(tcp,args.host,args.tcp_port,limit=1024)]
-    print(f'Virtual motors ONLY: HTTP {args.http_port}, TCP {args.tcp_port}, N1MM {args.n1mm_port}, UR5EQF {args.pst_port}',flush=True)
+    print(f'Virtual motors ONLY: HTTP {args.http_port}, TCP {args.tcp_port}, N1MM {args.n1mm_port}, PstRotator UDP {args.pst_port}',flush=True)
     ticker=asyncio.create_task(tick())
     try: await asyncio.Future()
     finally:

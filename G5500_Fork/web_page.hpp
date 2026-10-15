@@ -152,9 +152,10 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div class="field"><label>Модель</label><select name="model"><option value="G5500">G-5500</option><option value="G800DXA">G-800DXA</option></select></div>
 <div class="field"><label>Имя в N1MM</label><input name="rotorName" maxlength="31" required></div>
 <div class="field"><label>N1MM UDP</label><input name="n1mmPort" type="number" min="1" max="65535" required></div>
-<div class="field"><label>UR5EQF UDP</label><input name="pstPort" type="number" min="1" max="65534" required></div>
+<div class="field"><label for="pstPort">PstRotator UDP</label><input id="pstPort" name="pstPort" type="number" min="1" max="65534" aria-describedby="pstPortHelp" required></div>
 <div class="field"><label>Положение N1MM UDP</label><input name="reportPort" type="number" min="1" max="65535" required></div>
 <div class="field"><label>Дополнительный IP N1MM</label><input name="reportHost" placeholder="192.168.1.10"></div></div>
+<p id="pstPortHelp" style="margin:8px 0;color:var(--m);font-size:13px;line-height:1.4">PstRotator UDP — для UR5EQF и 5MContest. В логгере выберите PstRotator/UDP; отдельно запускать программу PstRotator не требуется.<br>Log4OM 2, DXLog.net, TR4W (с 4.148.6), Swisslog и LogHX также имеют интеграцию с PstRotator, но с нашим контроллером не тестировались.</p>
 <div class="hint" id="buildInfo"></div>
 <div id="speedSettings"><label id="analogSpeedToggle"><input name="speedEnabled" type="checkbox"> Управлять скоростью через внешний модуль 0–5 В</label>
 <p>AZ</p><div class="row">
