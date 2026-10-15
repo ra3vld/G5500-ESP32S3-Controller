@@ -17,7 +17,7 @@
 #define BOARD_PROFILE BOARD_AUTO
 #endif
 
-// 2. ДИСПЛЕЙ И BLUETOOTH
+// 2. ДИСПЛЕЙ, BLUETOOTH И WI-FI
 // DISPLAY_NONE    — без дисплея.
 // DISPLAY_ILI9341 — TFT ILI9341 + сенсор XPT2046.
 // DISPLAY_LCD1602 — параллельный LCD1602 / HD44780 (не I2C).
@@ -28,6 +28,14 @@
 // 1 — включён: встроенный SPP на ESP32, внешний HC-05 на S2/S3; 0 — выключен.
 #ifndef BLUETOOTH_ENABLED
 #define BLUETOOTH_ENABLED 1
+#endif
+
+// Только обычная ESP32: 0 — AP как резерв, при связи с роутером только STA;
+// 1 — принудительно сохранять AP вместе со STA. На S2/S3 AP включена всегда.
+// ВНИМАНИЕ: 1 увеличивает расход RAM и может вызывать зависания, перезагрузки
+// и отказы Wi-Fi/веба, особенно вместе со встроенным Bluetooth SPP.
+#ifndef ESP32_FORCE_AP_STA
+#define ESP32_FORCE_AP_STA 0
 #endif
 
 // 3. УПРАВЛЕНИЕ ДВИГАТЕЛЯМИ

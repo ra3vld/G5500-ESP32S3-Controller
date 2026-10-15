@@ -66,9 +66,10 @@ int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
   }
   case 5: {
     const auto mode = WiFi.getMode();
-    return std::snprintf(reply, capacity, "WIFI runtimeMode=%s apClients=%u\r\n",
+    return std::snprintf(reply, capacity, "WIFI runtimeMode=%s apClients=%u apPolicy=%s\r\n",
         mode == WIFI_STA ? "STA" : mode == WIFI_AP ? "AP" : mode == WIFI_AP_STA ? "AP+STA" : "OFF",
-        (mode & WIFI_AP) ? unsigned(WiFi.softAPgetStationNum()) : 0);
+        (mode & WIFI_AP) ? unsigned(WiFi.softAPgetStationNum()) : 0,
+        WIFI_AP_ALWAYS_ON ? "always" : "fallback");
   }
   case 6:
     return std::snprintf(reply, capacity,
@@ -379,9 +380,14 @@ void Network::startWifi() {
   // The policy below owns retries; Arduino's event callback must not launch
   // an independent reconnect after we deliberately return to AP-only mode.
   WiFi.setAutoReconnect(false);
+#if SELECTED_BOARD == BOARD_ESP32 && ESP32_FORCE_AP_STA
+  diagnostics_.dbgPrintln("[WIFI] WARNING: forced AP+STA uses more RAM; may be unstable, especially with SPP");
+#endif
+  if (WIFI_AP_ALWAYS_ON) restoreApOnlyAfterReconnectFail();
   if (credentials_.wifiSsid.length()) {
-    diagnostics_.dbgPrintln("[WIFI] starting STA; AP reserved for fallback");
-    if (WiFi.mode(WIFI_STA)) {
+    diagnostics_.dbgPrintln(WIFI_AP_ALWAYS_ON ? "[WIFI] starting STA; AP remains available"
+                                            : "[WIFI] starting STA; AP reserved for fallback");
+    if (WiFi.mode(WIFI_AP_ALWAYS_ON ? WIFI_AP_STA : WIFI_STA)) {
       WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
       const uint32_t started = millis();
       while (WiFi.status() != WL_CONNECTED && uint32_t(millis() - started) < WifiFallback::AttemptMs)
@@ -390,16 +396,18 @@ void Network::startWifi() {
   }
   const bool connected = WiFi.status() == WL_CONNECTED;
   if (connected) {
-    diagnostics_.dbgPrint("[WIFI] STA connected, AP off, IP = ");
+    diagnostics_.dbgPrint(WIFI_AP_ALWAYS_ON ? "[WIFI] STA connected, AP remains, IP = "
+                                          : "[WIFI] STA connected, AP off, IP = ");
     diagnostics_.dbgPrintln(WiFi.localIP().toString());
-  } else {
+  } else if (!WIFI_AP_ALWAYS_ON || WiFi.getMode() != WIFI_AP) {
     restoreApOnlyAfterReconnectFail();
   }
   wifiFallback_.reset(millis(), connected);
   tcpServer_.begin();
   actions_.setupWeb();
   heapAfterWifi_ = heapFreeBytes();
-  diagnostics_.dbgPrintln("[WIFI] STA preferred; AP fallback, retry 30s, attempt 8s");
+  diagnostics_.dbgPrintln(WIFI_AP_ALWAYS_ON ? "[WIFI] AP always on; STA retry 30s, attempt 8s"
+                                          : "[WIFI] STA preferred; AP fallback, retry 30s, attempt 8s");
 }
 
 void Network::restoreApOnlyAfterReconnectFail() {
@@ -415,13 +423,13 @@ void Network::restoreApOnlyAfterReconnectFail() {
   const bool started = credentials_.apPass.length() >= 8
       ? WiFi.softAP(AP_SSID, credentials_.apPass.c_str()) : WiFi.softAP(AP_SSID);
   heapAfterAp_ = heapFreeBytes(); // zero means AP has not been started this boot
-  diagnostics_.dbgPrintln(configured && started ? "[WIFI] fallback AP ready at 192.168.4.1"
-                                               : "[WIFI] fallback AP failed");
+  diagnostics_.dbgPrintln(configured && started ? "[WIFI] AP ready at 192.168.4.1"
+                                               : "[WIFI] AP start failed");
 }
 
 void Network::serviceWifiReconnect() {
   const auto action = wifiFallback_.update(millis(), credentials_.wifiSsid.length() != 0,
-      WiFi.status() == WL_CONNECTED, (WiFi.getMode() & WIFI_AP) != 0);
+      WiFi.status() == WL_CONNECTED, (WiFi.getMode() & WIFI_AP) != 0, WIFI_AP_ALWAYS_ON);
   if (action == WifiAction::StopAp) {
     if (WiFi.mode(WIFI_STA)) diagnostics_.dbgPrintln("[WIFI] STA connected; fallback AP stopped");
     else diagnostics_.dbgPrintln("[WIFI] failed to stop fallback AP");

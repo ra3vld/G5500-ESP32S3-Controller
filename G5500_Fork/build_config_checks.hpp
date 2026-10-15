@@ -41,6 +41,9 @@ static_assert(BOARD_PROFILE >= BOARD_AUTO && BOARD_PROFILE <= BOARD_ESP32, "Inva
 #if BTS7960_PWM_INVERTED && DRIVE_INTERFACE != DRIVE_BTS7960
 #error "PWM inversion requires DRIVE_BTS7960"
 #endif
+#if ESP32_FORCE_AP_STA != 0 && ESP32_FORCE_AP_STA != 1
+#error "ESP32_FORCE_AP_STA must be 0 or 1"
+#endif
 #if (BLUETOOTH_ENABLED != 0 && BLUETOOTH_ENABLED != 1) || (USER_BUTTON_ACTIVE_LOW != 0 && USER_BUTTON_ACTIVE_LOW != 1) || (USER_BUTTON_PULLUP != 0 && USER_BUTTON_PULLUP != 1)
 #error "Boolean build flags must be 0 or 1"
 #endif

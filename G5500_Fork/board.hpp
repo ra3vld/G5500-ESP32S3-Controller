@@ -41,6 +41,7 @@
 #define FORK_USB_NAME "Serial/JTAG"
 #endif
 namespace forkrot { namespace board {
+inline constexpr bool WIFI_AP_ALWAYS_ON = SELECTED_BOARD != BOARD_ESP32 || ESP32_FORCE_AP_STA;
 inline constexpr int PIN_CONFIRM = USER_BUTTON_GPIO;
 inline constexpr int TOUCH_RAW_X_MIN = 240, TOUCH_RAW_X_MAX = 3850;
 inline constexpr int TOUCH_RAW_Y_MIN = 240, TOUCH_RAW_Y_MAX = 3850;

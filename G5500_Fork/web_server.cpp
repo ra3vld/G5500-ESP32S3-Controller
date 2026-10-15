@@ -243,7 +243,9 @@ void WebInterface::setupWeb() {
       return;
     }
     diagnostics_.dbgPrintln("[WIFI NVS] credentials saved and verified; restarting");
-    web_.send(200, "text/plain; charset=utf-8", "Настройки Wi-Fi сохранены. После перезагрузки откройте адрес контроллера в домашней сети. Если подключение не удалось, появится G5500-Rotator.");
+    web_.send(200, "text/plain; charset=utf-8", WIFI_AP_ALWAYS_ON
+        ? "Настройки Wi-Fi сохранены. После перезагрузки снова подключитесь к G5500-Rotator или откройте адрес контроллера в домашней сети."
+        : "Настройки Wi-Fi сохранены. После перезагрузки откройте адрес контроллера в домашней сети. Если подключение не удалось, появится G5500-Rotator.");
     restart_.request(millis());
   };
   web_.on("/api/wifi", HTTP_POST, saveWifi);

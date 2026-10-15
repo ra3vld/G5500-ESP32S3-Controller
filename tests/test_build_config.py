@@ -49,6 +49,7 @@ class BuildConfigTests(unittest.TestCase):
     def test_defaults(self):
         self.compile(dict(BOARD_PROFILE=0, SELECTED_BOARD=1, DISPLAY_KIND=0, TFT_DISPLAY_ENABLED=0,
                           BLUETOOTH_ENABLED=1, BLUETOOTH_BACKEND=1, DRIVE_INTERFACE=0,
+                          ESP32_FORCE_AP_STA=0, **{'forkrot::board::WIFI_AP_ALWAYS_ON': 1},
                           BTS7960_PWM_INVERTED=0, USER_BUTTON_GPIO=0, USER_BUTTON_ACTIVE_LOW=1,
                           USER_BUTTON_PULLUP=1, AZ_STOP_TOLERANCE_DEG='5.0f', EL_STOP_TOLERANCE_DEG='5.0f'))
 
@@ -76,7 +77,22 @@ class BuildConfigTests(unittest.TestCase):
                                      ('CONFIG_IDF_TARGET_ESP32S3=1', 1, 1),
                                      ('CONFIG_IDF_TARGET_ESP32=1', 4, 2)]:
             with self.subTest(flag=flag):
-                self.compile(dict(SELECTED_BOARD=board, BLUETOOTH_BACKEND=backend), [flag])
+                self.compile(dict(SELECTED_BOARD=board, BLUETOOTH_BACKEND=backend,
+                                  **{'forkrot::board::WIFI_AP_ALWAYS_ON': int(board != 4)}), [flag])
+
+    def test_wifi_ap_policy_by_board_and_override(self):
+        for board in (1, 2, 3, 4):
+            for force in (0, 1):
+                with self.subTest(board=board, force=force):
+                    self.compile({'forkrot::board::WIFI_AP_ALWAYS_ON': int(board != 4 or force)},
+                                 [f'BOARD_PROFILE={board}', f'ESP32_FORCE_AP_STA={force}'])
+        self.edit(BOARD_PROFILE=4, ESP32_FORCE_AP_STA=1)
+        self.compile({'forkrot::board::WIFI_AP_ALWAYS_ON': 1})
+        self.compile({'forkrot::board::WIFI_AP_ALWAYS_ON': 0}, ['ESP32_FORCE_AP_STA=0'])
+        self.compile({'forkrot::board::WIFI_AP_ALWAYS_ON': 0},
+                     ['ESP32_FORCE_AP_STA=0', 'BLUETOOTH_ENABLED=0'])
+        for invalid in (-1, 2):
+            self.compile({}, [f'ESP32_FORCE_AP_STA={invalid}'], success=False)
 
     def selected_config(self, *args):
         result = subprocess.run([sys.executable, str(self.root / 'tools/build_platformio.py'),

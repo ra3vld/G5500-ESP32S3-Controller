@@ -29,6 +29,18 @@ int main() {
   assert(policy.update(19998, true, false, true) == WifiAction::None);
   assert(policy.update(19999, true, false, true) == WifiAction::StartSta);
   assert(policy.update(27999, true, false, true) == WifiAction::StartAp);
+  // S2/S3 and explicitly forced ESP32 keep AP after a successful STA attempt.
+  policy.reset(0, false);
+  assert(policy.update(30000, false, false, true, true) == WifiAction::None);
+  assert(policy.update(30000, true, false, true, true) == WifiAction::StartSta);
+  assert(policy.update(30001, true, true, true, true) == WifiAction::None);
+  assert(policy.update(90000, true, true, true, true) == WifiAction::None);
+  assert(policy.update(90001, true, false, true, true) == WifiAction::StartAp);
+  assert(policy.update(120000, true, false, true, true) == WifiAction::None);
+  assert(policy.update(120001, true, false, true, true) == WifiAction::StartSta);
+  assert(policy.update(128001, true, false, true, true) == WifiAction::StartAp);
+  assert(policy.update(158001, true, false, true, true) == WifiAction::StartSta);
+  assert(policy.update(158002, true, true, true, true) == WifiAction::None);
   beginRuntimeMetrics(); assert(runtimeMetrics.hookReady && fakeAllocFailureHook);
   fakeAllocFailureHook(2308, 3, "heap_caps_malloc");
   assert(runtimeMetrics.failures[1].ready() && !runtimeMetrics.failures[0].ready());
@@ -43,5 +55,5 @@ int main() {
   radio.join();
   assert(runtimeMetrics.allocationFailures == 20001 && runtimeMetrics.largestFailedAllocation == 4096);
   assert(runtimeMetrics.failures[0].ready() && runtimeMetrics.failures[0].size == 64);
-  std::cout << "PASS: STA/AP fallback, retry/deadline/wrap, bounded AP stop retry, immutable OOM samples across threads\n";
+  std::cout << "PASS: fallback/always-on AP, retry/deadline/wrap, bounded AP stop retry, immutable OOM samples across threads\n";
 }

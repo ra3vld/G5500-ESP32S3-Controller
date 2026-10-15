@@ -3,8 +3,8 @@
 #include <cstdint>
 namespace forkrot {
 enum class WifiAction { None, StartAp, StartSta, StopAp };
-// AP is a fallback. A reconnect runs alongside it for at most eight seconds;
-// successful STA removes AP, loss of STA restores AP before the retry interval.
+// A reconnect runs alongside AP for at most eight seconds. Successful STA
+// removes AP only in fallback mode; always-on AP stays available with STA.
 class WifiFallback {
 public:
   static constexpr uint32_t RetryMs = 30000, AttemptMs = 8000;
@@ -13,11 +13,12 @@ public:
     changedMs_ = now;
     apStopAttemptMs_ = now - 1000;
   }
-  WifiAction update(uint32_t now, bool configured, bool connected, bool apEnabled) {
+  WifiAction update(uint32_t now, bool configured, bool connected, bool apEnabled,
+                    bool keepAp = false) {
     if (connected) {
       phase_ = Phase::Online;
       changedMs_ = now;
-      if (apEnabled && uint32_t(now - apStopAttemptMs_) >= 1000) {
+      if (!keepAp && apEnabled && uint32_t(now - apStopAttemptMs_) >= 1000) {
         apStopAttemptMs_ = now;
         return WifiAction::StopAp;
       }
