@@ -13,8 +13,11 @@
 | Adafruit BusIO | 1.17.2 | TFT |
 | XPT2046_Touchscreen | официальный tag v1.4 | TFT/touch |
 | LiquidCrystal | 1.0.7 | параллельный LCD1602 |
+| LVGL | 9.6.0 | CrowPanel 2.1 |
 
 NONE не требует экранных библиотек. LCD требует только LiquidCrystal; TFT не требует LiquidCrystal. На S2/S3 HC-05 использует Arduino HardwareSerial без дополнительной библиотеки. На классическом ESP32 используется SPP API ESP-IDF без библиотеки BluetoothSerial; BLE отключён.
+
+CrowPanel 2.1 (DHE03921D): `pio run -e crowpanel_21` или `./tools/build_arduino.sh crowpanel`. Это отдельный профиль экрана/энкодера/сети без привода; конфигурация, библиотека LVGL и ограничения описаны в [crowpanel-21.md](crowpanel-21.md).
 
 ## Arduino IDE 2.x
 

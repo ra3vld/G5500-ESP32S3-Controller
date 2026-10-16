@@ -16,10 +16,12 @@
 #include "board_s2_mini.hpp"
 #elif SELECTED_BOARD == BOARD_ESP32
 #include "board_esp32.hpp"
+#elif SELECTED_BOARD == BOARD_CROWPANEL_21
+#include "board_crowpanel_21.hpp"
 #else
 #error "Unknown board profile"
 #endif
-#if ((CONFIG_IDF_TARGET_ESP32S2 && SELECTED_BOARD != BOARD_S2_LEGACY && SELECTED_BOARD != BOARD_S2_MINI) || (CONFIG_IDF_TARGET_ESP32S3 && SELECTED_BOARD != BOARD_S3) || (CONFIG_IDF_TARGET_ESP32 && SELECTED_BOARD != BOARD_ESP32))
+#if ((CONFIG_IDF_TARGET_ESP32S2 && SELECTED_BOARD != BOARD_S2_LEGACY && SELECTED_BOARD != BOARD_S2_MINI) || (CONFIG_IDF_TARGET_ESP32S3 && SELECTED_BOARD != BOARD_S3 && SELECTED_BOARD != BOARD_CROWPANEL_21) || (CONFIG_IDF_TARGET_ESP32 && SELECTED_BOARD != BOARD_ESP32))
 #error "Board profile does not match the chip"
 #endif
 #if SELECTED_BOARD == BOARD_ESP32 && (ARDUINO_USB_MODE || ARDUINO_USB_CDC_ON_BOOT)
@@ -33,7 +35,7 @@
 #if SELECTED_BOARD == BOARD_ESP32
 #define FORK_CHIP_NAME "ESP32"
 #define FORK_USB_NAME "UART bridge"
-#elif SELECTED_BOARD != BOARD_S3
+#elif SELECTED_BOARD != BOARD_S3 && SELECTED_BOARD != BOARD_CROWPANEL_21
 #define FORK_CHIP_NAME "ESP32-S2"
 #define FORK_USB_NAME "CDC"
 #else
@@ -56,11 +58,11 @@ inline constexpr const char *AP_SSID = "G5500-Rotator", *AP_PASS = "";
 constexpr bool gpio(int n) {
   if (n < 0) return false;
   if (SELECTED_BOARD == BOARD_ESP32) return n <= 39 && !(n >= 6 && n <= 11) && n != 16 && n != 17 && n != 20 && n != 24 && !(n >= 28 && n <= 31) && n != 37 && n != 38;
-  if (SELECTED_BOARD == BOARD_S3) return n <= 48 && n != 22 && n != 23 && n != 24 && n != 25 && !(n >= 26 && n <= 37) && n != 19 && n != 20;
+  if (SELECTED_BOARD == BOARD_S3 || SELECTED_BOARD == BOARD_CROWPANEL_21) return n <= 48 && n != 22 && n != 23 && n != 24 && n != 25 && !(n >= 26 && n <= 37) && n != 19 && n != 20;
   if (SELECTED_BOARD == BOARD_S2_MINI) return (n <= 18 || n == 21 || (n >= 33 && n <= 40));
   return n <= 46 && !(n >= 22 && n <= 32) && n != 19 && n != 20;
 }
-constexpr bool output(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n < 34 : n != 46); }
+constexpr bool output(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n < 34 : SELECTED_BOARD == BOARD_CROWPANEL_21 || n != 46); }
 constexpr bool pullup(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n < 34 : n != 46); }
 constexpr bool adc(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n >= 32 : n >= 1 && n <= 10); }
 // One owner per active wire; shared TFT/touch SPI wires appear only once here.
@@ -77,6 +79,9 @@ inline constexpr int activePins[] = {
  PIN_TFT_MOSI, PIN_TFT_SCK, PIN_TFT_MISO, PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_RST, PIN_TOUCH_CS, PIN_TOUCH_IRQ,
 #elif DISPLAY_KIND == DISPLAY_LCD1602
  PIN_LCD_RS, PIN_LCD_E, PIN_LCD_D4, PIN_LCD_D5, PIN_LCD_D6, PIN_LCD_D7,
+#elif DISPLAY_KIND == DISPLAY_CROWPANEL_21
+ PIN_I2C_SDA, PIN_I2C_SCL, PIN_ENCODER_A, PIN_ENCODER_B, PIN_BACKLIGHT,
+ 16, 2, 1, 40, 7, 15, 41, 46, 3, 8, 18, 17, 14, 13, 12, 11, 10, 9, 5, 45, 48, 47, 21,
 #endif
 };
 constexpr bool uniquePins() {
@@ -108,8 +113,10 @@ static_assert(validOutputs(), "Input-only GPIO assigned to an output");
 static_assert(validPins(), "Unavailable/reserved GPIO in active board configuration");
 static_assert(uniquePins(), "Conflicting active peripheral GPIOs");
 static_assert(PIN_CONFIRM == -1 || (gpio(PIN_CONFIRM) && (!USER_BUTTON_PULLUP || pullup(PIN_CONFIRM))), "Invalid user button GPIO/pullup");
+#if SELECTED_BOARD != BOARD_CROWPANEL_21
 static_assert(adc(PIN_AZ_ADC) && adc(PIN_EL_ADC), "Feedback must use ADC1 GPIO");
 static_assert(output(PIN_LEFT) && output(PIN_RIGHT) && output(PIN_UP) && output(PIN_DOWN) && output(PIN_SPEED) && output(PIN_UART_TX), "Invalid output GPIO");
+#endif
 #if DRIVE_INTERFACE != DRIVE_YAESU
 static_assert(output(PIN_EL_SPEED), "Independent drive requires two speed/enable outputs");
 #endif

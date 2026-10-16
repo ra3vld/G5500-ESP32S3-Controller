@@ -61,9 +61,9 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrint("[BUILD] ");
   diagnostics_.dbgPrint(board::NAME);
   diagnostics_.dbgPrint(" | display=");
-  diagnostics_.dbgPrint(DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE");
+  diagnostics_.dbgPrint(DISPLAY_KIND == DISPLAY_CROWPANEL_21 ? "CROWPANEL_21" : DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE");
   diagnostics_.dbgPrint(" | drive=");
-  diagnostics_.dbgPrintln(DRIVE_INTERFACE == DRIVE_YAESU ? "YAESU" : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960" : "SEPARATE_PWM");
+  diagnostics_.dbgPrintln(SELECTED_BOARD == BOARD_CROWPANEL_21 ? (CROWPANEL_SIMULATION ? "SIMULATED 13.4 deg/s" : "NONE") : DRIVE_INTERFACE == DRIVE_YAESU ? "YAESU" : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960" : "SEPARATE_PWM");
 #if SELECTED_BOARD == BOARD_ESP32
   diagnostics_.dbgPrintln("[DIAG] /diaglog: fixed 2048-byte log; UART0 H4: RAM and Wi-Fi status");
 #else
@@ -135,6 +135,8 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln("TFT calibration: 2-POINT / MULTI-POINT, P36/P45, AZ/EL capture + reset");
 #elif DISPLAY_KIND == DISPLAY_LCD1602
   diagnostics_.dbgPrintln("LCD1602: current/target, mode/wait and PWM output bars; touch disabled");
+#elif DISPLAY_KIND == DISPLAY_CROWPANEL_21
+  diagnostics_.dbgPrintln("CrowPanel 2.1: RGB dashboard, encoder 20 deg, touch mode/STOP; no motor GPIO");
 #else
   diagnostics_.dbgPrintln("Display and touch: disabled; Web control and calibration available");
 #endif

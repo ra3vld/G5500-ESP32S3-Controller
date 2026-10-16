@@ -73,6 +73,9 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
                     const Settings &settings, uint32_t now, bool appendMembers) {
   json << (appendMembers ? ",\"model\":" : "{\"model\":") << jsonQuoted(controller.model == Model::G5500 ? "G5500" : "G800DXA")
        << ",\"controlMode\":" << jsonQuoted(Controller::modeName(controller.mode))
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+       << ",\"encoderInverted\":" << (settings.encoderInverted ? "true" : "false")
+#endif
        << ",\"remainingMs\":" << controller.remaining(now)
        << ",\"pendingValid\":" << (controller.pendingValid ? "true" : "false")
        << ",\"pending\":";
@@ -106,10 +109,10 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
          << '}';
   }
   json << "],\"build\":{\"board\":" << jsonQuoted(board::NAME)
-       << ",\"display\":" << jsonQuoted(DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE")
+       << ",\"display\":" << jsonQuoted(DISPLAY_KIND == DISPLAY_CROWPANEL_21 ? "CROWPANEL_21" : DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE")
        << ",\"bluetooth\":" << (BLUETOOTH_ENABLED ? "true" : "false")
        << ",\"bluetoothBackend\":" << jsonQuoted(board::BLUETOOTH_BACKEND_NAME)
-       << ",\"drive\":" << jsonQuoted(DRIVE_INTERFACE == DRIVE_YAESU ? "YAESU" : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960" : "SEPARATE_PWM")
+       << ",\"drive\":" << jsonQuoted(SELECTED_BOARD == BOARD_CROWPANEL_21 ? (CROWPANEL_SIMULATION ? "SIMULATED" : "NONE") : DRIVE_INTERFACE == DRIVE_YAESU ? "YAESU" : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960" : "SEPARATE_PWM")
        << ",\"userButtonGpio\":" << USER_BUTTON_GPIO << ",\"userButtonActiveLow\":" << (USER_BUTTON_ACTIVE_LOW ? "true" : "false")
        << ",\"userButtonPullup\":" << (USER_BUTTON_PULLUP ? "true" : "false")
        << ",\"pins\":{\"azAdc\":" << board::PIN_AZ_ADC << ",\"elAdc\":" << board::PIN_EL_ADC
@@ -217,6 +220,13 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       valid = valid && (next.reportHost.empty() || ip(next.reportHost));
     }
     if (has(form, "speedEnabled")) valid = boolean(get(form, "speedEnabled"), enabled) && valid;
+    if (has(form, "encoderInverted")) {
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+      valid = boolean(get(form, "encoderInverted"), next.encoderInverted) && valid;
+#else
+      valid = false;
+#endif
+    }
     if (has(form, "azSpeedEnabled")) {
       bool alias = enabled;
       valid = boolean(get(form, "azSpeedEnabled"), alias) && valid;

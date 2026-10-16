@@ -12,6 +12,9 @@ int main() {
   assert(stateJson(c, p, settings, 0) == before);
 #if SELECTED_BOARD == BOARD_ESP32
   assert(before.find("\"azAdc\":34,\"elAdc\":35") != std::string::npos);
+#elif SELECTED_BOARD == BOARD_CROWPANEL_21
+  assert(before.find("\"display\":\"CROWPANEL_21\"") != std::string::npos);
+  assert(before.find(CROWPANEL_SIMULATION ? "\"drive\":\"SIMULATED\"" : "\"drive\":\"NONE\"") != std::string::npos);
 #endif
   std::cout << "PASS: build metadata, pin map and read-only Bluetooth backend\n";
 }

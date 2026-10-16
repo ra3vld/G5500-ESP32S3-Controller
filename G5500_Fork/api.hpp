@@ -7,6 +7,7 @@ namespace forkrot {
 struct Settings {
   unsigned n1mmPort = 12040, pstPort = 1234, reportPort = 13010;
   std::string reportHost;
+  bool encoderInverted = true;
 };
 struct Response {
   int status = 200;

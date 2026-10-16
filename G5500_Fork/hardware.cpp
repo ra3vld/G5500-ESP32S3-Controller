@@ -2,6 +2,7 @@
 #include "hardware.hpp"
 #include <cmath>
 #include <driver/gpio.h>
+#include "crowpanel_board.hpp"
 namespace forkrot {
 using namespace board;
 namespace {
@@ -28,12 +29,17 @@ int idleOutputLevel(int pin) {
 }
 }
 int Hardware::adcAvgMv(int pin) {
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+  (void)pin;
+  return 0; // No feedback adapter in this CrowPanel profile.
+#else
   uint32_t s = 0;
   for (int i = 0; i < 25; i++) {
     s += analogReadMilliVolts(pin);
     delayMicroseconds(150);
   }
   return s / 25;
+#endif
 }
 
 int Hardware::filteredMv(unsigned axis) {
@@ -46,6 +52,10 @@ bool Hardware::buttonReleased() const {
   return digitalRead(PIN_CONFIRM) == (USER_BUTTON_ACTIVE_LOW ? HIGH : LOW);
 }
 void Hardware::adcDiagRead(int pin, int &raw, int &mv) {
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+  mv = adcAvgMv(pin);
+  raw = 0;
+#else
   uint32_t sr = 0, sm = 0;
   for (int i = 0; i < 25; i++) {
     sr += analogRead(pin);
@@ -54,6 +64,7 @@ void Hardware::adcDiagRead(int pin, int &raw, int &mv) {
   }
   raw = (int)(sr / 25);
   mv = (int)(sm / 25);
+#endif
 }
 
 void Hardware::rgbSet(uint8_t r, uint8_t g, uint8_t b) {
@@ -195,6 +206,10 @@ void Hardware::outputsOff() {
   for (int pin : pins) if (pin >= 0) preloadLevel(pin, idleOutputLevel(pin));
 }
 bool Hardware::preparePwm(bool enable) {
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+  (void)enable;
+  return false;
+#else
   const int pins[] = {
 #if DRIVE_INTERFACE == DRIVE_BTS7960
     PIN_LEFT, PIN_RIGHT, PIN_DOWN, PIN_UP
@@ -236,8 +251,17 @@ bool Hardware::preparePwm(bool enable) {
     pwmReady = false;
   }
   return true;
+#endif
 }
 void Hardware::applyOutputs() {
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+#if !CROWPANEL_SIMULATION
+  if (runtime_.controller.moving() || runtime_.controller.axes[0].wanted || runtime_.controller.axes[1].wanted)
+    runtime_.controller.stopNow(-1, millis());
+  runtime_.controller.driveFault = true;
+  runtime_.controller.fault = "crowpanel_no_drive";
+#endif
+#else
   const bool enable = DRIVE_INTERFACE != DRIVE_YAESU || runtime_.controller.variableSpeed(0);
   const bool ready = preparePwm(enable);
   const int neg[2] = {PIN_LEFT, PIN_DOWN}, pos[2] = {PIN_RIGHT, PIN_UP};
@@ -269,6 +293,7 @@ void Hardware::applyOutputs() {
     if (pwmReady && (DRIVE_INTERFACE == DRIVE_SEPARATE_PWM || i == 0)) ledcWrite(speed[i], duty);
 #endif
   }
+#endif
   runtime_.targetAz = runtime_.controller.axes[0].target;
   runtime_.targetEl = runtime_.controller.axes[1].target;
   runtime_.targetValid = runtime_.controller.targetKnown;
@@ -276,6 +301,13 @@ void Hardware::applyOutputs() {
   runtime_.elTrack = runtime_.controller.axes[1].tracking;
 }
 void Hardware::beginDirections() {
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+  crowpanel::beginBus();
+#if !CROWPANEL_SIMULATION
+  runtime_.controller.driveFault = true;
+  runtime_.controller.fault = "crowpanel_no_drive";
+#endif
+#else
 #if DRIVE_INTERFACE == DRIVE_BTS7960
   preloadLevel(PIN_SPEED, LOW); pinMode(PIN_SPEED, OUTPUT);
   preloadLevel(PIN_EL_SPEED, LOW); pinMode(PIN_EL_SPEED, OUTPUT);
@@ -286,8 +318,10 @@ void Hardware::beginDirections() {
 #endif
   };
   for (int pin : pins) if (pin >= 0) { preloadLevel(pin, idleOutputLevel(pin)); pinMode(pin, OUTPUT); }
+#endif
 }
 void Hardware::beginAdc() {
+#if SELECTED_BOARD != BOARD_CROWPANEL_21
   analogReadResolution(12);
   // Arduino 3.x configures each ADC channel on its first read. Per-pin
   // attenuation applied before that read is ignored and logs an error.
@@ -295,6 +329,7 @@ void Hardware::beginAdc() {
   analogRead(PIN_EL_ADC);
   analogSetPinAttenuation(PIN_AZ_ADC, ADC_11db);
   analogSetPinAttenuation(PIN_EL_ADC, ADC_11db);
+#endif
 }
 void Hardware::beginInputs() {
   if (PIN_CONFIRM >= 0) pinMode(PIN_CONFIRM, USER_BUTTON_PULLUP ? INPUT_PULLUP : INPUT);

@@ -7,7 +7,7 @@ namespace forkrot {
 // The destination is pinned to the requesting transport until completion.
 class DiagnosticStream {
 public:
-  enum class Port : uint8_t { Usb, Bluetooth };
+  enum class Port : uint8_t { Usb, Bluetooth, NativeUsb };
   void start(Port port, uint32_t now) {
     if (active_) return;
     active_ = true; port_ = port; started_ = now;

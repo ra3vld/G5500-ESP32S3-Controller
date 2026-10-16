@@ -52,7 +52,14 @@ public:
   unsigned &slowdownDegrees = speeds[0].slowdownDegrees;
   bool driveFault = false;
   bool variableSpeed(unsigned i) const;
-  static constexpr float tolerance(unsigned i) { return i ? EL_STOP_TOLERANCE_DEG : AZ_STOP_TOLERANCE_DEG; }
+  static constexpr float tolerance(unsigned i) {
+#if SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION
+    (void)i;
+    return 0.f; // Exact simulated feedback needs no ADC noise dead band.
+#else
+    return i ? EL_STOP_TOLERANCE_DEG : AZ_STOP_TOLERANCE_DEG;
+#endif
+  }
   size_t sequenceIndex() const { return sequence_.empty() ? 0 : sequenceIndex_ + 1; }
   size_t sequenceCount() const { return sequence_.empty() ? pendingSequence_.size() : sequence_.size(); }
   Controller(const Controller &other);

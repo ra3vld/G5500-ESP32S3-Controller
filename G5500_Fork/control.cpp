@@ -18,6 +18,9 @@ constexpr uint32_t kMaximumSequenceIntervalMs = 999000;
 } // namespace
 
 Controller::Controller() {
+#if SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION
+  feedback(0, 0, true, true);
+#endif
   speeds[1].slowdownDegrees = 2;
 #if DRIVE_INTERFACE == DRIVE_YAESU
   speeds[0] = {50, 25, 25, 2000, 1500, 10};
@@ -367,6 +370,20 @@ void Controller::tick(uint32_t now) {
   const uint32_t elapsed = speedUpdateStarted_ ? uint32_t(now - lastSpeedUpdateAt_) : 0;
   lastSpeedUpdateAt_ = now;
   speedUpdateStarted_ = true;
+#if SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION
+  // Integrate the previous output over real elapsed time, independent of loop rate.
+  // This profile has no motor GPIO; all protocols share these simulated positions.
+  for (unsigned i = 0; i < 2; ++i) {
+    auto &axis = axes[i];
+    if (!driveFault && axis.direction && (i == 0 || model == Model::G5500)) {
+      float step = 13.4f * (float(elapsed) / 1000.f);
+      const float distance = axis.target - axis.current;
+      if (axis.tracking && distance * axis.direction >= 0 && step >= std::abs(distance))
+        axis.current = axis.target;
+      else axis.current = std::clamp(axis.current + axis.direction * step, 0.f, i ? 180.f : maximum);
+    }
+  }
+#endif
   if (!sequence_.empty() && uint32_t(now - sequenceAdvancedAt_) >= sequenceIntervalMs_) {
     if (++sequenceIndex_ >= sequence_.size()) {
       sequence_.clear();

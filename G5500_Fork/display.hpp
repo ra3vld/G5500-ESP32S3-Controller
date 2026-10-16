@@ -119,6 +119,40 @@ private:
 };
 } // namespace forkrot
 
+#elif DISPLAY_KIND == DISPLAY_CROWPANEL_21
+#include "runtime.hpp"
+#include "crowpanel_knob.hpp"
+#include "crowpanel_ui.hpp"
+#include "crowpanel_board.hpp"
+namespace forkrot {
+class DeviceActions; class Calibration; class Hardware; class Diagnostics; class Network; class Storage;
+class Display {
+  Runtime &runtime_;
+  DeviceActions &actions_;
+  Hardware &hardware_;
+  Diagnostics &diagnostics_;
+  Network &network_;
+  CrowPanelKnob knob_;
+  crowpanel::TouchButtons touchButtons_;
+  CrowPanelUi ui_;
+  esp_lcd_panel_handle_t panel_ = nullptr;
+  lv_display_t *display_ = nullptr;
+  uint32_t lastInput_ = 0, lastUi_ = 0;
+  bool redraw_ = true, inputHealthy_ = true;
+public:
+  Display(Runtime &runtime, DeviceActions &actions, Calibration &, Hardware &hardware,
+          Diagnostics &diagnostics, Network &network, Storage &)
+    : runtime_(runtime), actions_(actions), hardware_(hardware), diagnostics_(diagnostics),
+      network_(network), knob_(runtime.controller) {}
+  void invalidate() { redraw_ = true; }
+  void loadTouchCalibration() {}
+  void startAfterCalibrationLoad() { redraw_ = true; }
+  void serviceTouch();
+  void initLocalDisplay();
+  void updateLocalDisplay();
+};
+}
+
 #elif DISPLAY_KIND == DISPLAY_LCD1602
 #include <Arduino.h>
 #include <LiquidCrystal.h>

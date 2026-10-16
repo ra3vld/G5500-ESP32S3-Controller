@@ -37,4 +37,11 @@ for flags in [
 ]:compile_case(flags,False)
 for flags in [['USER_BUTTON_GPIO=-1'],['USER_BUTTON_GPIO=38'],['USER_BUTTON_GPIO=6','BLUETOOTH_ENABLED=0'],['USER_BUTTON_GPIO=8','DISPLAY_KIND=0'],['BOARD_PROFILE=3','CONFIG_IDF_TARGET_ESP32S2=1'],['TFT_DISPLAY_ENABLED=0'],['TFT_DISPLAY_ENABLED=1'],['USER_BUTTON_GPIO=47','DRIVE_INTERFACE=0']]:compile_case(flags,True)
 for flags in [['CONFIG_IDF_TARGET_ESP32=1'],['BOARD_PROFILE=4','USER_BUTTON_GPIO=39','USER_BUTTON_PULLUP=0'],['BOARD_PROFILE=4','USER_BUTTON_GPIO=-1']]:compile_case(flags,True)
+crow = ['BOARD_PROFILE=5', 'DISPLAY_KIND=3', 'USER_BUTTON_GPIO=-1']
+for bt in (0, 1):
+    compile_case(crow + [f'BLUETOOTH_ENABLED={bt}', 'CONFIG_IDF_TARGET_ESP32S3=1'], True)
+for flag in ('DRIVE_INTERFACE=1', 'DRIVE_INTERFACE=2', 'CONFIG_IDF_TARGET_ESP32=1', 'CONFIG_IDF_TARGET_ESP32S2=1'):
+    compile_case(crow + [flag], False)
+compile_case(['BOARD_PROFILE=5', 'DISPLAY_KIND=3'], False)
+compile_case(['BOARD_PROFILE=5', 'USER_BUTTON_GPIO=-1'], False)
 print(f'PASS: {checks} board/display/BT/drive ownership and negative compile checks')

@@ -13,6 +13,7 @@
 // BOARD_S2_MINI   — LOLIN / WEMOS S2 Mini.
 // BOARD_S2_LEGACY — прежняя проводка S2; только DRIVE_YAESU.
 // BOARD_ESP32     — ESP32 WROOM / WROVER.
+// BOARD_CROWPANEL_21 — Elecrow DHE03921D, круглый ST7701 480x480.
 #ifndef BOARD_PROFILE
 #define BOARD_PROFILE BOARD_AUTO
 #endif
@@ -21,6 +22,7 @@
 // DISPLAY_NONE    — без дисплея.
 // DISPLAY_ILI9341 — TFT ILI9341 + сенсор XPT2046.
 // DISPLAY_LCD1602 — параллельный LCD1602 / HD44780 (не I2C).
+// DISPLAY_CROWPANEL_21 — встроенный экран CrowPanel 2.1 (только эта плата).
 #ifndef DISPLAY_KIND
 #define DISPLAY_KIND DISPLAY_NONE
 #endif
@@ -36,6 +38,11 @@
 // и отказы Wi-Fi/веба, особенно вместе со встроенным Bluetooth SPP.
 #ifndef ESP32_FORCE_AP_STA
 #define ESP32_FORCE_AP_STA 0
+#endif
+
+// CrowPanel: 1 — имитация привода 13,4 градуса/с без моторных GPIO; 0 — без привода.
+#ifndef CROWPANEL_SIMULATION
+#define CROWPANEL_SIMULATION 1
 #endif
 
 // 3. УПРАВЛЕНИЕ ДВИГАТЕЛЯМИ

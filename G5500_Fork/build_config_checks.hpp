@@ -9,7 +9,7 @@
 #error "Conflicting DISPLAY_KIND and TFT_DISPLAY_ENABLED"
 #endif
 
-static_assert(BOARD_PROFILE >= BOARD_AUTO && BOARD_PROFILE <= BOARD_ESP32, "Invalid board profile");
+static_assert(BOARD_PROFILE >= BOARD_AUTO && BOARD_PROFILE <= BOARD_CROWPANEL_21, "Invalid board profile");
 #if BOARD_PROFILE == BOARD_AUTO
 #if defined(ARDUINO_LOLIN_S2_MINI)
 #define SELECTED_BOARD BOARD_S2_MINI
@@ -32,8 +32,18 @@ static_assert(BOARD_PROFILE >= BOARD_AUTO && BOARD_PROFILE <= BOARD_ESP32, "Inva
 #define BLUETOOTH_BACKEND BT_HC05
 #endif
 
-#if DISPLAY_KIND < 0 || DISPLAY_KIND > 2 || DRIVE_INTERFACE < 0 || DRIVE_INTERFACE > 2
+#if DISPLAY_KIND < 0 || DISPLAY_KIND > 3 || DRIVE_INTERFACE < 0 || DRIVE_INTERFACE > 2
 #error "Unknown display or drive interface"
+#endif
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+#if CROWPANEL_SIMULATION != 0 && CROWPANEL_SIMULATION != 1
+#error "CROWPANEL_SIMULATION must be 0 or 1"
+#endif
+#if DISPLAY_KIND != DISPLAY_CROWPANEL_21 || DRIVE_INTERFACE != DRIVE_YAESU || USER_BUTTON_GPIO != -1
+#error "CrowPanel requires its RGB display, DRIVE_YAESU placeholder and PCF8574 button (USER_BUTTON_GPIO=-1)"
+#endif
+#elif DISPLAY_KIND == DISPLAY_CROWPANEL_21
+#error "CrowPanel options require BOARD_CROWPANEL_21"
 #endif
 #if BTS7960_PWM_INVERTED != 0 && BTS7960_PWM_INVERTED != 1
 #error "BTS7960_PWM_INVERTED must be 0 or 1"

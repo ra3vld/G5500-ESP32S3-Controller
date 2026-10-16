@@ -20,7 +20,7 @@ class BuildConfigTests(unittest.TestCase):
         self.source = self.root / 'G5500_Fork'
         self.source.mkdir()
         for path in (ROOT / 'G5500_Fork').iterdir():
-            if path.suffix in {'.hpp', '.h', '.cpp', '.ino', '.csv'} and not path.name.endswith('.ino.cpp'):
+            if path.suffix in {'.hpp', '.h', '.c', '.cpp', '.ino', '.csv'} and not path.name.endswith('.ino.cpp'):
                 shutil.copy2(path, self.source / path.name)
         (self.root / 'tools').mkdir()
         for name in ['build_platformio.py', 'prepare_sketch.py', 'generate_web_assets.py']:
@@ -125,6 +125,28 @@ class BuildConfigTests(unittest.TestCase):
         for name in ['build_config.hpp', 'build_config_options.hpp', 'build_config_checks.hpp']:
             self.assertEqual((sketch / name).read_bytes(), (self.source / name).read_bytes())
         self.assertEqual((sketch / 'partitions.csv').read_bytes(), (self.source / 'partitions_s2.csv').read_bytes())
+
+    def test_crowpanel_profile_dependencies_and_arduino_copy(self):
+        self.compile({'SELECTED_BOARD': 5, 'TFT_DISPLAY_ENABLED': 0,
+                      'forkrot::board::PIN_AZ_ADC': -1, 'forkrot::board::PIN_LEFT': -1},
+                     ['BOARD_PROFILE=5', 'DISPLAY_KIND=3', 'USER_BUTTON_GPIO=-1', 'BLUETOOTH_ENABLED=0'])
+        result = subprocess.run([sys.executable, str(self.root / 'tools/build_platformio.py'),
+                                 '--env', 'crowpanel_21', '--dry-run'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        config = configparser.ConfigParser(interpolation=None)
+        config.read(self.root / 'build/platformio-config/crowpanel_21.ini')
+        selected = config['env:selected']
+        self.assertIn('lvgl/lvgl @ 9.6.0', selected['lib_deps'])
+        self.assertIn('-DDISPLAY_KIND=3', selected['build_flags'])
+        self.assertIn('-DUSER_BUTTON_GPIO=-1', selected['build_flags'])
+        self.assertNotIn('ILI9341', selected['lib_deps'])
+        result = subprocess.run([sys.executable, str(self.root / 'tools/prepare_sketch.py'),
+                                 '--target', 'crowpanel'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sketch = self.root / 'build/arduino-crowpanel/G5500_Fork'
+        for name in ('lv_conf.h', 'crowpanel_lcd_init.hpp', 'crowpanel_font_96.cpp', 'crowpanel_rgb_driver.c', 'crowpanel_rgb_driver.h'):
+            self.assertEqual((sketch / name).read_bytes(), (self.source / name).read_bytes())
+        self.assertEqual((sketch / 'partitions.csv').read_bytes(), (self.source / 'partitions_s3.csv').read_bytes())
 
 
 if __name__ == '__main__':

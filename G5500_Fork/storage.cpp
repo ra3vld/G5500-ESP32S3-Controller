@@ -318,6 +318,9 @@ void Storage::loadForkSettings(Runtime &runtime) {
   runtime.loggerSettings.pstPort = prefs_.getUShort("pport", 1234);
   runtime.loggerSettings.reportPort = prefs_.getUShort("rport", 13010);
   runtime.loggerSettings.reportHost = prefs_.getString("rhost", "").c_str();
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+  runtime.loggerSettings.encoderInverted = prefs_.getBool("encinv", true);
+#endif
   prefs_.end();
 #if DRIVE_INTERFACE != DRIVE_YAESU
   prefs_.begin("forkpwm", true);
@@ -353,6 +356,9 @@ void Storage::saveForkSettings(const Runtime &runtime) {
   prefs_.putUShort("pport", runtime.loggerSettings.pstPort);
   prefs_.putUShort("rport", runtime.loggerSettings.reportPort);
   prefs_.putString("rhost", runtime.loggerSettings.reportHost.c_str());
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+  prefs_.putBool("encinv", runtime.loggerSettings.encoderInverted);
+#endif
   prefs_.end();
 #if DRIVE_INTERFACE != DRIVE_YAESU
   prefs_.begin("forkpwm", false);

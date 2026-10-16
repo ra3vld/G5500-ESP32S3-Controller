@@ -3,6 +3,7 @@
 #include "wifi_memory.hpp"
 #include "tcp_memory.hpp"
 #include "runtime_metrics.hpp"
+#include "crowpanel_board.hpp"
 #include <esp_app_desc.h>
 #include <cstdio>
 #include "write_budget.hpp"
@@ -16,6 +17,13 @@ void Network::serviceHeapDiagnostics() {
       }, [this](DiagnosticStream::Port port, const char *data, size_t size) -> size_t {
         if (port == DiagnosticStream::Port::Bluetooth)
           return bluetooth_.send(std::string_view(data, size)) ? size : 0;
+#if SELECTED_BOARD == BOARD_CROWPANEL_21 && ARDUINO_USB_CDC_ON_BOOT
+        if (port == DiagnosticStream::Port::NativeUsb) {
+          const int available = Serial.availableForWrite();
+          return available > 0 ? Serial.write(reinterpret_cast<const uint8_t *>(data),
+              std::min(size, size_t(available))) : 0;
+        }
+#endif
         const int available = Serial0.availableForWrite();
         if (available <= 0) return 0;
         const size_t count = size_t(available) < size ? size_t(available) : size;
@@ -106,6 +114,13 @@ int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
   }
 }
 void Network::sendReply(const String &s) {
+#if SELECTED_BOARD == BOARD_CROWPANEL_21 && ARDUINO_USB_CDC_ON_BOOT
+  if (gsReplyPort == GS_REPLY_NATIVE_USB) {
+    Serial.print(s);
+    hardware_.flashTx();
+    return;
+  }
+#endif
   if (gsReplyPort == GS_REPLY_BLUETOOTH) {
     if (!bluetooth_.send(s)) diagnostics_.dbgPrintln("[BT TX] dropped: disconnected or queue full");
     diagnostics_.dbgPrint("[BT TX] ");
@@ -177,13 +192,53 @@ void Network::processGs232Command(std::string_view input) {
     return;
   }
   if (cmd == "H4") {
-    heapDiagnostics_.start(gsReplyPort == GS_REPLY_USB ? DiagnosticStream::Port::Usb
+    heapDiagnostics_.start(gsReplyPort == GS_REPLY_NATIVE_USB ? DiagnosticStream::Port::NativeUsb : gsReplyPort == GS_REPLY_USB ? DiagnosticStream::Port::Usb
                                                       : DiagnosticStream::Port::Bluetooth, millis());
     return;
   }
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+#if CROWPANEL_SIMULATION
+  if (gsReplyPort == GS_REPLY_NATIVE_USB && cmd.startsWith("SIM ")) {
+    float az = 0, el = 0; char extra;
+    const auto result = std::sscanf(cmd.c_str(), "SIM %f %f %c", &az, &el, &extra) == 2
+        ? runtime_.controller.target({az, el, true, true}, false, millis()) : Result::Invalid;
+    hardware_.controlRotator();
+    sendReply(String("SIM ") + Controller::resultName(result) + "\r\n");
+    return;
+  }
+#endif
+  if (cmd == "H5") {
+    const auto stats = crowpanel::displayStats();
+    char reply[256];
+    std::snprintf(reply, sizeof reply,
+        "CROW ms=%lu az=%.3f el=%.3f targetAz=%.3f targetEl=%.3f moving=%d sim=%d inv=%d vsync=%lu frames=%lu waitMaxUs=%lu timeouts=%lu failed=%d\r\n",
+        (unsigned long)millis(), double(runtime_.controller.axes[0].current), double(runtime_.controller.axes[1].current),
+        double(runtime_.controller.axes[0].target), double(runtime_.controller.axes[1].target),
+        int(runtime_.controller.moving()), CROWPANEL_SIMULATION, int(runtime_.loggerSettings.encoderInverted), (unsigned long)stats.vsyncs,
+        (unsigned long)stats.frames, (unsigned long)stats.waitMaxUs, (unsigned long)stats.timeouts, int(stats.failed));
+    sendReply(reply);
+    return;
+  }
+#endif
 }
 
 void Network::handlePstRotatorSerial() {
+#if SELECTED_BOARD == BOARD_CROWPANEL_21 && ARDUINO_USB_CDC_ON_BOOT
+  // Native USB allows memory/display diagnostics and the same simulated GS-232
+  // commands without changing the host's Wi-Fi connection to the panel's AP.
+  static forkrot::LineBuffer usbReceiver;
+  std::string_view usbCommand;
+  const uint32_t usbStarted = millis();
+  unsigned usbCommands = 0;
+  for (unsigned bytes = 0; bytes < 128 && usbCommands < 4 && Serial.available() && uint32_t(millis() - usbStarted) < 2; ++bytes) {
+    if (usbReceiver.feed(char(Serial.read()), usbCommand)) {
+      ++usbCommands;
+      gsReplyPort = GS_REPLY_NATIVE_USB;
+      processGs232Command(usbCommand);
+    }
+  }
+#endif
+  if (PIN_UART_RX < 0 || PIN_UART_TX < 0) return;
   static forkrot::LineBuffer receiver;
   std::string_view command;
   const uint32_t started = millis();
@@ -511,7 +566,7 @@ void Network::serviceLoggerUdp() {
   }
 }
 void Network::beginSerial() {
-  Serial0.begin(9600, SERIAL_8N1, PIN_UART_RX, PIN_UART_TX);
+  if (PIN_UART_RX >= 0 && PIN_UART_TX >= 0) Serial0.begin(9600, SERIAL_8N1, PIN_UART_RX, PIN_UART_TX);
   heapBeforeBt_ = heapFreeBytes();
   btReady_ = bluetooth_.begin();
   if (!btReady_) diagnostics_.dbgPrintln("[BT] initialization failed; USB and network remain available");

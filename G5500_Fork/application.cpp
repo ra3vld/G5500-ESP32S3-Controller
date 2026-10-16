@@ -3,6 +3,12 @@
 namespace forkrot {
 using namespace board;
 void Application::updatePosition() {
+#if SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION
+  runtime_.controller.tick(millis());
+  runtime_.currentAz = runtime_.controller.axes[0].current;
+  runtime_.currentEl = runtime_.controller.model == Model::G5500 ? runtime_.controller.axes[1].current : 0.f;
+  runtime_.controller.feedback(runtime_.currentAz, runtime_.currentEl, true, true);
+#else
   auto &calibrationState = calibration_.state();
   // factory-calibrated ESP32-S3 millivolts -> selected mechanical calibration -> angle.
   // AZ table is selected by P36/P45; EL table is shared.
@@ -44,10 +50,15 @@ void Application::updatePosition() {
   }
   runtime_.controller.feedback(
       runtime_.currentAz, runtime_.currentEl,
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+      false, false);
+#else
       calibrationState.calibrationMode == CAL_MULTI_POINT ? calibration_.activeAzMultiValid()
                                                           : calibration_.activeAzLinearValid(),
       calibrationState.calibrationMode == CAL_MULTI_POINT ? calibrationState.elMultiValid
                                                           : calibrationState.elLinearValid);
+#endif
+#endif
 }
 
 void Application::setCalibrationMode(CalibrationMode m) {

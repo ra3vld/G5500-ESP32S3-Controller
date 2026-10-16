@@ -13,7 +13,7 @@ import subprocess
 ROOT=Path(__file__).resolve().parents[1]
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--env',default='esp32s3_n16r8')
-p.add_argument('--display',choices=['none','tft','lcd'])
+p.add_argument('--display',choices=['none','tft','lcd','crowpanel'])
 p.add_argument('--bluetooth',choices=['0','1'])
 p.add_argument('--drive',choices=['yaesu','separate-pwm','bts7960'])
 p.add_argument('--pwm-inverted',choices=['0','1'],help='Invert only BTS7960 RPWM/LPWM for optocoupler wiring')
@@ -55,8 +55,8 @@ display=macros.get('DISPLAY_KIND')
 if display is None:
     if 'TFT_DISPLAY_ENABLED' in macros:display=macros['TFT_DISPLAY_ENABLED']
     else:display=next((v for v in values if v!='TFT_DISPLAY_ENABLED'),'DISPLAY_NONE')
-kind={'DISPLAY_NONE':0,'DISPLAY_ILI9341':1,'DISPLAY_LCD1602':2,'0':0,'1':1,'2':2}.get(display)
-if a.display:kind={'none':0,'tft':1,'lcd':2}[a.display]
+kind={'DISPLAY_NONE':0,'DISPLAY_ILI9341':1,'DISPLAY_LCD1602':2,'DISPLAY_CROWPANEL_21':3,'0':0,'1':1,'2':2,'3':3}.get(display)
+if a.display:kind={'none':0,'tft':1,'lcd':2,'crowpanel':3}[a.display]
 if kind is None:p.error('Cannot resolve DISPLAY_KIND; use --display')
 # Replace display flags atomically, retaining the legacy alias only when consistent.
 flags=[f for f in flags if not f.startswith(('-DDISPLAY_KIND=','-DTFT_DISPLAY_ENABLED='))]
@@ -69,7 +69,7 @@ if a.drive:
 if a.pwm_inverted is not None:
     flags=[f for f in flags if not f.startswith('-DBTS7960_PWM_INVERTED=')]
     flags.append('-DBTS7960_PWM_INVERTED='+a.pwm_inverted)
-deps='' if kind==0 else 'arduino-libraries/LiquidCrystal @ 1.0.7' if kind==2 else option('display_tft','lib_deps')
+deps='' if kind==0 else 'lvgl/lvgl @ 9.6.0' if kind==3 else 'arduino-libraries/LiquidCrystal @ 1.0.7' if kind==2 else option('display_tft','lib_deps')
 # Classic SPP uses IDF directly; no additional Bluetooth library is needed.
 work=ROOT/'build/platformio-config';work.mkdir(parents=True,exist_ok=True)
 path=work/(a.env+'.ini')

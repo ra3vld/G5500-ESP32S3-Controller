@@ -157,6 +157,7 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div class="field"><label>Дополнительный IP N1MM</label><input name="reportHost" placeholder="192.168.1.10"></div></div>
 <p id="pstPortHelp" style="margin:8px 0;color:var(--m);font-size:13px;line-height:1.4">PstRotator UDP — для UR5EQF и 5MContest. В логгере выберите PstRotator/UDP; отдельно запускать программу PstRotator не требуется.<br>Log4OM 2, DXLog.net, TR4W (с 4.148.6), Swisslog и LogHX также имеют интеграцию с PstRotator, но с нашим контроллером не тестировались.</p>
 <div class="hint" id="buildInfo"></div>
+<div id="encoderSettings" class="hide"><label><input name="encoderInverted" type="checkbox" checked> Инверсия энкодера</label></div>
 <div id="speedSettings"><label id="analogSpeedToggle"><input name="speedEnabled" type="checkbox"> Управлять скоростью через внешний модуль 0–5 В</label>
 <p>AZ</p><div class="row">
 <div class="field"><label>Рабочая скорость, %</label><input name="speedPercent" type="number" min="25" max="100" step="1" value="50" required></div>
@@ -207,7 +208,7 @@ function fillPreset(){
  f.elements.label.value=p.label;f.elements.az.value=p.target.az;f.elements.el.value=p.target.el;
 }
 async function savePreset(e){e.preventDefault();await forkPost('/api/preset',Object.fromEntries(new FormData(e.target)))}
-async function saveFork(e){e.preventDefault();const body=Object.fromEntries(new FormData(e.target));if(window._forkState?.build?.drive==='YAESU')body.speedEnabled=e.target.elements.speedEnabled.checked?'true':'false';else delete body.speedEnabled;await forkPost('/api/settings',body)}
+async function saveFork(e){e.preventDefault();const body=Object.fromEntries(new FormData(e.target));if(window._forkState?.build?.drive==='YAESU')body.speedEnabled=e.target.elements.speedEnabled.checked?'true':'false';else delete body.speedEnabled;if(window._forkState?.build?.display==='CROWPANEL_21')body.encoderInverted=e.target.elements.encoderInverted.checked?'true':'false';else delete body.encoderInverted;await forkPost('/api/settings',body)}
 function updateFork(j){
  const first=!window._forkState;window._forkState=j;
  const g800=j.model==='G800DXA';
@@ -221,8 +222,8 @@ function updateFork(j){
  j.presets.forEach((p,i)=>{const b=buttons.children[i];b.textContent=p.label;b.disabled=!p.valid;b.classList.toggle('active',j.presetSlot===i&&j.presetActive)});
  const elNodes=[document.getElementById('el').closest('.card'),document.getElementById('tel').closest('.field'),document.getElementById('el2p0').parentElement,document.getElementById('elp0').parentElement.parentElement,document.getElementById('calel').closest('.calhead'),document.getElementById('b_el0').parentElement,document.getElementById('b2_elo'),document.getElementById('b2_elf'),...Array.from(document.querySelectorAll('button')).filter(b=>b.textContent==='RESET EL'),...document.querySelectorAll('.el-setting,.movebtn[data-dir="U"],.movebtn[data-dir="D"]')];
  [...elNodes,...document.querySelectorAll('.el-help')].forEach(n=>{if(n)n.classList.toggle('hide',g800)});
- const independent=j.build?.drive!=='YAESU' && !!j.build;
- document.getElementById('speedSettings').classList.toggle('hide',!g800&&!independent);
+ const independent=['SEPARATE_PWM','BTS7960'].includes(j.build?.drive);
+ document.getElementById('speedSettings').classList.toggle('hide',['NONE','SIMULATED'].includes(j.build?.drive)||(!g800&&!independent));
  document.getElementById('analogSpeedToggle').classList.toggle('hide',independent);
  document.getElementById('elSpeedSettings').classList.toggle('hide',g800||!independent);
  const btBackend=j.build?.bluetoothBackend||(j.build?.bluetooth===false?'NONE':'HC05');
@@ -242,6 +243,8 @@ function updateFork(j){
  document.getElementById('elSpeedOutput').textContent=(j.elSpeedOutputPercent||0).toFixed(1)+'%';
  document.getElementById('speedOutput').textContent=j.speedOutputPercent.toFixed(1)+'%';
  if(first||!f.contains(document.activeElement))f.elements.speedEnabled.checked=j.speedEnabled;
+ document.getElementById('encoderSettings').classList.toggle('hide',j.build?.display!=='CROWPANEL_21');
+ if(first||!f.contains(document.activeElement))f.elements.encoderInverted.checked=j.encoderInverted??true;
  document.querySelector('#presetEditor [name=az]').max=j.azMode===36?360:450;
  if(first)fillPreset();
  const faults={target_not_calibrated:'Сначала выполните калибровку',continuous_motion_timeout:'Превышено время непрерывного вращения',udp_bind_failed:'Не удалось открыть UDP-порт',pwm_attach_failed:'Не удалось включить регулировку скорости'};if(j.fault)document.getElementById('forkMessage').textContent=faults[j.fault]||'Ошибка управления';
