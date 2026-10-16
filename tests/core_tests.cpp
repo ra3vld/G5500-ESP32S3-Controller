@@ -10,6 +10,30 @@ Controller ready(Model model=Model::G5500){Controller c;c.model=model;c.feedback
 Controller rampReady(){auto c=ready(Model::G800DXA);c.speedEnabled=true;c.decelerationMs=1000;return c;}
 std::string n1(float a,const std::string& name="G5500",int offset=0,int bi=0){return "<N1MMRotor><rotor>"+name+"</rotor><goazi>"+std::to_string(a)+"</goazi><offset>"+std::to_string(offset)+"</offset><bidirectional>"+std::to_string(bi)+"</bidirectional></N1MMRotor>";}
 int main(){try{
+ {auto c=ready();Protocol p(c);Settings cfg;
+ CHECK(!c.lastTarget.hasAz&&!c.lastTarget.hasEl);
+ CHECK(c.target({170,0,true,false},true,0)==Result::Pending);CHECK(!c.lastTarget.hasAz);
+ CHECK(c.execute(1)==Result::Ok);c.tick(1);CHECK(c.moving());
+ CHECK(c.lastTarget.az==170&&c.lastTarget.hasAz&&!c.lastTarget.hasEl);
+ c.target({250,0,true,false},true,2);c.stop();c.tick(3);
+ CHECK(!c.moving()&&!c.pendingValid);CHECK(c.lastTarget.az==170);
+ CHECK(stateJson(c,p,cfg,3).find("\"lastTarget\":{\"az\":170,\"el\":0,\"hasAz\":true,\"hasEl\":false}")!=std::string::npos);
+ CHECK(stateJson(c,p,cfg,3).find("\"moving\":false")!=std::string::npos);
+ Controller copy=c;CHECK(copy.lastTarget.az==170&&copy.lastTarget.hasAz&&!copy.lastTarget.hasEl);
+ CHECK(c.target(c.lastTarget,false,4)==Result::Ok);c.tick(304);CHECK(c.moving());
+ c.feedback(170,30,true,true);c.tick(305);CHECK(!c.moving());CHECK(c.lastTarget.az==170);
+ CHECK(c.target({600,0,true,false},false,306)==Result::Invalid);CHECK(c.lastTarget.az==170);
+ c.setMaximum(360);CHECK(!c.lastTarget.hasAz);
+ c.target({90,45,true,true},false,307);c.setModel(Model::G800DXA);
+ CHECK(!c.lastTarget.hasAz&&!c.lastTarget.hasEl);}
+ {auto c=ready();Protocol p(c);Settings cfg;
+ CHECK(api(c,p,cfg,"/api/target",{{"el","70"}},0).status==200);c.tick(0);
+ CHECK(c.lastTarget.hasEl&&!c.lastTarget.hasAz&&c.lastTarget.el==70);
+ CHECK(c.axes[0].direction==0&&c.axes[1].direction==1);
+ c.stop();c.tick(1);CHECK(c.lastTarget.el==70);
+ for(const auto& form:{Form{},Form{{"az",""}},Form{{"el","bad"}},Form{{"el","181"}}})
+   CHECK(api(c,p,cfg,"/api/target",form,2).status==400);
+ CHECK(c.lastTarget.el==70&&!c.moving());}
  {auto c=rampReady();c.jog(0,1,true,0);c.tick(0);CHECK(c.axes[0].speedOutputPercent==25);
  c.tick(0);CHECK(c.axes[0].speedOutputPercent==25);c.tick(500);CHECK(c.axes[0].speedOutputPercent==37.5f);
  c.tick(1000);CHECK(c.axes[0].speedOutputPercent==50);c.tick(1200);CHECK(c.axes[0].speedOutputPercent==50);

@@ -37,6 +37,7 @@ Controller &Controller::operator=(const Controller &other) {
   axes = other.axes;
   presets = other.presets;
   pending = other.pending;
+  lastTarget = other.lastTarget;
   pendingValid = other.pendingValid;
   presetActive = other.presetActive;
   targetKnown = other.targetKnown;
@@ -114,7 +115,11 @@ Result Controller::start(Target nextTarget, uint32_t, bool external) {
       axis.completed = !axis.tracking;
     }
   }
-  if (accepted) fault.clear();
+  if (accepted) {
+    lastTarget = nextTarget;
+    if (model == Model::G800DXA) lastTarget.hasEl = false;
+    fault.clear();
+  }
   return Result::Ok;
 }
 Result Controller::target(Target nextTarget, bool external, uint32_t now) {
@@ -236,6 +241,7 @@ void Controller::setModel(Model nextModel) {
   model = nextModel;
   mode = Mode::Manual;
   targetKnown = false;
+  lastTarget = {0, 0, false, false};
   if (!driveFault) fault.clear();
   for (auto &axis : axes) {
     axis.calibrated = false;
@@ -252,6 +258,7 @@ void Controller::setMaximum(float nextMaximum) {
   maximum = nextMaximum;
   axes[0].accepted = false;
   axes[0].target = std::max(0.f, std::min(maximum, axes[0].current));
+  lastTarget.hasAz = false;
 }
 Result Controller::savePreset(unsigned slot, const std::string &label, Target newTarget) {
   if (slot >= 4 || label.empty() || label.size() > 48 || !valid(newTarget)) {

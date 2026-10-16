@@ -109,9 +109,10 @@ for i,s in enumerate([
 ]):text(1160,958+i*38,s,21,ORANGE if i in (0,5) else INK)
 # ADC front end, repeated independently per sensor.
 box(45,1290,1300,305)
-text(65,1305,'Обратная связь: повторить для AZ и EL',26,bold=True)
+text(65,1305,'Обратная связь S2/S3: AZ и EL, резисторы делителя 1%',26,bold=True)
 text(65,1348,'Датчик 0...5 В',21,GREEN)
-line([(220,1400),(385,1400)],GREEN);resistor(220,385,1400,'4,7k',GREEN)
+text(65,1562,'Подбирать под МК: S3 — 4,7 кОм от сигнала / 5,1 кОм на землю (1%, вход ≤5,5 В).',20,GREEN)
+line([(220,1400),(385,1400)],GREEN);resistor(220,385,1400,'6,8k',GREEN)
 line([(385,1400),(720,1400)],GREEN);dot(445,1400,GREEN)
 pulldown(445,1400,'4,7k',height=75,c=GREEN)
 cap(560,1400)
@@ -130,7 +131,7 @@ line([(895,1455),(895,1490)],GREEN);ground(895,1490)
 # External clamps: lower diode anode GND, upper cathode 3V3.
 text(655,1450,'D1: A=ADC, K=3,3 В',18,GREEN)
 text(655,1480,'D2: A=GND, K=ADC',18,GREEN)
-text(65,1530,'D1/D2: Schottky (BAT54S); питание датчика - по его паспорту. ADC после делителя: 0...2,5 В.',20,GRAY)
+text(65,1530,'ADC_11db: 5 В → 2,04 В; при 5,5 В и допусках 1% ≤2,275 В. D1/D2: BAT54S. Калибровать по мВ.',20,GRAY)
 # User button and optional devices.
 box(1380,1290,975,305)
 text(1400,1305,'Кнопка и периферия',26,bold=True)

@@ -53,8 +53,9 @@ int main(int argc, char **argv) {
   lv_display_set_flush_cb(d, flush);
   forkrot::CrowPanelUi ui; ui.create();
   forkrot::CrowPanelView view;
+  view.dualAxis = true;
   view.targetValid = true; view.target = 210;
-  std::strcpy(view.wifi, "Wi-Fi: -58 dBm + AP");
+  view.wifiConnected = true; view.wifiAp = true; view.wifiRssi = -58;
   std::strcpy(view.ip, "IP: 192.168.3.234");
   std::strcpy(view.heap, "Heap: 123 КБ");
   ui.update(view); lv_refr_now(d);
@@ -63,21 +64,106 @@ int main(int argc, char **argv) {
   for (int i = 0; i < 100; ++i) { ui.update(view); lv_tick_inc(100); lv_timer_handler(); }
   assert(flushes == previous); // Unchanged dashboard must not continuously repaint.
   view.feedback = true; view.current = 450; view.target = 359.9;
+  view.direction = -1;
   view.autoMode = true; view.autoHour = true;
   std::strcpy(view.status, "Поворот по цели");
-  std::strcpy(view.bluetooth, "Bluetooth: подключён");
+  view.bluetoothEnabled = true; view.bluetoothConnected = true;
   ui.update(view); lv_refr_now(d);
   std::snprintf(path, sizeof path, "%s/layout-test.ppm", argv[1]); save(path);
   view.elevation = true; view.current = 180; view.target = 15.5;
-  std::strcpy(view.wifi, "Wi-Fi: нет связи · AP");
+  view.wifiConnected = false;
   std::strcpy(view.ip, "AP: 192.168.4.1");
   ui.update(view); lv_refr_now(d);
   std::snprintf(path, sizeof path, "%s/elevation.ppm", argv[1]); save(path);
   view.elevation = false; view.current = 16.5; view.target = 40;
+  view.direction = 1;
   view.autoHour = false;
   std::strcpy(view.status, "Имитация · вращение");
   ui.update(view); lv_refr_now(d);
   std::snprintf(path, sizeof path, "%s/simulation.ppm", argv[1]); save(path);
+  view.dualAxis = false;
+  ui.update(view); lv_refr_now(d);
+  std::snprintf(path, sizeof path, "%s/azimuth-only.ppm", argv[1]); save(path);
+  view.dualAxis = true;
+  // Render all four movement indicators and verify that stopping erases them.
+  struct Motion { const char *name; bool elevation; int direction; float current, target; };
+  for (const auto &motion : {Motion{"az-left", false, -1, 450, 359.9},
+       Motion{"az-right", false, 1, 9, 120}, Motion{"el-down", true, -1, 180, 30},
+       Motion{"el-up", true, 1, 90, 150}}) {
+    view.elevation = motion.elevation;
+    view.current = motion.current; view.target = motion.target;
+    view.direction = 0;
+    ui.update(view); lv_refr_now(d);
+    const auto stopped = pixels;
+    view.direction = motion.direction;
+    ui.update(view); lv_refr_now(d);
+    assert(pixels != stopped);
+    std::snprintf(path, sizeof path, "%s/%s.ppm", argv[1], motion.name); save(path);
+    const auto idle = flushes;
+    for (int i = 0; i < 10; ++i) { ui.update(view); lv_tick_inc(100); lv_timer_handler(); }
+    assert(flushes == idle);
+    view.direction = 0;
+    ui.update(view); lv_refr_now(d);
+    assert(pixels == stopped);
+  }
+  view.elevation = false;
+  // RSSI changes within one state must not repaint; disconnect/recovery must clear the slash.
+  view.current = 120; view.target = 120;
+  view.wifiConnected = true; view.wifiAp = false; view.wifiRssi = -79;
+  std::strcpy(view.status, "Имитация · остановлен");
+  std::strcpy(view.ip, "IP: 192.168.3.234");
+  ui.update(view); lv_refr_now(d);
+  const auto goodWifi = pixels;
+  assert(!nearColor(240, 361, 14, 0x63dfb5));
+  assert(!nearColor(240, 361, 14, 0xff6b6b));
+  std::snprintf(path, sizeof path, "%s/wifi-good.ppm", argv[1]); save(path);
+  auto wifiIdle = flushes;
+  view.wifiRssi = -58;
+  ui.update(view); lv_tick_inc(100); lv_timer_handler();
+  assert(flushes == wifiIdle);
+  view.wifiRssi = -80;
+  ui.update(view); lv_refr_now(d);
+  const auto weakWifi = pixels;
+  assert(nearColor(240, 361, 14, 0xff6b6b));
+  assert(!nearColor(240, 361, 14, 0x63dfb5));
+  std::snprintf(path, sizeof path, "%s/wifi-weak.ppm", argv[1]); save(path);
+  wifiIdle = flushes;
+  view.wifiRssi = -90;
+  ui.update(view); lv_tick_inc(100); lv_timer_handler();
+  assert(flushes == wifiIdle);
+  view.wifiConnected = false; view.wifiRssi = 0;
+  std::strcpy(view.ip, "IP: —");
+  ui.update(view); lv_refr_now(d);
+  assert(pixels != weakWifi);
+  assert(nearColor(228, 350, 1, 0xff6b6b));
+  std::snprintf(path, sizeof path, "%s/wifi-lost.ppm", argv[1]); save(path);
+  view.wifiAp = true;
+  std::strcpy(view.ip, "AP: 192.168.4.1");
+  ui.update(view); lv_refr_now(d);
+  std::snprintf(path, sizeof path, "%s/wifi-ap.ppm", argv[1]); save(path);
+  view.wifiConnected = true; view.wifiAp = false; view.wifiRssi = -60;
+  std::strcpy(view.ip, "IP: 192.168.3.234");
+  ui.update(view); lv_refr_now(d);
+  assert(pixels == goodWifi);
+  // Disabled Bluetooth is blank; an enabled adapter still reports no client.
+  view.bluetoothEnabled = false; view.bluetoothConnected = false;
+  ui.update(view); lv_refr_now(d);
+  const auto bluetoothOff = pixels;
+  assert(!nearColor(240, 383, 5, 0x8fabc3));
+  std::snprintf(path, sizeof path, "%s/bluetooth-off.ppm", argv[1]); save(path);
+  view.bluetoothEnabled = true;
+  ui.update(view); lv_refr_now(d);
+  const auto bluetoothWaiting = pixels;
+  assert(pixels != bluetoothOff);
+  assert(nearColor(240, 383, 5, 0x8fabc3));
+  std::snprintf(path, sizeof path, "%s/bluetooth-waiting.ppm", argv[1]); save(path);
+  view.bluetoothConnected = true;
+  ui.update(view); lv_refr_now(d);
+  assert(pixels != bluetoothWaiting);
+  std::snprintf(path, sizeof path, "%s/bluetooth-connected.ppm", argv[1]); save(path);
+  view.bluetoothEnabled = false;
+  ui.update(view); lv_refr_now(d);
+  assert(pixels == bluetoothOff);
   // Both markers must remain distinct at identical bearings, including AZ overlap >360.
   struct Bearing { float angle; int x, y; };
   for (const auto &bearing : {Bearing{0, 240, 13}, Bearing{90, 467, 240},
@@ -99,5 +185,5 @@ int main(int argc, char **argv) {
   assert(nearColor(110, 78, 2, 0x365779));
   ui.setPressed(forkrot::crowpanel::TouchAction::None); lv_refr_now(d);
   assert(nearColor(110, 78, 2, 0x183329));
-  std::puts("PASS: LVGL layout, marker bearings/overlap/validity, button feedback and idle redraw");
+  std::puts("PASS: LVGL layout, Wi-Fi states/recovery, Bluetooth visibility, movement arrows/stop, marker bearings/overlap/validity, button feedback and idle redraw");
 }

@@ -26,28 +26,32 @@ uint32_t vsyncCount() {
   portEXIT_CRITICAL(&vsyncMux);
   return count;
 }
-void flush(lv_display_t *display, const lv_area_t *area, uint8_t *pixels) {
+}
+void Display::flushFrame(lv_display_t *display, const lv_area_t *area, uint8_t *pixels) {
   (void)area;
   if (!lv_display_flush_is_last(display) || displayFailed) {
     lv_display_flush_ready(display);
     return;
   }
-  auto panel = static_cast<esp_lcd_panel_handle_t>(lv_display_get_user_data(display));
+  auto &self = *static_cast<Display *>(lv_display_get_user_data(display));
   // Direct-mode pixels is a complete back buffer. IDF writes back its cache and
   // links it into the DMA chain. Never render into the currently scanned buffer.
-  if (esp_lcd_panel_draw_bitmap(panel, 0, 0, 480, 480, pixels) != ESP_OK) displayFailed = true;
+  self.serviceKnob();
+  if (esp_lcd_panel_draw_bitmap(self.panel_, 0, 0, 480, 480, pixels) != ESP_OK) displayFailed = true;
   const uint32_t first = vsyncCount(), started = micros();
   // IDF 5.5's VSYNC callback runs before its DMA restart. Waiting for two VSYNCs
   // after submission also covers a submission racing with the first interrupt.
   while (!displayFailed && uint32_t(vsyncCount() - first) < 2) {
     if (uint32_t(micros() - started) > 150000) { ++syncTimeouts; displayFailed = true; break; }
+    // Stay on the loop task: no LVGL calls or NVS writes while flushing.
+    // Short knob presses must remain visible during the two-VSYNC wait.
+    self.serviceKnob();
     delay(1);
   }
   waitMaxUs = std::max(waitMaxUs, uint32_t(micros() - started));
   if (displayFailed) digitalWrite(board::PIN_BACKLIGHT, LOW);
   else ++frames;
   lv_display_flush_ready(display);
-}
 }
 crowpanel::DisplayStats crowpanel::displayStats() {
   return {vsyncCount(), frames, waitMaxUs, syncTimeouts, displayFailed};
@@ -73,10 +77,10 @@ void Display::initLocalDisplay() {
     diagnostics_.dbgPrintln("[CrowPanel] LVGL display allocation failed"); return;
   }
   lv_display_set_color_format(display_, LV_COLOR_FORMAT_RGB565);
-  lv_display_set_user_data(display_, panel_);
+  lv_display_set_user_data(display_, this);
   // DMA starts on front; the first LVGL render must use back.
   lv_display_set_buffers(display_, back, front, bytes, LV_DISPLAY_RENDER_MODE_DIRECT);
-  lv_display_set_flush_cb(display_, flush);
+  lv_display_set_flush_cb(display_, flushFrame);
   ui_.create();
   ui_.update(CrowPanelView{});
   lv_refr_now(display_);
@@ -84,16 +88,24 @@ void Display::initLocalDisplay() {
   diagnostics_.dbgPrintln(displayFailed ? "[CrowPanel] VSYNC timeout; display disabled" :
       "[CrowPanel] ST7701 480x480; 8MHz double DMA, VSYNC sync, fixed RGB driver; encoder ready");
 }
-void Display::serviceTouch() {
+void Display::serviceKnob() {
+  if (!inputReady_) return;
   const uint32_t now = millis();
-  if (uint32_t(now - lastInput_) < 10) return;
+  if (uint32_t(now - lastInput_) < 5) return;
   lastInput_ = now;
   bool down = false;
   const bool healthy = crowpanel::readButton(down);
   inputHealthy_ = healthy;
   knob_.sample(healthy, down, crowpanel::encoderDelta(), now, runtime_.loggerSettings.encoderInverted);
+  hardware_.controlRotator(); // Apply STOP immediately, including while awaiting VSYNC.
+}
+void Display::serviceTouch() {
+  serviceKnob();
+  const uint32_t now = millis();
+  if (uint32_t(now - lastTouch_) < 10) return;
+  lastTouch_ = now;
   uint16_t x = 0, y = 0;
-  const bool touch = healthy && crowpanel::readTouch(x, y);
+  const bool touch = inputHealthy_ && crowpanel::readTouch(x, y);
   if (display_) {
     const auto action = touchButtons_.sample(touch, x, y);
     if (action == crowpanel::TouchAction::Stop) knob_.stop(now);
@@ -115,20 +127,24 @@ void Display::updateLocalDisplay() {
 #endif
     if (!inputHealthy_) std::snprintf(view.status, sizeof view.status, "Ошибка кнопки / I2C");
     const unsigned axis = knob_.axis();
+    view.dualAxis = controller.model == Model::G5500;
     view.elevation = axis != 0;
     view.autoMode = controller.mode != Mode::Manual; view.autoHour = controller.mode == Mode::AutoHour;
     view.feedback = CROWPANEL_SIMULATION && controller.axes[axis].calibrated;
     view.current = controller.axes[axis].current;
+    view.direction = controller.axes[axis].direction;
     view.pending = controller.pendingValid && (axis ? controller.pending.hasEl : controller.pending.hasAz);
     view.targetValid = view.pending || controller.targetKnown;
     view.target = view.pending ? (axis ? controller.pending.el : controller.pending.az) : controller.axes[axis].target;
     const bool connected = WiFi.status() == WL_CONNECTED;
     const bool ap = (WiFi.getMode() & WIFI_AP) != 0;
-    if (connected) std::snprintf(view.wifi, sizeof view.wifi, "Wi-Fi: %ld dBm%s", long(WiFi.RSSI()), ap ? " + AP" : "");
-    else std::snprintf(view.wifi, sizeof view.wifi, "%s", ap ? "Wi-Fi: нет связи · AP" : "Wi-Fi: нет связи");
+    view.wifiConnected = connected;
+    view.wifiAp = ap;
+    view.wifiRssi = connected ? int(WiFi.RSSI()) : -127;
     const auto address = connected ? WiFi.localIP() : ap ? WiFi.softAPIP() : IPAddress();
     if (connected || ap) std::snprintf(view.ip, sizeof view.ip, "%s: %u.%u.%u.%u", connected ? "IP" : "AP", address[0], address[1], address[2], address[3]);
-    std::snprintf(view.bluetooth, sizeof view.bluetooth, "Bluetooth: %s", !BLUETOOTH_ENABLED ? "выкл" : network_.bluetoothConnected() ? "подключён" : "нет связи");
+    view.bluetoothEnabled = BLUETOOTH_ENABLED != 0;
+    view.bluetoothConnected = view.bluetoothEnabled && network_.bluetoothConnected();
     std::snprintf(view.heap, sizeof view.heap, "Heap: %lu КБ", static_cast<unsigned long>(heapFreeBytes() / 1024));
     ui_.update(view);
   }

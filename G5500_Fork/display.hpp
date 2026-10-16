@@ -137,8 +137,10 @@ class Display {
   CrowPanelUi ui_;
   esp_lcd_panel_handle_t panel_ = nullptr;
   lv_display_t *display_ = nullptr;
-  uint32_t lastInput_ = 0, lastUi_ = 0;
-  bool redraw_ = true, inputHealthy_ = true;
+  uint32_t lastInput_ = 0, lastTouch_ = 0, lastUi_ = 0;
+  bool redraw_ = true, inputHealthy_ = true, inputReady_ = false;
+  void serviceKnob();
+  static void flushFrame(lv_display_t *display, const lv_area_t *area, uint8_t *pixels);
 public:
   Display(Runtime &runtime, DeviceActions &actions, Calibration &, Hardware &hardware,
           Diagnostics &diagnostics, Network &network, Storage &)
@@ -146,7 +148,7 @@ public:
       network_(network), knob_(runtime.controller) {}
   void invalidate() { redraw_ = true; }
   void loadTouchCalibration() {}
-  void startAfterCalibrationLoad() { redraw_ = true; }
+  void startAfterCalibrationLoad() { redraw_ = true; inputReady_ = true; }
   void serviceTouch();
   void initLocalDisplay();
   void updateLocalDisplay();

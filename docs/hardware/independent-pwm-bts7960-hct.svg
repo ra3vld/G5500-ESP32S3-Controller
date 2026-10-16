@@ -231,13 +231,14 @@
 <text x="1160" y="1148" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#a65600">Ток двигателей не проходит через плату или землю ESP32.</text>
 <text x="1160" y="1186" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">100 нФ у U1 между VCC и GND; ёмкость питания - у модулей.</text>
 <rect x="45" y="1290" width="1300" height="305" fill="#f6f8fc" stroke="#aebed2" stroke-width="2"/>
-<text x="65" y="1305" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">Обратная связь: повторить для AZ и EL</text>
+<text x="65" y="1305" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">Обратная связь S2/S3: AZ и EL, резисторы делителя 1%</text>
 <text x="65" y="1348" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#087c60">Датчик 0...5 В</text>
+<text x="65" y="1562" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#087c60">Подбирать под МК: S3 — 4,7 кОм от сигнала / 5,1 кОм на землю (1%, вход ≤5,5 В).</text>
 <polyline points="220,1400 385,1400" fill="none" stroke="#087c60" stroke-width="3"/>
 <polyline points="220,1400 284.5,1400" fill="none" stroke="#087c60" stroke-width="3"/>
 <rect x="284.5" y="1393" width="36" height="14" fill="white" stroke="#087c60" stroke-width="2"/>
 <polyline points="320.5,1400 385,1400" fill="none" stroke="#087c60" stroke-width="3"/>
-<text x="277.5" y="1370" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087c60">4,7k</text>
+<text x="277.5" y="1370" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087c60">6,8k</text>
 <polyline points="385,1400 720,1400" fill="none" stroke="#087c60" stroke-width="3"/>
 <circle cx="445" cy="1400" r="4" fill="#087c60"/>
 <circle cx="445" cy="1400" r="4" fill="#245fbe"/>
@@ -277,7 +278,7 @@
 <polyline points="892,1502 898,1502" fill="none" stroke="#586575" stroke-width="2"/>
 <text x="655" y="1450" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087c60">D1: A=ADC, K=3,3 В</text>
 <text x="655" y="1480" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087c60">D2: A=GND, K=ADC</text>
-<text x="65" y="1530" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">D1/D2: Schottky (BAT54S); питание датчика - по его паспорту. ADC после делителя: 0...2,5 В.</text>
+<text x="65" y="1530" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">ADC_11db: 5 В → 2,04 В; при 5,5 В и допусках 1% ≤2,275 В. D1/D2: BAT54S. Калибровать по мВ.</text>
 <rect x="1380" y="1290" width="975" height="305" fill="#f6f8fc" stroke="#aebed2" stroke-width="2"/>
 <text x="1400" y="1305" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">Кнопка и периферия</text>
 <text x="1400" y="1348" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="bold" fill="#245fbe">USER_BUTTON_GPIO → кнопка → GND</text>

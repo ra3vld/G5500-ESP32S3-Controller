@@ -7,7 +7,15 @@ namespace forkrot {
 namespace {
 constexpr uint32_t bg = 0x0a111c, text = 0xeff5ff, muted = 0x8fabc3;
 constexpr uint32_t targetColor = 0x64cfff;
+constexpr uint32_t wifiWarning = 0xff6b6b;
+constexpr int weakWifiRssi = -80;
+constexpr lv_point_precise_t wifiSlash[] = {{2, 2}, {26, 26}};
 constexpr int dialRadius = 227;
+constexpr int currentMarkerSize = 20, targetMarkerSize = 26;
+constexpr lv_point_precise_t arrowLeft[] = {{34, 18}, {2, 18}, {14, 6}, {2, 18}, {14, 30}};
+constexpr lv_point_precise_t arrowRight[] = {{2, 18}, {34, 18}, {22, 6}, {34, 18}, {22, 30}};
+constexpr lv_point_precise_t arrowDown[] = {{18, 2}, {18, 34}, {6, 22}, {18, 34}, {30, 22}};
+constexpr lv_point_precise_t arrowUp[] = {{18, 34}, {18, 2}, {6, 14}, {18, 2}, {30, 14}};
 lv_obj_t *label(int y, int width, const lv_font_t *font, uint32_t color) {
   auto *object = lv_label_create(lv_screen_active());
   lv_obj_set_width(object, width);
@@ -54,8 +62,8 @@ lv_obj_t *marker(int size, uint32_t value, bool hollow) {
   lv_obj_set_style_radius(object, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_opa(object, hollow ? LV_OPA_TRANSP : LV_OPA_COVER, 0);
   lv_obj_set_style_bg_color(object, lv_color_hex(value), 0);
-  lv_obj_set_style_border_color(object, lv_color_hex(value), 0);
-  lv_obj_set_style_border_width(object, hollow ? 3 : 0, 0);
+  lv_obj_set_style_border_color(object, lv_color_hex(hollow ? value : bg), 0);
+  lv_obj_set_style_border_width(object, hollow ? 3 : 1, 0);
   lv_obj_set_scrollable(object, false);
   lv_obj_set_hidden(object, true);
   return object;
@@ -86,18 +94,35 @@ void CrowPanelUi::create() {
   modeButton_ = button(crowpanel::ModeButton, 0x183329);
   mode_ = buttonLabel(modeButton_);
   axis_ = label(103, 320, &crowpanel_font_22, muted);
-  angle_ = label(127, 430, &crowpanel_font_96, text);
+  angle_ = label(127, LV_SIZE_CONTENT, &crowpanel_font_96, text);
+  motionArrow_ = lv_line_create(screen);
+  lv_obj_remove_style_all(motionArrow_);
+  lv_obj_set_size(motionArrow_, 36, 36);
+  lv_obj_set_style_line_width(motionArrow_, 4, 0);
+  lv_obj_set_style_line_rounded(motionArrow_, true, 0);
+  lv_obj_set_style_line_color(motionArrow_, lv_color_hex(text), 0);
+  lv_obj_set_hidden(motionArrow_, true);
   target_ = label(237, 410, &crowpanel_font_28, targetColor);
   status_ = label(273, 430, &crowpanel_font_22, 0xf0b85c);
   stopButton_ = button(crowpanel::StopButton, 0x642f3a);
   auto *stopText = buttonLabel(stopButton_);
   lv_label_set_text(stopText, "СТОП");
-  wifi_ = label(363, 380, &crowpanel_font_11, muted);
+  wifi_ = label(350, LV_SIZE_CONTENT, &lv_font_montserrat_22, wifiWarning);
+  lv_label_set_text(wifi_, LV_SYMBOL_WIFI);
+  wifiSlash_ = lv_line_create(screen);
+  lv_obj_remove_style_all(wifiSlash_);
+  lv_obj_set_pos(wifiSlash_, 226, 348);
+  lv_line_set_points(wifiSlash_, wifiSlash, 2);
+  lv_obj_set_style_line_width(wifiSlash_, 3, 0);
+  lv_obj_set_style_line_rounded(wifiSlash_, true, 0);
+  lv_obj_set_style_line_color(wifiSlash_, lv_color_hex(wifiWarning), 0);
+  wifiAp_ = label(357, LV_SIZE_CONTENT, &crowpanel_font_11, muted);
+  lv_obj_align(wifiAp_, LV_ALIGN_TOP_MID, 27, 357);
   bluetooth_ = label(378, 340, &crowpanel_font_11, muted);
   ip_ = label(393, 300, &crowpanel_font_11, text);
   heap_ = label(408, 220, &crowpanel_font_11, muted);
-  currentMarker_ = marker(10, text, false);
-  targetMarker_ = marker(22, targetColor, true);
+  currentMarker_ = marker(currentMarkerSize, text, false);
+  targetMarker_ = marker(targetMarkerSize, targetColor, true);
 }
 void CrowPanelUi::setPressed(crowpanel::TouchAction action) {
   if (action == crowpanel::TouchAction::Mode) lv_obj_add_state(modeButton_, LV_STATE_PRESSED);
@@ -108,18 +133,32 @@ void CrowPanelUi::setPressed(crowpanel::TouchAction action) {
 void CrowPanelUi::update(const CrowPanelView &v) {
   set(mode_, v.autoHour ? "Режим: АВТО · 1 ЧАС" : v.autoMode ? "Режим: АВТО" : "Режим: РУЧНОЙ");
   color(mode_, v.autoMode ? 0x63dfb5 : 0xf0b85c);
-  set(axis_, v.elevation ? "УГОЛ МЕСТА · EL" : "АЗИМУТ · AZ");
+  set(axis_, v.dualAxis ? (v.elevation ? "ЭЛЕВАЦИЯ · EL" : "АЗИМУТ · AZ") : "");
   char value[80];
   if (v.feedback) std::snprintf(value, sizeof value, "%.0f°", double(v.current));
   else std::snprintf(value, sizeof value, "—");
   set(angle_, value);
+  const bool showDirection = v.feedback && std::isfinite(v.current) && v.direction != 0;
+  if (showDirection) {
+    const bool decreasing = v.direction < 0;
+    const auto *points = v.elevation ? (decreasing ? arrowDown : arrowUp) : (decreasing ? arrowLeft : arrowRight);
+    if (lv_line_get_points(motionArrow_) != points) lv_line_set_points(motionArrow_, points, 5);
+    lv_obj_set_hidden(motionArrow_, false);
+    lv_obj_update_layout(angle_);
+    lv_obj_set_pos(motionArrow_, lv_obj_get_x(angle_) + (decreasing ? -50 : lv_obj_get_width(angle_) + 14),
+                   lv_obj_get_y(angle_) + (lv_obj_get_height(angle_) - 36) / 2);
+  } else lv_obj_set_hidden(motionArrow_, true);
   if (v.targetValid) std::snprintf(value, sizeof value, "%s %.1f°", v.pending ? "Ожидание" : "Цель", double(v.target));
   else std::snprintf(value, sizeof value, "Цель —");
   set(target_, value); color(target_, v.pending ? 0xf0b85c : 0x64cfff);
-  set(status_, v.status); set(wifi_, v.wifi); set(bluetooth_, v.bluetooth);
+  set(status_, v.status);
+  lv_obj_set_hidden(wifi_, v.wifiConnected && v.wifiRssi > weakWifiRssi);
+  lv_obj_set_hidden(wifiSlash_, v.wifiConnected);
+  set(wifiAp_, v.wifiAp ? "AP" : "");
+  set(bluetooth_, !v.bluetoothEnabled ? "" : v.bluetoothConnected ? "Bluetooth: подключён" : "Bluetooth: нет связи");
   set(ip_, v.ip); set(heap_, v.heap);
-  positionMarker(currentMarker_, v.current, v.feedback, 10);
-  positionMarker(targetMarker_, v.target, v.targetValid, 22);
+  positionMarker(currentMarker_, v.current, v.feedback, currentMarkerSize);
+  positionMarker(targetMarker_, v.target, v.targetValid, targetMarkerSize);
 }
 }
 #endif

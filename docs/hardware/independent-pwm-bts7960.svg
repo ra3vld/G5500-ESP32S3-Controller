@@ -203,13 +203,14 @@
 <text x="1180" y="1233" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">Земля ESP32 - отдельный сигнальный возврат.</text>
 <text x="1180" y="1270" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">Силовой ток не проходит через ESP32 и его землю.</text>
 <rect x="45" y="1380" width="1250" height="320" fill="#f6f8fc" stroke="#aebed2" stroke-width="2"/>
-<text x="65" y="1397" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">Обратная связь AZ / EL</text>
-<text x="65" y="1445" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">0...5 В → 4,7 кОм → узел делителя → 1 кОм → ADC4/5.</text>
-<text x="65" y="1482" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Узел: 4,7 кОм и 100 нФ к GND.</text>
+<text x="65" y="1397" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">Обратная связь AZ / EL: подбирать номиналы под МК</text>
+<text x="65" y="1445" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">0...5 В → 6,8 кОм (1%) → узел → 1 кОм → ADC4/5.</text>
+<text x="65" y="1482" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Узел: 4,7 кОм (1%) и 100 нФ к GND.</text>
 <text x="65" y="1519" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">У ADC: Schottky A=ADC/K=3V3, A=GND/K=ADC (BAT54S).</text>
-<text x="65" y="1556" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">После делителя: 0...2,5 В. По одной цепи на AZ и EL.</text>
-<text x="65" y="1593" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Датчик питается по паспорту; GPIO0 → кнопка → GND.</text>
-<text x="65" y="1630" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Пользовательская кнопка: INPUT_PULLUP, active LOW.</text>
+<text x="65" y="1556" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">S2/S3, ADC_11db: 5 В → 2,04 В; 5,5 В → ≤2,275 В (1%).</text>
+<text x="65" y="1593" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Для S3: 4,7 кОм сверху / 5,1 кОм на землю (1%, вход ≤5,5 В).</text>
+<text x="65" y="1630" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Датчик питается по паспорту; GPIO0 → кнопка → GND.</text>
+<text x="65" y="1667" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Пользовательская кнопка: INPUT_PULLUP, active LOW.</text>
 <rect x="1330" y="1380" width="1025" height="320" fill="#f6f8fc" stroke="#aebed2" stroke-width="2"/>
 <text x="1350" y="1397" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">Условия подключения</text>
 <text x="1350" y="1445" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">R_IS / L_IS: NC; их выход не ограничен до 3,3 В.</text>

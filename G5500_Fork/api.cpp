@@ -80,7 +80,10 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"pendingValid\":" << (controller.pendingValid ? "true" : "false")
        << ",\"pending\":";
   writeTargetJson(json, controller.pending);
-  json << ",\"presetActive\":" << (controller.presetActive ? "true" : "false")
+  json << ",\"lastTarget\":";
+  writeTargetJson(json, controller.lastTarget);
+  json << ",\"moving\":" << (controller.moving() ? "true" : "false")
+       << ",\"presetActive\":" << (controller.presetActive ? "true" : "false")
        << ",\"presetSlot\":" << controller.presetSlot
        << ",\"speedEnabled\":" << ((DRIVE_INTERFACE != DRIVE_YAESU || controller.speedEnabled) ? "true" : "false")
        << ",\"speedPercent\":" << controller.speedPercent
@@ -272,9 +275,11 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       result = Result::Ok;
     }
   } else if (path == "/api/target") {
-    float az, el = 0;
-    if (number(get(form, "az"), az) && (!has(form, "el") || number(get(form, "el"), el))) {
-      result = controller.target({az, el, true, has(form, "el")}, false, now);
+    float az = 0, el = 0;
+    const bool hasAz = has(form, "az"), hasEl = has(form, "el");
+    if ((hasAz || hasEl) && (!hasAz || number(get(form, "az"), az)) &&
+        (!hasEl || number(get(form, "el"), el))) {
+      result = controller.target({az, el, hasAz, hasEl}, false, now);
     }
   } else if (path == "/api/move") {
     auto d = get(form, "d");

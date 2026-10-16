@@ -78,15 +78,21 @@ public:
       if (!pressed && uint32_t(now - rawAt_) >= 30) blocked_ = false;
       else return;
     }
-    if (raw_ != down_ && uint32_t(now - rawAt_) >= 30) {
+    bool released = false;
+    // Act on the first pressed sample. Debounce only release so a short STOP
+    // cannot vanish between polls, and contact bounce cannot become resume.
+    if (raw_ != down_ && (raw_ || uint32_t(now - rawAt_) >= 30)) {
       down_ = raw_;
       if (down_) {
         downAt_ = now; long_ = false;
         handledOnPress_ = controller_.moving() || controller_.axes[0].wanted || controller_.axes[1].wanted;
         if (handledOnPress_) { click_ = false; confirm(now); }
-      } else if (!long_ && !handledOnPress_) {
-        if (click_ && uint32_t(now - clickAt_) <= 350) { selectAxis(); click_ = false; }
-        else { click_ = true; clickAt_ = now; }
+      } else {
+        released = true;
+        if (!long_ && !handledOnPress_) {
+          if (click_ && uint32_t(now - clickAt_) <= 350) { selectAxis(); click_ = false; }
+          else { click_ = true; clickAt_ = now; }
+        }
       }
     }
     if (down_ && !long_ && uint32_t(now - downAt_) >= 1200) {
@@ -95,7 +101,7 @@ public:
     if (click_ && !down_ && !raw_ && uint32_t(now - clickAt_) > 350) {
       click_ = false; confirm(now);
     }
-    if (delta && !raw_ && !down_) {
+    if (delta && !raw_ && !down_ && !released) {
       canResume_ = false;
       const auto &axis = controller_.axes[axis_];
       const float origin = axis.tracking ? axis.target : axis.current;

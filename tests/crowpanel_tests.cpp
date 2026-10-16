@@ -161,5 +161,29 @@ int main() {
   pausePress(); pauseRelease(); pauseSample(false, 351);
   paused.stop(); // External STOP invalidates a knob pause.
   pausePress(); pauseRelease(); pauseSample(false, 351); assert(!paused.moving());
+  // A quick click immediately after a detent may produce only one pressed sample.
+  // STOP must win over accumulated rotation; bounce/release must not resume it.
+  Controller quick;
+  quick.feedback(100, 20, true, true);
+  CrowPanelKnob quickKnob(quick);
+  quickKnob.sample(true, false, -1, 100);
+  quick.tick(100);
+  assert(quick.moving() && quick.axes[0].target == 120);
+  quickKnob.sample(true, true, -1, 105);
+  assert(!quick.moving() && quick.axes[0].target == 120); // STOP on the first read.
+  quickKnob.sample(true, false, 0, 115);
+  quickKnob.sample(true, true, 0, 120); // Contact bounce, not a second click.
+  quickKnob.sample(true, false, -1, 125);
+  quickKnob.sample(true, false, -1, 155); // Discard release-time encoder noise too.
+  quickKnob.sample(true, false, 0, 510);
+  quick.tick(510);
+  assert(!quick.moving() && quick.axes[0].target == 120);
+  // One new short click after stable release resumes the original target.
+  quickKnob.sample(true, true, 0, 520);
+  quickKnob.sample(true, false, 0, 530);
+  quickKnob.sample(true, false, 0, 560);
+  quickKnob.sample(true, false, 0, 911);
+  quick.tick(911);
+  assert(quick.moving() && quick.axes[0].target == 120);
   std::puts("PASS: CrowPanel immediate retargeting, single-click pause/resume, inversion, touch, gestures and faults");
 }

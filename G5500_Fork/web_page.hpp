@@ -18,9 +18,10 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 .card{background:var(--p);border:1px solid var(--b);border-radius:12px;padding:12px;margin-top:10px}
 .big{font-size:54px;font-weight:700}.targetbig{font-size:34px;font-weight:700;color:var(--a)}.sep{font-size:30px;color:var(--m);font-weight:400}.unit{font-size:25px;color:var(--m)}.label{color:var(--m);font-size:13px;text-transform:uppercase;letter-spacing:.08em}
 .bar{height:16px;border-radius:8px;background:#071018;overflow:hidden;margin-top:12px}.fill{height:100%;background:linear-gradient(90deg,#24d18d,#33b8ff)}
-.controls{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.btn{border:0;border-radius:14px;min-height:48px;background:#235b78;color:white;font-size:19px;font-weight:700;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none;-webkit-tap-highlight-color:transparent}.btn *{pointer-events:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.movebtn{cursor:pointer}
+.controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.btn{border:0;border-radius:14px;min-height:48px;background:#235b78;color:white;font-size:19px;font-weight:700;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none;-webkit-tap-highlight-color:transparent}.btn *{pointer-events:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.movebtn{cursor:pointer}
 .stop{background:var(--s);font-size:23px;min-height:60px}.good{background:#167a5c}.warn{background:#81541d}.blank{visibility:hidden}
-.target-controls{border-top:1px solid var(--b);margin-top:10px;padding-top:10px}.target-controls .row{align-items:flex-end}.mode-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px}.mode-controls .btn{padding:0 16px;min-height:40px;font-size:16px}.controls.az-only .blank{display:none}#hourLeft:not(:empty){margin-top:8px;color:var(--a)}#forkMessage:empty{display:none}.row{display:flex;gap:10px;flex-wrap:wrap}.field{flex:1;min-width:160px}input{width:100%;padding:9px;border-radius:10px;border:1px solid #355063;background:#07121a;color:white;font-size:16px}
+#executeTarget{min-height:60px;white-space:pre-line;font-size:clamp(16px,4vw,23px)}
+.target-controls{border-top:1px solid var(--b);margin-top:10px;padding-top:10px}.target-controls .row{align-items:flex-end}.mode-controls{display:grid;grid-template-columns:minmax(0,1fr)}.controls.az-only .blank{display:none}#hourLeft:not(:empty){margin-top:8px;color:var(--a)}#forkMessage:empty{display:none}.row{display:flex;gap:10px;flex-wrap:wrap}.field{flex:1;min-width:160px}input{width:100%;padding:9px;border-radius:10px;border:1px solid #355063;background:#07121a;color:white;font-size:16px}
 .kv{display:grid;grid-template-columns:1fr 1fr;gap:8px}.kv div{background:#0b1720;padding:9px;border-radius:9px}
 .status{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border-radius:999px;background:#0a151e;border:1px solid #294153;font-size:13px}
 .dot{width:9px;height:9px;border-radius:50%;background:#697f8e}.dot.on{background:var(--a);box-shadow:0 0 10px #24d18d}
@@ -56,7 +57,7 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div><span class="status"><span id="caldot" class="dot"></span><span id="caltxt">Calibration</span></span></div></div>
 <div id="movementButtons" class="controls" style="margin-top:10px">
 <button class="btn blank">-</button><button class="btn movebtn" data-dir="U"><span>▲ UP</span></button><button class="btn blank">-</button>
-<button class="btn movebtn" data-dir="L"><span>◀ LEFT</span></button><button class="btn stop" onclick="st()">STOP</button><button class="btn movebtn" data-dir="R"><span>RIGHT ▶</span></button>
+<button class="btn movebtn" data-dir="L"><span>◀ LEFT</span></button><button id="executeTarget" class="btn good" onclick="targetAction()" disabled>Повернуть</button><button class="btn movebtn" data-dir="R"><span>RIGHT ▶</span></button>
 <button class="btn blank">-</button><button class="btn movebtn" data-dir="D"><span>▼ DOWN</span></button><button class="btn blank">-</button>
 </div>
 <div class="target-controls"><div class="label">Задать угол</div><div class="row" style="margin-top:8px">
@@ -75,8 +76,7 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div class="card">
 <div class="label">Режим управления</div>
 <div class="mode-controls" style="margin-top:8px">
-<div class="field"><label for="followMode">Следование командам</label><select id="followMode" onchange="forkPost('/api/mode',{mode:this.value})"><option value="manual">Ручной</option><option value="auto">Автоматический</option><option value="auto_1h">Авто 1 ч</option></select></div>
-<button id="executeTarget" class="btn good" onclick="forkPost('/api/execute',{})" disabled>Повернуть</button></div>
+<div class="field"><label for="followMode">Следование командам</label><select id="followMode" onchange="forkPost('/api/mode',{mode:this.value})"><option value="manual">Ручной</option><option value="auto">Автоматический</option><option value="auto_1h">Авто 1 ч</option></select></div></div>
 <div id="hourLeft" aria-live="polite"></div>
 <div id="waitingTarget" style="margin-top:8px">Нет ожидающей цели</div>
 <div id="forkMessage" role="status" style="margin-top:10px"></div>
@@ -209,6 +209,28 @@ function fillPreset(){
 }
 async function savePreset(e){e.preventDefault();await forkPost('/api/preset',Object.fromEntries(new FormData(e.target)))}
 async function saveFork(e){e.preventDefault();const body=Object.fromEntries(new FormData(e.target));if(window._forkState?.build?.drive==='YAESU')body.speedEnabled=e.target.elements.speedEnabled.checked?'true':'false';else delete body.speedEnabled;if(window._forkState?.build?.display==='CROWPANEL_21')body.encoderInverted=e.target.elements.encoderInverted.checked?'true':'false';else delete body.encoderInverted;await forkPost('/api/settings',body)}
+function buttonTarget(j){return j.pendingValid?j.pending:j.lastTarget}
+function targetLabel(t,j){
+ if(!t)return '';
+ const az=t.hasAz?Number(t.az.toFixed(1))+'°':'',el=t.hasEl&&j.model!=='G800DXA'?'EL '+Number(t.el.toFixed(1))+'°':'';
+ return az&&el?'AZ '+az+'\n'+el:az||el;
+}
+function updateTargetButton(j){
+ const b=document.getElementById('executeTarget'),stop=j.moving||j.controlMode!=='manual',label=targetLabel(buttonTarget(j),j);
+ b.textContent=stop?'stop':label||'Повернуть';
+ b.classList.toggle('stop',stop);b.classList.toggle('good',!stop);
+ b.disabled=!stop&&!label;
+ b.title=stop?'Остановить движение':label?'Повернуть к '+label.replace('\n',', '):'Нет цели для поворота';
+ b.setAttribute('aria-label',stop?'stop':b.title);
+}
+async function targetAction(){
+ const j=window._forkState;if(!j)return;
+ if(j.moving||j.controlMode!=='manual'){await st();await upd();return;}
+ if(j.pendingValid){await forkPost('/api/execute',{});return;}
+ const t=buttonTarget(j);if(!targetLabel(t,j))return;
+ const body={};if(t.hasAz)body.az=t.az;if(t.hasEl&&j.model!=='G800DXA')body.el=t.el;
+ await forkPost('/api/target',body);
+}
 function updateFork(j){
  const first=!window._forkState;window._forkState=j;
  const g800=j.model==='G800DXA';
@@ -216,7 +238,7 @@ function updateFork(j){
  document.getElementById('followMode').value=j.controlMode;
  document.getElementById('hourLeft').textContent=j.controlMode==='auto_1h'?'Осталось '+Math.ceil(j.remainingMs/60000)+' мин':'';
  document.getElementById('waitingTarget').textContent=j.pendingValid?'Ожидает: '+(j.pending.hasAz?'AZ '+j.pending.az.toFixed(1)+'° ':'')+(j.pending.hasEl&&!g800?'EL '+j.pending.el.toFixed(1)+'°':''):'Нет ожидающей цели';
- document.getElementById('executeTarget').disabled=!j.pendingValid||j.presetActive;
+ updateTargetButton(j);
  const buttons=document.getElementById('presetButtons');
  if(!buttons.children.length)for(let slot=1;slot<=4;slot++){const b=document.createElement('button');b.className='btn';b.onclick=()=>forkPost('/api/preset/run',{slot});buttons.append(b)}
  j.presets.forEach((p,i)=>{const b=buttons.children[i];b.textContent=p.label;b.disabled=!p.valid;b.classList.toggle('active',j.presetSlot===i&&j.presetActive)});
