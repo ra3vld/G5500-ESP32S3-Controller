@@ -111,7 +111,7 @@ public:
   bool driveFault = false;
   bool variableSpeed(unsigned i) const;
   static constexpr float tolerance(unsigned i) {
-#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
+#if DRIVE_SIMULATION
     (void)i;
     return 0.f; // Exact simulated feedback needs no ADC noise dead band.
 #else

@@ -209,7 +209,7 @@ void Network::processGs232Command(std::string_view input) {
     return;
   }
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
-#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
+#if DRIVE_SIMULATION
   if (gsReplyPort == GS_REPLY_NATIVE_USB && cmd.startsWith("SIM ")) {
     float az = 0, el = 0; char extra;
     const auto result = std::sscanf(cmd.c_str(), "SIM %f %f %c", &az, &el, &extra) == 2
@@ -229,7 +229,7 @@ void Network::processGs232Command(std::string_view input) {
                   (unsigned long)millis(), double(runtime_.controller.axes[0].current),
                   double(runtime_.controller.axes[1].current), double(runtime_.controller.axes[0].target),
                   double(runtime_.controller.axes[1].target), int(runtime_.controller.moving()),
-                  int(!runtime_.hud.isHud() && (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)),
+                  int(!runtime_.hud.isHud() && DRIVE_SIMULATION),
                   int(runtime_.loggerSettings.encoderInverted), (unsigned long)stats.vsyncs,
                   (unsigned long)stats.frames, (unsigned long)stats.waitMaxUs, (unsigned long)stats.timeouts,
                   int(stats.failed), (unsigned long)stats.restarts, (unsigned long)stats.restartBufferMask,

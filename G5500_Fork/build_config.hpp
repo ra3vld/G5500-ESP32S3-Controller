@@ -27,9 +27,16 @@
 #define DISPLAY_KIND DISPLAY_NONE
 #endif
 
-// 1 — включён: встроенный SPP на ESP32, внешний HC-05 на S2/S3; 0 — выключен.
+// 1 — включить выбранный Bluetooth; 0 — выключить.
 #ifndef BLUETOOTH_ENABLED
-#define BLUETOOTH_ENABLED 1
+#define BLUETOOTH_ENABLED 0
+#endif
+
+// BT_AUTO — встроенный SPP на ESP32, внешний HC-05 на S2/S3.
+// BT_HC05 — внешний модуль по UART на любой плате, включая ESP32.
+// BT_ESP32_SPP — встроенный Bluetooth Classic, только обычная ESP32.
+#ifndef BLUETOOTH_MODE
+#define BLUETOOTH_MODE BT_AUTO
 #endif
 
 // Только обычная ESP32: 0 — AP как резерв, при связи с роутером только STA;
@@ -40,12 +47,14 @@
 #define ESP32_FORCE_AP_STA 0
 #endif
 
-// CrowPanel: 1 — имитация привода 13,4 градуса/с без моторных GPIO; 0 — без привода.
-#ifndef CROWPANEL_SIMULATION
-#define CROWPANEL_SIMULATION 1
+// 3. УПРАВЛЕНИЕ ДВИГАТЕЛЯМИ
+// 1 — имитация 13,4 градуса/с: моторные GPIO/PWM и ADC отключены.
+// 0 — физический привод (CrowPanel без адаптера блокирует движение).
+// По умолчанию имитация включена только на CrowPanel; можно заменить на 0 или 1.
+#ifndef DRIVE_SIMULATION
+#define DRIVE_SIMULATION (SELECTED_BOARD == BOARD_CROWPANEL_21)
 #endif
 
-// 3. УПРАВЛЕНИЕ ДВИГАТЕЛЯМИ
 // DRIVE_YAESU        — штатный блок Yaesu; каскад скорости G-800DXA опционален.
 // DRIVE_SEPARATE_PWM — два направления + отдельный PWM каждой оси.
 // DRIVE_BTS7960      — RPWM / LPWM + ENABLE каждого H-моста.

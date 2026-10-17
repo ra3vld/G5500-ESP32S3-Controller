@@ -15,6 +15,8 @@ p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--env',default='esp32s3_n16r8')
 p.add_argument('--display',choices=['none','tft','lcd','crowpanel'])
 p.add_argument('--bluetooth',choices=['0','1'])
+p.add_argument('--bluetooth-mode',choices=['auto','hc05','spp'])
+p.add_argument('--simulation',choices=['0','1'],help='Virtual drive on any board; disables motor GPIO/PWM and feedback ADC')
 p.add_argument('--drive',choices=['yaesu','separate-pwm','bts7960'])
 p.add_argument('--pwm-inverted',choices=['0','1'],help='Invert only BTS7960 RPWM/LPWM for optocoupler wiring')
 p.add_argument('--pio',default=os.environ.get('PIO','pio'))
@@ -63,6 +65,12 @@ flags=[f for f in flags if not f.startswith(('-DDISPLAY_KIND=','-DTFT_DISPLAY_EN
 flags += ['-DDISPLAY_KIND='+str(kind),'-DTFT_DISPLAY_ENABLED='+str(int(kind==1))]
 if a.bluetooth is not None:
     flags=[f for f in flags if not f.startswith('-DBLUETOOTH_ENABLED=')];flags.append('-DBLUETOOTH_ENABLED='+a.bluetooth)
+if a.bluetooth_mode is not None:
+    flags=[f for f in flags if not f.startswith('-DBLUETOOTH_MODE=')]
+    flags.append('-DBLUETOOTH_MODE='+{'auto':'BT_AUTO','hc05':'BT_HC05','spp':'BT_ESP32_SPP'}[a.bluetooth_mode])
+if a.simulation is not None:
+    flags=[f for f in flags if not f.startswith('-DDRIVE_SIMULATION=')]
+    flags.append('-DDRIVE_SIMULATION='+a.simulation)
 if a.drive:
     flags=[f for f in flags if not f.startswith('-DDRIVE_INTERFACE=')]
     flags.append('-DDRIVE_INTERFACE='+str({'yaesu':0,'separate-pwm':1,'bts7960':2}[a.drive]))

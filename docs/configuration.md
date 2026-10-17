@@ -8,6 +8,8 @@
 #define BOARD_PROFILE BOARD_AUTO
 #define DISPLAY_KIND DISPLAY_NONE
 #define BLUETOOTH_ENABLED 1
+#define BLUETOOTH_MODE BT_AUTO
+#define DRIVE_SIMULATION 0
 #define ESP32_FORCE_AP_STA 0
 #define DRIVE_INTERFACE DRIVE_YAESU
 #define BTS7960_PWM_INVERTED 0
@@ -23,7 +25,9 @@
 | Параметр | Варианты |
 |---|---|
 | `DISPLAY_KIND` | `DISPLAY_NONE`, `DISPLAY_ILI9341`, `DISPLAY_LCD1602` |
-| `BLUETOOTH_ENABLED` | `1`: встроенный SPP на ESP32, внешний HC-05 на S2/S3; `0`: объекты и GPIO Bluetooth исключены |
+| `BLUETOOTH_ENABLED` | `1`: включить выбранный транспорт; `0`: объекты и GPIO Bluetooth исключены |
+| `BLUETOOTH_MODE` | `BT_AUTO`: SPP на ESP32, HC-05 на S2/S3; `BT_HC05`: внешний модуль на любой плате; `BT_ESP32_SPP`: встроенный SPP только на ESP32 |
+| `DRIVE_SIMULATION` | `1`: имитация 13,4°/с на любой плате без моторных GPIO/PWM и ADC; `0`: физический привод. По умолчанию `1` только на CrowPanel |
 | `ESP32_FORCE_AP_STA` | Только обычная ESP32: `0` — AP как резерв; `1` — AP остаётся включённой при подключении STA. Увеличивает расход RAM, возможны зависания/перезагрузки и отказы Wi-Fi/веба, особенно со встроенным SPP. На S2/S3 AP сохраняется независимо от этого флага |
 | `DRIVE_INTERFACE` | `DRIVE_YAESU`, `DRIVE_SEPARATE_PWM`, `DRIVE_BTS7960` |
 | `BTS7960_PWM_INVERTED` | `0`: прямое подключение; `1`: инвертирующие оптоканалы RPWM/LPWM, только DRIVE_BTS7960; ENABLE остаётся активным HIGH |
@@ -34,6 +38,13 @@
 `TFT_DISPLAY_ENABLED=0/1` и `DISPLAY_ENABLED=0/1` в Arduino-скрипте сохранены как алиасы NONE/TFT. Несогласованные старый и новый флаги отклоняются. NONE и отключённый HC-05 не создают соответствующих объектов, не включают драйверы и не инициализируют их GPIO. LCD не включает TFT/touch.
 
 Для [CrowPanel 2.1](crowpanel-21.md) добавлены `BOARD_CROWPANEL_21` (5) и `DISPLAY_CROWPANEL_21` (3). Окружение `crowpanel_21` выбирает оба флага и `USER_BUTTON_GPIO=-1`: кнопка ручки подключена через PCF8574, а GPIO0 остаётся BOOT. В этом профиле нет адаптера привода и обратной связи. Он не использует обычную распиновку S3; вывод GPIO46 занят RGB-дисплеем. Для него допустим только `DRIVE_YAESU` как значение конфигурации, физические выходы при этом отсутствуют.
+
+Имитация использует общие положения и команды в дисплее, вебе, GS-232, UDP и HUD. Калибровка датчиков не требуется; STOP останавливает виртуальное движение. В сборке имитации физические моторные выводы не инициализируются и не переключаются, ADC не читается. Это параметр сборки, не переключатель веб-интерфейса. Прежний `-DCROWPANEL_SIMULATION=0/1` сохранён как алиас; явный `-DDRIVE_SIMULATION` имеет приоритет.
+
+```sh
+python3 tools/build_platformio.py --env esp32_4mb --bluetooth 1 --bluetooth-mode hc05 --simulation 1
+python3 tools/build_platformio.py --env esp32s2_mini --simulation 1
+```
 
 Распиновки находятся в плоских [board_s3.hpp](../G5500_Fork/board_s3.hpp), [board_s2_mini.hpp](../G5500_Fork/board_s2_mini.hpp) и [board_s2_legacy.hpp](../G5500_Fork/board_s2_legacy.hpp); классический ESP32 — [board_esp32.hpp](../G5500_Fork/board_esp32.hpp). Для иной разводки изменяйте заголовок нужного профиля. [board.hpp](../G5500_Fork/board.hpp) выбирает профиль и проверяет доступность GPIO, выходов, ADC1, конфликты активных устройств и достаточность каналов LEDC. Линии общей SPI-шины TFT/touch учитываются один раз.
 

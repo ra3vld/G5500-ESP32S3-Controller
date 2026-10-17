@@ -12,7 +12,7 @@ namespace {
 }
 
 namespace {
-#if !(SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION) && SELECTED_BOARD != BOARD_CROWPANEL_21
+#if !DRIVE_SIMULATION && SELECTED_BOARD != BOARD_CROWPANEL_21
 uint32_t motorPwmDuty(uint32_t logicalDuty) {
 #if DRIVE_INTERFACE == DRIVE_BTS7960 && BTS7960_PWM_INVERTED
   return 1023u - logicalDuty;
@@ -33,7 +33,7 @@ int idleOutputLevel(int pin) {
 int Hardware::adcAvgMv(int pin) {
   if (runtime_.hud.isHud())
     return 0;
-#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION) || SELECTED_BOARD == BOARD_CROWPANEL_21
+#if DRIVE_SIMULATION || SELECTED_BOARD == BOARD_CROWPANEL_21
   (void)pin;
   return 0; // No feedback adapter in this CrowPanel profile.
 #else
@@ -62,7 +62,7 @@ void Hardware::adcDiagRead(int pin, int &raw, int &mv) {
     raw = mv = 0;
     return;
   }
-#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION) || SELECTED_BOARD == BOARD_CROWPANEL_21
+#if DRIVE_SIMULATION || SELECTED_BOARD == BOARD_CROWPANEL_21
   mv = adcAvgMv(pin);
   raw = 0;
 #else
@@ -195,7 +195,7 @@ void Hardware::controlRotator() {
 }
 
 void Hardware::outputsOff() {
-#if !(SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION) && SELECTED_BOARD != BOARD_CROWPANEL_21
+#if !DRIVE_SIMULATION && SELECTED_BOARD != BOARD_CROWPANEL_21
   if (runtime_.hud.isHud())
     return;
 #if DRIVE_INTERFACE == DRIVE_BTS7960
@@ -222,7 +222,7 @@ void Hardware::outputsOff() {
 bool Hardware::preparePwm(bool enable) {
   if (runtime_.hud.isHud())
     return false;
-#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION) || SELECTED_BOARD == BOARD_CROWPANEL_21
+#if DRIVE_SIMULATION || SELECTED_BOARD == BOARD_CROWPANEL_21
   (void)enable;
   return false;
 #else
@@ -272,7 +272,7 @@ bool Hardware::preparePwm(bool enable) {
 void Hardware::applyOutputs() {
   if (runtime_.hud.isHud())
     return;
-#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
+#if DRIVE_SIMULATION
   // Virtual motion never touches physical motor outputs.
 #elif SELECTED_BOARD == BOARD_CROWPANEL_21
   if (runtime_.controller.moving() || runtime_.controller.axes[0].wanted || runtime_.controller.axes[1].wanted)
@@ -332,11 +332,11 @@ void Hardware::beginDirections() {
   }
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   crowpanel::beginBus();
-#if !(SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
+#if !DRIVE_SIMULATION
   runtime_.controller.driveFault = true;
   runtime_.controller.fault = "crowpanel_no_drive";
 #endif
-#elif (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
+#elif DRIVE_SIMULATION
   if (PIN_LED >= 0) { preloadLevel(PIN_LED, LOW); pinMode(PIN_LED, OUTPUT); }
 #else
 #if DRIVE_INTERFACE == DRIVE_BTS7960
@@ -354,7 +354,7 @@ void Hardware::beginDirections() {
 void Hardware::beginAdc() {
   if (runtime_.hud.isHud())
     return;
-#if !(SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION) && SELECTED_BOARD != BOARD_CROWPANEL_21
+#if !DRIVE_SIMULATION && SELECTED_BOARD != BOARD_CROWPANEL_21
   analogReadResolution(12);
   // Arduino 3.x configures each ADC channel on its first read. Per-pin
   // attenuation applied before that read is ignored and logs an error.

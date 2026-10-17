@@ -120,7 +120,7 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"bluetooth\":" << (BLUETOOTH_ENABLED ? "true" : "false")
        << ",\"bluetoothBackend\":" << jsonQuoted(board::BLUETOOTH_BACKEND_NAME) << ",\"drive\":"
        << jsonQuoted(controller.remote                      ? "HUD"
-                     : (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)                     ? "SIMULATED"
+                     : DRIVE_SIMULATION                     ? "SIMULATED"
                      : SELECTED_BOARD == BOARD_CROWPANEL_21 ? "NONE"
                      : DRIVE_INTERFACE == DRIVE_YAESU       ? "YAESU"
                      : DRIVE_INTERFACE == DRIVE_BTS7960     ? "BTS7960"

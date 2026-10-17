@@ -406,7 +406,7 @@ void HudState::capture(const Controller &c, const Protocol &p, uint32_t now) {
   remaining = c.remaining(now);
   sequenceIndex = uint8_t(c.sequenceIndex());
   sequenceCount = uint8_t(c.sequenceCount());
-  drive = (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION) ? 3 : SELECTED_BOARD == BOARD_CROWPANEL_21 ? 4 : DRIVE_INTERFACE;
+  drive = DRIVE_SIMULATION ? 3 : SELECTED_BOARD == BOARD_CROWPANEL_21 ? 4 : DRIVE_INTERFACE;
   board = SELECTED_BOARD;
   std::snprintf(name, sizeof name, "%s", p.rotorName.c_str());
   std::snprintf(fault, sizeof fault, "%s", c.fault.c_str());

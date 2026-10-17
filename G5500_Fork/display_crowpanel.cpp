@@ -183,7 +183,7 @@ void Display::updateLocalDisplay() {
     lastUi_ = now; redraw_ = false;
     const auto &controller = runtime_.controller;
     CrowPanelView view;
-#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
+#if DRIVE_SIMULATION
     std::snprintf(view.status, sizeof view.status, "%s", controller.moving() ? "Имитация · вращение" : "Имитация · остановлен");
 #endif
     if (!inputHealthy_) std::snprintf(view.status, sizeof view.status, "Ошибка кнопки / I2C");
@@ -249,7 +249,7 @@ void Display::updateLocalDisplay() {
     view.maximum = axis ? 180.f : controller.maximum;
     view.sourceId = view.hud ? runtime_.hud.config.selected : 0;
     view.autoMode = controller.mode != Mode::Manual; view.autoHour = controller.mode == Mode::AutoHour;
-    view.feedback = (runtime_.hud.isHud() ? runtime_.hud.available() : bool((SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION))) &&
+    view.feedback = (runtime_.hud.isHud() ? runtime_.hud.available() : bool(DRIVE_SIMULATION)) &&
                     controller.axes[axis].calibrated;
     view.current = controller.axes[axis].current;
     view.direction = controller.axes[axis].direction;

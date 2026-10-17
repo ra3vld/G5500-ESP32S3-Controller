@@ -25,6 +25,12 @@
 #define BT_NONE 0
 #define BT_HC05 1
 #define BT_ESP32_SPP 2
+#define BT_AUTO 3
+
+// Совместимость прежних CrowPanel-сборок; новый флаг -D имеет приоритет.
+#if !defined(DRIVE_SIMULATION) && defined(CROWPANEL_SIMULATION)
+#define DRIVE_SIMULATION CROWPANEL_SIMULATION
+#endif
 
 // Прежний флаг TFT имеет приоритет над значением по умолчанию в файле.
 #if !defined(DISPLAY_KIND) && defined(TFT_DISPLAY_ENABLED)

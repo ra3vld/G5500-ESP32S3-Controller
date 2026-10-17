@@ -68,7 +68,7 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrint(DISPLAY_KIND == DISPLAY_CROWPANEL_21 ? "CROWPANEL_21" : DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE");
   diagnostics_.dbgPrint(" | drive=");
   diagnostics_.dbgPrintln(runtime_.hud.isHud() ? "HUD remote drive"
-                          : (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION) ? "SIMULATED 13.4 deg/s"
+                          : DRIVE_SIMULATION ? "SIMULATED 13.4 deg/s"
                           : SELECTED_BOARD == BOARD_CROWPANEL_21 ? "NONE"
                           : DRIVE_INTERFACE == DRIVE_YAESU   ? "YAESU"
                           : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960"

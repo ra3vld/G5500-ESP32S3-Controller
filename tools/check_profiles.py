@@ -44,4 +44,14 @@ for flag in ('DRIVE_INTERFACE=1', 'DRIVE_INTERFACE=2', 'CONFIG_IDF_TARGET_ESP32=
     compile_case(crow + [flag], False)
 compile_case(['BOARD_PROFILE=5', 'DISPLAY_KIND=3'], False)
 compile_case(['BOARD_PROFILE=5', 'USER_BUTTON_GPIO=-1'], False)
+for display, drive in itertools.product(range(3), range(3)):
+    compile_case(['BOARD_PROFILE=4', f'DISPLAY_KIND={display}', f'DRIVE_INTERFACE={drive}', 'BLUETOOTH_ENABLED=1', 'BLUETOOTH_MODE=BT_HC05'], True)
+for flags in [
+    ['BLUETOOTH_ENABLED=1', 'BLUETOOTH_MODE=BT_ESP32_SPP'],
+    ['BLUETOOTH_MODE=4'], ['BLUETOOTH_MODE=0'], ['DRIVE_SIMULATION=2'],
+    ['BOARD_PROFILE=4', 'BLUETOOTH_ENABLED=1', 'BLUETOOTH_MODE=BT_HC05', 'USER_BUTTON_GPIO=5'],
+]: compile_case(flags, False)
+for board in range(1, 6):
+    for simulation in (0, 1):
+        compile_case((crow if board == 5 else [f'BOARD_PROFILE={board}']) + [f'DRIVE_SIMULATION={simulation}'], True)
 print(f'PASS: {checks} board/display/BT/drive ownership and negative compile checks')

@@ -14,7 +14,7 @@ void Application::updatePosition() {
     runtime_.elTrack = c.axes[1].tracking;
     return;
   }
-#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
+#if DRIVE_SIMULATION
   runtime_.controller.tick(millis());
   runtime_.currentAz = runtime_.controller.axes[0].current;
   runtime_.currentEl = runtime_.controller.model == Model::G5500 ? runtime_.controller.axes[1].current : 0.f;

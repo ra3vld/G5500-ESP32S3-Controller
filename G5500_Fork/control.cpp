@@ -19,7 +19,7 @@ constexpr uint32_t kMaximumSequenceIntervalMs = 999000;
 } // namespace
 
 Controller::Controller() {
-#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
+#if DRIVE_SIMULATION
   feedback(0, 0, true, true);
 #endif
   speeds[1].slowdownDegrees = 2;
@@ -479,7 +479,7 @@ void Controller::expire(uint32_t now) {
 bool Controller::variableSpeed(unsigned i) const {
   if (remote)
     return i < 2 && remoteVariable[i];
-#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
+#if DRIVE_SIMULATION
   (void)i;
   return false; // Fixed-speed virtual drive, independent of physical PWM settings.
 #elif DRIVE_INTERFACE == DRIVE_YAESU
@@ -495,7 +495,7 @@ void Controller::tick(uint32_t now) {
   const uint32_t elapsed = speedUpdateStarted_ ? uint32_t(now - lastSpeedUpdateAt_) : 0;
   lastSpeedUpdateAt_ = now;
   speedUpdateStarted_ = true;
-#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
+#if DRIVE_SIMULATION
   // Integrate the previous output over real elapsed time, independent of loop rate.
   // Motor GPIO are disabled; all protocols share these simulated positions.
   for (unsigned i = 0; i < 2; ++i) {

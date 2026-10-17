@@ -48,7 +48,8 @@ class BuildConfigTests(unittest.TestCase):
 
     def test_defaults(self):
         self.compile(dict(BOARD_PROFILE=0, SELECTED_BOARD=1, DISPLAY_KIND=0, TFT_DISPLAY_ENABLED=0,
-                          BLUETOOTH_ENABLED=1, BLUETOOTH_BACKEND=1, DRIVE_INTERFACE=0,
+                          BLUETOOTH_ENABLED=0, BLUETOOTH_BACKEND=0, BLUETOOTH_MODE=3,
+                          DRIVE_SIMULATION=0, DRIVE_INTERFACE=0,
                           ESP32_FORCE_AP_STA=0, **{'forkrot::board::WIFI_AP_ALWAYS_ON': 1},
                           BTS7960_PWM_INVERTED=0, USER_BUTTON_GPIO=0, USER_BUTTON_ACTIVE_LOW=1,
                           USER_BUTTON_PULLUP=1, AZ_STOP_TOLERANCE_DEG='5.0f', EL_STOP_TOLERANCE_DEG='5.0f'))
@@ -77,8 +78,21 @@ class BuildConfigTests(unittest.TestCase):
                                      ('CONFIG_IDF_TARGET_ESP32S3=1', 1, 1),
                                      ('CONFIG_IDF_TARGET_ESP32=1', 4, 2)]:
             with self.subTest(flag=flag):
-                self.compile(dict(SELECTED_BOARD=board, BLUETOOTH_BACKEND=backend,
-                                  **{'forkrot::board::WIFI_AP_ALWAYS_ON': int(board != 4)}), [flag])
+                self.compile(dict(SELECTED_BOARD=board, BLUETOOTH_BACKEND=backend, DRIVE_SIMULATION=0,
+                                  **{'forkrot::board::WIFI_AP_ALWAYS_ON': int(board != 4)}), [flag, 'BLUETOOTH_ENABLED=1'])
+
+    def test_simulation_and_external_bluetooth(self):
+        self.edit(BOARD_PROFILE=4, BLUETOOTH_ENABLED=1, BLUETOOTH_MODE='BT_HC05', DRIVE_SIMULATION=1)
+        self.compile(dict(BLUETOOTH_BACKEND=1, DRIVE_SIMULATION=1))
+        self.compile(dict(BLUETOOTH_BACKEND=2, DRIVE_SIMULATION=0),
+                     ['BLUETOOTH_MODE=BT_ESP32_SPP', 'DRIVE_SIMULATION=0'])
+        self.compile(dict(BLUETOOTH_BACKEND=0), ['BLUETOOTH_ENABLED=0'])
+        # Old command-line flag remains usable, with the new flag taking precedence.
+        self.compile(dict(DRIVE_SIMULATION=0), ['CROWPANEL_SIMULATION=0'])
+        self.compile(dict(DRIVE_SIMULATION=1), ['CROWPANEL_SIMULATION=0', 'DRIVE_SIMULATION=1'])
+        config = self.selected_config('--bluetooth', '1', '--bluetooth-mode', 'hc05', '--simulation', '1')
+        self.assertIn('-DBLUETOOTH_MODE=BT_HC05', config['build_flags'])
+        self.assertIn('-DDRIVE_SIMULATION=1', config['build_flags'])
 
     def test_wifi_ap_policy_by_board_and_override(self):
         for board in (1, 2, 3, 4):
@@ -127,7 +141,7 @@ class BuildConfigTests(unittest.TestCase):
         self.assertEqual((sketch / 'partitions.csv').read_bytes(), (self.source / 'partitions_s2.csv').read_bytes())
 
     def test_crowpanel_profile_dependencies_and_arduino_copy(self):
-        self.compile({'SELECTED_BOARD': 5, 'TFT_DISPLAY_ENABLED': 0,
+        self.compile({'SELECTED_BOARD': 5, 'TFT_DISPLAY_ENABLED': 0, 'DRIVE_SIMULATION': 1,
                       'forkrot::board::PIN_AZ_ADC': -1, 'forkrot::board::PIN_LEFT': -1},
                      ['BOARD_PROFILE=5', 'DISPLAY_KIND=3', 'USER_BUTTON_GPIO=-1', 'BLUETOOTH_ENABLED=0'])
         result = subprocess.run([sys.executable, str(self.root / 'tools/build_platformio.py'),

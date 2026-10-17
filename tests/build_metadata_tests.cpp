@@ -14,7 +14,10 @@ int main() {
   assert(before.find("\"azAdc\":34,\"elAdc\":35") != std::string::npos);
 #elif SELECTED_BOARD == BOARD_CROWPANEL_21
   assert(before.find("\"display\":\"CROWPANEL_21\"") != std::string::npos);
-  assert(before.find(CROWPANEL_SIMULATION ? "\"drive\":\"SIMULATED\"" : "\"drive\":\"NONE\"") != std::string::npos);
+  assert(before.find(DRIVE_SIMULATION ? "\"drive\":\"SIMULATED\"" : "\"drive\":\"NONE\"") != std::string::npos);
+#endif
+#if DRIVE_SIMULATION
+  assert(before.find("\"drive\":\"SIMULATED\"") != std::string::npos);
 #endif
   std::cout << "PASS: build metadata, pin map and read-only Bluetooth backend\n";
 }

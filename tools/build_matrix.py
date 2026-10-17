@@ -24,6 +24,7 @@ p.add_argument('--platform',default=PINNED_PLATFORM)
 p.add_argument('--library-dir',type=Path,help='Local verified pinned libraries (offline PlatformIO builds)')
 p.add_argument('--workers',type=int,default=2)
 p.add_argument('--jobs',type=int,default=4)
+p.add_argument('--simulation', choices=['0', '1'], help='Explicit drive simulation override; leave editable defaults unchanged')
 p.add_argument('--legacy',action='store_true',help='Also compile the original S2/S3 named environments')
 p.add_argument('--select',choices=['all','lcd','smoke'],default='all',help='Optional LCD-only or three-display regression check')
 p.add_argument('--boards',nargs='+',choices=['s3','s2-mini','esp32'],default=['s3','s2-mini','esp32'])
@@ -55,6 +56,7 @@ def build(tool,board,display,bt,drive):
     name=f'{tool}-{board}-d{display}-b{bt}-m{drive}'
     work=work_root/name;work.mkdir(parents=True,exist_ok=True)
     flags=f'-DBOARD_PROFILE={dict(s3=1,s2=2,**{"s2-mini":3,"esp32":4})[board]} -DDISPLAY_KIND={display} -DTFT_DISPLAY_ENABLED={int(display==1)} -DBLUETOOTH_ENABLED={bt} -DDRIVE_INTERFACE={drive}'
+    if a.simulation is not None: flags += ' -DDRIVE_SIMULATION='+a.simulation
     app_size = 0x640000 if board=='s3' else 0x300000 if board=='esp32' else 0x1e0000
     partition_file = 'partitions_s3.csv' if board=='s3' else 'partitions_esp32.csv' if board=='esp32' else 'partitions_s2.csv'
     if tool=='arduino':
@@ -92,7 +94,7 @@ def build(tool,board,display,bt,drive):
     text=(out/(name+'.log')).read_text()
     ram=re.search(r'(?:Global variables use (\d+)|RAM:.*?used (\d+))',text)
     flash=re.search(r'(?:Sketch uses (\d+)|Flash:.*?used (\d+))',text)
-    item=dict(tool=tool,board=board,display=display,bluetooth=bt,drive=drive,appSlotBytes=app_size,ok=result.returncode==0 and binary.exists() and binary.stat().st_size <= app_size,seconds=round(time.monotonic()-started,1),binaryBytes=binary.stat().st_size if binary.exists() else None,flashBytes=int(next(x for x in flash.groups() if x)) if flash else None,ramBytes=int(next(x for x in ram.groups() if x)) if ram else None,log=str(out/(name+'.log')))
+    item=dict(tool=tool,board=board,display=display,bluetooth=bt,drive=drive,simulation=a.simulation,appSlotBytes=app_size,ok=result.returncode==0 and binary.exists() and binary.stat().st_size <= app_size,seconds=round(time.monotonic()-started,1),binaryBytes=binary.stat().st_size if binary.exists() else None,flashBytes=int(next(x for x in flash.groups() if x)) if flash else None,ramBytes=int(next(x for x in ram.groups() if x)) if ram else None,log=str(out/(name+'.log')))
     print(('PASS' if item['ok'] else 'FAIL')+' '+name+f' ({item["seconds"]}s)',flush=True)
     return item
 
