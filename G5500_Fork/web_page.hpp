@@ -13,8 +13,9 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 .wrap{max-width:980px;margin:auto;padding:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}h1{font-size:26px;margin:8px 0 10px}
 
 .nav{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px;padding:8px;background:#0b1720;border:1px solid #294153;border-radius:12px;position:sticky;top:0;z-index:20}
-.nav button{border:0;cursor:pointer;font-family:inherit;display:inline-block;padding:9px 12px;border-radius:9px;background:#173044;color:#fff;text-decoration:none;font-weight:700;font-size:14px}
-.nav button.active{background:#167a5c}.nav button:hover{background:#235b78}
+.nav-tabs{display:flex;gap:8px;flex-wrap:wrap}
+.nav button,.nav a{border:0;cursor:pointer;font-family:inherit;display:inline-block;padding:9px 12px;border-radius:9px;background:#173044;color:#fff;text-decoration:none;font-weight:700;font-size:14px}
+.nav button.active{background:#167a5c}.nav button:hover,.nav a:hover{background:#235b78}
 .card{background:var(--p);border:1px solid var(--b);border-radius:12px;padding:12px;margin-top:10px}
 .big{font-size:54px;font-weight:700}.targetbig{font-size:34px;font-weight:700;color:var(--a)}.sep{font-size:30px;color:var(--m);font-weight:400}.unit{font-size:25px;color:var(--m)}.label{color:var(--m);font-size:13px;text-transform:uppercase;letter-spacing:.08em}
 .bar{height:16px;border-radius:8px;background:#071018;overflow:hidden;margin-top:12px}.fill{height:100%;background:linear-gradient(90deg,#24d18d,#33b8ff)}
@@ -44,26 +45,23 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 .device-panel .btn{min-height:44px;font-size:15px;padding:10px 16px;border-radius:10px;cursor:pointer;touch-action:manipulation;overflow-wrap:anywhere}.device-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}.device-panel form{margin:0}.device-panel .hint{margin:12px 0}.device-address{display:grid;gap:12px;padding:16px 0}.device-address>.btn{justify-self:start}
 .device-list{display:grid;gap:10px}.device-peer{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px}.device-peer>.btn:first-child{text-align:left}.device-peer-note{grid-column:1/-1;color:var(--m);font-size:13px}.device-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0;font-size:13px;color:var(--m)}.device-pagination>span{text-align:center;overflow-wrap:anywhere}
 @media(max-width:600px){.device-fields{grid-template-columns:minmax(0,1fr);gap:14px}.device-actions>.btn,.device-address>.btn{width:100%}.device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}.device-peer>.btn:first-child{grid-column:1/-1}.device-pagination .btn{padding:10px 12px}}
-[hidden]{display:none!important}.nav button:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+[hidden]{display:none!important}.nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--a);outline-offset:2px}
 .current-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;padding:12px;font-size:13px}.current-status span{display:block;color:var(--m);margin-bottom:5px}.current-status b{font-size:14px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.current-status .online{color:var(--a)}.current-status .offline{color:#e5a94f}
-.diagnostic-links{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}.diagnostic-links a{color:var(--t);background:#173044;border-radius:9px;padding:12px;text-decoration:none;font-size:14px}
 </style></head><body><div class="wrap">
 <div style="font-size:13px;color:#96a9b7;margin:2px 0 6px">G5500 Fork 0.1.0 · оригинал &copy; UA1CFM</div>
 <h1 id="modelTitle">YAESU G-5500 / ESP32</h1>
-<nav class="nav" role="tablist" aria-label="Разделы контроллера">
+<nav class="nav" aria-label="Разделы контроллера">
+<div class="nav-tabs" role="tablist" aria-label="Управление и настройки">
 <button id="controlTab" class="active" role="tab" aria-controls="controlPanel" aria-selected="true" onclick="selectTab('control')">Управление</button>
 <button id="settingsTab" role="tab" aria-controls="settingsPanel" aria-selected="false" tabindex="-1" onclick="selectTab('settings')">Настройки</button>
+</div>
+<a href="/adc">ADC TEST</a>
+<a href="/resetdiag">RESET DIAG</a>
+<a href="/diaglog">DIAG CONSOLE</a>
 </nav>
 <div id="forkMessage" role="status" aria-live="polite"></div>
 <main id="controlPanel" role="tabpanel" aria-labelledby="controlTab">
 <div id="selectedRotor" class="hint hide" role="status"></div>
-<div class="card current-status" id="currentStatus" aria-label="Текущий статус устройства">
-<div><span>Wi-Fi</span><b id="statusWifi">—</b></div>
-<div><span>Bluetooth</span><b id="statusBt">—</b></div>
-<div><span>Сигнал Wi-Fi</span><b id="statusSignal">—</b></div>
-<div title="Свободная внутренняя RAM"><span>Свободная память</span><b id="statusMemory">—</b></div>
-<div><span>Uptime</span><b id="statusUptime">—</b></div>
-</div>
 <div class="grid">
 <div class="card"><div class="label">Азимут — текущее / задание</div><div><span id="az" class="big">--.-</span><span class="sep"> / </span><span id="azt" class="targetbig">---</span><span class="unit">°</span></div><div class="bar"><div id="azbar" class="fill"></div></div><div>0° <span id="azmaxlabel" style="float:right">450°</span></div></div>
 <div class="card"><div class="label">Элевация — текущее / задание</div><div><span id="el" class="big">--.-</span><span class="sep"> / </span><span id="elt" class="targetbig">---</span><span class="unit">°</span></div><div class="bar"><div id="elbar" class="fill"></div></div><div>0° <span style="float:right">180°</span></div></div>
@@ -91,6 +89,13 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div class="field"><label for="followMode">Следование командам</label><select id="followMode" onchange="forkPost('/api/mode',{mode:this.value})"><option value="manual">Ручной</option><option value="auto">Автоматический</option><option value="auto_1h">Авто 1 ч</option></select></div></div>
 <div id="hourLeft" aria-live="polite"></div>
 <div id="waitingTarget" style="margin-top:8px">Нет ожидающей цели</div>
+</div>
+<div class="card current-status" id="currentStatus" aria-label="Текущий статус устройства">
+<div><span>Wi-Fi</span><b id="statusWifi">—</b></div>
+<div><span>Bluetooth</span><b id="statusBt">—</b></div>
+<div><span>Сигнал Wi-Fi</span><b id="statusSignal">—</b></div>
+<div title="Свободная внутренняя RAM"><span>Свободная память</span><b id="statusMemory">—</b></div>
+<div><span>Uptime</span><b id="statusUptime">—</b></div>
 </div>
 </main>
 <section id="settingsPanel" role="tabpanel" aria-labelledby="settingsTab" hidden>
@@ -235,9 +240,6 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div id="wifiMessage" class="hint" role="status" aria-live="polite"></div>
 <div class="field" style="margin-top:14px"><label>Access Point password (8..63 chars; empty = open AP)</label><input id="appass" type="password" minlength="8" maxlength="63" placeholder="leave empty for open AP"></div>
 <button class="btn good" style="margin-top:10px" onclick="saveAp()">Save AP password + reboot</button></div>
-<div class="card"><div class="label">Диагностика</div><div class="diagnostic-links">
-<a href="/adc">ADC TEST</a><a href="/resetdiag">RESET DIAG</a><a href="/diaglog">DIAG CONSOLE</a>
-</div></div>
 </section></div>
 <script>
 function setText(node,value){const text=String(value??'');if(node.textContent!==text)node.textContent=text;}
