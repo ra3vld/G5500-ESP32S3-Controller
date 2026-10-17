@@ -102,13 +102,32 @@ int main() {
   assert(logger.send(loopback, n1mm.localPort(), "recovered"));
   assert(receive(n1mm, packet) == DatagramResult::Ready && packet.text() == "recovered");
 
-  assert(!logger.send(loopback, n1mm.localPort(), boundary));
-  assert(!logger.send(loopback, 0, target));
+  int error = 0;
+  assert(!logger.send(loopback, n1mm.localPort(), boundary, &error) && error == EMSGSIZE);
+  assert(!logger.send(loopback, 0, target, &error) && error == EINVAL);
   for (unsigned i = 0; i < 1000; ++i) {
     n1mm.stop();
-    assert(!n1mm.localPort() && !n1mm.send(loopback, logger.localPort(), target));
+    assert(!n1mm.localPort() && !n1mm.send(loopback, logger.localPort(), target, &error) && error == EBADF);
     assert(n1mm.begin(0));
   }
+  // Verify the actual outgoing IP traffic class, not just a socket setting.
+  assert(logger.setIpPrecedence(4) && !logger.setIpPrecedence(8));
+  const int receiveTos = 1;
+  assert(::setsockopt(raw, IPPROTO_IP, IP_RECVTOS, &receiveTos, sizeof receiveTos) == 0);
+  sockaddr_in local{}; socklen_t localSize = sizeof local;
+  assert(::getsockname(raw, reinterpret_cast<sockaddr *>(&local), &localSize) == 0);
+  assert(logger.send(loopback, ntohs(local.sin_port), "hud"));
+  char received[8], ancillary[CMSG_SPACE(sizeof(int))]{};
+  iovec part{received, sizeof received}; msghdr message{};
+  message.msg_iov = &part; message.msg_iovlen = 1;
+  message.msg_control = ancillary; message.msg_controllen = sizeof ancillary;
+  assert(::recvmsg(raw, &message, 0) == 3);
+  bool priorityReceived = false;
+  for (auto *c = CMSG_FIRSTHDR(&message); c; c = CMSG_NXTHDR(&message, c))
+    if (c->cmsg_level == IPPROTO_IP && c->cmsg_type == IP_TOS)
+      priorityReceived = *reinterpret_cast<unsigned char *>(CMSG_DATA(c)) == 0x80;
+  assert(priorityReceived);
+  logger.stop(); assert(!logger.setIpPrecedence(4));
   ::close(raw);
   std::puts("UDP: N1MM/PST receive/reply/report, exact 4KB boundary, oversized/OOM/empty recovery, no idle/TX allocations, 1000 rebinds PASS");
 }

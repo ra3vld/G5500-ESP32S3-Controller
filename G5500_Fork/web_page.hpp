@@ -722,7 +722,7 @@ document.querySelectorAll('[role=tab]').forEach(tab=>tab.addEventListener('keydo
 }));
 selectTab(location.hash==='#settings'?'settings':'control',false);
 setInterval(loadRssi,30000);
-setInterval(upd,500);setInterval(()=>upd(true),5000);upd();
+setInterval(upd,1000);setInterval(()=>upd(true),15000);upd();
 
 ssid.addEventListener('input',function(){ssid.dataset.dirty='1';});
 for(const id of ['forkSettings','hudConfig'])document.getElementById(id).addEventListener('input',event=>{event.currentTarget.dataset.dirty='1';});

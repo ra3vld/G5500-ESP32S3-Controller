@@ -9,6 +9,7 @@
 #include <unistd.h>
 #endif
 #include <algorithm>
+#include <cerrno>
 #include <cstdlib>
 #include <cstdint>
 #include <memory>
@@ -53,6 +54,13 @@ public:
   void stop() {
     if (fd_ >= 0) ::close(fd_);
     fd_ = -1;
+  }
+  // IP precedence 6/7 maps to Wi-Fi's voice queue on ESP32. Apply only
+  // to the small, time-sensitive HUD datagrams, leaving logger traffic alone.
+  bool setIpPrecedence(unsigned value) {
+    if (fd_ < 0 || value > 7) return false;
+    const int tos = int(value << 5);
+    return ::setsockopt(fd_, IPPROTO_IP, IP_TOS, &tos, sizeof tos) == 0;
   }
   uint16_t localPort() const {
     sockaddr_in local{};
@@ -116,14 +124,21 @@ public:
     port = ntohs(sender.sin_port);
     return count;
   }
-  bool send(uint32_t address, uint16_t port, std::string_view text) {
-    if (fd_ < 0 || !port || text.size() > MAX_PACKET) return false;
+  bool send(uint32_t address, uint16_t port, std::string_view text, int *error = nullptr) {
+    if (error) *error = 0;
+    if (fd_ < 0 || !port || text.size() > MAX_PACKET) {
+      if (error) *error = fd_ < 0 ? EBADF : !port ? EINVAL : EMSGSIZE;
+      return false;
+    }
     sockaddr_in recipient{};
     recipient.sin_family = AF_INET;
     recipient.sin_addr.s_addr = address;
     recipient.sin_port = htons(port);
-    return ::sendto(fd_, text.data(), text.size(), MSG_DONTWAIT,
-                    reinterpret_cast<sockaddr *>(&recipient), sizeof recipient) == ssize_t(text.size());
+    const auto count = ::sendto(fd_, text.data(), text.size(), MSG_DONTWAIT,
+                                reinterpret_cast<sockaddr *>(&recipient), sizeof recipient);
+    if (count == ssize_t(text.size())) return true;
+    if (error) *error = count < 0 ? errno : EIO;
+    return false;
   }
 private:
   void discard() {

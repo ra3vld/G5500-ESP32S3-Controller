@@ -219,6 +219,6 @@
 <text x="1350" y="1556" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">LCD RW=GND; логика LCD 5 В требует согласования.</text>
 <text x="1350" y="1593" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">GPIO21 и GPIO33/47 - ENABLE, не выходы скорости.</text>
 <text x="1350" y="1630" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Встроенные буферы IBT-2 сохраняются.</text>
-<text x="47" y="1730" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">Проект подключения. GPIO и логика проверяются в коде; уровни, питание, направления и STOP - на оборудовании.</text>
-<text x="47" y="1770" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#586575">Источники и номиналы: документация .md рядом. Генератор: tools/render_pwm_schematic.py.</text>
+<text x="47" y="1730" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">Перед подключением двигателя проверьте уровни, питание, направления и STOP на своём оборудовании.</text>
+<text x="47" y="1770" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#586575">Подключение и номиналы: инструкция рядом со схемой.</text>
 </svg>

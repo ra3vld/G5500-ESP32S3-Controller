@@ -96,6 +96,7 @@ private:
   uint32_t lastBtDropped_ = 0;
   bool btReady_ = false;
   bool compactWifi_ = false;
+  bool bufferedWifi_ = false;
   DatagramSocket n1mmUdp, pstUdp;
   enum GsReplyPort : uint8_t { GS_REPLY_USB = 0, GS_REPLY_BLUETOOTH = 1, GS_REPLY_NATIVE_USB = 2 };
   GsReplyPort gsReplyPort = GS_REPLY_USB;

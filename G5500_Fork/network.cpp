@@ -52,7 +52,8 @@ int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
         int(WiFi.status()), credentials_.wifiSsid.length() ? "yes" : "no",
         diagnostics_.wifiCredentialsReadOk() ? "OK" : "unavailable",
         btReady_ ? "yes" : "no", bluetooth_.connected() ? "yes" : "no",
-        bluetooth_.linkConnected() ? "yes" : "no", compactWifi_ ? "compact" : "standard");
+        bluetooth_.linkConnected() ? "yes" : "no",
+        compactWifi_ ? "compact" : bufferedWifi_ ? "buffered" : "standard");
   case 2: {
     const IPAddress ap = (WiFi.getMode() & WIFI_AP) ? WiFi.softAPIP() : IPAddress();
     const IPAddress sta = WiFi.localIP();
@@ -475,6 +476,11 @@ void Network::startWifi() {
   compactWifi_ = initResult == ESP_OK;
   diagnostics_.dbgPrintln(compactWifi_ ? "[WIFI] compact buffers: static RX 2, dynamic RX/TX 4/2, aggregation off"
                                       : "[WIFI] compact init failed; trying Arduino defaults");
+#elif SELECTED_BOARD == BOARD_ESP32 || SELECTED_BOARD == BOARD_CROWPANEL_21
+  const esp_err_t initResult = initBufferedWifi();
+  bufferedWifi_ = initResult == ESP_OK;
+  diagnostics_.dbgPrintln(bufferedWifi_ ? "[WIFI] buffered profile: static RX 8, dynamic RX/TX 64/64"
+                                      : "[WIFI] buffered init failed; trying Arduino defaults");
 #endif
   WiFi.setSleep(false);
   // The policy below owns retries; Arduino's event callback must not launch
@@ -509,6 +515,8 @@ void Network::startWifi() {
                     runtime_.loggerSettings.pstPort, runtime_.loggerSettings.reportPort) ||
       !hudUdp_.begin(runtime_.hud.config.port))
     diagnostics_.dbgPrintln("[HUD] UDP port unavailable");
+  else if (!hudUdp_.setIpPrecedence(4))
+    diagnostics_.dbgPrintln("[HUD] UDP priority unavailable; using default queue");
   tcpServer_.begin();
   actions_.setupWeb();
   heapAfterWifi_ = heapFreeBytes();
@@ -563,6 +571,9 @@ void Network::serviceWifiReconnect() {
     else diagnostics_.dbgPrintln("[WIFI] failed to stop fallback AP");
   } else if (action == WifiAction::StartAp) {
     restoreApOnlyAfterReconnectFail();
+  } else if (action == WifiAction::ReconnectSta) {
+    diagnostics_.dbgPrintln("[WIFI] STA lost; immediate reconnect before fallback");
+    if (!WiFi.reconnect()) diagnostics_.dbgPrintln("[WIFI] immediate STA reconnect failed");
   } else if (action == WifiAction::StartSta) {
     diagnostics_.dbgPrintln("[WIFI] STA reconnect attempt; AP remains during attempt");
     if (WiFi.mode(WIFI_AP_STA))
@@ -667,11 +678,19 @@ void Network::beginHud() {
   }
 }
 bool Network::sendHud(const HudEndpoint &e, const uint8_t *bytes, size_t size) {
-  if (e.uart) {
-    return runtime_.hud.config.uart && hudUart_ && hudUart_->tx.enqueue(bytes, size);
+  int error = 0;
+  const bool sent =
+      e.uart ? runtime_.hud.config.uart && hudUart_ && hudUart_->tx.enqueue(bytes, size)
+             : hudUdp_.send(e.address, e.port, {reinterpret_cast<const char *>(bytes), size}, &error);
+  if (sent) {
+    ++runtime_.hud.sent;
+  } else {
+    ++runtime_.hud.sendErrors;
+    runtime_.hud.sendErrno = error;
   }
-  return hudUdp_.send(e.address, e.port, {reinterpret_cast<const char *>(bytes), size});
+  return sent;
 }
+
 bool Network::deferReply(const Packet &p, uint8_t port) {
   if (p.result != Result::Deferred)
     return false;

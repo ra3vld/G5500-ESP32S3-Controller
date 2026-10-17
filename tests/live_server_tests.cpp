@@ -31,19 +31,28 @@ int main(){
  assert(command(1000,std::string(513,'a'))==ESP_FAIL);
  // A blocked socket is closed; other clients still receive state/results.
  fakeServer.failedFd=1001;runtime.controller.axes[0].current=25;
- server.publish(50);pumpLive();
+ server.publish(250);pumpLive();
  assert(!fakeServer.closed.empty()&&fakeServer.closed.back()==1001);
  assert(connect(1001)==ESP_OK);fakeServer.failedFd=-1;
  assert(command(1001,packet(1,"/api/target","&az=110"))==ESP_OK);
- server.commands(55);assert(runtime.controller.axes[0].target==110);
+ server.commands(255);assert(runtime.controller.axes[0].target==110);
  // A target submitted AFTER STOP is newer work and must remain executable.
  assert(command(1001,packet(2,"/api/move","&d=S"))==ESP_OK);
  assert(command(1001,packet(3,"/api/target","&az=115"))==ESP_OK);
- server.commands(56);assert(runtime.controller.axes[0].target==115);
+ server.commands(256);assert(runtime.controller.axes[0].target==115);
  // Queue saturation is explicit; never grow buffers or silently lose results.
  for(unsigned i=10;i<25;++i)command(1002,packet(i,"/api/target","&az=120"));
  assert(command(1002,packet(30,"/api/move","&d=S"))==ESP_OK);
- server.commands(60);assert(!runtime.controller.moving());server.publish(60);pumpLive();
+ server.commands(260);assert(!runtime.controller.moving());server.publish(260);pumpLive();
  assert(fakeServer.closed.back()==1002);
+ for(unsigned t=300;t<=360;t+=5){server.publish(t);pumpLive();} // Drain earlier command replies.
+ // Position samples coalesce at 5 Hz, while control/STOP remains immediate.
+ runtime.controller.stopNow(-1,1000);server.publish(1000);pumpLive();fakeServer.sent.clear();
+ for(unsigned t=1005;t<1200;t+=5){runtime.controller.feedback(float(t-1000),30,true,true);server.publish(t);pumpLive();}
+ assert(fakeServer.sent.empty());
+ server.publish(1200);pumpLive();assert(fakeServer.sent.size()==3);
+ for(const auto &message:fakeServer.sent)assert(message.second.find("\"az\":195")!=std::string::npos);
+ fakeServer.sent.clear();runtime.controller.setMode(Mode::Auto,1205);server.publish(1205);pumpLive();assert(fakeServer.sent.size()==3);
+ fakeServer.sent.clear();runtime.controller.stopNow(-1,1210);server.publish(1210);pumpLive();assert(fakeServer.sent.size()==3);
  std::cout<<"PASS: actual HTTPD adapter: four clients, loop ownership, STOP priority, duplicate IDs, bounded backpressure, reconnect\n";
 }

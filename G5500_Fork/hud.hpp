@@ -104,6 +104,7 @@ public:
   uint32_t selectionEpoch = 0, now = 0;
   uint32_t received = 0, rejected = 0, duplicates = 0, timeouts = 0, busy = 0, sent = 0,
            sendErrors = 0;
+  int sendErrno = 0;
   bool settingsDirty = false, presetsDirty = false, selectionDirty = false, catalogError = false;
   void begin(uint64_t node, uint64_t session);
   void setTransport(HudTransport *transport) { transport_ = transport; }
@@ -185,6 +186,7 @@ private:
     uint32_t serial = 0, renewed = 0, sent = 0, revision = 0;
     bool used = false, extended = false;
     uint8_t wireVersion = 1;
+    uint16_t retryDelayMs = 0;
   } subscriptions_[4];
   uint32_t liveRevision_ = 0, liveHash_ = 0, controlHash_ = 0, liveChangedAt_ = 0;
   std::unique_ptr<Client> client_;

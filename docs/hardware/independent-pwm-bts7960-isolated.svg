@@ -195,6 +195,6 @@
 <text x="1350" y="1556" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Датчики, R_IS/L_IS, приборы не замыкают барьер.</text>
 <text x="1350" y="1593" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">R_IS/L_IS: NC; разводка оптоканалов - лист 2.</text>
 <text x="1350" y="1630" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">GPIO0 / периферия остаются на GND_CTRL.</text>
-<text x="47" y="1730" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">Проект подключения. GPIO и логика проверяются в коде; уровни, питание, направления и STOP - на оборудовании.</text>
-<text x="47" y="1770" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#586575">Источники и номиналы: документация .md рядом. Генератор: tools/render_pwm_schematic.py.</text>
+<text x="47" y="1730" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">Перед подключением двигателя проверьте уровни, питание, направления и STOP на своём оборудовании.</text>
+<text x="47" y="1770" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#586575">Подключение и номиналы: инструкция рядом со схемой.</text>
 </svg>

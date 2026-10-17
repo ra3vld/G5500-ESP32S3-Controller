@@ -59,6 +59,7 @@ class TouchGesture {
   enum class Role { None, Mode, Ring, Target, Swipe, Arrow } role_ = Role::None;
   bool down_ = false, cancelled_ = false, blocked_ = false;
   uint16_t startX_ = 0, startY_ = 0, lastX_ = 0, lastY_ = 0;
+  float ringBearing_ = -1;
   unsigned arrow_ = 0;
   uint8_t mask_ = 0;
   uint32_t gesture_ = 0;
@@ -101,6 +102,7 @@ public:
       startY_ = y;
       mask_ = 0;
       cancelled_ = false;
+      ringBearing_ = -1;
       role_ = Role::None;
       if (layout.enabled) {
         if (ModeButton.contains(x, y)) {
@@ -121,7 +123,6 @@ public:
               role_ = Role::Target;
             } else if (dialContains(x, y)) {
               role_ = Role::Ring;
-              e.action = TouchAction::Target;
             }
           }
         }
@@ -159,6 +160,13 @@ public:
           }
         }
         e.mask = mask_;
+      }
+    } else if (down && role_ == Role::Ring && layout.enabled && dialContains(x, y)) {
+      const float bearing = dialBearing(x, y);
+      // Keep the contact's role, but only submit a target when its angle changes.
+      if (bearing != ringBearing_) {
+        ringBearing_ = bearing;
+        e.action = TouchAction::Target;
       }
     } else if (!down && down_ && role_ == Role::Target && !cancelled_ && layout.enabled &&
                captured_.target.contains(x, y)) {

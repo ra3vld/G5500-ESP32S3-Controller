@@ -1,7 +1,9 @@
 // Hold-to-run control: axes, ownership, stale input and remote packet ordering.
 #include "control.hpp"
 #include "crowpanel_touch.hpp"
+#include "crowpanel_knob.hpp"
 #include "hud.hpp"
+#include "hud_input.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -132,6 +134,43 @@ static void touch() {
   assert(e.el == 0 && !e.mask);
   g.sample(false, 0, 0, l);
 }
+static void ring() {
+  using namespace crowpanel;
+  TouchLayout l;
+  TouchGesture g;
+  const auto sample = [&](bool down, uint16_t x, uint16_t y, TouchAction expected) {
+    const auto e = g.sample(down, x, y, l);
+    assert(e.action == expected && !e.manual);
+  };
+  sample(true, 467, 240, TouchAction::Target); // Tap acts on contact.
+  sample(true, 467, 241, TouchAction::None); // Same rounded bearing is not resent.
+  sample(true, 400, 400, TouchAction::Target);
+  sample(true, 240, 467, TouchAction::Target);
+  sample(true, 13, 240, TouchAction::Target);
+  sample(true, 236, 13, TouchAction::Target); // Across north: 359 -> 1 degrees.
+  sample(true, 244, 13, TouchAction::Target);
+  l.target = {100, 60, 280, 40}; // Layout changes cannot steal a ring contact.
+  l.arrows[0] = {13, 218, 44, 44};
+  sample(true, 240, 80, TouchAction::Target);
+  sample(true, 13, 240, TouchAction::Target);
+  sample(true, 140, 100, TouchAction::Target); // Cross the mode button on the ring.
+  sample(true, 240, 240, TouchAction::None); // Outside ring: keep last target.
+  sample(true, 0, 0, TouchAction::None);
+  sample(true, 480, 240, TouchAction::None);
+  sample(true, 467, 240, TouchAction::Target); // Resume within the same contact.
+  sample(false, 0, 0, TouchAction::None);
+  sample(true, 467, 240, TouchAction::Target); // A new tap at the same angle acts.
+  l.enabled = false;
+  sample(true, 240, 467, TouchAction::None); // Fault/selector cancels the contact.
+  l.enabled = true;
+  sample(true, 240, 467, TouchAction::None);
+  sample(false, 0, 0, TouchAction::None);
+  sample(true, 240, 467, TouchAction::Target);
+  sample(false, 0, 0, TouchAction::None);
+  sample(true, 240, 240, TouchAction::None); // Cannot slide into a ring gesture.
+  sample(true, 467, 240, TouchAction::None);
+  sample(false, 0, 0, TouchAction::None);
+}
 struct Node;
 struct WirePacket {
   HudEndpoint from, to;
@@ -193,6 +232,42 @@ void Bus::tick(uint32_t at) {
     if (!n->h.isHud()) {
       n->c.tick(at);
     }
+  }
+}
+static void ringTargets() {
+  Bus bus;
+  Node rotor(bus, 1, false), panel(bus, 2, true);
+  rotor.c.feedback(20, 50, true, true);
+  panel.select(rotor);
+  for (unsigned t = 100; t <= 800; t += 10) {
+    bus.tick(t);
+  }
+  assert(panel.h.available());
+  Controller local;
+  local.feedback(20, 50, true, true);
+  CrowPanelKnob localKnob(local);
+  HudKnob remoteKnob(panel.h, panel.c);
+  crowpanel::TouchGesture gesture;
+  crowpanel::TouchLayout layout;
+  uint32_t now = 810;
+  for (const auto mode : {Mode::Manual, Mode::Auto}) {
+    local.setMode(mode, now);
+    rotor.c.setMode(mode, now);
+    bus.tick(now);
+    const uint16_t points[][2] = {{400, 80}, {467, 240}, {400, 400}, {240, 467}};
+    for (const auto &p : points) {
+      const auto e = gesture.sample(true, p[0], p[1], layout);
+      assert(e.action == crowpanel::TouchAction::Target && !e.manual);
+      const float bearing = crowpanel::dialBearing(p[0], p[1]);
+      localKnob.setBearing(bearing, now);
+      remoteKnob.setBearing(bearing, now);
+      bus.tick(now);
+      assert(local.axes[0].target == bearing && local.axes[0].tracking && !local.pendingValid);
+      assert(rotor.c.axes[0].target == bearing && rotor.c.axes[0].tracking && !rotor.c.pendingValid);
+      now += 10;
+    }
+    assert(gesture.sample(false, 0, 0, layout).action == crowpanel::TouchAction::None);
+    assert(local.axes[0].target == 180 && rotor.c.axes[0].target == 180);
   }
 }
 static void network() {
@@ -291,7 +366,9 @@ static void network() {
 int main() {
   core();
   touch();
+  ring();
+  ringTargets();
   network();
   std::cout
-      << "PASS: dual targets, hold/swipe axes and speed, ownership, lease expiry, coalescing, packet order and legacy compatibility\n";
+      << "PASS: ring tap/drag local and HUD, dual targets, hold/swipe axes and speed, ownership, lease expiry, coalescing, packet order and legacy compatibility\n";
 }

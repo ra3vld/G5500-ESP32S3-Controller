@@ -1,5 +1,6 @@
 // HUD/1 portable transport, identity, command lifetime and mirrors. GPL-3.0.
 #include "hud.hpp"
+#include "network_timing.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -1176,6 +1177,14 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       }
       if (!sub.used && !slot) slot = &sub;
     }
+    if (slot && slot->used && slot->source == h.source && slot->boot == h.boot &&
+        slot->endpoint == e && slot->extended == (h.kind == Kind::ExtendedSubscribe) &&
+        slot->wireVersion == h.version) {
+      // Renewal changes the challenge, not the pending send or its backoff.
+      slot->serial = h.serial;
+      slot->renewed = now;
+      return;
+    }
     if (slot) {
       *slot = {e,        h.source, h.boot,
                h.serial, now,      now - 250,
@@ -1273,20 +1282,27 @@ void Hud::publishLive() {
   fingerprint = {tx_, sizeof tx_};
   state(fingerprint, control, true, true, true);
   const uint32_t controlHash = hudCrc(tx_, fingerprint.size);
-  if (hash != liveHash_ && (controlHash != controlHash_ || uint32_t(now - liveChangedAt_) >= 20)) {
+  if (hash != liveHash_ && (controlHash != controlHash_ || uint32_t(now - liveChangedAt_) >= HudPositionIntervalMs)) {
     liveHash_ = hash; controlHash_ = controlHash; liveChangedAt_ = now; ++liveRevision_;
   }
   for (auto &sub : subscriptions_) {
     if ((sub.wireVersion == 1 && controller_.azProfile == AZ_CUSTOM) || (sub.wireVersion < 3 && controller_.elProfile == EL_CUSTOM)) { sub.used=false; continue; }
     if (!sub.used || (sub.revision == liveRevision_ && uint32_t(now - sub.sent) < 250)) continue;
+    if (sub.retryDelayMs && uint32_t(now - sub.sent) < sub.retryDelayMs) continue;
     Writer w{tx_, sizeof tx_};
     header(w, {sub.extended ? Kind::ExtendedTelemetry : Kind::Telemetry, id, sub.source, boot,
                sub.boot, sub.serial, now, sub.wireVersion, controller_.rangeRevision});
     w.u32(liveRevision_);
     state(w, current, true, sub.extended, sub.wireVersion >= 2, sub.wireVersion >= 3);
     const auto n = w.finish();
-    if (n && transport_ && transport_->sendHud(sub.endpoint, tx_, n)) {
-      sub.sent = now; sub.revision = liveRevision_;
+    if (n && transport_) {
+      sub.sent = now;
+      if (transport_->sendHud(sub.endpoint, tx_, n)) {
+        sub.revision = liveRevision_;
+        sub.retryDelayMs = 0;
+      } else {
+        sub.retryDelayMs = sub.retryDelayMs ? std::min<unsigned>(250, sub.retryDelayMs * 2) : 20;
+      }
     }
   }
 }
@@ -1458,6 +1474,6 @@ void Hud::writeStatus(JsonWriter &j, bool live) const {
   j << ",\"hudCatalogError\":" << (catalogError ? "true" : "false")
     << ",\"hudRejected\":" << rejected << ",\"hudTimeouts\":" << timeouts << ",\"hudBusy\":" << busy
     << ",\"hudReceived\":" << received << ",\"hudSent\":" << sent
-    << ",\"hudSendErrors\":" << sendErrors;
+    << ",\"hudSendErrors\":" << sendErrors << ",\"hudSendErrno\":" << sendErrno;
 }
 } // namespace forkrot

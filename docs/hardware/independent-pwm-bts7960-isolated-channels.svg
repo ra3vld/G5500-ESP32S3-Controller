@@ -159,5 +159,5 @@
 <text x="1240" y="1604" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Проверить 1 / 5 / 18 / 50 / 99% и STOP на модуле.</text>
 <text x="1240" y="1641" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Отдельно измерить EN при потере питания ESP32.</text>
 <text x="47" y="1740" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">GND_CTRL и GND_M не соединять. PC817C не имеет выводов VCC: питание 5V_M поступает в выходную цепь.</text>
-<text x="47" y="1770" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#586575">Инверсия PWM реализована в прошивке; аппаратная проверка схемы и оптронов ещё требуется.</text>
+<text x="47" y="1770" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#586575">При включённой инверсии PWM проверьте уровни и отключение ENABLE на входах модулей.</text>
 </svg>

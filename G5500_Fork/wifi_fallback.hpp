@@ -12,7 +12,7 @@ inline uint32_t serviceApAddress(uint32_t sta, uint32_t mask) {
       return candidate;
   return 0; // No private subnet can avoid a default-only STA mask.
 }
-enum class WifiAction { None, StartAp, StartSta, StopAp };
+enum class WifiAction { None, StartAp, StartSta, StopAp, ReconnectSta };
 // A reconnect runs alongside AP for at most eight seconds. Successful STA
 // removes AP only in fallback mode; always-on AP stays available with STA.
 class WifiFallback {
@@ -35,9 +35,11 @@ public:
       return WifiAction::None;
     }
     if (phase_ == Phase::Online) {
-      phase_ = Phase::Fallback;
+      // Give a brief radio loss a chance to recover on the current interface.
+      // Disabling STA here would turn every disconnect into a 30-second outage.
+      phase_ = configured ? Phase::Trying : Phase::Fallback;
       changedMs_ = now;
-      return WifiAction::StartAp;
+      return configured ? WifiAction::ReconnectSta : WifiAction::StartAp;
     }
     if (!configured) return WifiAction::None;
     const uint32_t limit = phase_ == Phase::Trying ? AttemptMs : RetryMs;

@@ -1,4 +1,5 @@
 #include "live_server.hpp"
+#include "network_timing.hpp"
 #ifdef ARDUINO_ARCH_ESP32
 #include <lwip/sockets.h>
 #include <lwip/tcp.h>
@@ -107,7 +108,7 @@ void LiveServer::publish(uint32_t now) {
   bool any=false;{Guard lock(mutex_);for(auto &c:*clients_)any|=c.fd>=0;}
   if(!any)return;
   const uint32_t critical=liveControlFingerprint(runtime_.controller,runtime_.hud);
-  if(critical!=controlHash_ || uint32_t(now-publishedAt_)>=20) {
+  if(critical!=controlHash_ || uint32_t(now-publishedAt_)>=WebPositionIntervalMs) {
     controlHash_=critical;
     char data[LIVE_STATE_CAPACITY];JsonWriter j(data,sizeof data);writeLiveState(j,runtime_.controller,runtime_.hud,now);
     if(j.good()) {
