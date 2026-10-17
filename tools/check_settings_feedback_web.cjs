@@ -1,0 +1,82 @@
+const {chromium}=require(process.env.PLAYWRIGHT_PATH||'playwright');
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const base=process.env.SIM_URL||'http://127.0.0.1:28080';
+const output=process.env.ARTIFACT_DIR||path.resolve(__dirname,'../local-notes/settings-feedback-web');
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+(async()=>{
+ fs.mkdirSync(output,{recursive:true});
+ const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+ try{
+  const page=await browser.newPage({viewport:{width:390,height:850}}),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+  await page.goto(base+'/#settings');await page.waitForFunction(()=>window._forkState&&live.ready);
+  const notice=page.locator('#settingsFeedback');
+  const result=async(state,text)=>{await page.waitForFunction(({state,text})=>{const box=document.getElementById('settingsFeedback');return !box.hidden&&box.dataset.state===state&&box.textContent.includes(text);},{state,text});assert(await notice.isVisible());};
+  const dismiss=async()=>{if(await notice.isVisible())await notice.getByRole('button',{name:'Закрыть уведомление'}).click();};
+  await page.locator('#caltoggle').click();
+  let commands=0;
+  await page.route('**/api/calmode?m=multi',async route=>{commands++;await delay(500);await route.continue();});
+  await page.locator('#modem').click();await result('pending','Сохранение');
+  assert(await page.locator('#modem').isDisabled());
+  assert.equal(await page.locator('#modem').getAttribute('aria-busy'),'true');
+  await page.screenshot({path:path.join(output,'pending-390.png')});
+  await page.locator('#modem').evaluate(b=>b.click());
+  await result('success','Выбрана многоточечная');assert.equal(commands,1);
+  assert(await page.locator('#modem').isEnabled());await page.screenshot({path:path.join(output,'success-390.png')});await dismiss();
+  await page.unroute('**/api/calmode?m=multi');
+  await page.locator('#mode2').click();await result('success','двухточечная');await dismiss();
+  await page.locator('#b2_elo').click();await result('success','Начало диапазона EL запомнено');await dismiss();
+  await page.locator('#panel2 .calreset').last().click();await result('success','Калибровка EL сброшена');await dismiss();
+  await page.route('**/api/cal2?p=o2',r=>r.fulfill({status:503,body:'CALIBRATION SAVE FAILED'}));
+  await page.locator('#b2_elo').click();await result('error','Не удалось сохранить калибровку');assert(await page.locator('#b2_elo').isEnabled());await dismiss();
+  await page.unroute('**/api/cal2?p=o2');
+  await page.route('**/api/cal2?p=o2',r=>r.abort('failed'));
+  await page.locator('#b2_elo').click();await result('error','Подтверждение не получено');await dismiss();
+  await page.unroute('**/api/cal2?p=o2');
+  await page.locator('#modem').click();await result('success','многоточечная');await dismiss();
+  const form=page.locator('#elRangeForm');await form.locator('[name=start]').fill('-30');await form.locator('[name=span]').fill('240');
+  await form.locator('[type=submit]').click();await result('success','Диапазон EL сохранён');await dismiss();
+  await page.locator('#elPointAngle').fill('15');await page.locator('#customElPoints [type=submit]').click();await result('success','Точка EL 15° добавлена');await dismiss();
+  const row=page.locator('#elPointList > div').filter({hasText:'15°'});
+  await row.getByRole('button',{name:'Запомнить положение'}).click();await result('success','Положение EL 15° запомнено');await dismiss();
+  await row.getByRole('button',{name:'Удалить'}).click();await result('success','Точка EL 15° удалена');await dismiss();
+  await page.locator('#elmstd').click();await result('success','Диапазон EL сохранён');await dismiss();
+  await page.locator('#azm36').click();await result('success','Диапазон AZ сохранён');await dismiss();
+  await page.locator('#rotorSettings details').evaluate(e=>e.open=true);
+  const save=page.locator('#forkSettings [type=submit]');
+  await save.click();await result('success','Настройки сохранены');await dismiss();
+  await page.route('**/api/settings',r=>r.fulfill({status:400,json:{ok:false,result:'invalid_or_port_conflict'}}));
+  await save.click();await result('error','Проверьте настройки и порты');await dismiss();await page.unroute('**/api/settings');
+  await page.locator('#presetSettings details').evaluate(e=>e.open=true);
+  await page.locator('#presetEditor [type=submit]').click();await result('success','Предустановка сохранена');await dismiss();
+  // Network writes are stubbed: the UI must acknowledge the server reply, without restarting anything.
+  await page.route('**/api/wifi',async r=>{await delay(300);await r.fulfill({status:200,body:'SAVED'});});
+  await page.locator('#networkSettings > details > summary').click();
+  await page.locator('#ssid').fill('Test network');await page.locator('#pass').fill('test password');
+  await page.locator('#wifiSaveButton').click();await result('pending','Wi-Fi');assert(await page.locator('#wifiSaveButton').isDisabled());
+  await result('success','Настройки Wi-Fi сохранены');assert.equal(await page.locator('#pass').inputValue(),'');await dismiss();
+  const ap=page.locator('#apSaveButton');
+  await page.route('**/api/ap?*',r=>r.fulfill({status:200,body:'AP password saved'}));
+  await page.locator('#appass').fill('test password');await ap.click();await result('success','Настройки точки доступа сохранены');assert.equal(await page.locator('#appass').inputValue(),'');await dismiss();
+  await page.unroute('**/api/ap?*');await page.route('**/api/ap?*',r=>r.fulfill({status:503,body:'failed'}));
+  await ap.click();await result('error','Не удалось сохранить настройки точки доступа');
+  for(const width of [320,390,1100]){
+   await page.setViewportSize({width,height:850});
+   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+   const bounds=await notice.boundingBox();assert(bounds.x>=0&&bounds.x+bounds.width<=width&&bounds.y>=0&&bounds.y+bounds.height<=850);
+   await page.screenshot({path:path.join(output,`error-${width}.png`)});
+  }
+  await dismiss();await page.unroute('**/api/ap?*');
+  // A hung response must unlock the button and must never be announced as saved.
+  await page.evaluate(()=>{const original=window.setTimeout;window.setTimeout=(fn,ms,...args)=>original(fn,ms===12000?100:ms,...args);});
+  await page.route('**/api/ap?*',async r=>{await delay(400);await r.fulfill({status:200,body:'late'}).catch(()=>{});});
+  await ap.click();await result('error','Подтверждение не получено');assert(await ap.isEnabled());
+  await dismiss();await page.unroute('**/api/ap?*');
+  await page.route('**/api/settings',async r=>{await delay(500);await r.fulfill({status:200,json:{ok:true,result:'ok'}});});
+  await save.click();await result('pending','подтверждение');
+  await page.getByRole('tab',{name:'Управление',exact:true}).click();await delay(700);
+  assert(!await notice.isVisible(),'A settings notification must not cover movement controls');
+  assert.deepEqual(errors,[]);
+  console.log('PASS: settings pending/ACK/error/timeout, duplicate suppression, calibration/profile/point/preset/settings/Wi-Fi/AP feedback and 320/390/1100px visibility');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exit(1)});

@@ -16,7 +16,7 @@ public:
   bool saveHudConfig(const HudConfig &config);
   bool saveHudPeers(const Hud &hud);
   void loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredentials &credentials);
-  void saveCal(const Runtime &runtime, Calibration &calibration);
+  bool saveCal(const Runtime &runtime, Calibration &calibration);
   WifiSaveResult saveWifi(const String &s, const String &p);
   bool wifiCredentialsReadOk() const { return wifiCredentialsReadOk_; }
   void saveApPassword(const String &p);

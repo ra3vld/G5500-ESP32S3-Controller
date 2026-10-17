@@ -12,13 +12,14 @@ class CrowPanelKnob {
   uint32_t rawAt_ = 0, downAt_ = 0, clickAt_ = 0, epoch_ = 0;
   unsigned axis_ = 0;
   float maximum_ = 0;
+  uint32_t rangeRevision_ = 0;
   Model model_ = Model::G5500;
   void synchronize(bool inverted) {
-    if (model_ != controller_.model || maximum_ != controller_.maximum || epoch_ != controller_.stopEpoch || inverted_ != inverted) {
+    if (rangeRevision_ != controller_.rangeRevision || model_ != controller_.model || maximum_ != controller_.maximum || epoch_ != controller_.stopEpoch || inverted_ != inverted) {
       click_ = false;
       canResume_ = false;
       model_ = controller_.model;
-      maximum_ = controller_.maximum;
+      maximum_ = controller_.maximum; rangeRevision_ = controller_.rangeRevision;
       epoch_ = controller_.stopEpoch;
       inverted_ = inverted;
     }
@@ -46,7 +47,7 @@ public:
     synchronize(inverted_);
     canResume_ = click_ = false;
     long_ = true;
-    const float target = axis_ ? bearing : nearest(bearing, controller_.axes[0].current, controller_.maximum);
+    const float target = nearest(bearing, controller_.axes[axis_].current, controller_.range(axis_));
     lastResult = controller_.target({axis_ ? 0.f : target, axis_ ? target : 0.f, axis_ == 0, axis_ == 1}, false, now);
   }
   void selectAxis() { axis_ = controller_.model == Model::G5500 ? 1 - axis_ : 0; canResume_ = false; }
@@ -120,8 +121,8 @@ public:
       canResume_ = false;
       const auto &axis = controller_.axes[axis_];
       const float origin = axis.tracking ? axis.target : axis.current;
-      const float next = std::clamp(origin + (inverted_ ? -float(delta) : float(delta)) * StepDegrees, 0.f,
-                                   axis_ ? 180.f : controller_.maximum);
+      const float next = std::clamp(origin + (inverted_ ? -float(delta) : float(delta)) * StepDegrees, controller_.range(axis_).start,
+                                   controller_.range(axis_).end);
       // Every detent updates the controller immediately, including during motion.
       Target target{axis_ ? 0.f : next, axis_ ? next : 0.f, axis_ == 0, axis_ == 1};
       lastResult = controller_.target(target, false, now);

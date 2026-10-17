@@ -11,12 +11,13 @@
 Одна команда — текстовый WS frame с URL-encoded полями, не более 512 байт:
 
 ```text
-v=1&cid=1&boot=0123456789abcdef&selection=0&path=%2Fapi%2Ftarget&az=90&el=30
+v=1&cid=1&boot=0123456789abcdef&selection=0&rangeRevision=1&path=%2Fapi%2Ftarget&az=90&el=30
 ```
 
 - `v=1` — версия; `cid` — положительный, возрастающий uint32 в пределах соединения.
 - `boot` — ID текущей загрузки сервера из начального снимка, 16 hex-символов.
 - `selection` — `hudSelectionEpoch` начального/последнего снимка. Несовпадение загрузки или выбора отменяет команду.
+- `rangeRevision` — `azRangeRevision` последнего состояния. Несовпадение отменяет команду, кроме STOP.
 - `path` — `/api/target`, `/api/move`, `/api/mode`, `/api/execute`, `/api/preset/run` или `/api/hud/select`. Аргументы совпадают с HTTP; `id` при выборе поворотки отличается от `cid` команды.
 
 Сервер отправляет JSON:

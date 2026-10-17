@@ -35,10 +35,11 @@ void Display::tftButton(int x, int y, int w, int h, const String &label, bool ac
     tft.drawRoundRect(x + 1, y + 1, w - 2, h - 2, 4, frame);
   }
 
-  int tw = (int)label.length() * 6 * 2;
+  const int fontSize=label.length()*12>unsigned(w-8)?1:2;
+  int tw = (int)label.length() * 6 * fontSize;
   int tx = x + (w - tw) / 2;
   int ty = y + (h - 16) / 2;
-  tftText(tx, ty, 2, TFT_TEXT, fill, label);
+  tftText(tx, ty, fontSize, TFT_TEXT, fill, label);
 }
 
 String Display::tftCalibrationText() {
@@ -99,7 +100,7 @@ void Display::drawDashboardStatic() {
   tft.drawRoundRect(171, 143, 138, 12, 3, TFT_BORDER);
 
   // Short large range labels.
-  tftText(12, 160, 2, TFT_MUTED, TFT_BG, calibration_.state().gsAzMode == 36 ? "P36" : "P45");
+  tftText(12, 160, 1, TFT_MUTED, TFT_BG, String(runtime_.controller.minimum,1)+".."+String(runtime_.controller.maximum,1));
   tftText(172, 160, 2, TFT_MUTED, TFT_BG, "EL");
 
   // Bottom controls/status. All visible labels are size 2.
@@ -142,7 +143,7 @@ void Display::updateDashboard() {
     field(1,12,70,150,36,4,TFT_AZ,online ? String(c.axes[0].current,0) : "---");
     field(2,170,70,145,36,4,TFT_EL,online && c.model==Model::G5500 ? String(c.axes[1].current,0) : "---");
     field(3,12,115,300,22,2,TFT_TEXT,online ? String(c.pendingValid ? "WAIT " : "TARGET ")+String(c.pendingValid?c.pending.az:c.axes[0].target,0) : "HUD OFFLINE");
-    field(4,12,143,300,16,1,TFT_MUTED,online ? (c.moving()?"MOVING":"STOPPED") : "No current position");
+    field(4,12,143,300,16,1,TFT_MUTED,online ? String(c.moving()?"MOVING ":"STOPPED ")+String(c.minimum,1)+".."+String(c.maximum,1) : "No current position");
     const String mode=c.mode==Mode::Manual?"MANUAL":"AUTO";
     if(hudFields_[5]!=mode){hudFields_[5]=mode;tftButton(4,170,100,36,mode);}
     return;
@@ -166,12 +167,12 @@ void Display::updateDashboard() {
       if(hudFields_[i]==text)return;
       hudFields_[i]=text;tft.fillRect(x,y,w,h,TFT_BG);tftText(x,y,size,color,TFT_BG,text);
     };
-    field(0,12,40,250,18,2,TFT_MUTED,"AZIMUTH");
+    field(0,12,40,290,18,1,TFT_MUTED,String("AZIMUTH ")+String(runtime_.controller.minimum,1)+".."+String(runtime_.controller.maximum,1));
     field(1,12,62,290,42,5,TFT_AZ,String(runtime_.currentAz,1));
     field(2,12,110,290,22,2,TFT_TEXT,String("TARGET ")+String(runtime_.targetAz,1));
     field(3,12,136,205,14,1,TFT_MUTED,String(runtime_.controller.pendingValid?"WAIT ":"MODE ")+
           (runtime_.controller.pendingValid?String(runtime_.controller.pending.az,1):String(Controller::modeName(runtime_.controller.mode))));
-    field(4,12,160,300,14,1,TFT_TEXT,String(calibrationState.gsAzMode==36?"P36 ":"P45 ")+hardware_.motion()+" "+tftCalibrationText());
+    field(4,12,160,300,14,1,TFT_TEXT,String(calibrationState.gsAzMode==0?"CUSTOM ":calibrationState.gsAzMode==36?"P36 ":"P45 ")+hardware_.motion()+" "+tftCalibrationText());
     const String speed=String(runtime_.controller.axes[0].speedOutputPercent,0)+"%";
     if(hudFields_[5]!=speed){
       tft.fillRect(12,150,296,5,TFT_PANEL);
@@ -231,8 +232,8 @@ void Display::updateDashboard() {
     tft.fillRect(260, 109, 50, 24, TFT_BG);
 
     if (runtime_.targetValid) {
-      tftText(100, 112, 2, TFT_TARGET, TFT_BG, String(taShown) + String((char)247));
-      tftText(260, 112, 2, TFT_TARGET, TFT_BG, String(teShown) + String((char)247));
+      tftText(100, 112, taShown < 0 || taShown >= 1000 ? 1 : 2, TFT_TARGET, TFT_BG, String(taShown) + String((char)247));
+      tftText(260, 112, teShown < 0 || teShown >= 1000 ? 1 : 2, TFT_TARGET, TFT_BG, String(teShown) + String((char)247));
     } else {
       tftText(100, 112, 2, TFT_MUTED, TFT_BG, "---");
       tftText(260, 112, 2, TFT_MUTED, TFT_BG, "---");
@@ -244,9 +245,9 @@ void Display::updateDashboard() {
   }
 
   // Progress bars: only change when width changes.
-  float azMax = calibration_.activeAzMaxDeg();
-  int azw = (int)constrain(runtime_.currentAz / azMax * 134.0f, 0.0f, 134.0f);
-  int elw = (int)constrain(runtime_.currentEl / 180.0f * 134.0f, 0.0f, 134.0f);
+  const auto range = runtime_.controller.azRange;
+  int azw = (int)constrain((runtime_.currentAz - range.start) / range.span() * 134.0f, 0.0f, 134.0f);
+  int elw = (int)constrain((runtime_.currentEl-runtime_.controller.elRange.start) / runtime_.controller.elRange.span() * 134.0f, 0.0f, 134.0f);
 
   if (azw != dashLastAzBar) {
     // Instead of clearing the whole bar every time, change only the difference.
@@ -381,9 +382,10 @@ void Display::drawCalHome() {
   tftButton(167, 55, 145, 34, "MULTI", calibrationState.calibrationMode == CAL_MULTI_POINT);
 
   tftText(8, 96, 2, TFT_MUTED, TFT_BG, "AZ RANGE");
-  tftButton(8, 112, 145, 34, "P36", calibrationState.gsAzMode == 36);
-  tftButton(167, 112, 145, 34, "P45", calibrationState.gsAzMode == 45);
+  tftButton(8, 112, 96, 34, "P36", calibrationState.gsAzMode == 36);
+  tftButton(112, 112, 96, 34, "P45", calibrationState.gsAzMode == 45);
 
+  tftButton(216, 112, 96, 34, "CUSTOM", calibrationState.gsAzMode == AZ_CUSTOM);
   tftButton(8, 166, 145, 52, "AZ CAL");
   if (runtime_.controller.model == forkrot::Model::G5500) {
     tftButton(167, 166, 145, 52, "EL CAL");
@@ -399,13 +401,13 @@ void Display::drawCalHome() {
 
 void Display::drawCalAz() {
   auto &calibrationState = calibration_.state();
-  drawCalHeader(String("AZ CAL ") + (calibrationState.gsAzMode == 36 ? "P36" : "P45"));
+  drawCalHeader(String("AZ CAL ") + (calibrationState.gsAzMode == 0 ? "CUSTOM" : calibrationState.gsAzMode == 36 ? "P36" : "P45"));
   int mv = hardware_.adcAvgMv(PIN_AZ_ADC);
   tftText(8, 40, 2, TFT_AZ, TFT_BG, String("ADC ") + String(mv) + " mV");
 
   if (calibrationState.calibrationMode == CAL_GS232_2POINT) {
-    tftButton(8, 70, 145, 48, "O = 0", false, calibration_.activeAzOSet());
-    tftButton(167, 70, 145, 48, calibrationState.gsAzMode == 36 ? "F = 360" : "F = 450", false,
+    tftButton(8, 70, 145, 48, String("O=")+String(calibration_.activeAzRange().start,1), false, calibration_.activeAzOSet());
+    tftButton(167, 70, 145, 48, String("F=")+String(calibration_.activeAzRange().end,1), false,
               calibration_.activeAzFSet());
     tftText(8, 130, 2, TFT_MUTED, TFT_BG,
             String("O:") +
@@ -415,43 +417,49 @@ void Display::drawCalAz() {
                 (calibration_.activeAzFSet() ? String(calibration_.activeAz2Full()) : "---"));
     tftButton(8, 166, 304, 45, "RESET AZ");
   } else {
-    const int vals36[5] = {0, 90, 180, 270, 360};
-    const int vals45[6] = {0, 90, 180, 270, 360, 450};
-    int n = calibrationState.gsAzMode == 36 ? 5 : 6;
-    for (int i = 0; i < n; i++) {
-      int row = i / 3, col = i % 3;
-      int x = 8 + col * 104, y = 68 + row * 58;
-      int deg = calibrationState.gsAzMode == 36 ? vals36[i] : vals45[i];
-      int val = calibrationState.gsAzMode == 36 ? calibrationState.az36CalMv[i]
-                                                : calibrationState.az45CalMv[i];
-      tftButton(x, y, 96, 44, String(deg), false, val >= 0);
+    const bool custom = calibrationState.gsAzMode == AZ_CUSTOM;
+    const unsigned n = custom ? calibrationState.custom.count : calibrationState.gsAzMode == 36 ? 5 : 6;
+    if (azCalPage_ * 6 >= n) azCalPage_ = 0;
+    for (unsigned local=0;local<6 && azCalPage_*6+local<n;++local) {
+      const unsigned i=azCalPage_*6+local;
+      const float deg=custom ? calibrationState.custom.range.start+calibrationState.custom.degrees[i] : float(i*90);
+      const int mv=custom ? calibrationState.custom.millivolts[i] : calibrationState.gsAzMode==36 ? calibrationState.az36CalMv[i] : calibrationState.az45CalMv[i];
+      tftButton(8+(local%3)*104,68+(local/3)*58,96,44,String(deg,1),false,mv>=0);
     }
-    tftButton(8, 190, 304, 38, "RESET AZ");
+    tftText(142,175,1,TFT_MUTED,TFT_BG,String(azCalPage_+1)+"/"+String((n+5)/6));
+    tftButton(8,190,80,38,"<");
+    tftButton(92,190,136,38,"RESET AZ");
+    tftButton(232,190,80,38,">");
   }
 }
 
 void Display::drawCalEl() {
   auto &calibrationState = calibration_.state();
   drawCalHeader("EL CAL");
-  int mv = hardware_.adcAvgMv(PIN_EL_ADC);
-  tftText(8, 40, 2, TFT_EL, TFT_BG, String("ADC ") + String(mv) + " mV");
+  tftButton(8,36,145,26,"0..180",calibrationState.elProfile==EL_STANDARD);
+  tftButton(167,36,145,26,"CUSTOM",calibrationState.elProfile==EL_CUSTOM);
 
   if (calibrationState.calibrationMode == CAL_GS232_2POINT) {
-    tftButton(8, 70, 145, 48, "O2 = 0", false, calibrationState.elOSet);
-    tftButton(167, 70, 145, 48, "F2 = 180", false, calibrationState.elFSet);
+    tftButton(8, 70, 145, 48, String("O2=")+String(calibration_.activeElRange().start,1), false, calibration_.activeElOSet());
+    tftButton(167, 70, 145, 48, String("F2=")+String(calibration_.activeElRange().end,1), false, calibration_.activeElFSet());
     tftText(8, 130, 2, TFT_MUTED, TFT_BG,
-            String("O2:") + (calibrationState.elOSet ? String(calibrationState.cal.el0) : "---"));
+            String("O2:") + (calibration_.activeElOSet() ? String(calibration_.activeEl2Zero()) : "---"));
     tftText(167, 130, 2, TFT_MUTED, TFT_BG,
-            String("F2:") + (calibrationState.elFSet ? String(calibrationState.cal.elMax) : "---"));
+            String("F2:") + (calibration_.activeElFSet() ? String(calibration_.activeEl2Full()) : "---"));
     tftButton(8, 166, 304, 45, "RESET EL");
   } else {
-    const int vals[5] = {0, 45, 90, 135, 180};
-    for (int i = 0; i < 5; i++) {
-      int row = i / 3, col = i % 3;
-      int x = 8 + col * 104, y = 68 + row * 58;
-      tftButton(x, y, 96, 44, String(vals[i]), false, calibrationState.elCalMv[i] >= 0);
+    const bool custom=calibrationState.elProfile==EL_CUSTOM;
+    const auto &cal=calibrationState.customEl;
+    const unsigned n=custom?cal.count:EL_CAL_N;
+    if(elCalPage_*6>=n)elCalPage_=0;
+    for(unsigned local=0;local<6 && elCalPage_*6+local<n;++local) {
+      const unsigned i=elCalPage_*6+local;
+      const float deg=custom?cal.range.start+cal.degrees[i]:elCalDeg[i];
+      const int mv=custom?cal.millivolts[i]:calibrationState.elCalMv[i];
+      tftButton(8+(local%3)*104,68+(local/3)*58,96,44,String(deg,1),false,mv>=0);
     }
-    tftButton(8, 190, 304, 38, "RESET EL");
+    tftText(142,175,1,TFT_MUTED,TFT_BG,String(elCalPage_+1)+"/"+String((n+5)/6));
+    tftButton(8,190,80,38,"<");tftButton(92,190,136,38,"RESET EL");tftButton(232,190,80,38,">");
   }
 }
 
@@ -695,46 +703,11 @@ bool Display::readTouchXY(int &x, int &y) {
 
 void Display::resetTouchCalAxis(bool az) {
   auto &calibrationState = calibration_.state();
-  if (calibrationState.calibrationMode == CAL_GS232_2POINT) {
-    if (az) {
-      if (calibrationState.gsAzMode == 36) {
-        calibrationState.cal.az36_0 = 0;
-        calibrationState.cal.az36Max = 3100;
-        calibrationState.az36OSet = false;
-        calibrationState.az36FSet = false;
-        calibrationState.az36LinearValid = false;
-      } else {
-        calibrationState.cal.az45_0 = 0;
-        calibrationState.cal.az45Max = 3100;
-        calibrationState.az45OSet = false;
-        calibrationState.az45FSet = false;
-        calibrationState.az45LinearValid = false;
-      }
-    } else {
-      calibrationState.cal.el0 = 0;
-      calibrationState.cal.elMax = 3100;
-      calibrationState.elOSet = false;
-      calibrationState.elFSet = false;
-      calibrationState.elLinearValid = false;
-    }
-  } else {
-    if (az) {
-      if (calibrationState.gsAzMode == 36) {
-        for (uint8_t i = 0; i < AZ36_CAL_N; i++) {
-          calibrationState.az36CalMv[i] = -1;
-        }
-      } else {
-        for (uint8_t i = 0; i < AZ45_CAL_N; i++) {
-          calibrationState.az45CalMv[i] = -1;
-        }
-      }
-    } else {
-      for (uint8_t i = 0; i < EL_CAL_N; i++) {
-        calibrationState.elCalMv[i] = -1;
-      }
-    }
-    calibration_.refreshMultiCalValidity();
+  if (az) {
+    calibration_.resetAz(calibrationState.calibrationMode == CAL_MULTI_POINT);
+    actions_.saveCal(); tftNeedsRedraw=true; return;
   }
+  calibration_.resetEl(calibrationState.calibrationMode == CAL_MULTI_POINT);
   actions_.saveCal();
   tftNeedsRedraw = true;
 }
@@ -742,6 +715,10 @@ void Display::resetTouchCalAxis(bool az) {
 void Display::captureTouchMultiAz(uint8_t idx) {
   auto &calibrationState = calibration_.state();
   int mv = hardware_.adcAvgMv(PIN_AZ_ADC);
+  if (calibrationState.gsAzMode == AZ_CUSTOM) {
+    if (idx < calibrationState.custom.count) actions_.editAzPoint("capture", calibrationState.custom.range.start+calibrationState.custom.degrees[idx]);
+    tftNeedsRedraw=true; return;
+  }
   if (calibrationState.gsAzMode == 36) {
     if (idx < AZ36_CAL_N) {
       calibrationState.az36CalMv[idx] = mv;
@@ -759,6 +736,11 @@ void Display::captureTouchMultiAz(uint8_t idx) {
 void Display::captureTouchMultiEl(uint8_t idx) {
   if (runtime_.controller.model == forkrot::Model::G800DXA) {
     return;
+  }
+  const auto &cal=calibration_.state().customEl;
+  if(calibration_.state().elProfile==EL_CUSTOM) {
+    if(idx<cal.count) actions_.editElPoint("capture",cal.range.start+cal.degrees[idx]);
+    tftNeedsRedraw=true;return;
   }
   if (idx >= EL_CAL_N) {
     return;
@@ -916,20 +898,20 @@ void Display::serviceTouch() {
   if (tftPage == TFT_PAGE_CAL_HOME) {
     if (hit(x, y, 8, 55, 145, 34)) {
       actions_.setCalibrationMode(CAL_GS232_2POINT);
-      actions_.saveCal();
       tftNeedsRedraw = true;
     } else if (hit(x, y, 167, 55, 145, 34)) {
       actions_.setCalibrationMode(CAL_MULTI_POINT);
-      actions_.saveCal();
       tftNeedsRedraw = true;
-    } else if (hit(x, y, 8, 112, 145, 34)) {
+    } else if (hit(x, y, 8, 112, 96, 34)) {
       actions_.setGsAzMode(36);
-      actions_.saveCal();
+      azCalPage_=0;
       tftNeedsRedraw = true;
-    } else if (hit(x, y, 167, 112, 145, 34)) {
+    } else if (hit(x, y, 112, 112, 96, 34)) {
       actions_.setGsAzMode(45);
-      actions_.saveCal();
+      azCalPage_=0;
       tftNeedsRedraw = true;
+    } else if (hit(x, y, 216, 112, 96, 34)) {
+      actions_.setGsAzMode(AZ_CUSTOM); azCalPage_=0; tftNeedsRedraw=true;
     } else if (hit(x, y, 8, 166, 145, 52)) {
       tftPage = TFT_PAGE_CAL_AZ;
       tftNeedsRedraw = true;
@@ -953,17 +935,14 @@ void Display::serviceTouch() {
         resetTouchCalAxis(true);
       }
     } else {
-      int n = calibrationState.gsAzMode == 36 ? 5 : 6;
-      for (int i = 0; i < n; i++) {
-        int row = i / 3, col = i % 3;
-        if (hit(x, y, 8 + col * 104, 68 + row * 58, 96, 44)) {
-          captureTouchMultiAz((uint8_t)i);
-          break;
-        }
+      const unsigned n=calibrationState.gsAzMode==AZ_CUSTOM?calibrationState.custom.count:calibrationState.gsAzMode==36?5:6;
+      for (unsigned local=0;local<6 && azCalPage_*6+local<n;++local) {
+        if(hit(x,y,8+(local%3)*104,68+(local/3)*58,96,44)) captureTouchMultiAz(uint8_t(azCalPage_*6+local));
       }
-      if (hit(x, y, 4, 184, 312, 52)) {
-        resetTouchCalAxis(true);
-      }
+      const unsigned pages=(n+5)/6;
+      if(hit(x,y,8,190,80,38)) azCalPage_=uint8_t((azCalPage_+pages-1)%pages);
+      else if(hit(x,y,232,190,80,38)) azCalPage_=uint8_t((azCalPage_+1)%pages);
+      else if(hit(x,y,92,190,136,38)) resetTouchCalAxis(true);
     }
     tftNeedsRedraw = true;
     drawTftPage();
@@ -971,6 +950,12 @@ void Display::serviceTouch() {
   }
 
   if (tftPage == TFT_PAGE_CAL_EL) {
+    if(hit(x,y,8,36,145,26) || hit(x,y,167,36,145,26)) {
+      const bool custom=x>=167;
+      const auto r=calibrationState.customEl.initialized?calibrationState.customEl.range:calibration_.activeElRange();
+      actions_.configureElRange(custom?EL_CUSTOM:EL_STANDARD,custom?r.start:0,custom?r.span():180);
+      elCalPage_=0;tftNeedsRedraw=true;drawTftPage();return;
+    }
     if (calibrationState.calibrationMode == CAL_GS232_2POINT) {
       if (hit(x, y, 8, 70, 145, 48)) {
         actions_.captureGs232Cal("O2");
@@ -980,16 +965,13 @@ void Display::serviceTouch() {
         resetTouchCalAxis(false);
       }
     } else {
-      for (int i = 0; i < 5; i++) {
-        int row = i / 3, col = i % 3;
-        if (hit(x, y, 8 + col * 104, 68 + row * 58, 96, 44)) {
-          captureTouchMultiEl((uint8_t)i);
-          break;
-        }
-      }
-      if (hit(x, y, 4, 184, 312, 52)) {
-        resetTouchCalAxis(false);
-      }
+      const unsigned n=calibrationState.elProfile==EL_CUSTOM?calibrationState.customEl.count:EL_CAL_N;
+      for(unsigned local=0;local<6 && elCalPage_*6+local<n;++local)
+        if(hit(x,y,8+(local%3)*104,68+(local/3)*58,96,44))captureTouchMultiEl(uint8_t(elCalPage_*6+local));
+      const unsigned pages=(n+5)/6;
+      if(hit(x,y,8,190,80,38))elCalPage_=uint8_t((elCalPage_+pages-1)%pages);
+      else if(hit(x,y,232,190,80,38))elCalPage_=uint8_t((elCalPage_+1)%pages);
+      else if(hit(x,y,92,190,136,38))resetTouchCalAxis(false);
     }
     tftNeedsRedraw = true;
     drawTftPage();
@@ -1067,12 +1049,16 @@ void Display::updateLocalDisplay() {
   redraw_ = false; updatedAt_ = now;
   for (unsigned i=0; i<2; ++i) {
     char text[40];
+    bool showBar=true;
     const auto &axis = runtime_.controller.axes[i];
     const char mode = runtime_.controller.pendingValid ? 'W' : runtime_.controller.mode == Mode::Manual ? 'M' : runtime_.controller.mode == Mode::AutoHour ? 'H' : 'A';
     if (runtime_.hud.isHud() && !runtime_.hud.available()) {
       std::snprintf(text, sizeof text, "%-16.16s",
                     i ? (runtime_.hud.active() ? runtime_.hud.active()->label : "Select via Web")
                       : "HUD OFFLINE");
+    } else if ((now / 4000) % 3 == 2 && (!i || runtime_.controller.model == Model::G5500)) {
+      showBar=false;
+      std::snprintf(text,sizeof text,"L%.6gR%.6g",double(runtime_.controller.range(i).start),double(runtime_.controller.range(i).end));
     } else if (i && runtime_.controller.model == Model::G800DXA) {
       std::snprintf(text, sizeof text, "%s %-9s", runtime_.controller.pendingValid ? "WAIT" : "MODE", Controller::modeName(runtime_.controller.mode));
     } else {
@@ -1081,10 +1067,11 @@ void Display::updateLocalDisplay() {
       const bool waiting = c.pendingValid && (i ? c.pending.hasEl : c.pending.hasAz);
       if (waiting || c.targetKnown) std::snprintf(target, sizeof target, "%3d", int(lroundf(waiting ? (i ? c.pending.el : c.pending.az) : axis.target)));
       std::snprintf(text, sizeof text, "%c%3d>%3s %3d%%%c%c", i ? 'E' : 'A', int(lroundf(axis.current)), target, int(lroundf(axis.speedOutputPercent)), mode, axis.direction > 0 ? '+' : axis.direction < 0 ? '-' : '=');
+      if (std::strlen(text)>16) { showBar=false; std::snprintf(text,sizeof text,"%c%.6g>%s",i?'E':'A',double(axis.current),target); }
     }
     for (unsigned col=0; col<16; ++col) {
       uint8_t value;
-      if (col==15 && !(i && runtime_.controller.model == Model::G800DXA)) {
+      if (showBar && col==15 && !(i && runtime_.controller.model == Model::G800DXA)) {
         const uint8_t width=uint8_t(lroundf(axis.speedOutputPercent*5.f/100.f));
         value = width ? width : uint8_t(' ');
       } else value = col < std::strlen(text) ? text[col] : ' ';

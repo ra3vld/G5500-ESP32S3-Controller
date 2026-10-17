@@ -28,7 +28,9 @@ int main() {
   Settings settings;
   protocol.rotorName = "Россия\"\\\n";
   settings.reportHost = "192.168.1.254";
-  controller.axes[0].current = 380.25;
+  controller.setRange({-3600, 0}, AZ_CUSTOM);
+  controller.rangeRevision = UINT32_MAX;
+  controller.axes[0].current = -3599.9;
   controller.pending = {12.3456f, 0.000001f, true, true};
   controller.pendingValid = true;
   for (auto &preset : controller.presets) preset.label = std::string(32, '\x01');

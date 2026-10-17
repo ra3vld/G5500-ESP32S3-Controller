@@ -379,7 +379,10 @@ int main() {
     auto length = hudUartEncode(wire.bytes.data(), wire.bytes.size(), encoded, sizeof encoded);
     for (size_t i = 0; i < length / 2; ++i)
       assert(!framing.feed(encoded[i], frame, sizeof frame));
-    assert(!framing.feed(0, frame, sizeof frame)); // Interrupted frame, then resynchronization.
+    // A truncated COBS packet can end on a block boundary; protocol CRC must reject it.
+    const auto partial=framing.feed(0, frame, sizeof frame);
+    if(partial) motor.hud.receive(panel.endpoint,frame,partial,110);
+    assert(!motor.controller.moving());
     size_t size = 0;
     for (size_t i = 0; i < length; ++i)
       size = framing.feed(encoded[i], frame, sizeof frame);

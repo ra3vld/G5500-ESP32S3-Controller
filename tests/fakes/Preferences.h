@@ -33,6 +33,7 @@ public:
   bool getBool(const char *key, bool fallback = false) { return get(key, fallback); }
   float getFloat(const char *key, float fallback = 0) { return get(key, fallback); }
   String getString(const char *key, String fallback = "") { return get(key, fallback); }
+  bool isKey(const char *key) { return database[name_].count(key) != 0; }
   size_t getBytesLength(const char *key) { return get(key, Bytes{}).size(); }
   size_t getBytes(const char *key, void *out, size_t length) {
     const auto bytes = get(key, Bytes{});

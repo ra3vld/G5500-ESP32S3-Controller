@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """UDP/TCP/HTTP adapter for the actual fork C++ core, with virtual motors only."""
 import argparse
+import os
 import asyncio
 import json
 import pathlib
@@ -14,7 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 class Core:
     def __init__(self, log):
-        self.process = subprocess.Popen([str(ROOT / 'build/simulator')], stdin=subprocess.PIPE,
+        self.process = subprocess.Popen([os.environ.get('SIM_CORE', str(ROOT / 'build/simulator'))], stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE, text=True, bufsize=1)
         self.log = log
         self.state = self.call('step 0')['state']

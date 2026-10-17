@@ -73,6 +73,12 @@ void writeTargetJson(JsonWriter &json, Target t) {
 bool writeStateJson(JsonWriter &json, const Controller &controller, const Protocol &protocol,
                     const Settings &settings, uint32_t now, bool appendMembers) {
   json << (appendMembers ? ",\"model\":" : "{\"model\":") << jsonQuoted(controller.model == Model::G5500 ? "G5500" : "G800DXA")
+       << ",\"azProfile\":" << jsonQuoted(azProfileName(controller.azProfile))
+       << ",\"azStart\":" << controller.minimum << ",\"azSpan\":" << controller.azRange.span()
+       << ",\"azMax\":" << controller.maximum << ",\"azRangeRevision\":" << controller.rangeRevision
+    << ",\"elProfile\":" << jsonQuoted(elProfileName(controller.elProfile))
+    << ",\"elStart\":" << controller.elRange.start << ",\"elSpan\":" << controller.elRange.span()
+    << ",\"elMax\":" << controller.elRange.end << ",\"elRangeRevision\":" << controller.rangeRevision
        << ",\"controlMode\":" << jsonQuoted(Controller::modeName(controller.mode))
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
        << ",\"encoderInverted\":" << (settings.encoderInverted ? "true" : "false")
@@ -179,6 +185,11 @@ std::string stateJson(const Controller &controller, const Protocol &protocol,
 Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
                  std::string_view path, FormView form, uint32_t now) {
   Result result = Result::Invalid;
+  if (has(form, "rangeRevision") && !(path == "/api/move" && (get(form, "d") == "S" || get(form, "d") == "A" || get(form, "d") == "E"))) {
+    uint32_t revision;
+    if (!requestGeneration(get(form, "rangeRevision"), revision) || revision != controller.rangeRevision)
+      return {409, "{\"ok\":false,\"result\":\"cancelled\"}"};
+  }
   if (controller.remote && has(form, "selection")) {
     uint32_t selection;
     if (!requestGeneration(get(form, "selection"), selection) ||

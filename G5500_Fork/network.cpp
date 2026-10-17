@@ -181,10 +181,10 @@ void Network::processGs232Command(std::string_view input) {
   }
 
   // Standard GS-232 calibration commands.
-  // O  = current AZ feedback becomes 0 degrees
-  // F  = current AZ feedback becomes full scale (360 or 450, from P36/P45)
-  // O2 = current EL feedback becomes 0 degrees
-  // F2 = current EL feedback becomes 180 degrees
+  // O  = current AZ feedback becomes the active range start
+  // F  = current AZ feedback becomes the active range end
+  // O2 = current EL feedback becomes the active range start
+  // F2 = current EL feedback becomes the active range end
   if (cmd == "O" || cmd == "O2" || cmd == "F" || cmd == "F2") {
     actions_.captureGs232Cal(cmd);
     return;
@@ -398,7 +398,9 @@ void Network::processRotctldCommand(std::string_view input) {
   }
   if (upper == "H3") {
     String s = "P45 P36 MODE=";
-    s += (calibration_.state().gsAzMode == 45 ? "450" : "360");
+    if (calibration_.state().gsAzMode == AZ_CUSTOM)
+      s += String("CUSTOM ") + String(runtime_.controller.minimum,1) + ".." + String(runtime_.controller.maximum,1);
+    else s += (calibration_.state().gsAzMode == 45 ? "450" : "360");
     s += " CAL=";
     s += calibration_.calibrationModeName();
     s += "\r\n";

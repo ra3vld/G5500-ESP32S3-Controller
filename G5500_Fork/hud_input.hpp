@@ -73,7 +73,7 @@ public:
     resume_ = click_ = false;
     pauseRequest_ = 0;
     long_ = true;
-    const float target = axis_ ? bearing : nearest(bearing, controller_.axes[0].current, controller_.maximum);
+    const float target = nearest(bearing, controller_.axes[axis_].current, controller_.range(axis_));
     recordResult(controller_.target({axis_ ? 0.f : target, axis_ ? target : 0.f, axis_ == 0, axis_ == 1}, false, now), now);
   }
   void stop(uint32_t now) {
@@ -205,8 +205,8 @@ public:
       resume_ = click_ = false;
       const auto &a = controller_.axes[axis_];
       const float base = controller_.intendedTarget(axis_, a.tracking ? a.target : a.current);
-      const float next = std::clamp(base + (inverted ? -float(delta) : float(delta)) * 20.f, 0.f,
-                                    axis_ ? 180.f : controller_.maximum);
+      const float next = std::clamp(base + (inverted ? -float(delta) : float(delta)) * 20.f, controller_.range(axis_).start,
+                                    controller_.range(axis_).end);
       recordResult(
           controller_.target({axis_ ? 0.f : next, axis_ ? next : 0.f, axis_ == 0, axis_ == 1}, false, now), now);
     }

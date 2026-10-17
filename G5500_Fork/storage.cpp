@@ -1,5 +1,6 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "storage.hpp"
+#include "calibration_record.hpp"
 #include "board.hpp"
 #include <time.h>
 #include <cstdlib>
@@ -23,6 +24,32 @@ void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredenti
   if (runtime.hud.isHud())
     return;
   prefs_.begin(calNamespace(runtime), true);
+  const size_t recordSize = prefs_.getBytesLength("azgeom1");
+  if (prefs_.isKey("azgeom1")) {
+    calibrationState = {};
+    bool readOk = false;
+    if (recordSize == CalibrationRecord{}.size()) {
+      CalibrationRecord record{};
+      readOk = prefs_.getBytes("azgeom1", record.data(), record.size()) == record.size() && readCalibrationRecord(record, calibrationState);
+    } else if (recordSize == CalibrationRecordV1{}.size()) {
+      CalibrationRecordV1 record{};
+      readOk = prefs_.getBytes("azgeom1", record.data(), record.size()) == record.size() && readCalibrationRecord(record, calibrationState);
+    }
+    prefs_.end();
+    if (!readOk) {
+      calibrationState = {};
+      calibrationState.storageFault = true;
+      runtime.controller.fault = "calibration_storage_invalid";
+    } else if (recordSize == CalibrationRecordV1{}.size() && !saveCal(runtime, calibration)) {
+      runtime.controller.fault = "calibration_save_failed";
+    }
+    calibration.refreshMultiCalValidity();
+    calibrationState.cal.valid = calibration.selectedCalibrationValid();
+    runtime.controller.setRange(calibration.activeAzRange(), calibrationState.gsAzMode);
+  runtime.controller.setElRange(calibration.activeElRange(), calibrationState.elProfile);
+    return;
+  }
+  calibrationState = {};
   uint8_t calFmt = prefs_.getUChar("calfmt", 0);
 
   calibrationState.cal.az36_0 = 0;
@@ -186,14 +213,15 @@ void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredenti
   }
 
   calibrationState.cal.valid = calibration.selectedCalibrationValid();
-  if (calFmt != 4) {
-    saveCal(runtime, calibration);
-  }
+  // Migrate once, including format 4, without changing the legacy keys' meaning.
+  if (!saveCal(runtime, calibration)) runtime.controller.fault = "calibration_save_failed";
+  runtime.controller.setRange(calibration.activeAzRange(), calibrationState.gsAzMode);
+  runtime.controller.setElRange(calibration.activeElRange(), calibrationState.elProfile);
 }
 
-void Storage::saveCal(const Runtime &runtime, Calibration &calibration) {
-  if (runtime.hud.isHud())
-    return;
+bool Storage::saveCal(const Runtime &runtime, Calibration &calibration) {
+  if (runtime.hud.isHud() || calibration.state().storageFault)
+    return false;
   auto &calibrationState = calibration.state();
   calibrationState.az36LinearValid =
       (calibrationState.az36OSet && calibrationState.az36FSet &&
@@ -208,10 +236,16 @@ void Storage::saveCal(const Runtime &runtime, Calibration &calibration) {
   calibration.refreshMultiCalValidity();
   calibrationState.cal.valid = calibration.selectedCalibrationValid();
 
-  prefs_.begin(calNamespace(runtime), false);
+  if (!prefs_.begin(calNamespace(runtime), false)) { prefs_.end(); return false; }
+  const auto record = calibrationRecord(calibrationState);
+  CalibrationRecord verified{};
+  prefs_.putBytes("azgeom1", record.data(), record.size());
+  const bool saved = prefs_.getBytesLength("azgeom1") == record.size() &&
+      prefs_.getBytes("azgeom1", verified.data(), verified.size()) == verified.size() && verified == record;
+  if (!saved) { prefs_.end(); return false; }
   prefs_.putUChar("calfmt", 4);
   prefs_.putUChar("calmode", (uint8_t)calibrationState.calibrationMode);
-  prefs_.putUChar("azmode", calibrationState.gsAzMode);
+  if (calibrationState.gsAzMode != AZ_CUSTOM) prefs_.putUChar("azmode", calibrationState.gsAzMode);
 
   prefs_.putInt("a36z", calibrationState.cal.az36_0);
   prefs_.putInt("a36f", calibrationState.cal.az36Max);
@@ -246,6 +280,7 @@ void Storage::saveCal(const Runtime &runtime, Calibration &calibration) {
   prefs_.putInt("elm135", calibrationState.elCalMv[3]);
   prefs_.putInt("elm180", calibrationState.elCalMv[4]);
   prefs_.end();
+  return true;
 }
 
 WifiSaveResult Storage::saveWifi(const String &s, const String &p) {
@@ -313,9 +348,12 @@ void Storage::loadForkSettings(Runtime &runtime) {
                                                                  : forkrot::Mode::Manual);
 #if DRIVE_INTERFACE == DRIVE_YAESU
   runtime.controller.speedEnabled = prefs_.getBool("speedon", false);
-  runtime.controller.speedPercent = constrain(prefs_.getUInt("speed", 50), DRIVE_SIMULATION ? 1u : 25u, 100u);
-  runtime.controller.startSpeedPercent = constrain(prefs_.getUInt("startspd", 25), DRIVE_SIMULATION ? 1u : 25u, 100u);
-  runtime.controller.approachSpeedPercent = constrain(prefs_.getUInt("approachspd", 25), DRIVE_SIMULATION ? 1u : 25u, 100u);
+  runtime.controller.speedPercent =
+      constrain(prefs_.getUInt("speed", 50), DRIVE_SIMULATION ? 1u : 25u, 100u);
+  runtime.controller.startSpeedPercent =
+      constrain(prefs_.getUInt("startspd", 25), DRIVE_SIMULATION ? 1u : 25u, 100u);
+  runtime.controller.approachSpeedPercent =
+      constrain(prefs_.getUInt("approachspd", 25), DRIVE_SIMULATION ? 1u : 25u, 100u);
   runtime.controller.accelerationMs = constrain(prefs_.getUInt("accelms", 2000), 100u, 10000u);
   runtime.controller.decelerationMs = constrain(prefs_.getUInt("decelms", 1500), 100u, 10000u);
   runtime.controller.slowdownDegrees = constrain(prefs_.getUInt("slowdeg", 10), 1u, 90u);
@@ -343,12 +381,18 @@ void Storage::loadForkSettings(Runtime &runtime) {
   for (unsigned i=0; i<2; ++i) {
     auto &speed = runtime.controller.speeds[i];
     const String prefix = i ? "el" : "az";
-    speed.speedPercent = constrain(prefs_.getUInt((prefix + "work").c_str(), speed.speedPercent), 1u, 100u);
-    speed.startSpeedPercent = constrain(prefs_.getUInt((prefix + "start").c_str(), speed.startSpeedPercent), 1u, 100u);
-    speed.approachSpeedPercent = constrain(prefs_.getUInt((prefix + "approach").c_str(), speed.approachSpeedPercent), 1u, 100u);
-    speed.accelerationMs = constrain(prefs_.getUInt((prefix + "accel").c_str(), speed.accelerationMs), 100u, 10000u);
-    speed.decelerationMs = constrain(prefs_.getUInt((prefix + "decel").c_str(), speed.decelerationMs), 100u, 10000u);
-    speed.slowdownDegrees = constrain(prefs_.getUInt((prefix + "slow").c_str(), speed.slowdownDegrees), 1u, 90u);
+    speed.speedPercent =
+        constrain(prefs_.getUInt((prefix + "work").c_str(), speed.speedPercent), 1u, 100u);
+    speed.startSpeedPercent =
+        constrain(prefs_.getUInt((prefix + "start").c_str(), speed.startSpeedPercent), 1u, 100u);
+    speed.approachSpeedPercent = constrain(
+        prefs_.getUInt((prefix + "approach").c_str(), speed.approachSpeedPercent), 1u, 100u);
+    speed.accelerationMs =
+        constrain(prefs_.getUInt((prefix + "accel").c_str(), speed.accelerationMs), 100u, 10000u);
+    speed.decelerationMs =
+        constrain(prefs_.getUInt((prefix + "decel").c_str(), speed.decelerationMs), 100u, 10000u);
+    speed.slowdownDegrees =
+        constrain(prefs_.getUInt((prefix + "slow").c_str(), speed.slowdownDegrees), 1u, 90u);
     const float coast = prefs_.getFloat((prefix + "coast").c_str(), speed.coastDegrees);
     const float factor = prefs_.getFloat((prefix + "decelf").c_str(), 1);
     if (std::isfinite(coast) && coast >= 0 && coast <= 90) speed.coastDegrees = coast;

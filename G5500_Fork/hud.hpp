@@ -30,6 +30,11 @@ struct HudState {
   Model model = Model::G5500;
   Mode mode = Mode::Manual;
   float maximum = 450;
+  float minimum = 0;
+  RotationRange elRange{0,180};
+  uint8_t elProfile = EL_STANDARD;
+  uint8_t azProfile = AZ_P45;
+  uint32_t rangeRevision = 1;
   Axis axes[2]{};
   SpeedSettings speeds[2]{};
   HudPreset presets[4];
@@ -46,6 +51,7 @@ struct HudState {
   void apply(Controller &, Protocol &, uint32_t) const;
 };
 struct HudPeer {
+  uint8_t wireVersion = 0, probeVersion = 1;
   uint64_t id = 0, boot = 0;
   HudEndpoint endpoint;
   char label[49]{};
@@ -141,6 +147,8 @@ private:
     uint32_t id = 0, ticket = 0, started = 0, sent = 0, selection = 0;
     uint8_t attempts = 0;
     bool used = false, live = false;
+    uint8_t wireVersion = 1;
+    uint32_t rangeRevision = 0;
   };
   struct History {
     HudReply reply;
@@ -176,6 +184,7 @@ private:
     uint64_t source = 0, boot = 0;
     uint32_t serial = 0, renewed = 0, sent = 0, revision = 0;
     bool used = false, extended = false;
+    uint8_t wireVersion = 1;
   } subscriptions_[4];
   uint32_t liveRevision_ = 0, liveHash_ = 0, controlHash_ = 0, liveChangedAt_ = 0;
   std::unique_ptr<Client> client_;
@@ -191,7 +200,7 @@ private:
   bool sendJob(Job &);
   bool sendQuery(const HudEndpoint &, uint64_t target, bool discovery = false);
   bool sendState(const HudEndpoint &, uint64_t target, uint32_t seq, bool ack = false, Result r = Result::Ok,
-                 uint64_t targetBoot = 0, bool compact = false);
+                 uint64_t targetBoot = 0, bool compact = false, uint8_t version = 1);
   bool subscribe(HudPeer &);
   bool sendManual(Job &);
   void releaseManual();

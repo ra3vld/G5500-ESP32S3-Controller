@@ -1,4 +1,5 @@
 #include "api.hpp"
+#include "calibration.hpp"
 #include "live.hpp"
 #include "input.hpp"
 #include "hud.hpp"
@@ -31,6 +32,10 @@ public:
 int main(){
   Controller c;
   Protocol p(c);
+  Calibration calibration(c);
+  calibration.state().az45OSet=calibration.state().az45FSet=calibration.state().az45LinearValid=true;
+  calibration.state().az36OSet=calibration.state().az36FSet=calibration.state().az36LinearValid=true;
+  std::array<CalibrationState,2> calProfiles{{calibration.state(),calibration.state()}};
   Settings cfg;
   Hud hud(c, p);
   SimHudTransport link;
@@ -83,9 +88,9 @@ int main(){
         unsigned slice = (c.variableSpeed(0) || c.variableSpeed(1)) ? std::min(ms, 20u) : ms;
         float seconds = slice / 1000.f;
         const float azSpeed = c.variableSpeed(0) ? c.axes[0].speedOutputPercent / 100.f : 1.f;
-        az = std::max(0.f, std::min(c.maximum, az + c.axes[0].direction * 6.f * seconds * azSpeed));
+        az = c.azRange.clamp(az + c.axes[0].direction * 6.f * seconds * azSpeed);
         const float elSpeed = c.variableSpeed(1) ? c.axes[1].speedOutputPercent / 100.f : 1.f;
-        el = std::max(0.f, std::min(180.f, el + c.axes[1].direction * 6.f * seconds * elSpeed));
+        el = c.elRange.clamp(el + c.axes[1].direction * 6.f * seconds * elSpeed);
         if (c.axes[0].tracking) {
           if (c.axes[0].direction > 0)
             az = std::min(az, c.axes[0].target);
@@ -128,6 +133,7 @@ int main(){
       auto old = c.model;
       auto oldIndex = old == Model::G5500 ? 0 : 1;
       profiles[oldIndex] = c.presets;
+      calProfiles[oldIndex] = calibration.state();
       if (path == "/api/hud/peers" && !form.count("id")) {
         char data[4096];
         JsonWriter j(data, sizeof data);
@@ -165,18 +171,51 @@ int main(){
                     std::string("{\"requestId\":") + std::to_string(r.id) + ",\"ok\":" +
                         ((r.result == Result::Ok || r.result == Result::Pending) ? "true" : "false") +
                         ",\"result\":" + jsonQuote(Controller::resultName(r.result)) + "}"};
-      } else if (path == "/api/azmode") {
-        float v;
-        if (number(form["m"], v) && (v == 36 || v == 45))
-          c.setMaximum(v == 36 ? 360 : 450);
-        else
-          response.status = 400;
-      } else if (path == "/api/calmode" || path == "/api/cal" || path == "/api/cal2")
-        response.body = "{\"ok\":true}";
+      } else if (path == "/api/azmode" || path == "/api/azrange") {
+        const auto profile=path=="/api/azmode"?(form["m"]=="36"?"p36":form["m"]=="45"?"p45":"bad"):form["profile"];
+        const uint8_t mode=profile=="p36"?AZ_P36:profile=="p45"?AZ_P45:AZ_CUSTOM;
+        float start=0,span=mode==AZ_P36?360:450;
+        bool ok=profile=="p36"||profile=="p45"||profile=="custom";
+        if(mode==AZ_CUSTOM)ok=ok&&number(form["start"],start)&&number(form["span"],span);
+        ok=ok&&!hud.isHud()&&calibration.configureAz(mode,start,span);
+        if(ok){c.setRange(calibration.activeAzRange(),mode,now);az=c.azRange.clamp(az);c.feedback(az,el,true,true);}
+        response={ok?200:400,ok?"{\"ok\":true}":"{\"error\":\"invalid_range\"}"};
+      } else if(path=="/api/azcal") {
+        if(form.count("op")) {
+          float angle;const int mv=int(100+(az-c.minimum)*2700/c.azRange.span());
+          const bool ok=number(form["angle"],angle)&&calibration.editAzPoint(form["op"].c_str(),angle,mv);
+          response={ok?200:400,ok?"{\"ok\":true}":"{\"error\":\"invalid_point\"}"};
+        } else {char data[2048];JsonWriter j(data,sizeof data);calibration.writeAzJson(j);response.body=j.data();}
+      } else if(path=="/api/elrange") {
+        const auto profile=form["profile"];const uint8_t mode=profile=="standard"?EL_STANDARD:EL_CUSTOM;
+        float start=0,span=180;bool ok=profile=="standard"||profile=="custom";
+        if(mode==EL_CUSTOM)ok=ok&&number(form["start"],start)&&number(form["span"],span);
+        ok=ok&&!hud.isHud()&&calibration.configureEl(mode,start,span);
+        if(ok){c.setElRange(calibration.activeElRange(),mode,now);el=c.elRange.clamp(el);c.feedback(az,el,true,true);}
+        response={ok?200:400,ok?"{\"ok\":true}":"{\"error\":\"invalid_range\"}"};      } else if(path=="/api/elcal") {
+        if(form.count("op")) {
+          float angle;const int mv=int(100+(el-c.elRange.start)*2700/c.elRange.span());
+          const bool ok=number(form["angle"],angle)&&calibration.editElPoint(form["op"].c_str(),angle,mv);
+          response={ok?200:400,ok?"{\"ok\":true}":"{\"error\":\"invalid_point\"}"};
+        } else {char data[2048];JsonWriter j(data,sizeof data);calibration.writeElJson(j);response.body=j.data();}
+      } else if(path=="/api/calreset") {
+        if(form["axis"]=="az")calibration.resetAz(form["mode"]=="multi");
+        else calibration.resetEl(form["mode"]=="multi");
+        response.body="{\"ok\":true}";
+      } else if(path=="/api/calmode") {
+        calibration.state().calibrationMode=form["m"]=="multi"?CAL_MULTI_POINT:CAL_GS232_2POINT;
+        response.body="{\"ok\":true}";
+      } else if(path=="/api/cal2") {
+        if(form["p"]=="o"||form["p"]=="f")calibration.captureAzEndpoint(form["p"]=="f",int(100+(az-c.minimum)*2700/c.azRange.span()));
+        response.body="{\"ok\":true}";
+      } else if (path == "/api/cal") response.body = "{\"ok\":true}";
       else
         response = api(c, p, cfg, path, form, now);
       if (old != c.model) {
-        c.presets = profiles[c.model == Model::G5500 ? 0 : 1];
+        const unsigned index=c.model==Model::G5500?0:1;
+        c.presets = profiles[index];calibration.state()=calProfiles[index];
+        c.setRange(calibration.activeAzRange(),calibration.state().gsAzMode,now);az=c.azRange.clamp(az);
+        c.setElRange(calibration.activeElRange(),calibration.state().elProfile,now);el=c.elRange.clamp(el);
         c.feedback(az, el, true, true);
       }
     }
@@ -194,9 +233,9 @@ int main(){
         << ",\"az\":" << az << ",\"el\":" << (c.model == Model::G800DXA ? 0 : el)
         << ",\"targetAz\":" << c.axes[0].target << ",\"targetEl\":" << c.axes[1].target
         << ",\"targetValid\":" << (c.targetKnown ? "true" : "false")
-        << ",\"azMode\":" << (c.maximum == 360 ? 36 : 45) << ",\"directionAz\":" << c.axes[0].direction
+        << ",\"azMode\":" << unsigned(c.azProfile) << ",\"directionAz\":" << c.axes[0].direction
         << ",\"directionEl\":" << c.axes[1].direction << ",\"wantedAz\":" << c.axes[0].wanted
-        << ",\"calibrated\":true,\"selectedCalOk\":true,\"calMode\":\"2\",\"ip\":\"SIMULATOR\",\"wifiMode\":"
+        << ",\"calibrated\":true,\"selectedCalOk\":true,\"calMode\":" << jsonQuote(calibration.state().calibrationMode==CAL_MULTI_POINT?"multi":"2") << ",\"ip\":\"SIMULATOR\",\"wifiMode\":"
            "\"Виртуальное оборудование\",\"ssid\":\"\",\"rssi\":null,\"btConnected\":false,\"motion\":"
         << jsonQuote(c.moving() ? "MOVING" : "STOP") << ",\"uptimeSeconds\":" << now / 1000;
     for (auto key : {"az2p0", "az2pf", "el2p0", "el2pf", "azp0", "azp90", "azp180", "azp270", "azp360",

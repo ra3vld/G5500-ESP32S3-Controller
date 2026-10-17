@@ -33,3 +33,6 @@ credentials.*
 flash-backups/
 *.pem
 *.key
+
+# Local development journal, firmware reports and verification procedures
+/local-notes/

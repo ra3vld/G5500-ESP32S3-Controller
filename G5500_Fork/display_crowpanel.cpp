@@ -269,7 +269,8 @@ void Display::updateLocalDisplay() {
     }
     view.dualAxis = controller.model == Model::G5500;
     view.elevation = axis != 0;
-    view.maximum = axis ? 180.f : controller.maximum;
+    view.minimum = controller.range(axis).start;
+    view.maximum = controller.range(axis).end;
     view.sourceId = view.hud ? runtime_.hud.config.selected : 0;
     view.autoMode = controller.mode != Mode::Manual; view.autoHour = controller.mode == Mode::AutoHour;
     view.feedback = (runtime_.hud.isHud() ? runtime_.hud.available() : bool(DRIVE_SIMULATION)) &&

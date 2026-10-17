@@ -12,7 +12,7 @@ struct CrowPanelView {
   bool elevation = false, feedback = false, targetValid = false;
   bool pending = false, moving = false, autoMode = false, autoHour = false;
   int direction = 0;
-  float current = 0, target = 0, maximum = 450;
+  float current = 0, target = 0, minimum = 0, maximum = 450;
   float secondaryCurrent = 0, secondaryTarget = 0;
   bool secondaryFeedback = false, secondaryTargetValid = false, secondaryPending = false;
   int azDirection = 0, elDirection = 0;
@@ -25,7 +25,7 @@ struct CrowPanelView {
 };
 class CrowPanelUi {
   lv_obj_t *hudName_ = nullptr, *hudAddress_ = nullptr, *hudList_ = nullptr, *hudRows_[3]{};
-  lv_obj_t *mode_ = nullptr, *axis_ = nullptr, *angle_ = nullptr;
+  lv_obj_t *mode_ = nullptr, *axis_ = nullptr, *range_ = nullptr, *angle_ = nullptr;
   lv_obj_t *targetCaption_ = nullptr, *target_ = nullptr, *status_ = nullptr, *wifi_ = nullptr;
   lv_obj_t *wifiSlash_ = nullptr, *wifiAp_ = nullptr;
   lv_obj_t *bluetooth_ = nullptr, *ip_ = nullptr, *heap_ = nullptr;
@@ -42,7 +42,7 @@ class CrowPanelUi {
   lv_obj_t *limits_ = nullptr;
   uint8_t lowerLimit_ = 0, upperLimit_ = 0;
   uint8_t targetLowerLimit_ = 0, targetUpperLimit_ = 0;
-  float maximum_ = 450;
+  float minimum_ = 0, maximum_ = 450;
   uint64_t sourceId_ = 0;
   bool elevation_ = false, confirmationVisible_ = false;
   crowpanel::TouchRect confirmationCaption_{}, confirmationAngle_{};

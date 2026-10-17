@@ -84,6 +84,7 @@ private:
     TFT_PAGE_IMAGE = 5
   };
   TftPage tftPage = TFT_PAGE_DASH;
+  uint8_t azCalPage_ = 0, elCalPage_ = 0;
   size_t hudPageOffset_ = 0;
   void drawHudList();
   uint32_t lastTouchMs = 0;

@@ -52,7 +52,7 @@ void Application::controllerSetup() {
                          (storage_.wifiCredentialsReadOk() ? "OK" : "namespace unavailable") +
                          ", saved SSID=" + (network_.credentials().wifiSsid.length() ? "present" : "empty"));
   if (!runtime_.hud.isHud())
-    runtime_.controller.maximum = calibration_.activeAzMaxDeg();
+    runtime_.controller.setRange(calibration_.activeAzRange(), calibration_.state().gsAzMode, millis());
   loadProfilePresets();
   hardware_.beginInputs();
   display_.loadTouchCalibration();
@@ -123,7 +123,7 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln(
       "Fork modes: numerical remote targets wait in manual; jog commands always execute");
   diagnostics_.dbgPrintln(
-      "Calibration: GS232 2-point + multi-point; separate AZ P36/P45 tables, shared EL");
+      "Calibration: GS232 2-point + multi-point; separate AZ P36/P45/custom tables, shared EL");
   diagnostics_.dbgPrintln("ADC: 25 measurements, median of 5 samples at 20ms; one-pass arrival zone 5deg");
   diagnostics_.dbgPrintln(
       "Manual axis behavior: AZ manual cancels AZ track only; EL manual cancels EL track only");
@@ -142,7 +142,7 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln("Web main cards: current / target shown inline for AZ and EL");
 #if TFT_DISPLAY_ENABLED
   diagnostics_.dbgPrintln("TFT: ILI9341 320x240 dashboard + XPT2046 touch calibration UI");
-  diagnostics_.dbgPrintln("TFT calibration: 2-POINT / MULTI-POINT, P36/P45, AZ/EL capture + reset");
+  diagnostics_.dbgPrintln("TFT calibration: 2-POINT / MULTI-POINT, P36/P45/custom, AZ/EL capture + reset");
 #elif DISPLAY_KIND == DISPLAY_LCD1602
   diagnostics_.dbgPrintln("LCD1602: current/target, mode/wait and PWM output bars; touch disabled");
 #elif DISPLAY_KIND == DISPLAY_CROWPANEL_21

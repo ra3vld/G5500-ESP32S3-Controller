@@ -554,5 +554,28 @@ int main(int argc, char **argv) {
   const auto idle = flushes;
   for (int i = 0; i < 10; ++i) { ui.update(view); lv_tick_inc(100); lv_timer_handler(); }
   assert(flushes == idle);
+  for (bool dual : {false,true}) for (bool pending : {false,true}) {
+    view.dualAxis=dual;view.pending=pending;view.autoMode=!pending;
+    view.secondaryFeedback=view.secondaryTargetValid=true;view.secondaryCurrent=view.secondaryTarget=180;
+    for (const auto bounds : {std::pair<float,float>{-60,390},{50,500},{-3600,0},{3600,7200}}) {
+      view.minimum=bounds.first;view.maximum=bounds.second;
+      view.current=bounds.first;view.target=bounds.second;
+      view.targetValid=true;
+      ui.update(view);settle(d);checkFullRedraw(d,argv[1]);
+      const auto &layout=ui.touchLayout();
+      assert(layout.current.x>=60 && layout.current.x+layout.current.width<=420);
+      assert(layout.target.x<480 && layout.target.x+layout.target.width<=450);
+      char boundsLabel[80];std::snprintf(boundsLabel,sizeof boundsLabel,"%.1f°..%.1f°",double(view.minimum),double(view.maximum));
+      assert(findLabel(boundsLabel));
+      std::snprintf(path,sizeof path,"%s/range-%.0f-%s-%s.ppm",argv[1],double(bounds.first),dual?"dual":"az",pending?"pending":"normal");save(path);
+    }
+  }
+  view.dualAxis=view.elevation=true;view.pending=false;view.autoMode=false;
+  view.minimum=-30;view.maximum=210;view.current=-20;view.target=200;
+  view.feedback=view.targetValid=view.secondaryFeedback=view.secondaryTargetValid=true;
+  view.secondaryCurrent=350;view.secondaryTarget=380;
+  ui.update(view);settle(d);checkFullRedraw(d,argv[1]);
+  assert(findLabel("-30.0°..210.0°"));
+  std::snprintf(path,sizeof path,"%s/custom-elevation.ppm",argv[1]);save(path);
   std::puts("PASS: LVGL marker animation/wrap/reset, independent current/target limit tails, confirmation hit/restoration, Wi-Fi, arrows, markers and idle redraw");
 }

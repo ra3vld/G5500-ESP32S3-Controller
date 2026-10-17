@@ -1,6 +1,7 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
 #include "build_config.hpp"
+#include "az_range.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -105,7 +106,13 @@ public:
   }
   Model model = Model::G5500;
   Mode mode = Mode::Manual;
-  float maximum = 450;
+  AzRange azRange;
+  RotationRange elRange{0,180};
+  uint8_t elProfile = EL_STANDARD;
+  const RotationRange &range(unsigned axis) const { return axis ? elRange : azRange; }
+  float &minimum = azRange.start, &maximum = azRange.end;
+  uint8_t azProfile = AZ_P45;
+  uint32_t rangeRevision = 1;
   std::array<Axis, 2> axes{};
   std::array<Preset, 4> presets{};
   Target pending{};
@@ -123,7 +130,7 @@ public:
   bool driveFault = false;
   bool variableSpeed(unsigned i) const;
   float tolerance(unsigned i) const {
-    return std::min(speeds[i].coastDegrees, (i ? 180.f : maximum) / 10);
+    return std::min(speeds[i].coastDegrees, range(i).span() / 10);
   }
   size_t sequenceIndex() const {
     return remote ? remoteSequenceIndex : sequence_.empty() ? 0 : sequenceIndex_ + 1;
@@ -154,6 +161,8 @@ public:
   void restoreMode(Mode m); // An expired/nonpersistent hour always boots manual.
   void setModel(Model m);
   void setMaximum(float value);
+  bool setRange(AzRange range, uint8_t profile, uint32_t now = 0);
+  bool setElRange(RotationRange range, uint8_t profile, uint32_t now = 0);
   Result preset(unsigned slot, uint32_t now);
   Result savePreset(unsigned slot, const std::string &label, Target t);
   Result sequence(const Target *points, size_t count, uint32_t interval, uint32_t now);
@@ -189,4 +198,5 @@ private:
 bool number(std::string_view s, float &out);
 float heading(float angle);
 float nearest(float angle, float current, float maximum, bool bidirectional = false);
+float nearest(float angle, float current, AzRange range, bool bidirectional = false);
 } // namespace forkrot

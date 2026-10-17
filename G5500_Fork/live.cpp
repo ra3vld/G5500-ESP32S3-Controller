@@ -55,7 +55,7 @@ Response executeLive(const LiveRequest &r, Controller &c, Protocol &p, Settings 
 }
 uint32_t liveControlFingerprint(const Controller &c,const Hud &h) {
   char data[512];JsonWriter j(data,sizeof data);
-  j << unsigned(c.mode) << ',' << c.stopEpoch << ',' << c.pendingValid << ',' << c.pending.az << ',' << c.pending.el
+  j << c.rangeRevision << ',' << c.minimum << ',' << c.maximum << ',' << unsigned(c.mode) << ',' << c.stopEpoch << ',' << c.pendingValid << ',' << c.pending.az << ',' << c.pending.el
     << ',' << c.presetSlot << ',' << c.presetActive << ',' << c.targetKnown << ',' << h.selectionEpoch << ',' << h.available() << ',' << c.fault;
   for(const auto &a:c.axes)j<<','<<a.target<<','<<a.direction<<','<<a.wanted<<','<<a.tracking<<','<<a.completed<<','<<a.calibrated;
   return hudCrc(reinterpret_cast<const uint8_t *>(j.data()),j.size());
@@ -71,7 +71,13 @@ bool writeLiveState(JsonWriter &j,const Controller &c,const Hud &h,uint32_t now)
     << ",\"stopEpoch\":" << c.stopEpoch
     << ",\"moving\":" << boolean(c.moving()) << ",\"motion\":" << jsonQuoted(c.moving()?"MOVING":"STOP")
     << ",\"presetActive\":" << boolean(c.presetActive) << ",\"presetSlot\":" << c.presetSlot
-    << ",\"model\":" << jsonQuoted(c.model==Model::G5500?"G5500":"G800DXA") << ",\"azMode\":" << (c.maximum==360?36:45)
+    << ",\"model\":" << jsonQuoted(c.model==Model::G5500?"G5500":"G800DXA") << ",\"azMode\":" << unsigned(c.azProfile)
+    << ",\"azProfile\":" << jsonQuoted(azProfileName(c.azProfile))
+    << ",\"azStart\":" << c.minimum << ",\"azSpan\":" << c.azRange.span()
+    << ",\"azMax\":" << c.maximum << ",\"azRangeRevision\":" << c.rangeRevision
+    << ",\"elProfile\":" << jsonQuoted(elProfileName(c.elProfile))
+    << ",\"elStart\":" << c.elRange.start << ",\"elSpan\":" << c.elRange.span()
+    << ",\"elMax\":" << c.elRange.end << ",\"elRangeRevision\":" << c.rangeRevision
     << ",\"selectedCalOk\":" << boolean(c.axes[0].calibrated&&(c.model==Model::G800DXA||c.axes[1].calibrated))
     << ",\"fault\":" << jsonQuoted(c.fault) << ",\"axes\":[";
   for(unsigned i=0;i<2;++i) {

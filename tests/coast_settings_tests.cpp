@@ -50,7 +50,7 @@ static void cutoff() {
   c.feedback(90.1f, 60, true, true);
   c.tick(0);
   assert(c.axes[0].completed && !c.moving());
-  c.maximum = 10;
+  c.setRange({0, 10}, AZ_CUSTOM);
   c.speeds[0].coastDegrees = 90;
   assert(close(c.tolerance(0), 1));
 }

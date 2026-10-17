@@ -19,9 +19,11 @@ public:
   void captureGs232Cal(const String &cmd) override;
   void controllerSetup();
   void controllerLoop();
-  void saveCal() override {
-    storage_.saveCal(runtime_, calibration_);
-  }
+  bool saveCal() override;
+  bool configureAzRange(uint8_t profile, float start, float span) override;
+  bool editAzPoint(const char *operation, float angle) override;
+  bool configureElRange(uint8_t profile, float start, float span) override;
+  bool editElPoint(const char *operation, float angle) override;
   void loadPrefs() override {
     storage_.loadPrefs(runtime_, calibration_, network_.credentials());
   }

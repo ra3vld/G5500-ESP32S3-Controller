@@ -48,7 +48,11 @@ Controller &Controller::operator=(const Controller &other) {
   remoteSequenceCount = other.remoteSequenceCount;
   model = other.model;
   mode = other.mode;
-  maximum = other.maximum;
+  azRange = other.azRange;
+  azProfile = other.azProfile;
+  elRange = other.elRange;
+  elProfile = other.elProfile;
+  rangeRevision = other.rangeRevision;
   axes = other.axes;
   for (unsigned i = 0; i < 4; ++i) {
     manualSessions_[i] = other.manualSessions_[i];
@@ -115,10 +119,9 @@ void Controller::feedback(float azimuth, float elevation, bool azCalibrated, boo
 }
 bool Controller::valid(Target candidate) const {
   return (candidate.hasAz || candidate.hasEl) &&
-         (!candidate.hasAz ||
-          (std::isfinite(candidate.az) && candidate.az >= 0 && candidate.az <= maximum)) &&
+         (!candidate.hasAz || azRange.contains(candidate.az)) &&
          (!candidate.hasEl ||
-          (std::isfinite(candidate.el) && candidate.el >= 0 && candidate.el <= 180 &&
+          (elRange.contains(candidate.el) &&
            (model == Model::G5500 || candidate.el == 0)));
 }
 Result Controller::start(Target nextTarget, uint32_t, bool external) {
@@ -475,6 +478,13 @@ void Controller::setModel(Model nextModel) {
     return;
   stop();
   model = nextModel;
+  if (model == Model::G800DXA) {
+    if (elProfile != EL_STANDARD || !(elRange == RotationRange{0,180})) {
+      elRange = {0,180};elProfile = EL_STANDARD;
+      if (!++rangeRevision) ++rangeRevision;
+    }
+    axes[1] = {};
+  }
   mode = Mode::Manual;
   targetKnown = false;
   lastTarget = {0, 0, false, false};
@@ -486,19 +496,48 @@ void Controller::setModel(Model nextModel) {
     axis.targetKnown = false;
   }
 }
-void Controller::setMaximum(float nextMaximum) {
-  if (remote)
-    return;
-  if (nextMaximum != 360 && nextMaximum != 450) {
-    return;
+void Controller::setMaximum(float value) {
+  if (value == 360 || value == 450) {
+    setRange({0, value}, value == 360 ? AZ_P36 : AZ_P45, lastSpeedUpdateAt_);
   }
-  if (nextMaximum == maximum) return;
-  stop(0);
-  maximum = nextMaximum;
-  axes[0].accepted = false;
-  axes[0].targetKnown = false;
-  axes[0].target = std::max(0.f, std::min(maximum, axes[0].current));
+}
+bool Controller::setRange(AzRange range, uint8_t profile, uint32_t now) {
+  if (remote || !validAzProfile(profile, range)) {
+    return false;
+  }
+  if (azRange == range && azProfile == profile) {
+    return true;
+  }
+  stopNow(0, now);
+  azRange = range;
+  azProfile = profile;
+  if (!++rangeRevision) {
+    ++rangeRevision;
+  }
+  axes[0].accepted = axes[0].targetKnown = false;
+  axes[0].target = azRange.clamp(axes[0].current);
+#if DRIVE_SIMULATION
+  axes[0].current = azRange.clamp(axes[0].current);
+#endif
   lastTarget.hasAz = false;
+  targetKnown = axes[1].targetKnown;
+  return true;
+}
+bool Controller::setElRange(RotationRange next, uint8_t profile, uint32_t now) {
+  if (remote || model != Model::G5500 || !validElProfile(profile, next)) return false;
+  if (elRange == next && elProfile == profile) return true;
+  stopNow(1, now);
+  elRange = next;
+  elProfile = profile;
+  if (!++rangeRevision) ++rangeRevision;
+  axes[1].accepted = axes[1].targetKnown = false;
+  axes[1].target = elRange.clamp(axes[1].current);
+#if DRIVE_SIMULATION
+  axes[1].current = elRange.clamp(axes[1].current);
+#endif
+  lastTarget.hasEl = false;
+  targetKnown = axes[0].targetKnown;
+  return true;
 }
 Result Controller::savePreset(unsigned slot, const std::string &label, Target newTarget) {
   if (remote) {
@@ -668,7 +707,9 @@ void Controller::tick(uint32_t now) {
       const float distance = axis.target - axis.current;
       if (axis.tracking && distance * axis.direction >= 0 && step >= std::abs(distance))
         axis.current = axis.target;
-      else axis.current = std::clamp(axis.current + axis.direction * step, 0.f, i ? 180.f : maximum);
+      else {
+        axis.current = std::clamp(axis.current + axis.direction * step, range(i).start, range(i).end);
+      }
     }
   }
 #endif
@@ -701,7 +742,8 @@ void Controller::tick(uint32_t now) {
     }
     if (axis.calibrated) {
       const auto outward = [&](int dir) {
-        return (dir < 0 && axis.current <= 0) || (dir > 0 && axis.current >= (i ? 180 : maximum));
+        return (dir < 0 && axis.current <= range(i).start) ||
+               (dir > 0 && axis.current >= range(i).end);
       };
       if (outward(axis.wanted)) {
         axis.wanted = 0;
@@ -782,18 +824,31 @@ float heading(float angle) {
   angle = std::fmod(angle, 360.f);
   return angle < 0 ? angle + 360 : angle;
 }
-float nearest(float angle, float current, float maximum, bool bidirectional) {
-  float best = -1, distance = 1e9;
-  for (int oppositeDirection = 0; oppositeDirection < (bidirectional ? 2 : 1);
-       ++oppositeDirection) {
-    for (int turn = 0; turn < 2; ++turn) {
-      float candidate = heading(angle + oppositeDirection * 180) + turn * 360;
-      if (candidate <= maximum && std::abs(candidate - current) < distance) {
+float nearest(float angle, float current, AzRange range, bool bidirectional) {
+  if (!std::isfinite(angle) || !std::isfinite(current) || !range.valid()) {
+    return NAN;
+  }
+  float best = NAN, distance = INFINITY;
+  for (int opposite = 0; opposite < (bidirectional ? 2 : 1); ++opposite) {
+    const double base = heading(angle + opposite * 180);
+    const int first = int(std::ceil((double(range.start) - base - .001) / 360));
+    const int last = int(std::floor((double(range.end) - base + .001) / 360));
+    if (first > last) {
+      continue;
+    }
+    const int near = std::clamp(int(std::clamp(std::floor((double(current) - base) / 360), double(first), double(last))), first, last);
+    for (int k : {near, std::min(near + 1, last)}) {
+      const float candidate = range.clamp(float(base + k * 360));
+      const float d = std::abs(candidate - current);
+      if (d < distance || (d == distance && candidate < best)) {
         best = candidate;
-        distance = std::abs(candidate - current);
+        distance = d;
       }
     }
   }
   return best;
+}
+float nearest(float angle, float current, float maximum, bool bidirectional) {
+  return nearest(angle, current, AzRange{0, maximum}, bidirectional);
 }
 } // namespace forkrot

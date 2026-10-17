@@ -29,6 +29,8 @@ struct Header {
   Kind kind{};
   uint64_t source = 0, target = 0, boot = 0, targetBoot = 0;
   uint32_t serial = 0, ticket = 0;
+  uint8_t version = 1;
+  uint32_t geometry = 0;
 };
 struct Writer {
   uint8_t *data;
@@ -114,8 +116,8 @@ struct Reader {
   bool done() const { return ok && pos == size; }
 };
 void header(Writer &w, const Header &h) {
-  for (char c : std::string_view("HUD1"))
-    w.u8(c);
+  for (char c : std::string_view("HUD")) w.u8(c);
+  w.u8('0' + h.version);
   w.u8(uint8_t(h.kind));
   w.u64(h.source);
   w.u64(h.target);
@@ -123,11 +125,12 @@ void header(Writer &w, const Header &h) {
   w.u64(h.targetBoot);
   w.u32(h.serial);
   w.u32(h.ticket);
+  if (h.version >= 2) w.u32(h.geometry);
 }
 bool header(Reader &r, Header &h) {
-  for (char c : std::string_view("HUD1"))
-    if (r.u8() != uint8_t(c))
-      r.ok = false;
+  for (char c : std::string_view("HUD")) if (r.u8() != uint8_t(c)) r.ok = false;
+  h.version = r.u8() - '0';
+  if (h.version < 1 || h.version > 3) r.ok = false;
   h.kind = Kind(r.u8());
   h.source = r.u64();
   h.target = r.u64();
@@ -135,6 +138,7 @@ bool header(Reader &r, Header &h) {
   h.targetBoot = r.u64();
   h.serial = r.u32();
   h.ticket = r.u32();
+  if (h.version >= 2) h.geometry = r.u32();
   return r.ok && h.source && h.boot && uint8_t(h.kind) >= 1 && uint8_t(h.kind) <= 16;
 }
 void target(Writer &w, const Target &t) {
@@ -249,7 +253,7 @@ bool command(Reader &r, ControlCommand &c) {
   }
   return r.done();
 }
-void state(Writer &w, const HudState &s, bool compact = false, bool extended = false) {
+void state(Writer &w, const HudState &s, bool compact = false, bool extended = false, bool geometry = false, bool elevation = false) {
   w.u8(uint8_t(s.model));
   w.u8(uint8_t(s.mode));
   w.real(s.maximum);
@@ -287,8 +291,10 @@ void state(Writer &w, const HudState &s, bool compact = false, bool extended = f
   if (extended) {
     w.u8(s.axes[0].targetKnown | (s.axes[1].targetKnown << 1));
   }
+  if (geometry) { w.real(s.minimum); w.u8(s.azProfile); w.u32(s.rangeRevision); }
+  if (elevation) { w.real(s.elRange.start); w.real(s.elRange.end); w.u8(s.elProfile); }
 }
-bool state(Reader &r, HudState &s, bool compact = false, bool extended = false) {
+bool state(Reader &r, HudState &s, bool compact = false, bool extended = false, bool geometry = false, bool elevation = false) {
   s.model = Model(r.u8());
   s.mode = Mode(r.u8());
   s.maximum = r.real();
@@ -309,7 +315,7 @@ bool state(Reader &r, HudState &s, bool compact = false, bool extended = false) 
   s.lastTarget = target(r);
   if (!compact) r.text(s.name, sizeof s.name);
   r.text(s.fault, sizeof s.fault);
-  if (s.model > Model::G800DXA || s.mode > Mode::AutoHour || (s.maximum != 360 && s.maximum != 450) ||
+  if (s.model > Model::G800DXA || s.mode > Mode::AutoHour || (!geometry && s.maximum != 360 && s.maximum != 450) ||
       s.presetSlot > 3 || s.sequenceCount > 16 || s.sequenceIndex > 16 || f > 31 || s.drive > 4)
     return false;
   for (unsigned i = 0; i < 2; ++i) {
@@ -334,8 +340,7 @@ bool state(Reader &r, HudState &s, bool compact = false, bool extended = false) 
     v.decelerationMs = r.u32();
     v.slowdownDegrees = r.u32();
     }
-    if (f > 15 || std::abs(a.direction) > 1 || std::abs(a.wanted) > 1 || a.current < 0 ||
-        a.current > (i ? 180 : s.maximum) || a.speedOutputPercent < 0 || a.speedOutputPercent > 100)
+    if (f > 15 || std::abs(a.direction) > 1 || std::abs(a.wanted) > 1 || a.speedOutputPercent < 0 || a.speedOutputPercent > 100)
       return false;
   }
   if (!compact) for (auto &p : s.presets) {
@@ -350,9 +355,14 @@ bool state(Reader &r, HudState &s, bool compact = false, bool extended = false) 
   if (known > 3) {
     return false;
   }
-  for (unsigned i = 0; i < 2; ++i) {
-    s.axes[i].targetKnown = known & (1u << i);
-  }
+  for (unsigned i = 0; i < 2; ++i) s.axes[i].targetKnown = known & (1u << i);
+  s.minimum = geometry ? r.real() : 0;
+  s.azProfile = geometry ? r.u8() : s.maximum == 360 ? AZ_P36 : AZ_P45;
+  s.rangeRevision = geometry ? r.u32() : 1;
+  if (elevation) { s.elRange.start=r.real(); s.elRange.end=r.real(); s.elProfile=r.u8(); }
+  const AzRange range{s.minimum,s.maximum};
+  if (!validAzProfile(s.azProfile,range) || !s.rangeRevision ||
+      !validElProfile(s.elProfile,s.elRange) || !range.contains(s.axes[0].current) || !s.elRange.contains(s.axes[1].current)) return false;
   return r.done();
 }
 void idText(char (&text)[17], uint64_t id) {
@@ -426,7 +436,7 @@ size_t HudUartDecoder::feed(uint8_t byte, uint8_t *out, size_t cap) {
 void HudState::capture(const Controller &c, const Protocol &p, uint32_t now) {
   model = c.model;
   mode = c.mode;
-  maximum = c.maximum;
+  maximum = c.maximum; minimum = c.minimum; azProfile = c.azProfile; rangeRevision = c.rangeRevision; elRange = c.elRange; elProfile = c.elProfile;
   pending = c.pending;
   lastTarget = c.lastTarget;
   pendingValid = c.pendingValid;
@@ -457,7 +467,7 @@ void HudState::capture(const Controller &c, const Protocol &p, uint32_t now) {
 void HudState::apply(Controller &c, Protocol &p, uint32_t now) const {
   c.model = model;
   c.mode = mode;
-  c.maximum = maximum;
+  c.maximum = maximum; c.minimum = minimum; c.azProfile = azProfile; c.rangeRevision = rangeRevision; c.elRange = elRange; c.elProfile = elProfile;
   c.pending = pending;
   c.lastTarget = lastTarget;
   c.pendingValid = pendingValid;
@@ -661,6 +671,7 @@ Result Hud::submit(const ControlCommand &c) {
       j.boot = p->boot;
       j.endpoint = p->endpoint;
       j.selection = selectionEpoch;
+      j.wireVersion = p->wireVersion; j.rangeRevision = p->state.rangeRevision;
       j.sent = now - 50;
     }
     j.command = c;
@@ -709,6 +720,7 @@ Result Hud::submit(const ControlCommand &c) {
   slot->endpoint = p->endpoint;
   slot->id = lastRequest_;
   slot->ticket = p->remoteTick;
+  slot->wireVersion = p->wireVersion; slot->rangeRevision = p->state.rangeRevision;
   slot->started = now;
   slot->selection = selectionEpoch;
   slot->live = p->live && uint32_t(now - p->liveAt) < 1000;
@@ -744,7 +756,7 @@ bool Hud::sendManual(Job &j) {
     j.id = nextSerial();
     j.ticket = p->remoteTick;
   }
-  header(w, {Kind::Manual, id, j.peer, boot, j.boot, j.id, j.ticket});
+  header(w, {Kind::Manual, id, j.peer, boot, j.boot, j.id, j.ticket, j.wireVersion, j.rangeRevision});
   w.u32(j.command.gesture);
   w.u8(j.command.axesMask);
   w.u8(j.command.release);
@@ -768,18 +780,37 @@ void Hud::releaseManual() {
 bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
   const uint32_t serial = nextSerial();
   Writer w{tx_, sizeof tx_};
-  const auto *selected = peer(targetId);
+  auto *selected = peer(targetId);
   const bool extended = !discovery && selected && selected->manual && selected->fresh(now);
+  const uint8_t version = selected && selected->received ? selected->wireVersion :
+      selected ? (selected->probeVersion = selected->probeVersion == 1 ? 3 : selected->probeVersion - 1) : 3;
   header(w, {discovery  ? Kind::Discover
              : extended ? Kind::ExtendedQuery
                         : Kind::Query,
-             id, targetId, boot, extended ? selected->boot : 0, serial, 0});
+             id, targetId, boot, extended ? selected->boot : 0, serial, 0, version});
   const auto n = w.finish();
   if (!transport_ || !n || !transport_->sendHud(e, tx_, n))
     return false;
-  if (discovery)
+  if (discovery) {
     scanSerial_ = serial;
+    for (uint8_t oldVersion : {uint8_t(2),uint8_t(1)}) {
+      Writer legacy{tx_,sizeof tx_}; header(legacy,{Kind::Discover,id,targetId,boot,0,serial,0,oldVersion});
+      const auto bytes=legacy.finish();
+      if(bytes) transport_->sendHud(e,tx_,bytes);
+    }
+  }
   else if (auto *p = peer(targetId)) {
+    // Keep the working version first after packet loss. Probe one alternative
+    // as well so a reboot into older/newer firmware can still renegotiate.
+    if (p->received && !p->fresh(now)) {
+      p->probeVersion = p->probeVersion == 1 ? 3 : p->probeVersion - 1;
+      if (p->probeVersion != version) {
+        Writer probe{tx_,sizeof tx_};
+        header(probe,{Kind::Query,id,targetId,boot,0,serial,0,p->probeVersion});
+        const auto bytes=probe.finish();
+        if(bytes)transport_->sendHud(e,tx_,bytes);
+      }
+    }
     for (unsigned i = 11; i > 0; --i) {
       p->querySerial[i] = p->querySerial[i - 1];
       p->queryAt[i] = p->queryAt[i - 1];
@@ -796,20 +827,21 @@ bool Hud::discover(HudEndpoint e) {
   return sendQuery(e, 0, true);
 }
 bool Hud::sendState(const HudEndpoint &e, uint64_t targetId, uint32_t seq, bool ack, Result result,
-                    uint64_t targetBoot, bool compact) {
+                    uint64_t targetBoot, bool compact, uint8_t version) {
+  if ((version == 1 && controller_.azProfile == AZ_CUSTOM) || (version < 3 && controller_.elProfile == EL_CUSTOM)) return false;
   Writer w{tx_, sizeof tx_};
-  header(w, {ack ? (compact ? Kind::LiveAck : Kind::Ack) : Kind::State, id, targetId, boot, targetBoot, seq, now});
+  header(w, {ack ? (compact ? Kind::LiveAck : Kind::Ack) : Kind::State, id, targetId, boot, targetBoot, seq, now, version, controller_.rangeRevision});
   if (ack)
     w.u8(uint8_t(result));
   HudState s;
   s.capture(controller_, protocol_, now);
-  state(w, s, compact);
+  state(w, s, compact, false, version >= 2, version >= 3);
   auto n = w.finish();
   return transport_ && n && transport_->sendHud(e, tx_, n);
 }
 bool Hud::sendJob(Job &j) {
   Writer w{tx_, sizeof tx_};
-  header(w, {j.live ? Kind::LiveCommand : Kind::Command, id, j.peer, boot, j.boot, j.id, j.ticket});
+  header(w, {j.live ? Kind::LiveCommand : Kind::Command, id, j.peer, boot, j.boot, j.id, j.ticket, j.wireVersion, j.rangeRevision});
   command(w, j.command);
   auto n = w.finish();
   if (!transport_ || !n || !transport_->sendHud(j.endpoint, tx_, n))
@@ -826,7 +858,7 @@ void Hud::sendRenew(unsigned axis) {
     return;
   }
   Writer w{tx_, sizeof tx_};
-  header(w, {Kind::Renew, id, h.peer, boot, h.boot, h.command, p->remoteTick});
+  header(w, {Kind::Renew, id, h.peer, boot, h.boot, h.command, p->remoteTick, p->wireVersion, p->state.rangeRevision});
   w.u8(uint8_t(axis));
   auto n = w.finish();
   if (transport_ && n && transport_->sendHud(h.endpoint, tx_, n))
@@ -941,7 +973,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     const uint32_t revision = telemetry ? r.u32() : 0;
     HudState s;
     if (compact) s = p->state;
-    if (!state(r, s, compact, extended)) {
+    if (!state(r, s, compact, extended, h.version >= 2, h.version >= 3) || (h.version >= 2 && h.geometry != s.rangeRevision)) {
       ++rejected;
       return;
     }
@@ -1015,6 +1047,18 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
           }
       return;
     }
+    if (p->boot == h.boot && p->wireVersion > h.version) return;
+    if (p->received && h.version >= 2 && p->boot == h.boot && p->state.rangeRevision != s.rangeRevision) {
+      for (auto &j : client_->jobs) if (j.used && j.peer == p->id && j.command.op != ControlOp::Stop) finish(j,Result::Cancelled);
+      for (auto &held : client_->held) if (held.peer == p->id) held.active=false;
+      if (client_->manual.used && client_->manual.peer == p->id) {
+        client_->closedGesture=client_->manual.command.gesture; client_->manual.used=false;
+      }
+      if (config.selected == p->id) { ++selectionEpoch; protocol_.resetSession(); }
+    }
+    p->wireVersion = h.version;
+    // After a dropout, try the last negotiated version before falling back.
+    p->probeVersion = h.version == 3 ? 1 : h.version + 1;
     if (p->boot && p->boot != h.boot) {
       p->live = false;
       p->manual = false;
@@ -1057,12 +1101,13 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
   if (isHud())
     return; // No HUD-to-HUD forwarding, including accidental loops.
   if (h.kind == Kind::ExtendedQuery) {
+    if ((h.version == 1 && controller_.azProfile == AZ_CUSTOM) || (h.version < 3 && controller_.elProfile == EL_CUSTOM)) return;
     if (h.target == id && h.targetBoot == boot && r.done()) {
       Writer w{tx_, sizeof tx_};
-      header(w, {Kind::ExtendedState, id, h.source, boot, h.boot, h.serial, now});
+      header(w, {Kind::ExtendedState, id, h.source, boot, h.boot, h.serial, now, h.version, controller_.rangeRevision});
       HudState s;
       s.capture(controller_, protocol_, now);
-      state(w, s, false, true);
+      state(w, s, false, true, h.version >= 2, h.version >= 3);
       const auto n = w.finish();
       if (n && transport_) {
         transport_->sendHud(e, tx_, n);
@@ -1072,13 +1117,16 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
   }
   if (h.kind == Kind::Discover || h.kind == Kind::Query) {
     if (r.done())
-      sendState(e, h.source, h.serial, false, Result::Ok, h.boot);
+      sendState(e, h.source, h.serial, false, Result::Ok, h.boot, false, h.version);
     return;
   }
   if (h.target != id || h.targetBoot != boot || uint32_t(now - h.ticket) >= TicketMs) {
     ++rejected;
     return;
   }
+  const bool staleGeometry = (h.version < 3 && controller_.elProfile == EL_CUSTOM) || (h.version == 1 && controller_.azProfile == AZ_CUSTOM) ||
+      (h.version >= 2 && h.geometry != controller_.rangeRevision);
+  if (staleGeometry && h.kind != Kind::Command && h.kind != Kind::LiveCommand) { ++rejected; return; }
   if (h.kind == Kind::Manual) {
     const uint32_t gesture = r.u32();
     const auto mask = r.u8();
@@ -1108,7 +1156,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       *barrier = {h.source, h.boot, h.serial, h.ticket, result, true};
     }
     Writer w{tx_, sizeof tx_};
-    header(w, {Kind::ManualAck, id, h.source, boot, h.boot, h.serial, now});
+    header(w, {Kind::ManualAck, id, h.source, boot, h.boot, h.serial, now, h.version, controller_.rangeRevision});
     w.u32(gesture);
     w.u8(uint8_t(result));
     const auto n = w.finish();
@@ -1131,7 +1179,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     if (slot) {
       *slot = {e,        h.source, h.boot,
                h.serial, now,      now - 250,
-               0,        true,     h.kind == Kind::ExtendedSubscribe};
+               0,        true,     h.kind == Kind::ExtendedSubscribe, h.version};
     }
     return;
   }
@@ -1152,6 +1200,9 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     ++rejected;
     return;
   }
+  if (staleGeometry && c.op != ControlOp::Stop) {
+    ++rejected; sendState(e,h.source,h.serial,true,Result::Cancelled,h.boot,h.kind==Kind::LiveCommand,h.version); return;
+  }
   Dedup *free = nullptr;
   for (auto &d : dedup_) {
     if (d.used && uint32_t(now - d.ticket) >= TicketMs)
@@ -1164,11 +1215,11 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     if (d.source == h.source && d.boot == h.boot) {
       if (d.seq == h.serial) {
         ++duplicates;
-        sendState(e, h.source, h.serial, true, d.result, h.boot, h.kind == Kind::LiveCommand);
+        sendState(e, h.source, h.serial, true, d.result, h.boot, h.kind == Kind::LiveCommand, h.version);
         return;
       }
       if (int32_t(h.serial - d.seq) < 0) {
-        sendState(e, h.source, h.serial, true, Result::Cancelled, h.boot, h.kind == Kind::LiveCommand);
+        sendState(e, h.source, h.serial, true, Result::Cancelled, h.boot, h.kind == Kind::LiveCommand, h.version);
         return;
       }
     }
@@ -1182,19 +1233,19 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     }
   if (!free) {
     ++busy;
-    sendState(e, h.source, h.serial, true, Result::Busy, h.boot, h.kind == Kind::LiveCommand);
+    sendState(e, h.source, h.serial, true, Result::Busy, h.boot, h.kind == Kind::LiveCommand, h.version);
     return;
   }
   (void)stop;
   const auto result = execute(c, h.source, h.boot, h.serial);
   *free = {h.source, h.boot, h.serial, h.ticket, result, true};
-  sendState(e, h.source, h.serial, true, result, h.boot, h.kind == Kind::LiveCommand);
+  sendState(e, h.source, h.serial, true, result, h.boot, h.kind == Kind::LiveCommand, h.version);
 }
 bool Hud::subscribe(HudPeer &p) {
   const uint32_t seq = nextSerial();
   Writer w{tx_, sizeof tx_};
   header(w, {p.manual ? Kind::ExtendedSubscribe : Kind::Subscribe, id, p.id, boot, p.boot, seq,
-             p.remoteTick});
+             p.remoteTick, p.wireVersion, p.state.rangeRevision});
   const auto n = w.finish();
   p.subscribeSent = now;
   if (!n || !transport_ || !transport_->sendHud(p.endpoint, tx_, n)) return false;
@@ -1215,23 +1266,24 @@ void Hud::publishLive() {
   HudState current; current.capture(controller_, protocol_, now);
   current.remaining = (current.remaining / 1000) * 1000;
   Writer fingerprint{tx_, sizeof tx_};
-  state(fingerprint, current, true, true);
+  state(fingerprint, current, true, true, true);
   const uint32_t hash = hudCrc(tx_, fingerprint.size);
   HudState control = current;
   for (auto &axis : control.axes) { axis.current = 0; axis.speedOutputPercent = 0; }
   fingerprint = {tx_, sizeof tx_};
-  state(fingerprint, control, true, true);
+  state(fingerprint, control, true, true, true);
   const uint32_t controlHash = hudCrc(tx_, fingerprint.size);
   if (hash != liveHash_ && (controlHash != controlHash_ || uint32_t(now - liveChangedAt_) >= 20)) {
     liveHash_ = hash; controlHash_ = controlHash; liveChangedAt_ = now; ++liveRevision_;
   }
   for (auto &sub : subscriptions_) {
+    if ((sub.wireVersion == 1 && controller_.azProfile == AZ_CUSTOM) || (sub.wireVersion < 3 && controller_.elProfile == EL_CUSTOM)) { sub.used=false; continue; }
     if (!sub.used || (sub.revision == liveRevision_ && uint32_t(now - sub.sent) < 250)) continue;
     Writer w{tx_, sizeof tx_};
     header(w, {sub.extended ? Kind::ExtendedTelemetry : Kind::Telemetry, id, sub.source, boot,
-               sub.boot, sub.serial, now});
+               sub.boot, sub.serial, now, sub.wireVersion, controller_.rangeRevision});
     w.u32(liveRevision_);
-    state(w, current, true, sub.extended);
+    state(w, current, true, sub.extended, sub.wireVersion >= 2, sub.wireVersion >= 3);
     const auto n = w.finish();
     if (n && transport_ && transport_->sendHud(sub.endpoint, tx_, n)) {
       sub.sent = now; sub.revision = liveRevision_;
@@ -1267,7 +1319,7 @@ void Hud::service(uint32_t at) {
       p && !p->manual && p->fresh(now) && uint32_t(now - p->capabilityAt) >= 500) {
     Writer w{tx_, sizeof tx_};
     const auto seq = nextSerial();
-    header(w, {Kind::ExtendedQuery, id, p->id, boot, p->boot, seq, p->remoteTick});
+    header(w, {Kind::ExtendedQuery, id, p->id, boot, p->boot, seq, p->remoteTick, p->wireVersion, p->state.rangeRevision});
     const auto n = w.finish();
     p->capabilitySerial = seq;
     p->capabilityAt = now;

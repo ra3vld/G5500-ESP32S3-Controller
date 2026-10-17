@@ -13,7 +13,7 @@ const state=async url=>(await fetch(url+'/api/status')).json();
   assert.match(await page.locator('#hudLink').textContent(),/Нет связи/);
   assert.equal(await page.locator('#az').textContent(),'—');
   await page.getByRole('tab',{name:'Настройки',exact:true}).click();
-  await page.locator('#hudControls summary').click();
+  await page.locator('#hudPanel > details > summary').click();
   for(const [port,name] of [[process.env.ROTOR_PORT,'R101'],[process.env.ROTOR_TWO_PORT,'R102']]) {
    await page.locator('#hudAddress').fill('127.0.0.1');
    await page.locator('#hudPeerPort').fill(port);

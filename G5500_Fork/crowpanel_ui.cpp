@@ -151,11 +151,12 @@ void CrowPanelUi::drawLimits(lv_event_t *event) {
     if (!lower && !upper) return;
     const auto opacity = [&](float bearing) {
       const auto tail = [](float distance, uint8_t strength) {
-        distance = std::fmod(distance + 720.f, 360.f);
+        distance = std::fmod(distance, 360.f);
+        if (distance < 0) distance += 360.f;
         const float fade = std::max(0.f, 1.f - distance / 120.f);
         return uint8_t(std::lround(strength * fade * fade));
       };
-      return std::max(tail(-bearing, lower), tail(bearing - self.maximum_, upper));
+      return std::max(tail(self.minimum_ - bearing, lower), tail(bearing - self.maximum_, upper));
     };
     lv_draw_arc_dsc_t arc;
     lv_draw_arc_dsc_init(&arc);
@@ -175,7 +176,7 @@ void CrowPanelUi::drawLimits(lv_event_t *event) {
     for (unsigned end = 0; end < 2; ++end) {
       const uint8_t strength = end ? upper : lower;
       if (!strength) continue;
-      const float boundary = end ? self.maximum_ : 0.f;
+      const float boundary = end ? self.maximum_ : self.minimum_;
       const float radians = boundary * (3.14159265358979323846f / 180.f);
       lv_draw_line_dsc_t line;
       lv_draw_line_dsc_init(&line);
@@ -211,10 +212,11 @@ void CrowPanelUi::create() {
   hudName_ = label(crowpanel::HudNameButton.y, 230, &crowpanel_font_22, text);
   lv_label_set_long_mode(hudName_, LV_LABEL_LONG_DOT);
   lv_obj_set_hidden(hudName_, true);
-  hudAddress_ = label(65, 230, &crowpanel_font_11, muted);
+  hudAddress_ = label(65, 340, &crowpanel_font_11, muted);
   lv_obj_set_hidden(hudAddress_, true);
   modeButton_ = button(crowpanel::ModeButton, 0x183329);
   mode_ = buttonLabel(modeButton_);
+  range_ = label(65, 300, &crowpanel_font_11, muted);
   axis_ = label(132, 320, &crowpanel_font_22, muted);
   angle_ = label(170, LV_SIZE_CONTENT, &crowpanel_font_112, text);
   secondaryAngle_ = label(170, LV_SIZE_CONTENT, &crowpanel_font_28, text);
@@ -283,7 +285,9 @@ void CrowPanelUi::update(const CrowPanelView &v) {
   lv_obj_set_hidden(hudAddress_, !v.hud);
   if (v.hud) {
     set(hudName_, v.hudName);
-    set(hudAddress_, v.hudAddress);
+    char address[96];
+    std::snprintf(address, sizeof address, "%s · %.1f°..%.1f°", v.hudAddress, double(v.minimum), double(v.maximum));
+    set(hudAddress_, address);
   }
   lv_obj_set_hidden(hudList_, !v.hudSelector);
   if (v.hudSelector)
@@ -294,7 +298,7 @@ void CrowPanelUi::update(const CrowPanelView &v) {
   set(axis_, !v.hudSelector && v.dualAxis ? (v.elevation ? "ЭЛЕВАЦИЯ · EL" : "АЗИМУТ · AZ") : "");
   const bool confirmation = !v.autoMode && ((v.targetValid && v.pending) ||
                                             (v.secondaryTargetValid && v.secondaryPending));
-  const auto *mainFont = confirmation ? &crowpanel_font_36
+  const lv_font_t *mainFont = confirmation ? &crowpanel_font_36
                          : v.dualAxis ? &crowpanel_font_80
                                       : &crowpanel_font_112;
   const auto *otherFont = confirmation ? &crowpanel_font_22 : &crowpanel_font_28;
@@ -305,6 +309,9 @@ void CrowPanelUi::update(const CrowPanelView &v) {
   font(target_, goalFont);
   font(targetCaption_, confirmation ? &crowpanel_font_36 : &crowpanel_font_22);
   char value[80];
+  std::snprintf(value, sizeof value, "%.1f°..%.1f°", double(v.minimum), double(v.maximum));
+  set(range_, value);
+  lv_obj_set_hidden(range_, v.hud || v.hudSelector);
   if (v.feedback) {
     std::snprintf(value, sizeof value, "%.0f°", double(v.current));
   } else {
@@ -333,6 +340,20 @@ void CrowPanelUi::update(const CrowPanelView &v) {
   color(targetCaption_, confirmation ? 0xf0b85c : targetColor);
   color(target_, confirmation ? 0xf0b85c : targetColor);
   color(secondaryTarget_, confirmation ? 0xf0b85c : targetColor);
+  // Fit continuous multi-turn coordinates inside the ring, leaving room for jog arrows.
+  auto fit = [&](lv_obj_t *primary, lv_obj_t *secondary, const lv_font_t *initial, int maximumWidth) {
+    const lv_font_t *chosen = initial;
+    for (const auto *candidate : {&crowpanel_font_112, &crowpanel_font_80, &crowpanel_font_36, &crowpanel_font_28}) {
+      if (candidate->line_height > initial->line_height) continue;
+      font(primary, candidate);
+      lv_obj_update_layout(primary); lv_obj_update_layout(secondary);
+      chosen = candidate;
+      if (lv_obj_get_width(primary) + (v.dualAxis ? lv_obj_get_width(secondary) : 0) <= maximumWidth) break;
+    }
+    return chosen;
+  };
+  mainFont = fit(angle_, secondaryAngle_, mainFont, 330);
+  goalFont = fit(target_, secondaryTarget_, goalFont, confirmation ? 380 : 300);
   auto row = [&](lv_obj_t *primary, lv_obj_t *secondary, const lv_font_t *large,
                  const lv_font_t *small, int y, int prefix) {
     lv_obj_update_layout(primary);
@@ -430,22 +451,26 @@ void CrowPanelUi::update(const CrowPanelView &v) {
   set(wifiAp_, v.wifiAp ? "AP" : "");
   set(bluetooth_, !v.bluetoothEnabled ? "" : v.bluetoothConnected ? "Bluetooth: подключён" : "Bluetooth: нет связи");
   set(ip_, v.ip); set(heap_, v.heap);
-  const bool contextChanged = sourceId_ != v.sourceId || elevation_ != v.elevation || maximum_ != v.maximum;
-  const bool maximumValid = std::isfinite(v.maximum) && v.maximum > 0;
+  const bool contextChanged = sourceId_ != v.sourceId || elevation_ != v.elevation || maximum_ != v.maximum || minimum_ != v.minimum;
+  const bool maximumValid = std::isfinite(v.maximum) && std::isfinite(v.minimum) && v.maximum > v.minimum;
   const bool rangeValid = v.feedback && std::isfinite(v.current) && maximumValid;
-  const auto lower = rangeValid ? crowpanel::limitOpacity(v.current) : uint8_t(0);
+  const auto lower = rangeValid ? crowpanel::limitOpacity(v.current - v.minimum) : uint8_t(0);
   const auto upper = rangeValid ? crowpanel::limitOpacity(v.maximum - v.current) : uint8_t(0);
   const bool targetRangeValid = maximumValid && v.targetValid && std::isfinite(v.target) &&
-                                v.target >= 0 && v.target <= v.maximum;
-  const auto targetLower = targetRangeValid ? crowpanel::limitOpacity(v.target) : uint8_t(0);
+                                v.target >= v.minimum && v.target <= v.maximum;
+  const auto targetLower = targetRangeValid ? crowpanel::limitOpacity(v.target - v.minimum) : uint8_t(0);
   const auto targetUpper = targetRangeValid ? crowpanel::limitOpacity(v.maximum - v.target) : uint8_t(0);
-  if (lower != lowerLimit_ || targetLower != targetLowerLimit_) invalidateLimit(limits_, 0, true);
+  if (lower != lowerLimit_ || targetLower != targetLowerLimit_ || minimum_ != v.minimum) {
+    invalidateLimit(limits_, minimum_, true);
+    if (std::isfinite(v.minimum)) invalidateLimit(limits_, v.minimum, true);
+  }
   if (upper != upperLimit_ || targetUpper != targetUpperLimit_ || maximum_ != v.maximum) {
     invalidateLimit(limits_, maximum_, false);
     if (std::isfinite(v.maximum)) invalidateLimit(limits_, v.maximum, false);
   }
   lowerLimit_ = lower; upperLimit_ = upper;
   targetLowerLimit_ = targetLower; targetUpperLimit_ = targetUpper;
+  minimum_ = std::isfinite(v.minimum) ? v.minimum : 0;
   maximum_ = std::isfinite(v.maximum) ? v.maximum : 450;
   sourceId_ = v.sourceId; elevation_ = v.elevation;
   updateMarker(currentMotion_, v.current, v.feedback, contextChanged, false);

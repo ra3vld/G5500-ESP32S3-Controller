@@ -11,7 +11,11 @@ public:
   virtual void setCalibrationMode(CalibrationMode mode) = 0;
   virtual void setGsAzMode(uint8_t mode) = 0;
   virtual void captureGs232Cal(const String &command) = 0;
-  virtual void saveCal() = 0;
+  virtual bool saveCal() = 0;
+  virtual bool configureAzRange(uint8_t profile, float start, float span) = 0;
+  virtual bool editAzPoint(const char *operation, float angle) = 0;
+  virtual bool configureElRange(uint8_t profile, float start, float span) = 0;
+  virtual bool editElPoint(const char *operation, float angle) = 0;
   virtual void loadPrefs() = 0;
   virtual void loadProfilePresets() = 0;
   virtual void saveProfilePresets() = 0;

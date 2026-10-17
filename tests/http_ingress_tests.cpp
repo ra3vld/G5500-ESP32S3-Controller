@@ -164,7 +164,9 @@ int main() {
     assert(fakeHardware.now==beforeLoop && !web.writeFailed() && testSocket.open);
   }
   testSocket.blockWrites=false;testSocket.sendQuota=size_t(-1);
-  for(unsigned i=0;testSocket.open && i<30;++i) { fakeHardware.now+=20;web.handleClient(); }
+  // Allow the larger settings page to drain after recovery; the loop remains bounded.
+  const auto recoveryDeadline=fakeHardware.now+2000;
+  while(testSocket.open && fakeHardware.now<recoveryDeadline) { fakeHardware.now+=20;web.handleClient(); }
   assert(!testSocket.open && !testSocket.reset && web.diagnostics().writeFailures==failuresBeforeStall);
   assert(testSocket.output.substr(recoveryStart)==std::string(compressed,sizeof WEB_PAGE_GZIP));
   connect(request);testSocket.handler=[&] { web.sendBuffer(200,"application/json",WEB_PAGE,1500); };

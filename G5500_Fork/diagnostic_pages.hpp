@@ -19,10 +19,11 @@ h1{margin:.25em 0}.muted{color:var(--m)}.grid{display:grid;grid-template-columns
 canvas{width:100%;height:360px;background:#071018;border-radius:10px;margin-top:10px}
 a{color:#24d18d;text-decoration:none;font-weight:700}
 @media(max-width:700px){.grid{grid-template-columns:1fr}.kv{grid-template-columns:1fr}}
-.nav{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px;padding:8px;background:#0b1720;border:1px solid #294153;border-radius:12px;position:sticky;top:0;z-index:20}.nav a{display:inline-block;padding:9px 12px;border-radius:9px;background:#173044;color:#fff;text-decoration:none;font-weight:700;font-size:14px}.nav a.active{background:#167a5c}.nav a:hover{background:#235b78}\n</style></head><body><div class="wrap">
+.nav{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px;padding:8px;background:#0b1720;border:1px solid #294153;border-radius:12px;position:sticky;top:0;z-index:20}.nav a{display:inline-block;padding:9px 12px;border-radius:9px;background:#173044;color:#fff;text-decoration:none;font-weight:700;font-size:14px}.nav a.active{background:#167a5c}.nav a:hover{background:#235b78}
+</style></head><body><div class="wrap">
 <div class="muted" style="font-size:13px">G5500 Controller v1.6.23 &copy; UA1CFM</div>
-<h1>ADC TEST — ESP32-S3</h1>
-<nav class="nav"><a href="/">УПРАВЛЕНИЕ</a><a class="active" href="/adc">ADC TEST</a><a href="/resetdiag">RESET DIAG</a><a href="/diaglog">DIAG CONSOLE</a></nav>
+<h1>ADC TEST</h1>
+<nav class="nav"><a href="/#control">Управление</a><a href="/#settings">Настройки</a><a class="active" href="/adc">ADC TEST</a><a href="/resetdiag">RESET DIAG</a><a href="/diaglog">DIAG CONSOLE</a></nav>
 
 <div class="card">
 <div><b>Назначение:</b> диагностический замер ADC. Он не меняет калибровку AZ<span id="adcElHelp">/EL</span> и не управляет реле.</div>
@@ -31,7 +32,7 @@ a{color:#24d18d;text-decoration:none;font-weight:700}
 </div>
 
 <div class="grid">
-<div class="card"><div class="az"><b>AZ — GPIO4</b></div><div class="kv" style="margin-top:10px">
+<div class="card"><div class="az"><b id="azPin">AZ — ADC</b></div><div class="kv" style="margin-top:10px">
 <div>RAW ADC<br><span id="azraw" class="val az">-</span></div>
 <div>CAL mV<br><span id="azmv" class="val az">-</span></div>
 <div>LINEAR mV<br><span id="azlin" class="val">-</span></div>
@@ -39,7 +40,7 @@ a{color:#24d18d;text-decoration:none;font-weight:700}
 <div>Δ %<br><span id="azpct" class="val">-</span></div>
 <div>Samples<br><span id="azn" class="val">0</span></div>
 </div></div>
-<div id="adcElCard" class="card"><div class="el"><b>EL — GPIO5</b></div><div class="kv" style="margin-top:10px">
+<div id="adcElCard" class="card"><div class="el"><b id="elPin">EL — ADC</b></div><div class="kv" style="margin-top:10px">
 <div>RAW ADC<br><span id="elraw" class="val el">-</span></div>
 <div>CAL mV<br><span id="elmv" class="val el">-</span></div>
 <div>LINEAR mV<br><span id="ellin" class="val">-</span></div>
@@ -110,6 +111,7 @@ async function upd(){
     draw();
   }catch(e){}
 }
+fetch('/api/status',{cache:'no-store'}).then(r=>r.json()).then(j=>{const p=j.build?.pins;if(p){azPin.textContent='AZ — GPIO'+p.azAdc;elPin.textContent='EL — GPIO'+p.elAdc}}).catch(()=>{});
 setInterval(upd,350);upd();draw();
 </script></body></html>
 )HTML";
@@ -133,13 +135,14 @@ th{color:var(--m);font-weight:700}
 .btn{border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer}
 .danger{background:#8f2e2b;color:#fff}
 @media(max-width:650px){.kv{grid-template-columns:1fr}.reason{font-size:32px}th,td{font-size:12px;padding:7px 4px}}
-.nav{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px;padding:8px;background:#0b1720;border:1px solid #294153;border-radius:12px;position:sticky;top:0;z-index:20}.nav a{display:inline-block;padding:9px 12px;border-radius:9px;background:#173044;color:#fff;text-decoration:none;font-weight:700;font-size:14px}.nav a.active{background:#167a5c}.nav a:hover{background:#235b78}\n</style></head><body><div class="wrap">
+.nav{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px;padding:8px;background:#0b1720;border:1px solid #294153;border-radius:12px;position:sticky;top:0;z-index:20}.nav a{display:inline-block;padding:9px 12px;border-radius:9px;background:#173044;color:#fff;text-decoration:none;font-weight:700;font-size:14px}.nav a.active{background:#167a5c}.nav a:hover{background:#235b78}
+</style></head><body><div class="wrap">
 <div class="muted" style="font-size:13px">G5500 Controller v1.6.23 &copy; UA1CFM</div>
 <h1>RESET DIAG</h1>
-<nav class="nav"><a href="/">УПРАВЛЕНИЕ</a><a href="/adc">ADC TEST</a><a class="active" href="/resetdiag">RESET DIAG</a><a href="/diaglog">DIAG CONSOLE</a></nav>
+<nav class="nav"><a href="/#control">Управление</a><a href="/#settings">Настройки</a><a href="/adc">ADC TEST</a><a class="active" href="/resetdiag">RESET DIAG</a><a href="/diaglog">DIAG CONSOLE</a></nav>
 
 <div class="card">
-<div class="muted">Причина последней загрузки ESP32-S3</div>
+<div class="muted">Причина последней загрузки контроллера</div>
 <div id="reason" class="reason">--</div>
 <div class="kv">
 <div>Reset code<br><span id="code" class="code">--</span></div>
@@ -225,15 +228,18 @@ button.good{background:#126b50}
 button.danger{background:#a93d3d}
 label{color:var(--muted);font-size:14px;display:flex;gap:7px;align-items:center}
 #state{color:var(--muted);margin-left:auto;font-size:13px}
-#term{height:calc(100vh - 92px);min-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-word;background:#020608;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:12px;font:14px/1.42 Consolas,"Courier New",monospace}
-@media(max-width:700px){#state{width:100%;margin-left:0}#term{height:calc(100vh - 140px);font-size:12px}}
-.nav{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px;padding:8px;background:#0b1720;border:1px solid #294153;border-radius:12px;position:sticky;top:0;z-index:20}.nav a{display:inline-block;padding:9px 12px;border-radius:9px;background:#173044;color:#fff;text-decoration:none;font-weight:700;font-size:14px}.nav a.active{background:#167a5c}.nav a:hover{background:#235b78}\n</style></head><body><div class="wrap">
-<div class="top">
-<h2>G5500 Web Diagnostic Console</h2>
-<a class="btn" href="/">УПРАВЛЕНИЕ</a>
+#term{height:calc(100vh - 180px);min-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-word;background:#020608;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:12px;font:14px/1.42 Consolas,"Courier New",monospace}
+@media(max-width:700px){#state{width:100%;margin-left:0}#term{height:calc(100vh - 240px);font-size:12px}}
+.nav{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px;padding:8px;background:#0b1720;border:1px solid #294153;border-radius:12px;position:sticky;top:0;z-index:20}.nav a{display:inline-block;padding:9px 12px;border-radius:9px;background:#173044;color:#fff;text-decoration:none;font-weight:700;font-size:14px}.nav a.active{background:#167a5c}.nav a:hover{background:#235b78}
+</style></head><body><div class="wrap">
+<h2>DIAG CONSOLE</h2>
+<nav class="nav" aria-label="Разделы контроллера">
+<a class="btn" href="/#control">Управление</a>
+<a class="btn" href="/#settings">Настройки</a>
 <a class="btn" href="/adc">ADC TEST</a>
 <a class="btn" href="/resetdiag">RESET DIAG</a>
-<a class="btn" href="/diaglog" style="background:#167a5c">DIAG CONSOLE</a>
+<a class="btn active" href="/diaglog">DIAG CONSOLE</a>
+</nav><div class="top">
 <button class="good" onclick="refreshNow()">Refresh</button>
 <button class="danger" onclick="clearLog()">Clear RAM log</button>
 <label><input id="auto" type="checkbox" checked> Auto scroll</label>

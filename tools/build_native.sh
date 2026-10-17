@@ -96,6 +96,20 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_F
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 $CROW_FLAGS -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/hud_adapter_tests.cpp -o build/hud_crowpanel_tests
 ./build/hud_crowpanel_tests
 
+for simulation in 0 1; do
+  ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=$simulation -I G5500_Fork $CORE_SOURCES tests/az_range_tests.cpp -o build/az_range_tests
+  ./build/az_range_tests
+done
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp tests/az_range_storage_tests.cpp -o build/az_range_storage_tests
+./build/az_range_storage_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork $CORE_SOURCES tests/az_range_hud_tests.cpp -o build/az_range_hud_tests
+./build/az_range_hud_tests
+
+for simulation in 0 1; do
+  ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=$simulation -I G5500_Fork $CORE_SOURCES tests/el_range_tests.cpp -o build/el_range_tests
+  ./build/el_range_tests
+done
+
 for variant in 0:0 1:0 2:0 2:1; do
   drive=${variant%:*}; simulation=${variant#*:}
   ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=$simulation -DDRIVE_INTERFACE=$drive -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/coast_settings_tests.cpp -o build/coast_settings_tests

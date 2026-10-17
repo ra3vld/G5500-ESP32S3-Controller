@@ -208,6 +208,7 @@ void storageCompatibility() {
   // Older format 3 preserves AZ tables but requires recapturing ambiguous EL endpoints.
   auto &legacy = Preferences::database["g5500"];
   runtime.controller.model = Model::G5500;
+  legacy.erase("azgeom1"); // Model an actual pre-migration installation.
   legacy["calfmt"] = uint8_t(3);
   legacy["elm0"] = int32_t(100);
   legacy["elm45"] = int32_t(800);

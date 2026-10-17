@@ -15,6 +15,7 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 .nav{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px;padding:8px;background:#0b1720;border:1px solid #294153;border-radius:12px;position:sticky;top:0;z-index:20}
 .nav-tabs{display:flex;gap:8px;flex-wrap:wrap}
 .nav button,.nav a{border:0;cursor:pointer;font-family:inherit;display:inline-block;padding:9px 12px;border-radius:9px;background:#173044;color:#fff;text-decoration:none;font-weight:700;font-size:14px}
+.range-editors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.range-editor{min-width:0}.range-editor>.label{font-size:18px}.command-card h2{margin-top:0}.command-card h3{font-size:16px;margin:20px 0 8px}.control-mode{margin-bottom:16px}.target-controls{margin:16px 0}.range-editor .seg{display:flex;flex-wrap:wrap}.range-editor .seg .btn{flex:1 1 120px;font-size:14px}.range-editor input{max-width:100%}.calbox .row{align-items:center;gap:8px}.calbox .row>span{flex:1 1 150px}.calbox .row .btn{white-space:normal}@media(max-width:760px){.range-editors{grid-template-columns:1fr}}
 .nav button.active{background:#167a5c}.nav button:hover,.nav a:hover{background:#235b78}
 .card{background:var(--p);border:1px solid var(--b);border-radius:12px;padding:12px;margin-top:10px}
 .big{font-size:54px;font-weight:700}.targetbig{font-size:34px;font-weight:700;color:var(--a)}.sep{font-size:30px;color:var(--m);font-weight:400}.unit{font-size:25px;color:var(--m)}.label{color:var(--m);font-size:13px;text-transform:uppercase;letter-spacing:.08em}
@@ -47,6 +48,93 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 @media(max-width:600px){.device-fields{grid-template-columns:minmax(0,1fr);gap:14px}.device-actions>.btn,.device-address>.btn{width:100%}.device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}.device-peer>.btn:first-child{grid-column:1/-1}.device-pagination .btn{padding:10px 12px}}
 [hidden]{display:none!important}.nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--a);outline-offset:2px}
 .current-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;padding:12px;font-size:13px}.current-status span{display:block;color:var(--m);margin-bottom:5px}.current-status b{font-size:14px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.current-status .online{color:var(--a)}.current-status .offline{color:#e5a94f}
+.action-feedback{position:fixed;z-index:50;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:calc(100% - 24px);max-width:620px;display:flex;align-items:center;gap:12px;padding:12px 14px;background:#132532;border:2px solid #57bde8;border-radius:12px;box-shadow:0 6px 30px #0009;font-size:16px;line-height:1.4;overflow-wrap:anywhere}.action-feedback[data-state=success]{border-color:#24d18d}.action-feedback[data-state=error]{border-color:#ff7970}.action-feedback>div{flex:1;min-width:0}.action-feedback strong{display:block;margin-bottom:3px}.action-feedback button{flex:none;border:0;border-radius:8px;min-width:44px;min-height:44px;background:#294153;color:white;font-size:24px;cursor:pointer}.action-feedback[data-state=pending] button{visibility:hidden}.btn[aria-busy=true]{opacity:.8;outline:2px solid #57bde8;outline-offset:2px}.btn[aria-busy=true]::after{content:' …'}
+
+/* Settings share one disclosure, field and action layout. */
+body.settings-view{height:100dvh;overflow:hidden;display:flex;flex-direction:column}
+body.settings-view>.wrap{width:100%;min-height:0;flex:1;overflow-y:auto;margin:0 auto;scrollbar-gutter:stable;scroll-padding-top:16px}
+body.settings-view .nav{position:static}
+#settingsPanel{display:grid;gap:12px;padding:4px 0 24px}
+.settings-section.card{margin:0;padding:0;border:1px solid #294153;border-radius:14px;background:#101c27;overflow:clip}
+.settings-details>summary{display:flex;align-items:center;gap:20px;padding:20px;list-style:none;cursor:pointer;user-select:none}
+.settings-details>summary::-webkit-details-marker{display:none}
+.settings-details>summary::after{content:'';flex:none;width:9px;height:9px;border-right:2px solid #94aab9;border-bottom:2px solid #94aab9;transform:rotate(45deg);margin:0 4px 6px auto}
+.settings-details[open]>summary::after{transform:rotate(225deg);margin-bottom:-4px}
+.settings-details[open]>summary{border-bottom:1px solid #294153;background:#142330}
+.settings-details>summary h2{min-width:0;font-size:18px;line-height:1.35;margin:0;font-weight:600}
+.section-caption{display:block;margin-top:5px;color:#9aafbf;font-size:13px;line-height:1.45;font-weight:400}
+.settings-content{padding:20px}
+#settingsPanel h3{font-size:16px;line-height:1.4;font-weight:600;margin:0 0 16px}
+#settingsPanel h4{font-size:14px;line-height:1.45;font-weight:600;margin:0 0 12px;color:#cad9e4}
+#settingsPanel p{line-height:1.55}
+#settingsPanel .hint{font-size:13px;line-height:1.55;color:#9aafbf;margin:12px 0}
+#settingsPanel .row,#settingsPanel .device-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 20px;align-items:end}
+#settingsPanel .field{min-width:0;display:flex;flex-direction:column;gap:8px}
+#settingsPanel .field label{display:block;font-size:14px;line-height:1.45;color:#c9d8e3;margin:0}
+#settingsPanel input,#settingsPanel select{max-width:100%;min-width:0;min-height:44px;padding:10px 12px;border:1px solid #3b5365;border-radius:9px;background:#09141e;color:#f4f7fa;font:inherit;font-size:16px;line-height:1.35}
+#settingsPanel .check-field{display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:1.5;margin:14px 0}
+#settingsPanel .check-field input{width:18px;min-height:18px;height:18px;margin:2px 0 0;flex:none;accent-color:#24d18d}
+#settingsPanel .btn{display:inline-flex;justify-content:center;align-items:center;gap:6px;max-width:100%;min-width:0;min-height:44px;height:auto;border:1px solid #365466;border-radius:9px;background:#1c3748;color:#edf5fa;font-family:inherit;font-size:14px;font-weight:600;line-height:1.4;padding:10px 14px;white-space:normal;overflow-wrap:anywhere;cursor:pointer;touch-action:manipulation;text-align:center}
+#settingsPanel .btn.good{background:#176c54;border-color:#278f70}
+#settingsPanel .btn.warn{background:#263641;border-color:#7a714d}
+#settingsPanel .btn.done{background:#173c30;border-color:#367b5a;box-shadow:none}
+#settingsPanel .btn.calreset{background:#2e2026;border-color:#7e4248;color:#ffc0c3}
+#settingsPanel .btn:disabled{cursor:default}
+#settingsPanel button:focus-visible,#settingsPanel summary:focus-visible,#settingsPanel input:focus-visible,#settingsPanel select:focus-visible{outline:2px solid #58b8df;outline-offset:3px}
+#settingsPanel .settings-group,#forkSettings>h3{margin-top:24px;padding-top:20px;border-top:1px solid #294153}
+#settingsPanel .form-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid #294153}
+#settingsPanel .form-actions .hint{margin:0;flex:1 1 150px}
+#settingsPanel .range-editors,#settingsPanel .calibration-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#settingsPanel .settings-pane{min-width:0;padding:16px;border:1px solid #294153;background:#0c1822;border-radius:10px}
+#settingsPanel .range-editor{display:flex;flex-direction:column}
+#settingsPanel .range-form{margin-top:16px;padding-top:16px;border-top:1px solid #294153}
+#settingsPanel .range-editor .range-form{display:flex;flex-direction:column;flex:1}
+#settingsPanel .range-form .row{gap:12px}
+#settingsPanel .range-form .form-actions{padding-top:0;border:0;margin-top:16px}
+#settingsPanel .range-editor .form-actions{margin-top:auto;padding-top:8px}
+#settingsPanel .range-form .form-actions .btn{width:100%}
+#settingsPanel .rangebadge{display:inline-block;background:#203441;border-radius:6px;padding:6px 8px;font-size:12px;font-weight:500;margin:12px 0 0;line-height:1.45}
+#settingsPanel .range-editor .rangebadge{align-self:flex-start}
+#settingsPanel .seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0}
+#settingsPanel .profile-options{grid-template-columns:repeat(3,minmax(0,1fr))}
+#settingsPanel .el-setting .profile-options{grid-template-columns:repeat(2,minmax(0,1fr))}
+#settingsPanel .profile-options .btn{padding:9px 8px;font-size:13px}
+#settingsPanel .calibration-method{margin-bottom:20px}
+#settingsPanel .calhead{align-items:center;flex-wrap:wrap;margin:0 0 16px;gap:8px}
+#settingsPanel .calhead h3{margin:0}
+#settingsPanel .callive{font-size:26px;line-height:1.25;font-weight:600;font-variant-numeric:tabular-nums}
+#settingsPanel .callive span:last-child{font-size:16px}
+#settingsPanel .endpoint-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#settingsPanel .minirow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+#settingsPanel .minirow .btn{padding:9px 6px}
+#settingsPanel .calvalues{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px;font-size:12px;line-height:1.5;color:#a7bac8}
+#settingsPanel .calvalues>div{min-width:0;background:#14232e;border-radius:6px;padding:8px;overflow-wrap:anywhere}
+#settingsPanel .endpoint-values{grid-template-columns:repeat(2,minmax(0,1fr))}
+#settingsPanel .calvalues b{color:#e4edf4;font-weight:600}
+#settingsPanel .point-list{display:grid;gap:10px}
+#settingsPanel .point-row{display:grid;gap:12px;padding:12px;background:#14232e;border:1px solid #294153;border-radius:9px;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+#settingsPanel .point-actions{display:flex;flex-wrap:wrap;gap:8px}
+#settingsPanel .point-actions .btn{flex:1 1 120px}
+#settingsPanel .point-actions .btn+ .btn{flex:1 1 76px}
+#settingsPanel .inline-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-top:16px}
+#settingsPanel .inline-message:empty{display:none}
+#settingsPanel .inline-message{font-size:13px;line-height:1.5;margin-top:12px;color:#b8daca;overflow-wrap:anywhere}
+#settingsPanel .device-list{gap:12px}
+#settingsPanel .device-peer{gap:8px;padding:12px;border:1px solid #294153;border-radius:9px;background:#0c1822}
+#settingsPanel .device-pagination{margin:16px 0;gap:12px}
+#settingsPanel .device-address{padding:16px 0;gap:16px}
+#settingsPanel .device-peer-note{line-height:1.5}
+#settingsPanel .kv{margin-top:12px;font-size:13px;line-height:1.5}
+#settingsPanel .kv>div{padding:12px;background:#0c1822;border:1px solid #243b4c;border-radius:8px}
+#settingsPanel #bttransport:empty{display:none}
+#settingsPanel .mono{font-family:monospace;user-select:all;overflow-wrap:anywhere}
+#settingsPanel .period-options{display:flex;flex-wrap:wrap;gap:8px}
+#settingsPanel .period-options .btn{flex:1 1 90px;white-space:nowrap;overflow-wrap:normal}
+#settingsPanel canvas{margin-top:16px}
+body.settings-view>.action-feedback{position:static;transform:none;left:auto;bottom:auto;flex:none;align-self:center;width:calc(100% - 24px);margin:0 12px max(12px,env(safe-area-inset-bottom));max-width:956px;box-shadow:none;font-size:14px}
+@media(max-width:760px){#settingsPanel .range-editors,#settingsPanel .calibration-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){.settings-details>summary{padding:16px;gap:16px}.settings-details>summary h2{font-size:17px}.settings-content{padding:16px}#settingsPanel .row,#settingsPanel .device-fields{grid-template-columns:minmax(0,1fr);gap:16px}#settingsPanel .settings-pane{padding:12px}#settingsPanel .form-actions>.btn{width:100%}#settingsPanel .form-actions{gap:10px}#settingsPanel .range-form .row{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel .profile-options{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel #azmc{grid-column:1/-1}#settingsPanel .inline-form{grid-template-columns:minmax(0,1fr)}#settingsPanel .inline-form>.btn{width:100%}#settingsPanel .device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 </style></head><body><div class="wrap">
 <div style="font-size:13px;color:#96a9b7;margin:2px 0 6px">G5500 Fork 0.1.0 · оригинал &copy; UA1CFM</div>
 <h1 id="modelTitle">YAESU G-5500 / ESP32</h1>
@@ -63,32 +151,35 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <main id="controlPanel" role="tabpanel" aria-labelledby="controlTab">
 <div id="selectedRotor" class="hint hide" role="status"></div>
 <div class="grid">
-<div class="card"><div class="label">Азимут — текущее / задание</div><div><span id="az" class="big">--.-</span><span class="sep"> / </span><span id="azt" class="targetbig">---</span><span class="unit">°</span></div><div class="bar"><div id="azbar" class="fill"></div></div><div>0° <span id="azmaxlabel" style="float:right">450°</span></div></div>
-<div class="card"><div class="label">Элевация — текущее / задание</div><div><span id="el" class="big">--.-</span><span class="sep"> / </span><span id="elt" class="targetbig">---</span><span class="unit">°</span></div><div class="bar"><div id="elbar" class="fill"></div></div><div>0° <span style="float:right">180°</span></div></div>
+<div class="card"><div class="label">Азимут — текущее / задание</div><div><span id="az" class="big">--.-</span><span class="sep"> / </span><span id="azt" class="targetbig">---</span><span class="unit">°</span></div><div class="bar"><div id="azbar" class="fill"></div></div><div><span id="azminlabel">0°</span> <span id="azmaxlabel" style="float:right">450°</span></div></div>
+<div class="card"><div class="label">Элевация — текущее / задание</div><div><span id="el" class="big">--.-</span><span class="sep"> / </span><span id="elt" class="targetbig">---</span><span class="unit">°</span></div><div class="bar"><div id="elbar" class="fill"></div></div><div><span id="elminlabel">0°</span> <span id="elmaxlabel" style="float:right">180°</span></div></div>
 </div>
 
-<div class="card">
-<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-<div><div class="label">Движение</div><div id="motion" style="font-size:23px;font-weight:700">STOP</div></div>
-<div><span class="status"><span id="caldot" class="dot"></span><span id="caltxt">Calibration</span></span></div></div>
-<div id="movementButtons" class="controls" style="margin-top:10px">
-<button class="btn blank">-</button><button class="btn movebtn" data-dir="U"><span>▲ UP</span></button><button class="btn blank">-</button>
-<button class="btn movebtn" data-dir="L"><span>◀ LEFT</span></button><button id="executeTarget" class="btn good" onclick="targetAction()" disabled>Повернуть</button><button class="btn movebtn" data-dir="R"><span>RIGHT ▶</span></button>
-<button class="btn blank">-</button><button class="btn movebtn" data-dir="D"><span>▼ DOWN</span></button><button class="btn blank">-</button>
-</div>
-<div class="target-controls"><div class="label">Задать угол</div><div class="row" style="margin-top:8px">
-<div class="field"><label id="tazlbl">AZ 0..450°</label><input id="taz" type="number" step="0.1" min="0" max="450"></div>
-<div class="field"><label>EL 0..180°</label><input id="tel" type="number" step="0.1" min="0" max="180"></div>
-<button class="btn good" onclick="go()">Повернуть</button></div></div>
-</div>
-<div class="card"><div class="label">Предустановки</div><div id="presetButtons" class="preset-grid" style="margin-top:10px"></div>
-</div>
-<div class="card">
+<div class="card command-card"><h2>Наведение</h2>
+<div class="control-mode">
 <div class="label">Режим управления</div>
 <div class="mode-controls" style="margin-top:8px">
 <div class="field"><label for="followMode">Следование командам</label><select id="followMode" onchange="forkPost('/api/mode',{mode:this.value})"><option value="manual">Ручной</option><option value="auto">Автоматический</option><option value="auto_1h">Авто 1 ч</option></select></div></div>
 <div id="hourLeft" aria-live="polite"></div>
 <div id="waitingTarget" style="margin-top:8px">Нет ожидающей цели</div>
+</div>
+
+<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+<div><div class="label">Движение</div><div id="motion" style="font-size:23px;font-weight:700">STOP</div></div>
+<div><span class="status"><span id="caldot" class="dot"></span><span id="caltxt">Calibration</span></span></div></div>
+<div class="target-controls"><div class="label">Задать угол</div><div class="row" style="margin-top:8px">
+<div class="field"><label id="tazlbl">AZ 0..450°</label><input id="taz" type="number" step="0.1" min="0" max="450"></div>
+<div class="field"><label id="tellbl">EL 0…180°</label><input id="tel" type="number" step="0.1" min="0" max="180"></div>
+<button class="btn good" onclick="go()">Повернуть</button></div></div>
+<h3>Ручное вращение</h3>
+<div id="movementButtons" class="controls" style="margin-top:10px">
+<button class="btn blank">-</button><button class="btn movebtn" data-dir="U"><span>▲ UP</span></button><button class="btn blank">-</button>
+<button class="btn movebtn" data-dir="L"><span>◀ LEFT</span></button><button id="executeTarget" class="btn good" onclick="targetAction()" disabled>Повернуть</button><button class="btn movebtn" data-dir="R"><span>RIGHT ▶</span></button>
+<button class="btn blank">-</button><button class="btn movebtn" data-dir="D"><span>▼ DOWN</span></button><button class="btn blank">-</button>
+</div>
+
+</div>
+<div class="card"><div class="label">Предустановки</div><div id="presetButtons" class="preset-grid" style="margin-top:10px"></div>
 </div>
 <div class="card current-status" id="currentStatus" aria-label="Текущий статус устройства">
 <div><span>Wi-Fi</span><b id="statusWifi">—</b></div>
@@ -98,168 +189,179 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div><span>Uptime</span><b id="statusUptime">—</b></div>
 </div>
 </main>
-<section id="settingsPanel" role="tabpanel" aria-labelledby="settingsTab" hidden>
-<div class="card"><details><summary>Настроить предустановки</summary>
-<form id="presetEditor" onsubmit="savePreset(event)">
-<div class="row"><div class="field"><label>Кнопка</label><select name="slot" onchange="fillPreset()"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div>
-<div class="field"><label>Название</label><input name="label" maxlength="24" required></div>
-<div class="field"><label>AZ, °</label><input name="az" type="number" min="0" max="450" step="0.1" required></div>
-<div class="field el-setting"><label>EL, °</label><input name="el" type="number" min="0" max="180" step="0.1" value="0"></div></div>
-<button class="btn" type="submit">Сохранить предустановку</button></form></details></div>
-<div class="card">
-<button id="caltoggle" class="cal-toggle" onclick="toggleCalMenu()">Калибровка <span class="arrow">▼</span></button>
-<div id="calbody" class="cal-body">
-<div class="label">АЛГОРИТМ</div>
-<div class="seg">
-<button id="mode2" class="btn" onclick="setCalMode('2')">GS-232 2-POINT</button>
-<button id="modem" class="btn" onclick="setCalMode('multi')">MULTI-POINT</button>
+<section aria-labelledby="settingsTab" hidden="" id="settingsPanel" role="tabpanel"><section class="card settings-section" id="rotorSettings"><details class="settings-details"><summary><h2>Поворотка и привод<span class="section-caption">Модель, движение и подключение логгеров</span></h2></summary><div class="settings-content"><form id="forkSettings" onsubmit="saveFork(event)"><div class="row">
+<div class="field"><label for="forkSettings-model">Модель</label><select id="forkSettings-model" name="model"><option value="G5500">G-5500</option><option value="G800DXA">G-800DXA</option></select></div>
+</div><h3>Подключение логгеров</h3><div class="row"><div class="field"><label for="forkSettings-rotorName">Имя в N1MM</label><input id="forkSettings-rotorName" maxlength="31" name="rotorName" required=""/></div>
+<div class="field"><label for="forkSettings-n1mmPort">N1MM UDP</label><input id="forkSettings-n1mmPort" max="65535" min="1" name="n1mmPort" required="" type="number"/></div>
+<div class="field"><label for="pstPort">PstRotator UDP</label><input aria-describedby="pstPortHelp" id="pstPort" max="65534" min="1" name="pstPort" required="" type="number"/></div>
+<div class="field"><label for="forkSettings-reportPort">Положение N1MM UDP</label><input id="forkSettings-reportPort" max="65535" min="1" name="reportPort" required="" type="number"/></div>
+<div class="field"><label for="forkSettings-reportHost">Дополнительный IP N1MM</label><input id="forkSettings-reportHost" name="reportHost" placeholder="192.168.1.10"/></div></div>
+<p class="hint" id="pstPortHelp">PstRotator UDP — для UR5EQF и 5MContest. В логгере выберите PstRotator/UDP; отдельно запускать программу PstRotator не требуется.<br/>Log4OM 2, DXLog.net, TR4W (с 4.148.6), Swisslog и LogHX также имеют интеграцию с PstRotator, но с нашим контроллером не тестировались.</p>
+<div class="hint" id="buildInfo"></div>
+<div class="hide" id="encoderSettings"><label class="check-field"><input checked="" name="encoderInverted" type="checkbox"/> Инверсия энкодера</label></div>
+<div class="settings-group" id="coastSettings"><h3>Выбег и остановка</h3><div class="row">
+<div class="field"><label for="coastDegrees">Угол выбега AZ, °</label><input id="coastDegrees" max="90" min="0" name="coastDegrees" required="" step="0.1" type="number" value="5"/></div>
+<div class="field el-setting"><label for="elCoastDegrees">Угол выбега EL, °</label><input id="elCoastDegrees" max="90" min="0" name="elCoastDegrees" required="" step="0.1" type="number" value="5"/></div>
+</div><p class="hint">Привод отключается за этот угол до цели, оставляя запас на механический выбег. 0° — отключение при достижении цели. Для короткого хода угол ограничен 10% полного хода. После отключения обратной коррекции нет.</p></div>
+<div class="settings-group" id="speedSettings"><h3>Скорость и плавность движения</h3><label class="check-field" id="analogSpeedToggle"><input name="speedEnabled" type="checkbox"/> Управлять скоростью через внешний модуль 0–5 В</label>
+<h4>Азимут · AZ</h4><div class="row">
+<div class="field"><label for="forkSettings-speedPercent">Рабочая скорость, %</label><input id="forkSettings-speedPercent" max="100" min="25" name="speedPercent" required="" step="1" type="number" value="50"/></div>
+<div class="field"><label for="forkSettings-startSpeedPercent">Скорость старта, %</label><input id="forkSettings-startSpeedPercent" max="100" min="25" name="startSpeedPercent" required="" step="1" type="number" value="25"/></div>
+<div class="field"><label for="forkSettings-approachSpeedPercent">Скорость у цели, %</label><input id="forkSettings-approachSpeedPercent" max="100" min="25" name="approachSpeedPercent" required="" step="1" type="number" value="25"/></div>
+<div class="field"><label for="forkSettings-accelerationMs">Время разгона 0–100% рабочей скорости, мс</label><input id="forkSettings-accelerationMs" max="10000" min="100" name="accelerationMs" required="" step="1" type="number" value="2000"/></div>
+<div class="field"><label for="forkSettings-decelerationMs">Время торможения 100–0% рабочей скорости, мс</label><input id="forkSettings-decelerationMs" max="10000" min="100" name="decelerationMs" required="" step="1" type="number" value="1500"/></div>
+<div class="field"><label for="forkSettings-slowdownDegrees">Начинать замедление за, °</label><input id="forkSettings-slowdownDegrees" max="90" min="1" name="slowdownDegrees" required="" step="1" type="number" value="10"/></div>
+<div class="field"><label for="decelerationFactor">Коэффициент торможения AZ</label><input id="decelerationFactor" max="10" min="0.1" name="decelerationFactor" required="" step="0.1" type="number" value="1"/></div>
+</div><div class="hint">Выход AZ: <b id="speedOutput">0%</b></div><div id="elSpeedSettings"><h4>Элевация · EL</h4><div class="row">
+<div class="field"><label for="forkSettings-elSpeedPercent">Рабочая скорость, %</label><input id="forkSettings-elSpeedPercent" max="100" min="1" name="elSpeedPercent" required="" step="1" type="number" value="100"/></div>
+<div class="field"><label for="forkSettings-elStartSpeedPercent">Скорость старта, %</label><input id="forkSettings-elStartSpeedPercent" max="100" min="1" name="elStartSpeedPercent" required="" step="1" type="number" value="18"/></div>
+<div class="field"><label for="forkSettings-elApproachSpeedPercent">Скорость у цели, %</label><input id="forkSettings-elApproachSpeedPercent" max="100" min="1" name="elApproachSpeedPercent" required="" step="1" type="number" value="18"/></div>
+<div class="field"><label for="forkSettings-elAccelerationMs">Время разгона 0–100% рабочей скорости, мс</label><input id="forkSettings-elAccelerationMs" max="10000" min="100" name="elAccelerationMs" required="" step="1" type="number" value="1800"/></div>
+<div class="field"><label for="forkSettings-elDecelerationMs">Время торможения 100–0% рабочей скорости, мс</label><input id="forkSettings-elDecelerationMs" max="10000" min="100" name="elDecelerationMs" required="" step="1" type="number" value="1200"/></div>
+<div class="field"><label for="forkSettings-elSlowdownDegrees">Начинать замедление за, °</label><input id="forkSettings-elSlowdownDegrees" max="90" min="1" name="elSlowdownDegrees" required="" step="1" type="number" value="2"/></div>
+<div class="field"><label for="elDecelerationFactor">Коэффициент торможения EL</label><input id="elDecelerationFactor" max="10" min="0.1" name="elDecelerationFactor" required="" step="0.1" type="number" value="1"/></div>
+</div><div class="hint">Выход EL: <b id="elSpeedOutput">0%</b></div></div><p class="hint">Проценты задают выход привода. Замедление начинается перед зоной остановки. Коэффициент 1 — обычный спад скорости; 2 — вдвое быстрее; 0,5 — вдвое медленнее. Он действует также при снижении рабочей скорости и реверсе. Реверс: торможение и пауза 300 мс. STOP выключает привод сразу.</p></div>
+<div class="form-actions"><button class="btn good" type="submit">Сохранить настройки</button></div></form></div></details></section><section class="card settings-section" id="calibrationSettings"><details class="settings-details" ontoggle="if(this.open){loadAzCalibration();loadElCalibration();}"><summary id="caltoggle"><h2>Диапазоны и калибровка<span class="section-caption">Упоры и измерения датчиков AZ / EL</span></h2></summary><div class="settings-content" id="calbody">
+<div class="range-editors"><section class="range-editor settings-pane"><h3>Азимут · AZ</h3>
+<div class="seg profile-options">
+<button class="btn" id="azm36" onclick="setAzMode(36)">P36 · 360°</button>
+<button class="btn" id="azm45" onclick="setAzMode(45)">P45 · 450°</button>
+<button class="btn" id="azmc" onclick="useCustomRange()">Произвольный</button>
 </div>
-<div class="label">ДИАПАЗОН АЗИМУТА — таблицы P36/P45 независимы</div>
-<div class="seg">
-<button id="azm36" class="btn" onclick="setAzMode(36)">P36 · 360°</button>
-<button id="azm45" class="btn" onclick="setAzMode(45)">P45 · 450°</button>
+<p class="rangebadge" id="azrange">P--</p>
+<form class="range-form" id="azRangeForm" onsubmit="saveAzRange(event)"><h4>Произвольный диапазон</h4>
+<div class="row"><div class="field"><label for="azRangeForm-start">Начало диапазона, °</label><input id="azRangeForm-start" max="3600" min="-3600" name="start" required="" step="0.1" type="number" value="0"/></div>
+<div class="field"><label for="azRangeForm-span">Полный ход, °</label><input id="azRangeForm-span" max="3600" min="1" name="span" required="" step="0.1" type="number" value="450"/></div></div>
+<p>Конец диапазона: <b id="azRangeEnd">450°</b></p>
+<p class="hint">Минус сдвигает начало против часовой стрелки, плюс — по часовой. Изменение полного хода сбрасывает калибровки произвольного профиля. При изменении только начала измерения сохраняются.</p>
+<div class="form-actions"><button class="btn good" type="submit">Применить диапазон</button></div><div class="inline-message" id="azRangeMessage" role="status"></div>
+</form>
+</section><section class="range-editor el-setting settings-pane"><h3>Элевация · EL</h3>
+<div class="seg profile-options">
+<button class="btn" id="elmstd" onclick="elPost('/api/elrange',{profile:'standard'})">Стандартный · 0…180°</button>
+<button class="btn" id="elmc" onclick="useCustomElRange()">Произвольный</button>
 </div>
-<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin:6px 0 10px">
-<span>Активно: <b id="calmode">-</b></span><span id="azrange" class="rangebadge">P--</span>
-</div>
-
-<div id="panel2" class="calbox">
-<h3>GS-232 2-POINT</h3>
-<div class="muted" style="font-size:12px;margin-bottom:8px">AZ: O = 0°, F = конец выбранного диапазона.<span class="el-help"> EL: O2 = 0°, F2 = 180°.</span></div>
+<p class="rangebadge" id="elrange">P--</p>
+<form class="range-form" id="elRangeForm" onsubmit="saveElRange(event)"><h4>Произвольный диапазон</h4>
+<div class="row"><div class="field"><label for="elRangeForm-start">Начало диапазона, °</label><input id="elRangeForm-start" max="3600" min="-3600" name="start" required="" step="0.1" type="number" value="0"/></div>
+<div class="field"><label for="elRangeForm-span">Полный ход, °</label><input id="elRangeForm-span" max="3600" min="1" name="span" required="" step="0.1" type="number" value="180"/></div></div>
+<p>Конец диапазона: <b id="elRangeEnd">180°</b></p>
+<p class="hint">Начало может быть ниже или выше нулевой элевации. Изменение полного хода сбрасывает калибровки произвольного профиля. При изменении только начала измерения сохраняются.</p>
+<div class="form-actions"><button class="btn good" type="submit">Применить диапазон</button></div><div class="inline-message" id="elRangeMessage" role="status"></div>
+</form>
+</section></div>
+<div class="settings-group calibration-method"><h3>Способ калибровки</h3><div class="seg">
+<button class="btn" id="mode2" onclick="setCalMode('2')">Две точки · GS-232</button>
+<button class="btn" id="modem" onclick="setCalMode('multi')">Несколько точек</button>
+</div><p class="hint">Активно: <b id="calmode">—</b></p></div>
+<div class="calibration-grid" id="panel2"><section class="settings-pane"><h3>Азимут · AZ</h3><p class="hint">Запомните начало и конец активного диапазона.</p><div class="endpoint-buttons"><button class="btn warn" id="b2_azo" onclick="cal2('o')">O · AZ 0°</button><button class="btn warn" id="b2_azf" onclick="cal2('f')">F · AZ FULL</button></div><div class="calvalues endpoint-values"><div>Начало <b id="az2p0">—</b> мВ</div><div>Конец <b id="az2pf">—</b> мВ</div></div><div class="form-actions"><button class="btn calreset" onclick="resetCal('az','2')">Сбросить AZ</button></div></section><section class="settings-pane el-setting"><h3>Элевация · EL</h3><p class="hint">Запомните начало и конец активного диапазона.</p><div class="endpoint-buttons"><button class="btn warn" id="b2_elo" onclick="cal2('o2')">O2 · EL 0°</button><button class="btn warn" id="b2_elf" onclick="cal2('f2')">F2 · EL 180°</button></div><div class="calvalues endpoint-values"><div>Начало <b id="el2p0">—</b> мВ</div><div>Конец <b id="el2pf">—</b> мВ</div></div><div class="form-actions"><button class="btn calreset" onclick="resetCal('el','2')">Сбросить EL</button></div></section></div>
+<div class="calibration-grid hide" id="panelm"><section class="settings-pane"><div class="calhead"><h3>Азимут · AZ</h3><div class="callive"><span id="calaz">--.-</span><span>°</span></div></div><div id="legacyAzPoints">
 <div class="minirow">
-<button id="b2_azo" class="btn warn" onclick="cal2('o')">O · AZ 0°</button>
-<button id="b2_azf" class="btn warn" onclick="cal2('f')">F · AZ FULL</button>
-<button class="btn calreset" onclick="resetCal('az','2')">RESET AZ</button>
-<button id="b2_elo" class="btn warn" onclick="cal2('o2')">O2 · EL 0°</button>
-<button id="b2_elf" class="btn warn" onclick="cal2('f2')">F2 · EL 180°</button>
-<button class="btn calreset" onclick="resetCal('el','2')">RESET EL</button>
+<button class="btn warn" id="b_az0" onclick="cal('az0')">0°</button>
+<button class="btn warn" id="b_az90" onclick="cal('az90')">90°</button>
+<button class="btn warn" id="b_az180" onclick="cal('az180')">180°</button>
+<button class="btn warn" id="b_az270" onclick="cal('az270')">270°</button>
+<button class="btn warn" id="b_az360" onclick="cal('az360')">360°</button>
+<button class="btn warn" id="b_az450" onclick="cal('az450')">450°</button>
 </div>
-<div class="calvalues" style="margin-top:8px">
-<div>AZ 0<br><b id="az2p0">-</b> mV</div>
-<div>AZ FULL<br><b id="az2pf">-</b> mV</div>
-<div>EL 0 / 180<br><b id="el2p0">-</b> / <b id="el2pf">-</b> mV</div>
-</div>
-</div>
-
-<div id="panelm" class="calbox hide">
-<div class="calhead" style="margin-top:0"><h3 style="margin:0">MULTI-POINT AZ</h3><div class="callive"><span id="calaz">--.-</span><span>°</span></div></div>
-<div class="minirow" style="margin-top:8px">
-<button id="b_az0" class="btn warn" onclick="cal('az0')">0°</button>
-<button id="b_az90" class="btn warn" onclick="cal('az90')">90°</button>
-<button id="b_az180" class="btn warn" onclick="cal('az180')">180°</button>
-<button id="b_az270" class="btn warn" onclick="cal('az270')">270°</button>
-<button id="b_az360" class="btn warn" onclick="cal('az360')">360°</button>
-<button id="b_az450" class="btn warn" onclick="cal('az450')">450°</button>
-</div>
-<div class="calvalues" style="margin-top:8px">
+<div class="calvalues">
 <div>0° <b id="azp0">-</b></div><div>90° <b id="azp90">-</b></div><div>180° <b id="azp180">-</b></div>
 <div>270° <b id="azp270">-</b></div><div>360° <b id="azp360">-</b></div><div id="azv450">450° <b id="azp450">-</b></div>
 </div>
-<button class="btn calreset" style="width:100%;margin-top:8px" onclick="resetCal('az','multi')">RESET AZ <span id="resetazrange">P--</span></button>
-
-<div class="calhead" style="margin-top:12px"><h3 style="margin:0">MULTI-POINT EL · общая</h3><div class="callive"><span id="calel">--.-</span><span>°</span></div></div>
-<div class="minirow" style="margin-top:8px">
-<button id="b_el0" class="btn warn" onclick="cal('el0')">0°</button>
-<button id="b_el45" class="btn warn" onclick="cal('el45')">45°</button>
-<button id="b_el90" class="btn warn" onclick="cal('el90')">90°</button>
-<button id="b_el135" class="btn warn" onclick="cal('el135')">135°</button>
-<button id="b_el180" class="btn warn" onclick="cal('el180')">180°</button>
-<button class="btn calreset" onclick="resetCal('el','multi')">RESET EL</button>
+</div><div class="hide" id="customAzPoints"><p class="hint">Запомните оба упора и все добавленные точки. Угол указывается непрерывно, например −60°, 0°, 360°.</p>
+<div class="point-list" id="azPointList"></div><form class="inline-form" onsubmit="addAzPoint(event)"><div class="field"><label for="azPointAngle">Угол новой точки, °</label><input id="azPointAngle" required="" step="0.1" type="number"/></div><button class="btn" type="submit">Добавить</button></form></div><div class="form-actions"><button class="btn calreset" onclick="resetCal('az','multi')">Сбросить AZ · <span id="resetazrange">P--</span></button></div></section><section class="settings-pane el-setting"><div class="calhead"><h3>Элевация · EL</h3><div class="callive"><span id="calel">--.-</span><span>°</span></div></div><div id="legacyElPoints"><div class="minirow">
+<button class="btn warn" id="b_el0" onclick="cal('el0')">0°</button>
+<button class="btn warn" id="b_el45" onclick="cal('el45')">45°</button>
+<button class="btn warn" id="b_el90" onclick="cal('el90')">90°</button>
+<button class="btn warn" id="b_el135" onclick="cal('el135')">135°</button>
+<button class="btn warn" id="b_el180" onclick="cal('el180')">180°</button>
 </div>
-<div class="calvalues" style="margin-top:8px">
+<div class="calvalues">
 <div>0° <b id="elp0">-</b></div><div>45° <b id="elp45">-</b></div><div>90° <b id="elp90">-</b></div>
 <div>135° <b id="elp135">-</b></div><div>180° <b id="elp180">-</b></div>
-</div>
-</div>
-</div></div>
-<div class="card"><details><summary>Поворотка и логгеры</summary>
-<form id="forkSettings" onsubmit="saveFork(event)"><div class="row">
-<div class="field"><label>Модель</label><select name="model"><option value="G5500">G-5500</option><option value="G800DXA">G-800DXA</option></select></div>
-<div class="field"><label>Имя в N1MM</label><input name="rotorName" maxlength="31" required></div>
-<div class="field"><label>N1MM UDP</label><input name="n1mmPort" type="number" min="1" max="65535" required></div>
-<div class="field"><label for="pstPort">PstRotator UDP</label><input id="pstPort" name="pstPort" type="number" min="1" max="65534" aria-describedby="pstPortHelp" required></div>
-<div class="field"><label>Положение N1MM UDP</label><input name="reportPort" type="number" min="1" max="65535" required></div>
-<div class="field"><label>Дополнительный IP N1MM</label><input name="reportHost" placeholder="192.168.1.10"></div></div>
-<p id="pstPortHelp" style="margin:8px 0;color:var(--m);font-size:13px;line-height:1.4">PstRotator UDP — для UR5EQF и 5MContest. В логгере выберите PstRotator/UDP; отдельно запускать программу PstRotator не требуется.<br>Log4OM 2, DXLog.net, TR4W (с 4.148.6), Swisslog и LogHX также имеют интеграцию с PstRotator, но с нашим контроллером не тестировались.</p>
-<div class="hint" id="buildInfo"></div>
-<div id="encoderSettings" class="hide"><label><input name="encoderInverted" type="checkbox" checked> Инверсия энкодера</label></div>
-<div id="coastSettings"><h3>Выбег и остановка</h3><div class="row">
-<div class="field"><label for="coastDegrees">Угол выбега AZ, °</label><input id="coastDegrees" name="coastDegrees" type="number" min="0" max="90" step="0.1" value="5" required></div>
-<div class="field el-setting"><label for="elCoastDegrees">Угол выбега EL, °</label><input id="elCoastDegrees" name="elCoastDegrees" type="number" min="0" max="90" step="0.1" value="5" required></div>
-</div><p class="hint">Привод отключается за этот угол до цели, оставляя запас на механический выбег. 0° — отключение при достижении цели. Для короткого хода угол ограничен 10% полного хода. После отключения обратной коррекции нет.</p></div>
-<div id="speedSettings"><h3>Скорость и плавность движения</h3><label id="analogSpeedToggle"><input name="speedEnabled" type="checkbox"> Управлять скоростью через внешний модуль 0–5 В</label>
-<p>AZ</p><div class="row">
-<div class="field"><label>Рабочая скорость, %</label><input name="speedPercent" type="number" min="25" max="100" step="1" value="50" required></div>
-<div class="field"><label>Скорость старта, %</label><input name="startSpeedPercent" type="number" min="25" max="100" step="1" value="25" required></div>
-<div class="field"><label>Скорость у цели, %</label><input name="approachSpeedPercent" type="number" min="25" max="100" step="1" value="25" required></div>
-<div class="field"><label>Время разгона 0–100% рабочей скорости, мс</label><input name="accelerationMs" type="number" min="100" max="10000" step="1" value="2000" required></div>
-<div class="field"><label>Время торможения 100–0% рабочей скорости, мс</label><input name="decelerationMs" type="number" min="100" max="10000" step="1" value="1500" required></div>
-<div class="field"><label>Начинать замедление за, °</label><input name="slowdownDegrees" type="number" min="1" max="90" step="1" value="10" required></div>
-<div class="field"><label for="decelerationFactor">Коэффициент торможения AZ</label><input id="decelerationFactor" name="decelerationFactor" type="number" min="0.1" max="10" step="0.1" value="1" required></div>
-</div><div class="hint">Выход AZ: <b id="speedOutput">0%</b></div><div id="elSpeedSettings"><p>EL</p><div class="row">
-<div class="field"><label>Рабочая скорость, %</label><input name="elSpeedPercent" type="number" min="1" max="100" step="1" value="100" required></div>
-<div class="field"><label>Скорость старта, %</label><input name="elStartSpeedPercent" type="number" min="1" max="100" step="1" value="18" required></div>
-<div class="field"><label>Скорость у цели, %</label><input name="elApproachSpeedPercent" type="number" min="1" max="100" step="1" value="18" required></div>
-<div class="field"><label>Время разгона 0–100% рабочей скорости, мс</label><input name="elAccelerationMs" type="number" min="100" max="10000" step="1" value="1800" required></div>
-<div class="field"><label>Время торможения 100–0% рабочей скорости, мс</label><input name="elDecelerationMs" type="number" min="100" max="10000" step="1" value="1200" required></div>
-<div class="field"><label>Начинать замедление за, °</label><input name="elSlowdownDegrees" type="number" min="1" max="90" step="1" value="2" required></div>
-<div class="field"><label for="elDecelerationFactor">Коэффициент торможения EL</label><input id="elDecelerationFactor" name="elDecelerationFactor" type="number" min="0.1" max="10" step="0.1" value="1" required></div>
-</div><div class="hint">Выход EL: <b id="elSpeedOutput">0%</b></div></div><p class="hint">Проценты задают выход привода. Замедление начинается перед зоной остановки. Коэффициент 1 — обычный спад скорости; 2 — вдвое быстрее; 0,5 — вдвое медленнее. Он действует также при снижении рабочей скорости и реверсе. Реверс: торможение и пауза 300 мс. STOP выключает привод сразу.</p></div>
-<button class="btn" type="submit">Сохранить настройки</button></form></details></div>
-<div class="card"><div class="label">История RSSI домашнего Wi-Fi</div>
-<div class="row" style="margin-top:10px"><button class="btn rbtn active" data-r="hour">1 HOUR</button><button class="btn rbtn" data-r="day">1 DAY</button><button class="btn rbtn" data-r="week">1 WEEK</button><button class="btn rbtn" data-r="month">1 MONTH</button><button class="btn rbtn" data-r="year">1 YEAR</button></div>
-<canvas id="rchart" width="900" height="260"></canvas>
-<div class="kv" style="margin-top:10px"><div>MIN: <b id="rmin">-</b></div><div>MAX: <b id="rmax">-</b></div><div>AVG: <b id="ravg">-</b></div><div>Points: <b id="rcount">0</b></div></div></div>
-<section class="card device-panel" id="hudPanel" aria-labelledby="hudHeading">
-<h2 id="hudHeading">Контроллер поворотки</h2>
-<div id="hudLink" class="hint" role="status"></div>
-<div id="hudControls" class="hide">
+</div></div><div class="hide el-setting" id="customElPoints"><p class="hint">Запомните оба упора и все промежуточные точки. Напряжение датчика должно последовательно расти или убывать.</p><div class="point-list" id="elPointList"></div><form class="inline-form" onsubmit="addElPoint(event)"><div class="field"><label for="elPointAngle">Угол новой точки EL, °</label><input id="elPointAngle" required="" step="0.1" type="number"/></div><button class="btn" type="submit">Добавить</button></form></div><div class="form-actions"><button class="btn calreset" onclick="resetCal('el','multi')">Сбросить EL</button></div></section></div>
+</div></details></section><section class="card settings-section" id="presetSettings"><details class="settings-details"><summary><h2>Предустановки<span class="section-caption">Четыре сохранённых положения</span></h2></summary><div class="settings-content"><form id="presetEditor" onsubmit="savePreset(event)">
+<div class="row"><div class="field"><label for="presetEditor-slot">Кнопка</label><select id="presetEditor-slot" name="slot" onchange="fillPreset()"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div>
+<div class="field"><label for="presetEditor-label">Название</label><input id="presetEditor-label" maxlength="24" name="label" required=""/></div>
+<div class="field"><label for="presetEditor-az">AZ, °</label><input id="presetEditor-az" max="450" min="0" name="az" required="" step="0.1" type="number"/></div>
+<div class="field el-setting"><label for="presetEditor-el">EL, °</label><input id="presetEditor-el" max="180" min="0" name="el" step="0.1" type="number" value="0"/></div></div>
+<div class="form-actions"><button class="btn good" type="submit">Сохранить предустановку</button></div></form></div></details></section><section class="card settings-section" id="hudPanel"><details class="settings-details"><summary><h2>Пульт и связь<span class="section-caption">Роль устройства и подключение повороток</span></h2></summary><div class="settings-content">
+<h3 id="hudHeading">Контроллер поворотки</h3>
+<div class="hint" id="hudLink" role="status"></div>
+<div class="hide" id="hudControls">
 <p class="hint">Команды программ, подключённых к HUD, идут выбранной поворотке.</p>
-<div id="hudPeers" class="device-list"></div>
+<div class="device-list" id="hudPeers"></div>
 <div class="device-pagination"><button class="btn" id="hudPrev" onclick="hudPage(-1)">Назад</button><span id="hudPageInfo"></span><button class="btn" id="hudNext" onclick="hudPage(1)">Далее</button></div>
-<details class="device-section"><summary>Добавить поворотку</summary>
-<div class="device-actions"><button class="btn" onclick="hudSearch()">Найти в сети</button><button class="btn" id="hudUartSearch" onclick="hudSearch(true)">Найти по UART</button></div>
+<section class="settings-group"><h3>Добавить поворотку</h3>
+<div class="form-actions"><button class="btn" onclick="hudSearch()">Найти в сети</button><button class="btn" id="hudUartSearch" onclick="hudSearch(true)">Найти по UART</button></div>
 <form class="device-address" onsubmit="event.preventDefault();hudSearch(false,true)">
-<div class="device-fields"><div class="field"><label for="hudAddress">IP контроллера</label><input id="hudAddress" placeholder="192.168.4.1"></div><div class="field"><label for="hudPeerPort">UDP-порт HUD</label><input id="hudPeerPort" type="number" min="1" max="65535" value="4534"></div></div>
+<div class="device-fields"><div class="field"><label for="hudAddress">IP контроллера</label><input id="hudAddress" placeholder="192.168.4.1"/></div><div class="field"><label for="hudPeerPort">UDP-порт HUD</label><input id="hudPeerPort" max="65535" min="1" type="number" value="4534"/></div></div>
 <button class="btn">Проверить адрес</button></form>
-<div id="hudDiscovered" class="device-list"></div>
+<div class="device-list" id="hudDiscovered"></div>
 <div class="device-pagination"><button class="btn" onclick="hudDiscoveryPage(-1)">Назад</button><span id="hudDiscoveryInfo"></span><button class="btn" onclick="hudDiscoveryPage(1)">Далее</button></div>
-</details></div>
-<details class="device-section"><summary>Роль устройства и связь</summary>
+</section></div>
+<section class="settings-group"><h3>Роль устройства и связь</h3>
 <form id="hudConfig" onsubmit="saveHudDevice(event)"><div class="device-fields">
 <div class="field"><label for="deviceRole">Роль после перезагрузки</label><select id="deviceRole" name="role"><option value="controller">Контроллер поворотки</option><option value="hud">HUD — удалённый пульт</option></select></div>
 <div class="field"><label for="deviceWifi">Подключение по Wi-Fi</label><select id="deviceWifi" name="wifi"><option value="existing">Через роутер / обычный режим</option><option value="host">Общая точка доступа</option><option value="client">Клиент общей точки доступа</option></select></div>
 <div class="field"><label for="deviceUart">Проводной UART</label><select id="deviceUart" name="uart"><option value="0">GS-232 для программ, 9600</option><option value="1">HUD ↔ поворотка, 115200</option></select></div>
-<div class="field"><label for="devicePort">UDP-порт HUD</label><input id="devicePort" name="port" type="number" min="1" max="65535" value="4534" required></div>
+<div class="field"><label for="devicePort">UDP-порт HUD</label><input id="devicePort" max="65535" min="1" name="port" required="" type="number" value="4534"/></div>
 </div><p class="hint">Для общей сети одно устройство создаёт точку доступа, остальные подключаются к ней через настройки Wi-Fi ниже. UART HUD занимает существующие провода GS-232.</p>
-<div class="device-actions"><button class="btn good" type="submit">Сохранить и перезагрузить</button></div></form>
-</details></section>
-<div class="card" id="networkSettings"><div class="label">Подключение</div><div class="kv" style="margin-top:10px">
-<div>Home IP: <b id="ip">-</b></div><div>AP IP: <b id="apip">-</b></div><div>TCP rotctld: <b>4533</b></div><div>Mode: <b id="mode">-</b></div><div>Home Wi-Fi RSSI: <b id="rssi">-</b></div><div>Signal: <b id="sig">-</b></div>
-<div id="btlinkrow" class="hide">Bluetooth-соединение: <b id="btlinkstate" role="status">-</b></div>
+<div class="form-actions"><button class="btn good" type="submit">Сохранить и перезагрузить</button></div></form>
+</section></div></details></section><section class="card settings-section" id="networkSettings"><details class="settings-details"><summary><h2>Сеть и подключение<span class="section-caption">Домашний Wi-Fi, точка доступа и Bluetooth</span></h2></summary><div class="settings-content"><h3>Текущее подключение</h3><div class="kv">
+<div>IP в сети: <b id="ip">-</b></div><div>IP точки доступа: <b id="apip">-</b></div><div>TCP rotctld: <b>4533</b></div><div>Режим: <b id="mode">-</b></div><div>Уровень Wi-Fi: <b id="rssi">-</b></div><div>Качество: <b id="sig">-</b></div>
+<div class="hide" id="btlinkrow">Bluetooth-соединение: <b id="btlinkstate" role="status">-</b></div>
 <div><span id="btlabel">Bluetooth</span>: <b id="btstate" role="status">-</b></div><div id="bttransport">-</div>
-<div id="btmacrow" class="hide" style="grid-column:1/-1">Bluetooth MAC: <b id="btmac" style="font-family:monospace;user-select:all;white-space:nowrap">-</b></div></div>
-<div id="bthelp" class="hint hide">Этот MAC нужен в Look4Sat. Подключение видно и без передачи команд; сопряжение в Android само по себе не означает активное соединение.</div>
-<div class="field" style="margin-top:10px"><label>Wi‑Fi SSID</label><input id="ssid"></div>
-<div class="field" style="margin-top:8px"><label>Wi‑Fi password</label><input id="pass" type="password"></div>
-<button id="wifiSaveButton" class="btn good" style="margin-top:10px" onclick="wifi()">Save Wi‑Fi + reboot</button>
-<div id="wifiMessage" class="hint" role="status" aria-live="polite"></div>
-<div class="field" style="margin-top:14px"><label>Access Point password (8..63 chars; empty = open AP)</label><input id="appass" type="password" minlength="8" maxlength="63" placeholder="leave empty for open AP"></div>
-<button class="btn good" style="margin-top:10px" onclick="saveAp()">Save AP password + reboot</button></div>
-</section></div>
+<div class="hide" id="btmacrow">Bluetooth MAC: <b class="mono" id="btmac">-</b></div></div><div class="hint hide" id="bthelp">Этот MAC нужен в Look4Sat. Подключение видно и без передачи команд; сопряжение в Android само по себе не означает активное соединение.</div>
+<section class="settings-group"><h3>Домашняя сеть Wi-Fi</h3><div class="row"><div class="field"><label for="ssid">Имя сети (SSID)</label><input autocomplete="off" id="ssid"/></div><div class="field"><label for="pass">Пароль сети</label><input autocomplete="new-password" id="pass" type="password"/></div></div>
+<div class="form-actions"><button class="btn good" id="wifiSaveButton" onclick="wifi()">Сохранить Wi-Fi</button><span class="hint">Устройство перезагрузится.</span></div><div aria-live="polite" class="inline-message" id="wifiMessage" role="status"></div></section>
+<section class="settings-group"><h3>Точка доступа устройства</h3><div class="field"><label for="appass">Пароль точки доступа</label><input autocomplete="new-password" id="appass" maxlength="63" minlength="8" placeholder="Пустое поле — открытая сеть" type="password"/></div><p class="hint">От 8 до 63 символов. Оставьте поле пустым, чтобы открыть сеть без пароля.</p><div class="form-actions"><button class="btn good" id="apSaveButton" onclick="saveAp()">Сохранить точку доступа</button><span class="hint">Устройство перезагрузится.</span></div></section></div></details></section><section class="card settings-section" id="signalSettings"><details class="settings-details" ontoggle="if(this.open)loadRssi()"><summary><h2>Уровень сигнала<span class="section-caption">История подключения к домашнему Wi-Fi</span></h2></summary><div class="settings-content">
+<div class="period-options"><button class="btn rbtn active" data-r="hour">Час</button><button class="btn rbtn" data-r="day">Сутки</button><button class="btn rbtn" data-r="week">Неделя</button><button class="btn rbtn" data-r="month">Месяц</button><button class="btn rbtn" data-r="year">Год</button></div>
+<canvas height="260" id="rchart" width="900"></canvas>
+<div class="kv"><div>Мин.: <b id="rmin">-</b></div><div>Макс.: <b id="rmax">-</b></div><div>Среднее: <b id="ravg">-</b></div><div>Измерений: <b id="rcount">0</b></div></div></div></details></section></section></div>
+<div id="settingsFeedback" class="action-feedback" hidden><div role="status" aria-live="polite" aria-atomic="true"><strong id="settingsFeedbackTitle"></strong><span id="settingsFeedbackText"></span></div><button type="button" aria-label="Закрыть уведомление" onclick="this.parentElement.hidden=true">×</button></div>
 <script>
 function setText(node,value){const text=String(value??'');if(node.textContent!==text)node.textContent=text;}
+let settingsActionSequence=0,settingsFeedbackTimer;
+const settingsRequests=new Set();
+function settingsFeedback(message,state='error'){
+ const box=document.getElementById('settingsFeedback');box.dataset.state=state;box.hidden=document.getElementById('settingsPanel').hidden;
+ setText(document.getElementById('settingsFeedbackTitle'),state==='pending'?'Выполняется…':state==='success'?'Готово':'Не выполнено');
+ setText(document.getElementById('settingsFeedbackText'),message);
+ clearTimeout(settingsFeedbackTimer);if(state==='success')settingsFeedbackTimer=setTimeout(()=>{box.hidden=true;},6000);
+}
+function beginSettingsAction(message,key){
+ if(settingsRequests.has(key))return null;
+ settingsRequests.add(key);const sequence=++settingsActionSequence;
+ const active=document.activeElement,source=document.getElementById('settingsPanel').contains(active)?active:null;
+ const button=source?.closest('button')||source?.closest('form')?.querySelector('button[type=submit]');
+ const wasDisabled=button?.disabled;
+ if(button){button.disabled=true;button.setAttribute('aria-busy','true');}
+ settingsFeedback(message,'pending');
+ return {
+  update(text){if(sequence===settingsActionSequence)settingsFeedback(text,'pending');},
+  finish(ok,text){settingsRequests.delete(key);if(button){button.disabled=wasDisabled;button.removeAttribute('aria-busy');}if(sequence===settingsActionSequence)settingsFeedback(text,ok?'success':'error');}
+ };
+}
+async function settingsRequest(path,options={}){
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+ try{const response=await fetch(path,{cache:'no-store',...options,signal:controller.signal});const text=await response.text();return {ok:response.ok,status:response.status,text,json:()=>JSON.parse(text)};}
+ finally{clearTimeout(timer);}
+}
 
 
 function selectTab(name,updateHash=true){
  const settings=name==='settings',opening=settings&&document.getElementById('settingsPanel').hidden;
+ document.body.classList.toggle('settings-view',settings);
  for(const tab of ['control','settings']){
   const active=(tab==='settings')===settings,button=document.getElementById(tab+'Tab');
   document.getElementById(tab+'Panel').hidden=!active;
   button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;
  }
  if(updateHash&&location.hash!==(settings?'#settings':'#control'))location.hash=settings?'settings':'control';
+ if(!settings)document.getElementById('settingsFeedback').hidden=true;
  if(opening)loadRssi();
+ if(updateHash)(settings?document.querySelector('.wrap'):window).scrollTo({top:0,behavior:'instant'});
 }
 function compactStatus(j){
  const wifi=document.getElementById('statusWifi'),bt=document.getElementById('statusBt');
@@ -323,23 +425,30 @@ function sendLive(path,body){
 setInterval(()=>{if(live.ready&&Date.now()-live.last>1500)live.socket.close()},250);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){queueLiveRender();upd(true)}});
 async function forkPost(path,body){
+ const success={'/api/settings':'Настройки сохранены','/api/preset':'Предустановка сохранена','/api/device':'Настройки устройства сохранены','/api/hud/select':'Поворотка выбрана','/api/hud/peers':body.action==='remove'?'Поворотка удалена':body.name?'Имя поворотки сохранено':'Поворотка добавлена','/api/hud/discover':'Поиск устройств запущен'}[path];
+ const notice=success?beginSettingsAction(path==='/api/hud/discover'?'Поиск устройств…':'Ожидаем подтверждение устройства…',path+JSON.stringify(body)):null;
+ if(success&&!notice)return false;
  try{
   const selection=body.selection??window._forkState?.hudSelectionEpoch,name=window._forkState?.hudName;
   if(window._forkState?.deviceRole==='hud'&&['/api/target','/api/move','/api/mode','/api/execute','/api/preset','/api/preset/run'].includes(path))body={...body,selection};
+  if(livePaths.has(path)&&window._forkState?.azRangeRevision!==undefined)body={...body,rangeRevision:window._forkState.azRangeRevision};
   const fastStop=path==='/api/move'&&['S','A','E'].includes(body.d);
   const usingLive=live.ready&&livePaths.has(path);
-  const r=usingLive?await sendLive(path,body):await fetch(fastStop?path+'?d='+body.d+(body.selection===undefined?'':'&selection='+body.selection):path,fastStop?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
+  const request=notice?settingsRequest:fetch;
+  const r=usingLive?await sendLive(path,body):await request(fastStop?path+'?d='+body.d+(body.selection===undefined?'':'&selection='+body.selection):path,fastStop?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
   let j=await r.json();
   if(r.status===202&&j.requestId){
-    document.getElementById('forkMessage').textContent='Ожидаем подтверждение поворотки…';
+    document.getElementById('forkMessage').textContent='Ожидаем подтверждение поворотки…';notice?.update('Ожидаем подтверждение поворотки…');
     const started=Date.now();
-    while(j.result==='deferred'&&Date.now()-started<3000){await new Promise(resolve=>setTimeout(resolve,100));j=await (await fetch('/api/hud/command?id='+j.requestId,{cache:'no-store'})).json();}
+    while(j.result==='deferred'&&Date.now()-started<3000){await new Promise(resolve=>setTimeout(resolve,100));j=await (await request('/api/hud/command?id='+j.requestId,{cache:'no-store'})).json();}
     if(j.result==='deferred')j={ok:false,result:'timeout'};
   }
   const messages={deferred:'Ожидаем подтверждение',timeout:'Нет подтверждения — проверьте состояние поворотки',unavailable:'Нет связи с повороткой',busy:'Поворотка занята, повторите команду',cancelled:'Команда отменена',storage_full:'Не хватает памяти для сохранения',hud_port_conflict:'Порт HUD совпадает с портом логгера',controller_settings_only:'Эти настройки доступны на контроллере поворотки',restart:'Сохранено. Устройство перезагружается',searching:'Поиск устройств…',invalid_or_port_conflict:'Проверьте настройки и порты',uart_in_use_by_hc05:'UART занят HC-05: нужна сборка без Bluetooth',not_calibrated:'Сначала выполните калибровку',invalid:'Проверьте значения',ignored:'Сейчас выполняется предустановка',pending:'Цель ожидает подтверждения',ok:'Готово'};
   document.getElementById('forkMessage').textContent=(messages[j.result]||'Ошибка')+(path!=='/api/hud/select'&&name&&selection!==window._forkState?.hudSelectionEpoch?' · команда для '+name:'');
-  if(!usingLive)await upd(true);return j.ok;
- }catch(e){document.getElementById('forkMessage').textContent='Нет связи с контроллером';return false}
+  const ok=r.status<400&&!!j.ok;
+  notice?.finish(ok,ok&&j.result==='ok'?success:(messages[j.result]||'Не удалось выполнить действие'));
+  if(!usingLive)await upd(true);return ok;
+ }catch(e){const message='Подтверждение не получено. Проверьте связь и состояние устройства перед повтором.';document.getElementById('forkMessage').textContent=message;notice?.finish(false,message);return false}
 }
 function fillPreset(){
  const f=document.getElementById('presetEditor'),p=window._forkState?.presets[Number(f.elements.slot.value)-1];if(!p)return;
@@ -405,9 +514,10 @@ function updateFork(j){
  if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements.speedEnabled.checked=j.speedEnabled;
  document.getElementById('encoderSettings').classList.toggle('hide',j.build?.display!=='CROWPANEL_21');
  if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements.encoderInverted.checked=j.encoderInverted??true;
- document.querySelector('#presetEditor [name=az]').max=j.azMode===36?360:450;
+ document.querySelector('#presetEditor [name=el]').min=j.elStart??0;document.querySelector('#presetEditor [name=el]').max=j.elMax??180;
+ document.querySelector('#presetEditor [name=az]').min=j.azStart??0;document.querySelector('#presetEditor [name=az]').max=j.azMax??(j.azMode===36?360:450);
  if(first)fillPreset();
- const faults={target_not_calibrated:'Сначала выполните калибровку',continuous_motion_timeout:'Превышено время непрерывного вращения',udp_bind_failed:'Не удалось открыть UDP-порт',pwm_attach_failed:'Не удалось включить регулировку скорости'};if(j.fault)setText(document.getElementById('forkMessage'),faults[j.fault]||'Ошибка управления');
+ const faults={calibration_storage_invalid:'Ошибка сохранённой калибровки: откройте настройки AZ',calibration_save_failed:'Не удалось сохранить калибровку',target_not_calibrated:'Сначала выполните калибровку',continuous_motion_timeout:'Превышено время непрерывного вращения',udp_bind_failed:'Не удалось открыть UDP-порт',pwm_attach_failed:'Не удалось включить регулировку скорости'};if(j.fault)setText(document.getElementById('forkMessage'),faults[j.fault]||'Ошибка управления');
 }
 
 async function q(u){try{if((live.ready||window._forkState?.deviceRole==='hud')&&(u.startsWith('/api/move?')||u.startsWith('/api/target?'))){const url=new URL(u,location.origin);await forkPost(url.pathname,Object.fromEntries(url.searchParams));return ''}return await (await fetch(u,{cache:'no-store'})).text()}catch(e){return''}}
@@ -419,25 +529,74 @@ async function stopAxis(d,selection){
   else if(d==='U'||d==='D') await q('/api/move?d=E'+scope);
 }
 async function go(){if(taz.value==='')return;const body={az:taz.value};if(window._forkState?.model!=='G800DXA'){if(tel.value==='')return;body.el=tel.value}await forkPost('/api/target',body)}
-function toggleCalMenu(){
-  const body=document.getElementById('calbody');
-  const btn=document.getElementById('caltoggle');
-  const open=!body.classList.contains('open');
-  body.classList.toggle('open',open);
-  btn.classList.toggle('open',open);
+async function cal(p){await calibrationAction('/api/cal?p='+p,'Точка '+p.slice(0,2).toUpperCase()+' '+p.slice(2)+'° запомнена')}
+async function cal2(p){await calibrationAction('/api/cal2?p='+p,(p[0]==='f'?'Конец':'Начало')+' диапазона '+(p.endsWith('2')?'EL':'AZ')+' запомнено')}
+async function setCalMode(m){await calibrationAction('/api/calmode?m='+m,m==='multi'?'Выбрана многоточечная калибровка':'Выбрана двухточечная калибровка')}
+async function calibrationAction(path,success){
+ const notice=beginSettingsAction('Сохранение калибровки…',path);if(!notice)return false;
+ try{const r=await settingsRequest(path);if(!r.ok){notice.finish(false,r.status===403?'Калибровка доступна на контроллере поворотки':'Не удалось сохранить калибровку. Повторите после проверки устройства.');return false;}
+ notice.finish(true,success);await upd(true);await Promise.all([loadAzCalibration(),loadElCalibration()]);return true;
+ }catch(e){notice.finish(false,'Подтверждение не получено. Проверьте связь и состояние калибровки перед повтором.');return false;}
 }
-async function cal(p){await q('/api/cal?p='+p);setTimeout(upd,150)}
-async function cal2(p){await q('/api/cal2?p='+p);setTimeout(upd,150)}
-async function setCalMode(m){await q('/api/calmode?m='+m);setTimeout(upd,150)}
-async function setAzMode(m){await q('/api/azmode?m='+m);setTimeout(upd,150)}
+async function setAzMode(m){await azPost('/api/azrange',{profile:m===36?'p36':'p45'})}
 async function resetCal(axis,cm){
   const name=axis==='az'?'АЗИМУТА':'ЭЛЕВАЦИИ';
   const mn=cm==='2'?'GS-232 2-POINT':'MULTI-POINT';
-  const rr=axis==='az'?' '+(window._azMode===36?'P36':'P45'):'';
+  const rr=axis==='az'?' '+(window._azMode===0?'Произвольный':'P'+window._azMode):'';
   if(!confirm('Сбросить '+mn+' калибровку '+name+rr+'?')) return;
-  await q('/api/calreset?axis='+axis+'&mode='+cm);
-  setTimeout(upd,150);
+  await calibrationAction('/api/calreset?axis='+axis+'&mode='+cm,'Калибровка '+axis.toUpperCase()+' сброшена');
 }
+function azEndPreview(){const f=document.getElementById('azRangeForm');azRangeEnd.textContent=(Number(f.elements.start.value)+Number(f.elements.span.value)).toFixed(1)+'°'}
+document.getElementById('azRangeForm').addEventListener('input',e=>{e.currentTarget.dataset.dirty='1';azEndPreview()});
+async function loadAzCalibration(){
+ if(window._forkState?.deviceRole==='hud')return;
+ try{const r=await fetch('/api/azcal',{cache:'no-store'});if(!r.ok)return;const j=await r.json();window._azCal=j;
+ const f=document.getElementById('azRangeForm');if(!f.dataset.dirty&&!f.contains(document.activeElement)){f.elements.start.value=j.customStart;f.elements.span.value=j.customSpan;azEndPreview()}
+ azPointList.replaceChildren();
+ if(j.profile==='custom')for(const p of j.points){const row=document.createElement('div');row.className='point-row';const label=document.createElement('span');label.textContent=p.angle+'° · '+(p.mv<0?'не записано':p.mv+' мВ');row.append(label);
+ const capture=document.createElement('button');capture.className='btn '+(p.mv>=0?'good':'warn');capture.textContent='Запомнить положение';capture.onclick=()=>azPost('/api/azcal',{op:'capture',angle:p.angle});const actions=document.createElement('div');actions.className='point-actions';actions.append(capture);row.append(actions);
+ if(!p.endpoint){const del=document.createElement('button');del.className='btn';del.textContent='Удалить';del.onclick=()=>azPost('/api/azcal',{op:'delete',angle:p.angle});actions.append(del)}azPointList.append(row)}
+ if(j.storageFault)azRangeMessage.textContent='Ошибка сохранённой калибровки. Сбросьте калибровку AZ и настройте её заново.';
+ }catch(e){azRangeMessage.textContent='Не удалось прочитать калибровку'}
+}
+async function axisCalibrationPost(axis,path,body,notice=null){
+ const label=axis.toUpperCase();notice=notice||beginSettingsAction('Сохранение '+label+'…',path+JSON.stringify(body));if(!notice)return false;
+ notice.update('Сохранение '+label+'…');
+ const message=document.getElementById(axis+'RangeMessage');
+ try{const r=await settingsRequest(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});const j=r.json();
+ if(!r.ok||j.ok===false){const error=j.error==='invalid_point'?'Проверьте угол: точка должна быть внутри диапазона, без повторов; максимум 16 точек.':j.error==='invalid_range'?'Проверьте начало и полный ход.':'Не удалось сохранить настройки '+label;setText(message,error);notice.finish(false,error);return false;}
+ const text=body.op?(body.op==='capture'?'Положение '+label+' '+body.angle+'° запомнено':body.op==='add'?'Точка '+label+' '+body.angle+'° добавлена':'Точка '+label+' '+body.angle+'° удалена'):'Диапазон '+label+' сохранён';
+ delete document.getElementById(axis+'RangeForm').dataset.dirty;setText(message,text);notice.finish(true,text);
+ await upd(true);await (axis==='az'?loadAzCalibration():loadElCalibration());return true;
+ }catch(e){const error='Подтверждение не получено. Проверьте связь и настройки '+label+' перед повтором.';setText(message,error);notice.finish(false,error);return false;}
+}
+async function azPost(path,body){return axisCalibrationPost('az',path,body)}
+async function saveAzRange(e){e.preventDefault();const f=e.target;await azPost('/api/azrange',{profile:'custom',start:f.elements.start.value,span:f.elements.span.value})}
+async function useCustomAxisRange(axis){
+ const notice=beginSettingsAction('Загрузка произвольного диапазона '+axis.toUpperCase()+'…',axis+'custom');if(!notice)return false;
+ try{const r=await settingsRequest('/api/'+axis+'cal');if(!r.ok){notice.finish(false,'Не удалось прочитать диапазон. Повторите после проверки устройства.');return false;}
+ const j=r.json();return await axisCalibrationPost(axis,'/api/'+axis+'range',{profile:'custom',start:j.customStart,span:j.customSpan},notice);
+ }catch(e){notice.finish(false,'Не удалось прочитать диапазон. Проверьте связь с устройством.');return false;}
+}
+async function useCustomRange(){return useCustomAxisRange('az')}
+async function addAzPoint(e){e.preventDefault();if(await azPost('/api/azcal',{op:'add',angle:azPointAngle.value}))azPointAngle.value=''}
+function elEndPreview(){const f=document.getElementById('elRangeForm');elRangeEnd.textContent=(Number(f.elements.start.value)+Number(f.elements.span.value)).toFixed(1)+'°'}
+document.getElementById('elRangeForm').addEventListener('input',e=>{e.currentTarget.dataset.dirty='1';elEndPreview()});
+async function loadElCalibration(){
+ if(window._forkState?.deviceRole==='hud'||window._forkState?.model==='G800DXA')return;
+ try{const r=await fetch('/api/elcal',{cache:'no-store'});if(!r.ok)return;const j=await r.json();window._elCal=j;
+ const f=document.getElementById('elRangeForm');if(!f.dataset.dirty&&!f.contains(document.activeElement)){f.elements.start.value=j.customStart;f.elements.span.value=j.customSpan;elEndPreview()}
+ elPointList.replaceChildren();
+ if(j.profile==='custom')for(const p of j.points){const row=document.createElement('div');row.className='point-row';const label=document.createElement('span');label.textContent=p.angle+'° · '+(p.mv<0?'не записано':p.mv+' мВ');row.append(label);
+ const capture=document.createElement('button');capture.className='btn '+(p.mv>=0?'good':'warn');capture.textContent='Запомнить положение';capture.onclick=()=>elPost('/api/elcal',{op:'capture',angle:p.angle});const actions=document.createElement('div');actions.className='point-actions';actions.append(capture);row.append(actions);
+ if(!p.endpoint){const del=document.createElement('button');del.className='btn';del.textContent='Удалить';del.onclick=()=>elPost('/api/elcal',{op:'delete',angle:p.angle});actions.append(del)}elPointList.append(row)}
+ if(j.storageFault)elRangeMessage.textContent='Ошибка сохранённой калибровки. Сбросьте калибровку EL и настройте её заново.';
+ }catch(e){elRangeMessage.textContent='Не удалось прочитать калибровку'}
+}
+async function elPost(path,body){return axisCalibrationPost('el',path,body)}
+async function saveElRange(e){e.preventDefault();const f=e.target;await elPost('/api/elrange',{profile:'custom',start:f.elements.start.value,span:f.elements.span.value})}
+async function useCustomElRange(){return useCustomAxisRange('el')}
+async function addElPoint(e){e.preventDefault();if(await elPost('/api/elcal',{op:'add',angle:elPointAngle.value}))elPointAngle.value=''}
 function markCalBtn(id, ok){
   const b=document.getElementById(id);
   if(!b) return;
@@ -446,32 +605,31 @@ function markCalBtn(id, ok){
 }
 async function wifi(){
  const message=document.getElementById('wifiMessage');
- const button=document.getElementById('wifiSaveButton');
- if(button.disabled)return;
  const network=document.getElementById('ssid').value,password=document.getElementById('pass').value;
- if(!network){setText(message,'Укажите SSID сети Wi-Fi.');return;}
+ if(!network){setText(message,'Укажите SSID сети Wi-Fi.');settingsFeedback(message.textContent);return;}
  if(!confirm('Сохранить Wi‑Fi и перезагрузить контроллер?'))return;
- button.disabled=true;
- const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);
+ const notice=beginSettingsAction('Сохранение настроек Wi-Fi…','wifi');if(!notice)return;
  setText(message,'Сохранение настроек Wi-Fi…');
  try{
-  const response=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({ssid:network,pass:password}),cache:'no-store',signal:controller.signal});
-  setText(message,await response.text()||'Не удалось сохранить настройки Wi-Fi.');
+  const response=await settingsRequest('/api/wifi',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({ssid:network,pass:password})});
+  const text=response.ok?'Настройки Wi-Fi сохранены. Устройство перезагружается.':'Не удалось сохранить Wi-Fi. Проверьте SSID и пароль.';
+  setText(message,text);notice.finish(response.ok,text);
   if(response.ok)document.getElementById('pass').value='';
- }catch(e){setText(message,'Ответ не получен. Проверьте адрес контроллера в домашней сети. Если подключения нет, подключитесь к сервисной сети G5500-HUD-… или G5500-Rotator-… и проверьте SSID.');}
- finally{clearTimeout(timeout);button.disabled=false;}
+ }catch(e){const text='Подтверждение не получено. Проверьте адрес контроллера в домашней сети. Если подключения нет, подключитесь к сервисной сети G5500-HUD-… или G5500-Rotator-… и проверьте SSID.';setText(message,text);notice.finish(false,text);}
 }
 async function saveAp(){
-  const p=appass.value;
-  if(p.length>0 && p.length<8){alert('Пароль AP должен быть минимум 8 символов или пустым для открытой точки доступа.');return;}
-  if(confirm(p.length?'Сохранить пароль точки доступа и перезагрузить контроллер?':'Сделать точку доступа открытой и перезагрузить контроллер?'))
-    await q('/api/ap?pass='+encodeURIComponent(p));
+ const p=appass.value;
+ if(p.length>0&&(p.length<8||p.length>63)){settingsFeedback('Пароль точки доступа должен содержать 8–63 символа. Пустое поле — открытая сеть.');return;}
+ if(!confirm(p.length?'Сохранить пароль точки доступа и перезагрузить контроллер?':'Сделать точку доступа открытой и перезагрузить контроллер?'))return;
+ const notice=beginSettingsAction('Сохранение точки доступа…','ap');if(!notice)return;
+ try{const r=await settingsRequest('/api/ap?pass='+encodeURIComponent(p));notice.finish(r.ok,r.ok?'Настройки точки доступа сохранены. Устройство перезагружается.':'Не удалось сохранить настройки точки доступа.');if(r.ok)appass.value='';}
+ catch(e){notice.finish(false,'Подтверждение не получено. Проверьте связь и настройки точки доступа перед повтором.');}
 }
 function pct(v,m){v=Math.max(0,Math.min(m,v));return(v/m*100).toFixed(1)+'%'}
-let statusPending=false;
+let statusPending=false,statusRefreshQueued=false;
 async function upd(force=false){
 if(live.ready&&!force)return;
-if(statusPending)return;
+if(statusPending){if(force)statusRefreshQueued=true;return;}
 statusPending=true;
 const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5000);
 try{let j=await (await fetch('/api/status',{cache:'no-store',signal:controller.signal})).json();
@@ -479,24 +637,30 @@ httpState=j;connectLive(j.livePort);queueLiveRender();
 }catch(e){
  const wifi=document.getElementById('statusWifi');setText(wifi,'Нет связи');wifi.className='offline';wifi.title='Не удалось обновить статус устройства';
  for(const id of ['statusBt','statusSignal','statusMemory','statusUptime']){const node=document.getElementById(id);setText(node,'—');node.className='';}
-}finally{clearTimeout(timeout);statusPending=false;}}
+}finally{clearTimeout(timeout);statusPending=false;if(statusRefreshQueued){statusRefreshQueued=false;queueMicrotask(()=>upd(true));}}}
 function renderStatus(j){
 setText(az,j.deviceRole==='hud'&&!j.hudOnline?'—':Number(j.az).toFixed(1));setText(el,j.deviceRole==='hud'&&!j.hudOnline?'—':Number(j.el).toFixed(1));
 updateFork(j);
 setText(azt,j.targetValid?Number(j.targetAz).toFixed(1):'---');
 setText(elt,j.targetValid?Number(j.targetEl).toFixed(1):'---');
 setText(calaz,Number(j.az).toFixed(1));setText(calel,Number(j.el).toFixed(1));
-const azmx=j.azMode===36?360:450;azbar.style.width=pct(j.az,azmx);setText(azmaxlabel,azmx+'°');taz.max=azmx;setText(tazlbl,'AZ 0..'+azmx+'°');elbar.style.width=pct(j.el,180);
+const azmn=j.azStart??0,azmx=j.azMax??(j.azMode===36?360:450);azbar.style.width=pct(j.az-azmn,azmx-azmn);setText(azminlabel,azmn+'°');setText(azmaxlabel,azmx+'°');taz.min=azmn;taz.max=azmx;setText(tazlbl,'AZ '+azmn+'…'+azmx+'°');const elmn=j.elStart??0,elmx=j.elMax??180;elbar.style.width=pct(j.el-elmn,elmx-elmn);setText(elminlabel,elmn+'°');setText(elmaxlabel,elmx+'°');tel.min=elmn;tel.max=elmx;setText(tellbl,'EL '+elmn+'…'+elmx+'°');
 setText(motion,j.motion);
-window._azMode=Number(j.azMode)||45;
+window._azMode=j.azMode??45;const rangeName=j.azMode===0?'Произвольный':'P'+j.azMode;
 const selok=!!j.selectedCalOk;
-setText(caltxt,(j.calMode==='multi'?'MULTI-POINT':'GS-232 2-POINT')+' · P'+j.azMode+(selok?' OK':' NOT CALIBRATED'));
+setText(caltxt,(j.calMode==='multi'?'MULTI-POINT':'GS-232 2-POINT')+' · '+rangeName+(selok?' OK':' NOT CALIBRATED'));
 caldot.className='dot '+(selok?'on':'');
-setText(calmode,j.calMode==='multi'?'MULTI-POINT':'GS-232 2-POINT');
+setText(calmode,j.calMode==='multi'?'Несколько точек':'Две точки · GS-232');
 mode2.classList.toggle('good',j.calMode==='2');modem.classList.toggle('good',j.calMode==='multi');
 azm36.classList.toggle('good',j.azMode===36);azm45.classList.toggle('good',j.azMode===45);
-setText(azrange,'P'+j.azMode+' · '+(j.azMode===36?'360°':'450°'));
-setText(resetazrange,'P'+j.azMode);
+setText(azrange,rangeName+' · '+azmn+'…'+azmx+'°');azmc.classList.toggle('good',j.azMode===0);
+setText(b2_azo,'O · AZ '+azmn+'°');setText(b2_azf,'F · AZ '+azmx+'°');
+legacyAzPoints.classList.toggle('hide',j.azMode===0);customAzPoints.classList.toggle('hide',j.azMode!==0);
+azPointAngle.min=azmn;azPointAngle.max=azmx;
+const elCustom=j.elProfile==='custom';setText(elrange,(elCustom?'Произвольный':'Стандартный')+' · '+elmn+'…'+elmx+'°');elmstd.classList.toggle('good',!elCustom);elmc.classList.toggle('good',elCustom);
+setText(b2_elo,'O2 · EL '+elmn+'°');setText(b2_elf,'F2 · EL '+elmx+'°');legacyElPoints.classList.toggle('hide',elCustom||j.model==='G800DXA');customElPoints.classList.toggle('hide',!elCustom||j.model==='G800DXA');elPointAngle.min=elmn;elPointAngle.max=elmx;
+const rangeKey=j.model+':'+j.azMode+':'+j.azRangeRevision;if(window._azCalKey!==rangeKey&&j.deviceRole!=='hud'){window._azCalKey=rangeKey;loadAzCalibration();loadElCalibration();}
+setText(resetazrange,rangeName);
 panel2.classList.toggle('hide',j.calMode!=='2');panelm.classList.toggle('hide',j.calMode!=='multi');
 b_az450.classList.toggle('hide',j.azMode===36);azv450.classList.toggle('hide',j.azMode===36);
 setText(az2p0,j.az2p0);setText(az2pf,j.az2pf);setText(el2p0,j.el2p0);setText(el2pf,j.el2pf);
@@ -517,17 +681,23 @@ if(document.activeElement!==ssid && !ssid.dataset.dirty) ssid.value=j.ssid||'';
 updateHud(j);
 compactStatus(j);
 }
-let rrange='hour';
+let rrange='hour',rssiData=null;
 function drawRssi(j){
- const c=document.getElementById('rchart'),x=c.getContext('2d'),w=c.width,h=c.height;
+ rssiData=j;
+ const c=document.getElementById('rchart'),w=c.clientWidth,h=c.clientHeight,dpr=window.devicePixelRatio||1;
+ if(!w||!h)return;
+ c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);
+ const x=c.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);
  x.clearRect(0,0,w,h);x.fillStyle='#071018';x.fillRect(0,0,w,h);x.strokeStyle='#294153';x.lineWidth=1;x.font='12px Arial';x.fillStyle='#96a9b7';
- const top=15,bottom=h-28,left=46,right=w-12;
+ const top=15,bottom=h-28,left=64,right=w-12;
  for(let db=-30;db>=-100;db-=10){let y=top+(-30-db)/70*(bottom-top);x.beginPath();x.moveTo(left,y);x.lineTo(right,y);x.stroke();x.fillText(db+' dBm',3,y+4);}
  let a=j.values||[],n=a.length;x.strokeStyle='#24d18d';x.lineWidth=2;x.beginPath();let pen=false;
  for(let i=0;i<n;i++){let v=a[i];if(v===null){pen=false;continue}let px=left+(n<=1?0:i/(n-1))*(right-left);let py=top+(-30-Math.max(-100,Math.min(-30,v)))/70*(bottom-top);if(!pen){x.moveTo(px,py);pen=true}else x.lineTo(px,py);}x.stroke();
- x.fillStyle='#96a9b7';x.fillText('oldest',left,bottom+18);x.fillText('now',right-24,bottom+18);
+ x.fillStyle='#96a9b7';x.fillText('Ранее',left,bottom+18);x.textAlign='right';x.fillText('Сейчас',right,bottom+18);
+ if(!a.some(v=>v!==null)){x.textAlign='center';x.fillText('Нет измерений',(left+right)/2,(top+bottom)/2);}
  setText(rmin,j.min===null?'-':j.min+' dBm');setText(rmax,j.max===null?'-':j.max+' dBm');setText(ravg,j.avg===null?'-':j.avg+' dBm');setText(rcount,j.count||0);
 }
+new ResizeObserver(()=>{if(rssiData)drawRssi(rssiData);}).observe(document.getElementById('rchart'));
 async function loadRssi(){if(document.getElementById('settingsPanel').hidden)return;try{let j=await (await fetch('/api/rssi?range='+rrange,{cache:'no-store'})).json();drawRssi(j)}catch(e){}}
 document.querySelectorAll('.rbtn').forEach(b=>b.addEventListener('click',()=>{rrange=b.dataset.r;document.querySelectorAll('.rbtn').forEach(q=>q.classList.remove('active'));b.classList.add('active');loadRssi();}));
 window.addEventListener('hashchange',()=>selectTab(location.hash==='#settings'?'settings':'control',false));

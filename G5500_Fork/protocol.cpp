@@ -216,7 +216,7 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
       return packet;
     }
     value =
-        nearest(value + offset, controller_.axes[0].current, controller_.maximum, bidirectional);
+        nearest(value + offset, controller_.axes[0].current, controller_.azRange, bidirectional);
     packet.result = controller_.target({value, 0, true, false}, true, now);
     return packet;
   }
@@ -245,10 +245,10 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
   }
   auto az = field(root, "AZIMUTH"), el = field(root, "ELEVATION");
   float azimuth = 0, elevation = 0;
-  if (az && (!number(az->text, azimuth) || azimuth < 0 || azimuth > controller_.maximum)) {
+  if (az && (!number(az->text, azimuth) || azimuth < 0 || azimuth > 7200)) {
     return packet;
   }
-  if (el && (!number(el->text, elevation) || elevation < 0 || elevation > 180 ||
+  if (el && (!number(el->text, elevation) || !controller_.elRange.contains(elevation) ||
              (controller_.model == Model::G800DXA && elevation != 0))) {
     return packet;
   }
@@ -327,14 +327,16 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
     flag(n, lp);
   }
   bool changed = lp != longPath_;
+  const float base = az ? azimuth : pstBaseAzimuth_;
+  const float resolved = nearest(lp ? heading(base + 180) : base, controller_.axes[0].current, controller_.azRange);
+  if ((az || (changed && pstBaseValid_)) && !std::isfinite(resolved)) return packet;
   if (az) {
     pstBaseAzimuth_ = azimuth;
     pstBaseValid_ = true;
   }
   longPath_ = lp;
   if (az || (changed && pstBaseValid_)) {
-    float value = longPath_ ? heading(pstBaseAzimuth_ + 180) : pstBaseAzimuth_;
-    value = nearest(value, controller_.axes[0].current, controller_.maximum);
+    const float value = resolved;
     packet.result = controller_.target({value, elevation, true, el != nullptr}, true, now);
   } else if (el) {
     packet.result = controller_.target({0, elevation, false, true}, true, now);

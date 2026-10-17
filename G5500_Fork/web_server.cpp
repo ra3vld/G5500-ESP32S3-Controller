@@ -72,8 +72,66 @@ void WebInterface::setupWeb() {
     auto response = callApi("/api/target");
     runtime_.controller.tick(millis());
     hardware_.applyOutputs();
-    runtime_.targetValid = true;
+    runtime_.targetValid = runtime_.controller.targetKnown;
     web_.send(response.status, "application/json", response.body.c_str());
+  });
+  web_.on("/api/azrange", HTTP_POST, [this] {
+    if (runtime_.hud.isHud()) { web_.send(403,"application/json","{\"error\":\"controller_settings_only\"}"); return; }
+    const String profile = web_.arg("profile");
+    const uint8_t mode = profile == "p36" ? AZ_P36 : profile == "p45" ? AZ_P45 : AZ_CUSTOM;
+    float start=0, span=mode == AZ_P36 ? 360.f : 450.f;
+    const bool custom = profile == "custom";
+    if ((!custom && profile != "p36" && profile != "p45") ||
+        (custom && (!number(web_.arg("start").c_str(),start) || !number(web_.arg("span").c_str(),span))) ||
+        !AzRange::tenth(span) || !validAzProfile(mode,{start,start+span})) {
+      web_.send(400,"application/json","{\"error\":\"invalid_range\"}"); return;
+    }
+    const bool ok=actions_.configureAzRange(mode,start,span);
+    web_.send(ok?200:503,"application/json",ok?"{\"ok\":true}":"{\"error\":\"calibration_save_failed\"}");
+  });
+  web_.on("/api/azcal", HTTP_GET, [this] {
+    if (runtime_.hud.isHud()) { web_.send(403,"application/json","{\"error\":\"controller_settings_only\"}"); return; }
+    JsonWriter j(statusBuffer_,sizeof statusBuffer_);
+    calibration_.writeAzJson(j); sendJson(j);
+  });
+  web_.on("/api/azcal", HTTP_POST, [this] {
+    if (runtime_.hud.isHud()) { web_.send(403,"application/json","{\"error\":\"controller_settings_only\"}"); return; }
+    float angle; const String op=web_.arg("op");
+    Calibration candidate(runtime_.controller); candidate.state()=calibration_.state();
+    if (!number(web_.arg("angle").c_str(),angle) || !candidate.editAzPoint(op.c_str(),angle,0)) {
+      web_.send(400,"application/json","{\"error\":\"invalid_point\"}"); return;
+    }
+    const bool ok=actions_.editAzPoint(op.c_str(),angle);
+    web_.send(ok?200:503,"application/json",ok?"{\"ok\":true}":"{\"error\":\"calibration_save_failed\"}");
+  });
+  web_.on("/api/elrange", HTTP_POST, [this] {
+    if (runtime_.hud.isHud() || runtime_.controller.model != Model::G5500) { web_.send(403,"application/json","{\"error\":\"controller_settings_only\"}"); return; }
+    const String profile = web_.arg("profile");
+    const uint8_t mode = profile == "standard" ? EL_STANDARD : EL_CUSTOM;
+    float start=0, span=180.f;
+    const bool custom = profile == "custom";
+    if ((!custom && profile != "standard") ||
+        (custom && (!number(web_.arg("start").c_str(),start) || !number(web_.arg("span").c_str(),span))) ||
+        !AzRange::tenth(span) || !validElProfile(mode,{start,start+span})) {
+      web_.send(400,"application/json","{\"error\":\"invalid_range\"}"); return;
+    }
+    const bool ok=actions_.configureElRange(mode,start,span);
+    web_.send(ok?200:503,"application/json",ok?"{\"ok\":true}":"{\"error\":\"calibration_save_failed\"}");
+  });
+  web_.on("/api/elcal", HTTP_GET, [this] {
+    if (runtime_.hud.isHud() || runtime_.controller.model != Model::G5500) { web_.send(403,"application/json","{\"error\":\"controller_settings_only\"}"); return; }
+    JsonWriter j(statusBuffer_,sizeof statusBuffer_);
+    calibration_.writeElJson(j); sendJson(j);
+  });
+  web_.on("/api/elcal", HTTP_POST, [this] {
+    if (runtime_.hud.isHud() || runtime_.controller.model != Model::G5500) { web_.send(403,"application/json","{\"error\":\"controller_settings_only\"}"); return; }
+    float angle; const String op=web_.arg("op");
+    Calibration candidate(runtime_.controller); candidate.state()=calibration_.state();
+    if (!number(web_.arg("angle").c_str(),angle) || !candidate.editElPoint(op.c_str(),angle,0)) {
+      web_.send(400,"application/json","{\"error\":\"invalid_point\"}"); return;
+    }
+    const bool ok=actions_.editElPoint(op.c_str(),angle);
+    web_.send(ok?200:503,"application/json",ok?"{\"ok\":true}":"{\"error\":\"calibration_save_failed\"}");
   });
   web_.on("/api/cal", HTTP_GET, [this] {
     if (runtime_.hud.isHud()) {
@@ -88,7 +146,9 @@ void WebInterface::setupWeb() {
       return;
     }
     int a = hardware_.adcAvgMv(PIN_AZ_ADC), e = hardware_.adcAvgMv(PIN_EL_ADC);
+    if (p.startsWith("el") && calibrationState.elProfile == EL_CUSTOM) { web_.send(400,"text/plain","USE /api/elcal"); return; }
     if (p.startsWith("az")) {
+      if (calibrationState.gsAzMode == AZ_CUSTOM) { web_.send(400,"text/plain","USE /api/azcal"); return; }
       int *tbl = (calibrationState.gsAzMode == 36) ? calibrationState.az36CalMv
                                                    : calibrationState.az45CalMv;
       uint8_t n = (calibrationState.gsAzMode == 36) ? AZ36_CAL_N : AZ45_CAL_N;
@@ -125,8 +185,8 @@ void WebInterface::setupWeb() {
       web_.send(400, "text/plain", "BAD POINT");
       return;
     }
-    actions_.saveCal();
-    web_.send(200, "text/plain", "MULTI SAVED");
+    const bool saved = actions_.saveCal();
+    web_.send(saved ? 200 : 503, "text/plain", saved ? "MULTI SAVED" : "CALIBRATION SAVE FAILED");
   });
 
   web_.on("/api/cal2", HTTP_GET, [this] {
@@ -142,7 +202,8 @@ void WebInterface::setupWeb() {
     }
     if (p == "O" || p == "O2" || p == "F" || p == "F2") {
       actions_.captureGs232Cal(p);
-      web_.send(200, "text/plain", "2-POINT SAVED");
+      const bool saved = runtime_.controller.fault != "calibration_save_failed";
+      web_.send(saved ? 200 : 503, "text/plain", saved ? "2-POINT SAVED" : "CALIBRATION SAVE FAILED");
     } else {
       web_.send(400, "text/plain", "BAD COMMAND");
     }
@@ -164,7 +225,8 @@ void WebInterface::setupWeb() {
       return;
     }
     calibration_.state().cal.valid = calibration_.selectedCalibrationValid();
-    web_.send(200, "text/plain", calibration_.calibrationModeName());
+    const bool saved = runtime_.controller.fault != "calibration_save_failed";
+    web_.send(saved ? 200 : 503, "text/plain", saved ? calibration_.calibrationModeName() : "CALIBRATION SAVE FAILED");
   });
 
   web_.on("/api/azmode", HTTP_GET, [this] {
@@ -177,8 +239,8 @@ void WebInterface::setupWeb() {
       web_.send(400, "text/plain", "BAD AZ MODE");
       return;
     }
-    actions_.setGsAzMode((uint8_t)m);
-    web_.send(200, "text/plain", m == 36 ? "P36" : "P45");
+    const bool saved = actions_.configureAzRange(uint8_t(m), 0, m == 36 ? 360 : 450);
+    web_.send(saved ? 200 : 503, "text/plain", saved ? (m == 36 ? "P36" : "P45") : "CALIBRATION SAVE FAILED");
   });
 
   web_.on("/api/calreset", HTTP_GET, [this] {
@@ -186,70 +248,15 @@ void WebInterface::setupWeb() {
       web_.send(403, "application/json", "{\"error\":\"controller_settings_only\"}");
       return;
     }
-    auto &calibrationState = calibration_.state();
-    String axis = web_.arg("axis");
-    axis.toLowerCase();
-    if (runtime_.controller.model == forkrot::Model::G800DXA && axis == "el") {
-      web_.send(400, "text/plain", "NO EL AXIS");
-      return;
+    const String axis = web_.arg("axis"), mode = web_.arg("mode");
+    if ((axis != "az" && axis != "el") || (mode != "2" && mode != "multi") ||
+        (axis == "el" && runtime_.controller.model != Model::G5500)) {
+      web_.send(400,"text/plain","BAD AXIS OR MODE"); return;
     }
-    String m = web_.arg("mode");
-    m.toLowerCase();
-
-    if (m == "multi") {
-      if (axis == "az") {
-        if (calibrationState.gsAzMode == 36) {
-          for (uint8_t i = 0; i < AZ36_CAL_N; i++) {
-            calibrationState.az36CalMv[i] = -1;
-          }
-          calibrationState.az36MultiValid = false;
-        } else {
-          for (uint8_t i = 0; i < AZ45_CAL_N; i++) {
-            calibrationState.az45CalMv[i] = -1;
-          }
-          calibrationState.az45MultiValid = false;
-        }
-      } else if (axis == "el") {
-        for (uint8_t i = 0; i < EL_CAL_N; i++) {
-          calibrationState.elCalMv[i] = -1;
-        }
-        calibrationState.elMultiValid = false;
-      } else {
-        web_.send(400, "text/plain", "BAD AXIS");
-        return;
-      }
-    } else if (m == "2") {
-      if (axis == "az") {
-        if (calibrationState.gsAzMode == 36) {
-          calibrationState.cal.az36_0 = 0;
-          calibrationState.cal.az36Max = 3100;
-          calibrationState.az36OSet = false;
-          calibrationState.az36FSet = false;
-          calibrationState.az36LinearValid = false;
-        } else {
-          calibrationState.cal.az45_0 = 0;
-          calibrationState.cal.az45Max = 3100;
-          calibrationState.az45OSet = false;
-          calibrationState.az45FSet = false;
-          calibrationState.az45LinearValid = false;
-        }
-      } else if (axis == "el") {
-        calibrationState.cal.el0 = 0;
-        calibrationState.cal.elMax = 3100;
-        calibrationState.elOSet = false;
-        calibrationState.elFSet = false;
-        calibrationState.elLinearValid = false;
-      } else {
-        web_.send(400, "text/plain", "BAD AXIS");
-        return;
-      }
-    } else {
-      web_.send(400, "text/plain", "BAD MODE");
-      return;
-    }
-
-    actions_.saveCal();
-    web_.send(200, "text/plain", "RESET OK");
+    if(axis == "az") calibration_.resetAz(mode == "multi");
+    else calibration_.resetEl(mode == "multi");
+    const bool saved=actions_.saveCal();
+    web_.send(saved?200:503,"text/plain",saved?"RESET OK":"CALIBRATION SAVE FAILED");
   });
   const auto saveWifi = [this] {
     const String ssid = web_.arg("ssid"), password = web_.arg("pass");
@@ -329,7 +336,7 @@ void WebInterface::setupWeb() {
         (calibrationState.gsAzMode == 36) ? calibrationState.az36CalMv : calibrationState.az45CalMv;
     int azN = (calibrationState.gsAzMode == 36) ? AZ36_CAL_N : AZ45_CAL_N;
     if (runtime_.hud.isHud())
-      calibrationState.gsAzMode = runtime_.controller.maximum == 360 ? 36 : 45;
+      calibrationState.gsAzMode = runtime_.controller.azProfile;
     bool azLin =
         runtime_.hud.isHud() ? runtime_.controller.axes[0].calibrated : calibration_.activeAzLinearValid();
     bool azMul = calibration_.activeAzMultiValid();
@@ -356,15 +363,15 @@ void WebInterface::setupWeb() {
       << ",\"azMode\":" << calibrationState.gsAzMode << ",\"azLinear\":" << (azLin ? "true" : "false")
       << ",\"azLinear36\":" << (calibrationState.az36LinearValid ? "true" : "false")
       << ",\"azLinear45\":" << (calibrationState.az45LinearValid ? "true" : "false")
-      << ",\"elLinear\":" << (calibrationState.elLinearValid ? "true" : "false")
+      << ",\"elLinear\":" << (calibration_.activeElLinearValid() ? "true" : "false")
       << ",\"azMulti\":" << (azMul ? "true" : "false")
       << ",\"azMulti36\":" << (calibrationState.az36MultiValid ? "true" : "false")
       << ",\"azMulti45\":" << (calibrationState.az45MultiValid ? "true" : "false")
-      << ",\"elMulti\":" << (calibrationState.elMultiValid ? "true" : "false")
+      << ",\"elMulti\":" << (calibration_.activeElMultiValid() ? "true" : "false")
       << ",\"calMode\":" << jsonQuoted(calibrationState.calibrationMode == CAL_MULTI_POINT ? "multi" : "2")
       << ",\"az2p0\":" << az2z << ",\"az2pf\":" << az2f
-      << ",\"el2p0\":" << (calibrationState.elOSet ? calibrationState.cal.el0 : -1)
-      << ",\"el2pf\":" << (calibrationState.elFSet ? calibrationState.cal.elMax : -1)
+      << ",\"el2p0\":" << (calibration_.activeElOSet() ? calibration_.activeEl2Zero() : -1)
+      << ",\"el2pf\":" << (calibration_.activeElFSet() ? calibration_.activeEl2Full() : -1)
       << ",\"motion\":" << jsonQuoted(hardware_.motion().c_str()) << ",\"azp0\":" << azTbl[0]
       << ",\"azp90\":" << azTbl[1] << ",\"azp180\":" << azTbl[2] << ",\"azp270\":" << azTbl[3]
       << ",\"azp360\":" << azTbl[4] << ",\"azp450\":" << az450v << ",\"elp0\":" << calibrationState.elCalMv[0]
@@ -416,7 +423,7 @@ void WebInterface::setupForkWeb() {
     runtime_.controller.tick(millis());
     hardware_.applyOutputs();
     if (r.status == 200) {
-      runtime_.targetValid = true;
+      runtime_.targetValid = runtime_.controller.targetKnown;
     }
     web_.send(r.status, "application/json", r.body.c_str());
   });
@@ -432,7 +439,7 @@ void WebInterface::setupForkWeb() {
         if (oldModel != runtime_.controller.model) {
           // Old calibration was already saved on each calibration edit.
           actions_.loadPrefs();
-          runtime_.controller.maximum = calibration_.activeAzMaxDeg();
+          runtime_.controller.setRange(calibration_.activeAzRange(), calibration_.state().gsAzMode, millis());
           actions_.loadProfilePresets();
           actions_.invalidateDisplay();
           runtime_.targetValid = false;
@@ -448,7 +455,7 @@ void WebInterface::setupForkWeb() {
           network_.setupLoggerUdp();
         }
         if (path == "/api/execute" || path == "/api/preset/run") {
-          runtime_.targetValid = true;
+          runtime_.targetValid = runtime_.controller.targetKnown;
         }
       }
       runtime_.controller.tick(millis());
