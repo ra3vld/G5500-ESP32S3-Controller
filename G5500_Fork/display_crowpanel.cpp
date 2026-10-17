@@ -202,7 +202,7 @@ void Display::updateLocalDisplay() {
       std::snprintf(view.status, sizeof view.status, "%s",
                     runtime_.hud.available() ? (controller.moving() ? "Вращение" : "Остановлен")
                                              : "Нет связи с повороткой");
-      if(hudKnob_.lastResult==Result::Busy)std::snprintf(view.status,sizeof view.status,"Очередь команд занята");
+      if(hudKnob_.busyNotice(now))std::snprintf(view.status,sizeof view.status,"Очередь команд занята");
       if(!inputHealthy_)std::snprintf(view.status,sizeof view.status,"Ошибка кнопки / I2C");
       view.hudSelector = hudKnob_.menu;
       if (view.hudSelector) {

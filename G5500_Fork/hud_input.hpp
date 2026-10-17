@@ -11,7 +11,15 @@ class HudKnob {
   Target resumeTarget_{};
   uint32_t pauseRequest_ = 0, pauseEpoch_ = 0;
   uint32_t edgeAt_ = 0, downAt_ = 0, clickAt_ = 0, epoch_ = 0, menuAt_ = 0, stopEpoch_ = 0;
+  uint32_t busyAt_ = 0, busyEpoch_ = 0;
+  bool busyNotice_ = false;
   unsigned axis_ = 0;
+  void recordResult(Result result, uint32_t now) {
+    lastResult = result;
+    busyNotice_ = result == Result::Busy;
+    busyAt_ = now;
+    busyEpoch_ = hud_.selectionEpoch;
+  }
   void sync() {
     if (epoch_ != hud_.selectionEpoch) {
       epoch_ = hud_.selectionEpoch;
@@ -43,6 +51,13 @@ public:
   Result lastResult = Result::Ok;
   explicit HudKnob(Hud &h, Controller &c) : hud_(h), controller_(c) {}
   unsigned axis() const { return axis_; }
+  bool busyNotice(uint32_t now) {
+    // A rejected command is a short notification, not the rotator's state.
+    if (busyNotice_ && (uint32_t(now - busyAt_) >= 1000 ||
+                        busyEpoch_ != hud_.selectionEpoch || !hud_.available()))
+      busyNotice_ = false;
+    return busyNotice_;
+  }
   void confirmPending(uint32_t now) {
     sync();
     if (menu || controller_.mode != Mode::Manual || !controller_.pendingValid ||
@@ -50,7 +65,7 @@ public:
     resume_ = click_ = false;
     pauseRequest_ = 0;
     long_ = true;
-    lastResult = controller_.execute(now);
+    recordResult(controller_.execute(now), now);
   }
   void setBearing(float bearing, uint32_t now) {
     sync();
@@ -59,17 +74,17 @@ public:
     pauseRequest_ = 0;
     long_ = true;
     const float target = axis_ ? bearing : nearest(bearing, controller_.axes[0].current, controller_.maximum);
-    lastResult = controller_.target({axis_ ? 0.f : target, axis_ ? target : 0.f, axis_ == 0, axis_ == 1}, false, now);
+    recordResult(controller_.target({axis_ ? 0.f : target, axis_ ? target : 0.f, axis_ == 0, axis_ == 1}, false, now), now);
   }
   void stop(uint32_t now) {
     controller_.stopNow(-1, now);
     resume_ = click_ = false;
-    lastResult = hud_.lastResult();
+    recordResult(hud_.lastResult(), now);
   }
-  void toggleMode(uint32_t) {
+  void toggleMode(uint32_t now) {
     ControlCommand c;
     c.op = ControlOp::ToggleMode;
-    lastResult = hud_.submit(c);
+    recordResult(hud_.submit(c), now);
     resume_ = click_ = false;
     long_ = true;
   }
@@ -178,8 +193,8 @@ public:
     }
     if (click_ && !raw_ && !down_ && uint32_t(now - clickAt_) > 350) {
       click_ = false;
-      lastResult = resume_ && !controller_.pendingValid ? controller_.target(resumeTarget_, false, now)
-                                                        : controller_.execute(now);
+      recordResult(resume_ && !controller_.pendingValid ? controller_.target(resumeTarget_, false, now)
+                                                       : controller_.execute(now), now);
       resume_ = false;
     }
     if (delta && !raw_ && !down_) {
@@ -192,8 +207,8 @@ public:
       const float base = controller_.intendedTarget(axis_, a.tracking ? a.target : a.current);
       const float next = std::clamp(base + (inverted ? -float(delta) : float(delta)) * 20.f, 0.f,
                                     axis_ ? 180.f : controller_.maximum);
-      lastResult =
-          controller_.target({axis_ ? 0.f : next, axis_ ? next : 0.f, axis_ == 0, axis_ == 1}, false, now);
+      recordResult(
+          controller_.target({axis_ ? 0.f : next, axis_ ? next : 0.f, axis_ == 0, axis_ == 1}, false, now), now);
     }
   }
 };

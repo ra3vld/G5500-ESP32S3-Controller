@@ -466,6 +466,58 @@ int main() {
     sequence.tick(3210);
     assert(other.controller.sequenceCount() == 0);
   }
+  // Queue rejection expires without another command, even while normal state
+  // updates continue. It must not hide an offline or newly selected rotator.
+  {
+    Bus notices;
+    Node motor(notices, 1, 1), other(notices, 3, 3), panel(notices, 2, 2, true);
+    panel.save(motor); panel.save(other); panel.hud.select(1); notices.tick(100);
+    HudKnob knob(panel.hud, panel.controller);
+    auto fill = [&] {
+      for (unsigned i = 0; i < 3; ++i)
+        assert(panel.controller.target({90.f + i * 20, 0, true, false}, false, notices.now) == Result::Deferred);
+    };
+    fill();
+    knob.setBearing(180, 110);
+    assert(knob.lastResult == Result::Busy && knob.busyNotice(110));
+    for (uint32_t now = 120; now < 1109; now += 100) notices.tick(now);
+    notices.tick(1109);
+    assert(knob.busyNotice(1109));
+    notices.tick(1110);
+    assert(!knob.busyNotice(1110));
+    assert(knob.lastResult == Result::Busy); // No new input was needed to clear the UI.
+    assert(panel.hud.available() && panel.controller.moving());
+    fill(); knob.toggleMode(1120);
+    assert(knob.busyNotice(1120));
+    knob.choose(3);
+    assert(!knob.busyNotice(1121));
+    knob.choose(1); notices.tick(1200);
+    assert(!knob.busyNotice(1200));
+    uint32_t offlineAt = notices.now;
+    while (panel.hud.active()->fresh(offlineAt)) ++offlineAt;
+    notices.drop = true; notices.tick(offlineAt - 100);
+    fill(); knob.setBearing(180, notices.now);
+    assert(knob.busyNotice(notices.now));
+    notices.tick(offlineAt);
+    assert(!panel.hud.available() && !knob.busyNotice(offlineAt));
+    notices.drop = false; notices.tick(offlineAt + 100);
+    assert(panel.hud.available() && !knob.busyNotice(offlineAt + 100));
+  }
+  // The notification's deadline also works across millis() wraparound.
+  {
+    Bus notices;
+    Node motor(notices, 1, 1), panel(notices, 2, 2, true);
+    panel.save(motor); panel.hud.select(1);
+    const uint32_t start = UINT32_MAX - 100;
+    notices.tick(start);
+    HudKnob knob(panel.hud, panel.controller);
+    for (unsigned i = 0; i < 4; ++i) knob.setBearing(180, start);
+    assert(knob.lastResult == Result::Busy && knob.busyNotice(start));
+    for (uint32_t elapsed = 100; elapsed < 1000; elapsed += 100) notices.tick(start + elapsed);
+    assert(knob.busyNotice(start + 999));
+    notices.tick(start + 1000);
+    assert(!knob.busyNotice(start + 1000));
+  }
   // Ring taps are local user targets: forward immediately even in remote manual mode.
   {
     Bus taps;
