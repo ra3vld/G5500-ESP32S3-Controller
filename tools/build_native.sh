@@ -23,6 +23,8 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_F
 ./build/selection_input_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/protocol_memory_tests.cpp -o build/protocol_memory_tests
 ./build/protocol_memory_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork G5500_Fork/control.cpp G5500_Fork/protocol.cpp tests/protocol_shortest_tests.cpp -o build/protocol_shortest_tests
+./build/protocol_shortest_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -pthread -I tests/http_fakes -I G5500_Fork tests/wifi_fallback_tests.cpp -o build/wifi_fallback_tests
 ./build/wifi_fallback_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/diagnostic_stream_tests.cpp -o build/diagnostic_stream_tests

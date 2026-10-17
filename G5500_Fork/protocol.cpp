@@ -10,6 +10,13 @@
 namespace forkrot {
 
 namespace {
+float lineAzimuth(float angle, const Controller &controller) {
+  // Ordinary bearings choose the nearest reachable turn. Explicit signed and
+  // multi-turn coordinates retain their mechanical position.
+  return angle >= 0 && angle <= 360
+             ? nearest(angle, controller.axes[0].current, controller.azRange)
+             : angle;
+}
 std::string_view trimView(std::string_view s) {
   size_t a = 0, b = s.size();
   while (a < b && (std::isspace((unsigned char)s[a]) || s[a] == 0)) {
@@ -421,7 +428,7 @@ Packet Protocol::line(std::string_view input, uint32_t now, bool tcp) {
     if (v.size() != 3 || !number(v[1], az) || !number(v[2], el)) {
       packet.result = Result::Invalid;
     } else {
-      packet.result = controller_.target({az, el, true, true}, true, now);
+      packet.result = controller_.target({lineAzimuth(az, controller_), el, true, true}, true, now);
     }
   } else if (u[0] == 'M' || u[0] == 'W') {
     bool hasEl = u[0] == 'W';
@@ -438,7 +445,8 @@ Packet Protocol::line(std::string_view input, uint32_t now, bool tcp) {
     }
     if (packet.result == Result::Ok) {
       if (nums.size() == (hasEl ? 2u : 1u)) {
-        packet.result = controller_.target({nums[0], hasEl ? nums[1] : 0, true, hasEl}, true, now);
+        packet.result = controller_.target(
+            {lineAzimuth(nums[0], controller_), hasEl ? nums[1] : 0, true, hasEl}, true, now);
       } else if (nums.size() >= (hasEl ? 3u : 2u) && (!hasEl || (nums.size() - 1) % 2 == 0) &&
                  nums[0] >= 1 && nums[0] <= 999 && std::floor(nums[0]) == nums[0]) {
         FixedVector<Target, 16> points;
