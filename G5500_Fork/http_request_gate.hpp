@@ -1,6 +1,7 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
 #include <cstddef>
+#include <cstdint>
 #include <string_view>
 namespace forkrot {
 enum class RequestState { Incomplete, Ready, Invalid, TooLarge };
@@ -76,16 +77,43 @@ inline bool boundedForm(std::string_view text, size_t &arguments) {
     text.remove_prefix(end + 1);
   }
 }
-// Recognize only exact existing STOP URLs. Never turn malformed/extra arguments
-// into motion or bypass the envelope validation for a partial request.
-inline int emergencyStopAxis(std::string_view request) {
-  const auto end = request.find(" HTTP/");
-  const auto line = request.substr(0, end);
-  if (line == "GET /api/move?d=S") return -1;
-  if (line == "GET /api/move?d=A") return 0;
-  if (line == "GET /api/move?d=E") return 1;
-  return -2;
+inline bool requestGeneration(std::string_view text, uint32_t &value) {
+  if (text.empty() || text.size() > 10)
+    return false;
+  value = 0;
+  for (char c : text) {
+    if (c < '0' || c > '9' || value > (UINT32_MAX - unsigned(c - '0')) / 10)
+      return false;
+    value = value * 10 + unsigned(c - '0');
+  }
+  return true;
 }
+struct StopRequest {
+  int axis = -2;
+  uint32_t selection = 0;
+  bool scoped = false;
+};
+// Only STOP and an optional strict selection token bypass allocation-heavy parsing.
+inline StopRequest emergencyStopRequest(std::string_view request) {
+  const auto end = request.find(" HTTP/");
+  auto line = request.substr(0, end);
+  StopRequest result;
+  const auto at = line.find("&selection=");
+  if (at != line.npos) {
+    if (!requestGeneration(line.substr(at + 11), result.selection))
+      return result;
+    result.scoped = true;
+    line = line.substr(0, at);
+  }
+  if (line == "GET /api/move?d=S")
+    result.axis = -1;
+  else if (line == "GET /api/move?d=A")
+    result.axis = 0;
+  else if (line == "GET /api/move?d=E")
+    result.axis = 1;
+  return result;
+}
+inline int emergencyStopAxis(std::string_view request) { return emergencyStopRequest(request).axis; }
 // Inspect the received bytes without allocating strings. The stock
 // WebServer is called only once its complete, bounded request is already here.
 inline RequestState inspectRequest(std::string_view bytes, size_t capacity, size_t *completeSize = nullptr) {

@@ -1,5 +1,6 @@
 #include "api.hpp"
 #include "board.hpp"
+#include "http_request_gate.hpp"
 #include <array>
 #include <cmath>
 #include <cctype>
@@ -84,8 +85,11 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
   writeTargetJson(json, controller.lastTarget);
   json << ",\"moving\":" << (controller.moving() ? "true" : "false")
        << ",\"presetActive\":" << (controller.presetActive ? "true" : "false")
-       << ",\"presetSlot\":" << controller.presetSlot
-       << ",\"speedEnabled\":" << ((DRIVE_INTERFACE != DRIVE_YAESU || controller.speedEnabled) ? "true" : "false")
+       << ",\"presetSlot\":" << controller.presetSlot << ",\"speedEnabled\":"
+       << ((controller.remote ? controller.variableSpeed(0)
+                              : (DRIVE_INTERFACE != DRIVE_YAESU || controller.speedEnabled))
+               ? "true"
+               : "false")
        << ",\"speedPercent\":" << controller.speedPercent
        << ",\"startSpeedPercent\":" << controller.startSpeedPercent
        << ",\"approachSpeedPercent\":" << controller.approachSpeedPercent
@@ -93,14 +97,11 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"decelerationMs\":" << controller.decelerationMs
        << ",\"slowdownDegrees\":" << controller.slowdownDegrees
        << ",\"speedOutputPercent\":" << controller.axes[0].speedOutputPercent
-       << ",\"fault\":" << jsonQuoted(controller.fault)
-       << ",\"rotorName\":" << jsonQuoted(protocol.rotorName)
+       << ",\"fault\":" << jsonQuoted(controller.fault) << ",\"rotorName\":" << jsonQuoted(protocol.rotorName)
        << ",\"n1mmPort\":" << settings.n1mmPort << ",\"pstPort\":" << settings.pstPort
-       << ",\"reportPort\":" << settings.reportPort
-       << ",\"reportHost\":" << jsonQuoted(settings.reportHost)
+       << ",\"reportPort\":" << settings.reportPort << ",\"reportHost\":" << jsonQuoted(settings.reportHost)
        << ",\"n1mmReport\":\"" << jsonEscaped(protocol.rotorName) << '@'
-       << int(std::lround(heading(controller.axes[0].current) * 10)) % 3600 << '"'
-       << ",\"presets\":[";
+       << int(std::lround(heading(controller.axes[0].current) * 10)) % 3600 << '"' << ",\"presets\":[";
   for (unsigned i = 0; i < 4; ++i) {
     if (i) {
       json << ',';
@@ -111,25 +112,35 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
     json << ",\"valid\":" << (controller.valid(controller.presets[i].target) ? "true" : "false")
          << '}';
   }
-  json << "],\"build\":{\"board\":" << jsonQuoted(board::NAME)
-       << ",\"display\":" << jsonQuoted(DISPLAY_KIND == DISPLAY_CROWPANEL_21 ? "CROWPANEL_21" : DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE")
+  json << "],\"build\":{\"board\":" << jsonQuoted(board::NAME) << ",\"display\":"
+       << jsonQuoted(DISPLAY_KIND == DISPLAY_CROWPANEL_21 ? "CROWPANEL_21"
+                     : DISPLAY_KIND == DISPLAY_ILI9341    ? "ILI9341"
+                     : DISPLAY_KIND == DISPLAY_LCD1602    ? "LCD1602"
+                                                          : "NONE")
        << ",\"bluetooth\":" << (BLUETOOTH_ENABLED ? "true" : "false")
-       << ",\"bluetoothBackend\":" << jsonQuoted(board::BLUETOOTH_BACKEND_NAME)
-       << ",\"drive\":" << jsonQuoted(SELECTED_BOARD == BOARD_CROWPANEL_21 ? (CROWPANEL_SIMULATION ? "SIMULATED" : "NONE") : DRIVE_INTERFACE == DRIVE_YAESU ? "YAESU" : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960" : "SEPARATE_PWM")
-       << ",\"userButtonGpio\":" << USER_BUTTON_GPIO << ",\"userButtonActiveLow\":" << (USER_BUTTON_ACTIVE_LOW ? "true" : "false")
+       << ",\"bluetoothBackend\":" << jsonQuoted(board::BLUETOOTH_BACKEND_NAME) << ",\"drive\":"
+       << jsonQuoted(controller.remote                      ? "HUD"
+                     : (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)                     ? "SIMULATED"
+                     : SELECTED_BOARD == BOARD_CROWPANEL_21 ? "NONE"
+                     : DRIVE_INTERFACE == DRIVE_YAESU       ? "YAESU"
+                     : DRIVE_INTERFACE == DRIVE_BTS7960     ? "BTS7960"
+                                                            : "SEPARATE_PWM")
+       << ",\"userButtonGpio\":" << USER_BUTTON_GPIO
+       << ",\"userButtonActiveLow\":" << (USER_BUTTON_ACTIVE_LOW ? "true" : "false")
        << ",\"userButtonPullup\":" << (USER_BUTTON_PULLUP ? "true" : "false")
        << ",\"pins\":{\"azAdc\":" << board::PIN_AZ_ADC << ",\"elAdc\":" << board::PIN_EL_ADC
        << ",\"azNegative\":" << board::PIN_LEFT << ",\"azPositive\":" << board::PIN_RIGHT
        << ",\"elNegative\":" << board::PIN_DOWN << ",\"elPositive\":" << board::PIN_UP
-       << ",\"azSpeedEnable\":" << board::PIN_SPEED << ",\"elSpeedEnable\":" << board::PIN_EL_SPEED << "}},\"axes\":[";
+       << ",\"azSpeedEnable\":" << board::PIN_SPEED << ",\"elSpeedEnable\":" << board::PIN_EL_SPEED
+       << "}},\"axes\":[";
   for (unsigned i=0; i<2; ++i) {
     if (i) json << ',';
     const auto &axis = controller.axes[i];
     json << "{\"current\":" << axis.current << ",\"target\":" << axis.target
          << ",\"tracking\":" << (axis.tracking ? "true" : "false")
          << ",\"completed\":" << (axis.completed ? "true" : "false")
-         << ",\"calibrated\":" << (axis.calibrated ? "true" : "false")
-         << ",\"direction\":" << axis.direction << ",\"stopToleranceDegrees\":" << Controller::tolerance(i)
+         << ",\"calibrated\":" << (axis.calibrated ? "true" : "false") << ",\"direction\":" << axis.direction
+         << ",\"stopToleranceDegrees\":" << controller.effectiveTolerance(i)
          << ",\"speedEnabled\":" << (controller.variableSpeed(i) ? "true" : "false")
          << ",\"speedOutputPercent\":" << axis.speedOutputPercent << '}';
   }
@@ -160,6 +171,43 @@ std::string stateJson(const Controller &controller, const Protocol &protocol,
 Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
                  std::string_view path, FormView form, uint32_t now) {
   Result result = Result::Invalid;
+  if (controller.remote && has(form, "selection")) {
+    uint32_t selection;
+    if (!requestGeneration(get(form, "selection"), selection) ||
+        selection != controller.remote->selectionGeneration())
+      return {409, "{\"ok\":false,\"result\":\"cancelled\"}"};
+  }
+  const uint32_t before = controller.remote ? controller.remote->requestId() : 0;
+  if (controller.remote && path == "/api/settings") {
+    auto next = settings;
+    auto name = protocol.rotorName;
+    for (const auto &entry : form) {
+      const auto key = entry.first, value = entry.second;
+      bool ok = false;
+      if (key == "rotorName") {
+        name = value;
+        ok = !name.empty() && name.size() <= 31;
+        for (unsigned char ch : name)
+          ok = ok && (std::isalnum(ch) || ch == '_' || ch == '-' || ch == ' ');
+      } else if (key == "n1mmPort")
+        ok = integer(value, next.n1mmPort, 1, 65535);
+      else if (key == "pstPort")
+        ok = integer(value, next.pstPort, 1, 65534);
+      else if (key == "reportPort")
+        ok = integer(value, next.reportPort, 1, 65535);
+      else if (key == "reportHost") {
+        next.reportHost = value;
+        ok = value.empty() || ip(value);
+      } else if (key == "encoderInverted")
+        ok = boolean(value, next.encoderInverted);
+      if (!ok)
+        return {400, "{\"ok\":false,\"result\":\"controller_settings_only\"}"};
+    }
+    if(next.n1mmPort==next.pstPort)return {400,"{\"ok\":false,\"result\":\"invalid\"}"};
+    settings = next;
+    protocol.rotorName = name;
+    return {200, "{\"ok\":true,\"result\":\"ok\"}"};
+  }
   if (path == "/api/mode") {
     auto m = get(form, "mode");
     if (m == "manual" || m == "auto" || m == "auto_1h") {
@@ -294,11 +342,16 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
           controller.jog(d == "U" || d == "D" ? 1 : 0, d == "R" || d == "U" ? 1 : -1, false, now);
     }
   }
-  return {result == Result::Ok || result == Result::Pending ? 200
-          : result == Result::Ignored                       ? 409
-                                                            : 400,
-          std::string("{\"ok\":") +
-              (result == Result::Ok || result == Result::Pending ? "true" : "false") +
+  if (controller.remote && controller.remote->requestId() != before)
+    result = controller.remote->lastResult();
+  if (result == Result::Deferred)
+    return {202, "{\"ok\":false,\"result\":\"deferred\",\"requestId\":" +
+                     std::to_string(controller.remote->requestId()) + "}"};
+  return {result == Result::Unavailable || result == Result::Busy ? 503
+          : result == Result::Ok || result == Result::Pending     ? 200
+          : result == Result::Ignored                             ? 409
+                                                                  : 400,
+          std::string("{\"ok\":") + (result == Result::Ok || result == Result::Pending ? "true" : "false") +
               ",\"result\":" + jsonQuote(Controller::resultName(result)) + "}"};
 }
 Response api(Controller &controller, Protocol &protocol, Settings &settings,

@@ -2,6 +2,8 @@
 #include "storage.hpp"
 #include "board.hpp"
 #include <time.h>
+#include <cstdlib>
+#include <cstring>
 namespace forkrot {
 using namespace board;
 const char *Storage::calNamespace(const Runtime &runtime) {
@@ -17,6 +19,8 @@ void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredenti
 
   // v1.6.23 format 4: independent P36/P45 + explicit two-point endpoint flags.
   prefs_.end();
+  if (runtime.hud.isHud())
+    return;
   prefs_.begin(calNamespace(runtime), true);
   uint8_t calFmt = prefs_.getUChar("calfmt", 0);
 
@@ -187,6 +191,8 @@ void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredenti
 }
 
 void Storage::saveCal(const Runtime &runtime, Calibration &calibration) {
+  if (runtime.hud.isHud())
+    return;
   auto &calibrationState = calibration.state();
   calibrationState.az36LinearValid =
       (calibrationState.az36OSet && calibrationState.az36FSet &&
@@ -313,7 +319,8 @@ void Storage::loadForkSettings(Runtime &runtime) {
   runtime.controller.decelerationMs = constrain(prefs_.getUInt("decelms", 1500), 100u, 10000u);
   runtime.controller.slowdownDegrees = constrain(prefs_.getUInt("slowdeg", 10), 1u, 90u);
 #endif
-  runtime.protocol.rotorName = prefs_.getString("name", "G5500").c_str();
+  const String savedName = prefs_.getString("name", "G5500");
+  runtime.protocol.rotorName = (runtime.hud.isHud() ? prefs_.getString("hudname", savedName) : savedName).c_str();
   runtime.loggerSettings.n1mmPort = prefs_.getUShort("nport", 12040);
   runtime.loggerSettings.pstPort = prefs_.getUShort("pport", 1234);
   runtime.loggerSettings.reportPort = prefs_.getUShort("rport", 13010);
@@ -340,8 +347,9 @@ void Storage::loadForkSettings(Runtime &runtime) {
 
 void Storage::saveForkSettings(const Runtime &runtime) {
   prefs_.begin("forkcfg", false);
-  prefs_.putUChar("model", runtime.controller.model == forkrot::Model::G800DXA ? 1 : 0);
-  prefs_.putUChar("mode", runtime.controller.mode == forkrot::Mode::Auto ? 1 : 0);
+  if (!runtime.hud.isHud()) {
+    prefs_.putUChar("model", runtime.controller.model == forkrot::Model::G800DXA ? 1 : 0);
+    prefs_.putUChar("mode", runtime.controller.mode == forkrot::Mode::Auto ? 1 : 0);
 #if DRIVE_INTERFACE == DRIVE_YAESU
   prefs_.putBool("speedon", runtime.controller.speedEnabled);
   prefs_.putUInt("speed", runtime.controller.speedPercent);
@@ -352,6 +360,8 @@ void Storage::saveForkSettings(const Runtime &runtime) {
   prefs_.putUInt("slowdeg", runtime.controller.slowdownDegrees);
 #endif
   prefs_.putString("name", runtime.protocol.rotorName.c_str());
+  } else
+    prefs_.putString("hudname", runtime.protocol.rotorName.c_str());
   prefs_.putUShort("nport", runtime.loggerSettings.n1mmPort);
   prefs_.putUShort("pport", runtime.loggerSettings.pstPort);
   prefs_.putUShort("rport", runtime.loggerSettings.reportPort);
@@ -361,6 +371,8 @@ void Storage::saveForkSettings(const Runtime &runtime) {
 #endif
   prefs_.end();
 #if DRIVE_INTERFACE != DRIVE_YAESU
+  if (runtime.hud.isHud())
+    return;
   prefs_.begin("forkpwm", false);
   for (unsigned i=0; i<2; ++i) {
     const auto &speed = runtime.controller.speeds[i];
@@ -381,6 +393,8 @@ const char *Storage::presetNamespace(const Runtime &runtime) {
 }
 
 void Storage::loadProfilePresets(Runtime &runtime) {
+  if (runtime.hud.isHud())
+    return;
   prefs_.begin(presetNamespace(runtime), true);
   for (unsigned i = 0; i < 4; ++i) {
     String base = "p" + String(i);
@@ -394,6 +408,8 @@ void Storage::loadProfilePresets(Runtime &runtime) {
 }
 
 void Storage::saveProfilePresets(const Runtime &runtime) {
+  if (runtime.hud.isHud())
+    return;
   prefs_.begin(presetNamespace(runtime), false);
   for (unsigned i = 0; i < 4; ++i) {
     String base = "p" + String(i);
@@ -508,4 +524,132 @@ void Storage::persistRssiYear(const RssiHistory &history) {
   prefs_.end();
 }
 
+} // namespace forkrot
+
+namespace forkrot {
+namespace {
+struct HudDiskConfig {
+  uint32_t version = 1;
+  uint8_t role = 0, wifi = 0, uart = 0, reserved = 0;
+  uint32_t port = 4534;
+  uint32_t selectedLo = 0, selectedHi = 0;
+  uint32_t crc = 0;
+};
+struct HudDiskPeer {
+  uint32_t idLo = 0, idHi = 0, address = 0;
+  uint16_t port = 4534;
+  uint8_t uart = 0, reserved = 0;
+  char label[49]{};
+  uint8_t padding[3]{};
+};
+static_assert(sizeof(HudDiskPeer) == 68);
+} // namespace
+bool Storage::saveHudConfig(const HudConfig &c) {
+  HudDiskConfig d;
+  d.role = uint8_t(c.role);
+  d.wifi = uint8_t(c.wifi);
+  d.uart = c.uart;
+  d.port = c.port;
+  d.selectedLo = uint32_t(c.selected);
+  d.selectedHi = uint32_t(c.selected >> 32);
+  d.crc = hudCrc(reinterpret_cast<const uint8_t *>(&d), sizeof d - 4);
+  if (!prefs_.begin("hudcfg", false)) {
+    prefs_.end();
+    return false;
+  }
+  prefs_.putBytes("config", &d, sizeof d);
+  prefs_.end();
+  HudDiskConfig check;
+  const bool opened = prefs_.begin("hudcfg", true);
+  const bool ok = opened && prefs_.getBytes("config", &check, sizeof check) == sizeof check &&
+                  std::memcmp(&d, &check, sizeof d) == 0;
+  prefs_.end();
+  return ok;
+}
+bool Storage::saveHudPeers(const Hud &hud) {
+  const size_t count = hud.count();
+  if (count > (SIZE_MAX - 8) / sizeof(HudDiskPeer))
+    return false;
+  const size_t size = 8 + count * sizeof(HudDiskPeer);
+  auto data = std::unique_ptr<uint8_t, decltype(&std::free)>(static_cast<uint8_t *>(std::calloc(1, size)),
+                                                             &std::free);
+  if (!data)
+    return false;
+  const uint32_t version = 1;
+  std::memcpy(data.get(), &version, 4);
+  size_t offset = 4;
+  for (auto *p = hud.peers(); p; p = p->next.get())
+    if (p->saved) {
+      HudDiskPeer d;
+      d.idLo = uint32_t(p->id);
+      d.idHi = uint32_t(p->id >> 32);
+      d.address = p->endpoint.address;
+      d.port = p->endpoint.port;
+      d.uart = p->endpoint.uart;
+      std::memcpy(d.label, p->label, sizeof d.label);
+      std::memcpy(data.get() + offset, &d, sizeof d);
+      offset += sizeof d;
+    }
+  const uint32_t crc = hudCrc(data.get(), size - 4);
+  std::memcpy(data.get() + size - 4, &crc, 4);
+  if (!prefs_.begin("hudcfg", false)) {
+    prefs_.end();
+    return false;
+  }
+  prefs_.putBytes("peers", data.get(), size);
+  prefs_.end();
+  if (!prefs_.begin("hudcfg", true)) {
+    prefs_.end();
+    return false;
+  }
+  const bool ok = prefs_.getBytesLength("peers") == size &&
+                  prefs_.getBytes("peers", data.get(), size) == size && hudCrc(data.get(), size - 4) == crc;
+  prefs_.end();
+  return ok;
+}
+void Storage::loadHud(Runtime &runtime) {
+  auto &hud = runtime.hud;
+  const bool opened = prefs_.begin("hudcfg", true);
+  if (opened && prefs_.getBytesLength("config")) {
+    HudDiskConfig d;
+    if (prefs_.getBytesLength("config") != sizeof d || prefs_.getBytes("config", &d, sizeof d) != sizeof d ||
+        d.version != 1 || d.role > 1 || d.wifi > 2 || d.uart > 1 || !d.port || d.port > 65535 ||
+        hudCrc(reinterpret_cast<const uint8_t *>(&d), sizeof d - 4) != d.crc) {
+      hud.config.role = DeviceRole::Hud;
+      hud.catalogError = true;
+    } else {
+      hud.config.role = DeviceRole(d.role);
+      hud.config.wifi = HudWifi(d.wifi);
+      hud.config.uart = d.uart;
+      hud.config.port = uint16_t(d.port);
+      hud.config.selected = uint64_t(d.selectedLo) | (uint64_t(d.selectedHi) << 32);
+    }
+  }
+  const size_t size = opened && hud.isHud() ? prefs_.getBytesLength("peers") : 0;
+  if (size >= 8 && (size - 8) % sizeof(HudDiskPeer) == 0) {
+    auto data =
+        std::unique_ptr<uint8_t, decltype(&std::free)>(static_cast<uint8_t *>(std::malloc(size)), &std::free);
+    if (!data || prefs_.getBytes("peers", data.get(), size) != size)
+      hud.catalogError = true;
+    else {
+      uint32_t version, crc;
+      std::memcpy(&version, data.get(), 4);
+      std::memcpy(&crc, data.get() + size - 4, 4);
+      if (version != 1 || crc != hudCrc(data.get(), size - 4))
+        hud.catalogError = true;
+      else
+        for (size_t at = 4; at < size - 4; at += sizeof(HudDiskPeer)) {
+          HudDiskPeer d;
+          std::memcpy(&d, data.get() + at, sizeof d);
+          const auto id = uint64_t(d.idLo) | (uint64_t(d.idHi) << 32);
+          if (d.uart > 1 || d.label[48] || !hud.add(id, {d.address, d.port, bool(d.uart)}, d.label))
+            hud.catalogError = true;
+        }
+    }
+  } else if (size)
+    hud.catalogError = true;
+  prefs_.end();
+  // Even an invalid saved role fails closed before any motor/ADC setup.
+  runtime.controller.remote = hud.isHud() ? &hud : nullptr;
+}
 } // namespace forkrot

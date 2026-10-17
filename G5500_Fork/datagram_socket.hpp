@@ -19,6 +19,7 @@ struct Datagram {
   struct Free { void operator()(char *data) const { std::free(data); } };
   std::unique_ptr<char, Free> data;
   size_t size = 0;
+  uint16_t port = 0;
   uint32_t address = 0; // IPv4 in network byte order, like uint32_t(IPAddress).
   std::string_view text() const { return data ? std::string_view(data.get(), size) : std::string_view(); }
 };
@@ -38,6 +39,7 @@ public:
     fd_ = ::socket(AF_INET, SOCK_DGRAM, 0);
     if (fd_ < 0) return false;
     const int yes = 1;
+    ::setsockopt(fd_, SOL_SOCKET, SO_BROADCAST, &yes, sizeof yes);
     sockaddr_in local{};
     local.sin_family = AF_INET;
     local.sin_addr.s_addr = INADDR_ANY;
@@ -91,7 +93,28 @@ public:
     packet.size = size_t(count);
     packet.data.get()[packet.size] = '\0';
     packet.address = sender.sin_addr.s_addr;
+    packet.port = ntohs(sender.sin_port);
     return DatagramResult::Ready;
+  }
+  // Fixed-buffer receive for HUD: no allocation per poll or per remote device.
+  int receiveInto(uint8_t *out, size_t capacity, uint32_t &address, uint16_t &port) {
+    if (fd_ < 0)
+      return -1;
+    sockaddr_in sender{};
+    iovec part{out, capacity};
+    msghdr message{};
+    message.msg_name = &sender;
+    message.msg_namelen = sizeof sender;
+    message.msg_iov = &part;
+    message.msg_iovlen = 1;
+    const int count = ::recvmsg(fd_, &message, MSG_DONTWAIT);
+    if (count < 0)
+      return -1;
+    if (!count || size_t(count) > capacity || (message.msg_flags & MSG_TRUNC) || sender.sin_family != AF_INET)
+      return -2;
+    address = sender.sin_addr.s_addr;
+    port = ntohs(sender.sin_port);
+    return count;
   }
   bool send(uint32_t address, uint16_t port, std::string_view text) {
     if (fd_ < 0 || !port || text.size() > MAX_PACKET) return false;

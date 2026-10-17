@@ -28,6 +28,14 @@ public:
   bool send(const String &reply) { return send(std::string_view(reply.c_str(), reply.length())); }
   bool send(const char *reply) { return send(std::string_view(reply)); }
   void service();
+  void discardInput();
+  uint32_t sessionId() const {
+#if BLUETOOTH_BACKEND == BT_ESP32_SPP
+    return session_.load();
+#else
+    return inputSession_;
+#endif
+  }
   uint32_t droppedCommands() const {
 #if BLUETOOTH_BACKEND == BT_ESP32_SPP
     return rxDropped_.load();
@@ -36,6 +44,7 @@ public:
 #endif
   }
 private:
+  uint32_t inputSession_ = 0;
 #if BLUETOOTH_BACKEND != BT_NONE
   LineBuffer receiver_;
 #if BLUETOOTH_BACKEND == BT_ESP32_SPP
@@ -61,7 +70,7 @@ private:
 #endif
   uint32_t aclHandles_[ACL_SLOTS]{}; // handle + 1; zero means unused
   std::atomic<unsigned> aclCount_{0};
-  uint32_t seenSession_ = 0;
+  uint32_t seenSession_ = 0, receiverSession_ = 0;
   PacketQueue<1024, 8> commands_;
   PacketQueue<512, 8> replies_;
   std::atomic<uint32_t> rxDropped_{0};

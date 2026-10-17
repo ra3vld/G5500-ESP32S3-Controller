@@ -4,16 +4,41 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 static std::array<uint16_t, 480 * 480> pixels{};
 static std::array<uint16_t, 480 * 40> stripe{};
 static std::array<uint16_t, 480 * 480> frame1{}, frame2{};
 static bool directMode = false;
 static unsigned flushes = 0;
+static lv_obj_t *findLabel(const char *text) {
+  auto *screen = lv_screen_active();
+  for (unsigned i = 0; i < lv_obj_get_child_count(screen); ++i) {
+    auto *child = lv_obj_get_child(screen, i);
+    if (lv_obj_check_type(child, &lv_label_class) && !std::strcmp(lv_label_get_text(child), text)) return child;
+  }
+  return nullptr;
+}
 static bool nearColor(int cx, int cy, int radius, uint32_t rgb) {
   const uint16_t expected = ((rgb >> 19) << 11) | (((rgb >> 10) & 63) << 5) | ((rgb >> 3) & 31);
   for (int y = cy - radius; y <= cy + radius; ++y)
     for (int x = cx - radius; x <= cx + radius; ++x)
       if (x >= 0 && x < 480 && y >= 0 && y < 480 && pixels[y * 480 + x] == expected) return true;
+  return false;
+}
+static bool markerAt(float degrees, uint32_t color) {
+  const float radians = degrees * 3.14159265358979323846f / 180.f;
+  return nearColor(240 + std::lround(227 * std::sin(radians)),
+                   240 - std::lround(227 * std::cos(radians)), 2, color);
+}
+static bool redAt(float degrees) {
+  const float radians = degrees * 3.14159265358979323846f / 180.f;
+  const int cx = 240 + std::lround(220 * std::sin(radians));
+  const int cy = 240 - std::lround(220 * std::cos(radians));
+  for (int y = cy - 2; y <= cy + 2; ++y) for (int x = cx - 2; x <= cx + 2; ++x) {
+    const auto pixel = pixels[y * 480 + x];
+    const int r = ((pixel >> 11) & 31) * 255 / 31, g = ((pixel >> 5) & 63) * 255 / 63;
+    if (r - g > 40 && r > 2 * g) return true;
+  }
   return false;
 }
 static void flush(lv_display_t *d, const lv_area_t *a, uint8_t *data) {
@@ -42,6 +67,11 @@ static void save(const char *path) {
   }
   std::fclose(f);
 }
+static void settle(lv_display_t *display) {
+  lv_tick_inc(200);
+  lv_timer_handler();
+  lv_refr_now(display);
+}
 int main(int argc, char **argv) {
   assert(argc == 2 || argc == 3);
   directMode = argc == 3;
@@ -58,7 +88,7 @@ int main(int argc, char **argv) {
   view.wifiConnected = true; view.wifiAp = true; view.wifiRssi = -58;
   std::strcpy(view.ip, "IP: 192.168.3.234");
   std::strcpy(view.heap, "Heap: 123 КБ");
-  ui.update(view); lv_refr_now(d);
+  ui.update(view); settle(d);
   char path[1024]; std::snprintf(path, sizeof path, "%s/no-drive.ppm", argv[1]); save(path);
   const unsigned previous = flushes;
   for (int i = 0; i < 100; ++i) { ui.update(view); lv_tick_inc(100); lv_timer_handler(); }
@@ -68,21 +98,21 @@ int main(int argc, char **argv) {
   view.autoMode = true; view.autoHour = true;
   std::strcpy(view.status, "Поворот по цели");
   view.bluetoothEnabled = true; view.bluetoothConnected = true;
-  ui.update(view); lv_refr_now(d);
+  ui.update(view); settle(d);
   std::snprintf(path, sizeof path, "%s/layout-test.ppm", argv[1]); save(path);
-  view.elevation = true; view.current = 180; view.target = 15.5;
+  view.elevation = true; view.maximum = 180; view.current = 180; view.target = 15.5;
   view.wifiConnected = false;
   std::strcpy(view.ip, "AP: 192.168.4.1");
-  ui.update(view); lv_refr_now(d);
+  ui.update(view); settle(d);
   std::snprintf(path, sizeof path, "%s/elevation.ppm", argv[1]); save(path);
-  view.elevation = false; view.current = 16.5; view.target = 40;
+  view.elevation = false; view.maximum = 450; view.current = 16.5; view.target = 40;
   view.direction = 1;
   view.autoHour = false;
   std::strcpy(view.status, "Имитация · вращение");
-  ui.update(view); lv_refr_now(d);
+  ui.update(view); settle(d);
   std::snprintf(path, sizeof path, "%s/simulation.ppm", argv[1]); save(path);
   view.dualAxis = false;
-  ui.update(view); lv_refr_now(d);
+  ui.update(view); settle(d);
   std::snprintf(path, sizeof path, "%s/azimuth-only.ppm", argv[1]); save(path);
   view.dualAxis = true;
   // Render all four movement indicators and verify that stopping erases them.
@@ -90,42 +120,43 @@ int main(int argc, char **argv) {
   for (const auto &motion : {Motion{"az-left", false, -1, 450, 359.9},
        Motion{"az-right", false, 1, 9, 120}, Motion{"el-down", true, -1, 180, 30},
        Motion{"el-up", true, 1, 90, 150}}) {
-    view.elevation = motion.elevation;
+    view.elevation = motion.elevation; view.maximum = motion.elevation ? 180 : 450;
     view.current = motion.current; view.target = motion.target;
     view.direction = 0;
-    ui.update(view); lv_refr_now(d);
+    ui.update(view); settle(d);
     const auto stopped = pixels;
     view.direction = motion.direction;
-    ui.update(view); lv_refr_now(d);
+    ui.update(view); settle(d);
     assert(pixels != stopped);
     std::snprintf(path, sizeof path, "%s/%s.ppm", argv[1], motion.name); save(path);
     const auto idle = flushes;
     for (int i = 0; i < 10; ++i) { ui.update(view); lv_tick_inc(100); lv_timer_handler(); }
     assert(flushes == idle);
     view.direction = 0;
-    ui.update(view); lv_refr_now(d);
+    ui.update(view); settle(d);
     assert(pixels == stopped);
   }
-  view.elevation = false;
+  view.elevation = false; view.maximum = 450;
   // RSSI changes within one state must not repaint; disconnect/recovery must clear the slash.
   view.current = 120; view.target = 120;
   view.wifiConnected = true; view.wifiAp = false; view.wifiRssi = -79;
   std::strcpy(view.status, "Имитация · остановлен");
   std::strcpy(view.ip, "IP: 192.168.3.234");
-  ui.update(view); lv_refr_now(d);
+  ui.update(view); settle(d);
   const auto goodWifi = pixels;
-  assert(!nearColor(240, 361, 14, 0x63dfb5));
-  assert(!nearColor(240, 361, 14, 0xff6b6b));
+  assert(!nearColor(240, 446, 14, 0x63dfb5));
+  assert(!nearColor(240, 446, 14, 0xff6b6b));
   std::snprintf(path, sizeof path, "%s/wifi-good.ppm", argv[1]); save(path);
   auto wifiIdle = flushes;
   view.wifiRssi = -58;
   ui.update(view); lv_tick_inc(100); lv_timer_handler();
   assert(flushes == wifiIdle);
   view.wifiRssi = -80;
-  ui.update(view); lv_refr_now(d);
+  ui.update(view); settle(d);
   const auto weakWifi = pixels;
-  assert(nearColor(240, 361, 14, 0xff6b6b));
-  assert(!nearColor(240, 361, 14, 0x63dfb5));
+  assert(nearColor(240, 446, 14, 0xffd54f));
+  assert(!nearColor(240, 446, 14, 0xff6b6b));
+  assert(!nearColor(240, 446, 14, 0x63dfb5));
   std::snprintf(path, sizeof path, "%s/wifi-weak.ppm", argv[1]); save(path);
   wifiIdle = flushes;
   view.wifiRssi = -90;
@@ -133,36 +164,36 @@ int main(int argc, char **argv) {
   assert(flushes == wifiIdle);
   view.wifiConnected = false; view.wifiRssi = 0;
   std::strcpy(view.ip, "IP: —");
-  ui.update(view); lv_refr_now(d);
+  ui.update(view); settle(d);
   assert(pixels != weakWifi);
-  assert(nearColor(228, 350, 1, 0xff6b6b));
+  assert(nearColor(228, 435, 1, 0xff6b6b));
   std::snprintf(path, sizeof path, "%s/wifi-lost.ppm", argv[1]); save(path);
   view.wifiAp = true;
   std::strcpy(view.ip, "AP: 192.168.4.1");
-  ui.update(view); lv_refr_now(d);
+  ui.update(view); settle(d);
   std::snprintf(path, sizeof path, "%s/wifi-ap.ppm", argv[1]); save(path);
   view.wifiConnected = true; view.wifiAp = false; view.wifiRssi = -60;
   std::strcpy(view.ip, "IP: 192.168.3.234");
-  ui.update(view); lv_refr_now(d);
+  ui.update(view); settle(d);
   assert(pixels == goodWifi);
   // Disabled Bluetooth is blank; an enabled adapter still reports no client.
   view.bluetoothEnabled = false; view.bluetoothConnected = false;
-  ui.update(view); lv_refr_now(d);
+  ui.update(view); settle(d);
   const auto bluetoothOff = pixels;
   assert(!nearColor(240, 383, 5, 0x8fabc3));
   std::snprintf(path, sizeof path, "%s/bluetooth-off.ppm", argv[1]); save(path);
   view.bluetoothEnabled = true;
-  ui.update(view); lv_refr_now(d);
+  ui.update(view); settle(d);
   const auto bluetoothWaiting = pixels;
   assert(pixels != bluetoothOff);
   assert(nearColor(240, 383, 5, 0x8fabc3));
   std::snprintf(path, sizeof path, "%s/bluetooth-waiting.ppm", argv[1]); save(path);
   view.bluetoothConnected = true;
-  ui.update(view); lv_refr_now(d);
+  ui.update(view); settle(d);
   assert(pixels != bluetoothWaiting);
   std::snprintf(path, sizeof path, "%s/bluetooth-connected.ppm", argv[1]); save(path);
   view.bluetoothEnabled = false;
-  ui.update(view); lv_refr_now(d);
+  ui.update(view); settle(d);
   assert(pixels == bluetoothOff);
   // Both markers must remain distinct at identical bearings, including AZ overlap >360.
   struct Bearing { float angle; int x, y; };
@@ -170,20 +201,150 @@ int main(int argc, char **argv) {
        Bearing{180, 240, 467}, Bearing{270, 13, 240}, Bearing{450, 467, 240}}) {
     view.current = view.target = bearing.angle;
     view.feedback = view.targetValid = true;
-    ui.update(view); lv_refr_now(d);
+    ui.update(view); settle(d);
     assert(nearColor(bearing.x, bearing.y, 2, 0xeff5ff));
     assert(nearColor(bearing.x, bearing.y, 11, 0x64cfff));
     const auto idle = flushes;
     for (int i = 0; i < 10; ++i) { ui.update(view); lv_tick_inc(100); lv_timer_handler(); }
     assert(flushes == idle);
     view.feedback = view.targetValid = false;
-    ui.update(view); lv_refr_now(d);
+    ui.update(view); settle(d);
     assert(!nearColor(bearing.x, bearing.y, 2, 0xeff5ff));
     assert(!nearColor(bearing.x, bearing.y, 11, 0x64cfff));
   }
-  ui.setPressed(forkrot::crowpanel::TouchAction::Mode); lv_refr_now(d);
-  assert(nearColor(110, 78, 2, 0x365779));
-  ui.setPressed(forkrot::crowpanel::TouchAction::None); lv_refr_now(d);
-  assert(nearColor(110, 78, 2, 0x183329));
-  std::puts("PASS: LVGL layout, Wi-Fi states/recovery, Bluetooth visibility, movement arrows/stop, marker bearings/overlap/validity, button feedback and idle redraw");
+  ui.setPressed(forkrot::crowpanel::TouchAction::Mode); settle(d);
+  assert(nearColor(150, 106, 2, 0x365779));
+  ui.setPressed(forkrot::crowpanel::TouchAction::None); settle(d);
+  assert(nearColor(150, 106, 2, 0x183329));
+  view.hud = true;
+  view.feedback = true;
+  view.targetValid = true;
+  view.current = 121;
+  view.target = 180;
+  std::strcpy(view.hudName, "Дача · G-800DXA");
+  std::strcpy(view.hudAddress, "hud:192.168.3.234");
+  std::strcpy(view.status, "Вращение");
+  view.direction = 1;
+  ui.update(view);
+  settle(d);
+  std::snprintf(path, sizeof path, "%s/hud.ppm", argv[1]);
+  save(path);
+  view.hudSelector = true;
+  std::strcpy(view.hudRows[0], "Мачта · G-5500\n120 / 30 · Ход · 0s");
+  std::strcpy(view.hudRows[1], "Дача · G-800DXA\n121 / 0 · Стоп · 0s");
+  std::strcpy(view.hudRows[2], "Спутниковая\n240 / 80 · Нет связи · 12s");
+  ui.update(view);
+  settle(d);
+  std::snprintf(path, sizeof path, "%s/hud-selector.ppm", argv[1]);
+  save(path);
+  view.hudSelector = false;
+  view.feedback = view.targetValid = false;
+  std::strcpy(view.status, "Нет связи с повороткой");
+  ui.update(view);
+  settle(d);
+  std::snprintf(path, sizeof path, "%s/hud-offline.ppm", argv[1]);
+  save(path);
+  // Pending manual targets take over the large readout, then restore the exact
+  // normal image on confirmation/cancellation, for local, HUD and both axes.
+  view = forkrot::CrowPanelView{};
+  view.feedback = view.targetValid = true;
+  view.current = 121;
+  view.wifiConnected = true; view.wifiRssi = -60;
+  std::strcpy(view.status, "Остановлен");
+  std::strcpy(view.hudName, "Дача · G-800DXA");
+  std::strcpy(view.hudAddress, "hud:192.168.3.234");
+  struct Pending { const char *name; bool hud, elevation; float target; };
+  for (const auto &state : {Pending{"manual-confirm-local", false, false, 100},
+       Pending{"manual-confirm-hud", true, false, 450},
+       Pending{"manual-confirm-el", true, true, 179.5f}}) {
+    view.hud = state.hud; view.elevation = state.elevation; view.dualAxis = state.elevation; view.maximum = state.elevation ? 180 : 450;
+    view.autoMode = view.pending = false; view.target = state.target;
+    ui.update(view); settle(d);
+    const auto normal = pixels;
+    view.pending = true;
+    ui.update(view); settle(d);
+    assert(pixels != normal);
+    auto *caption = findLabel("ЕХАТЬ"); assert(caption);
+    assert(ui.confirmationHit(240, 224) && ui.confirmationHit(240, 290));
+    assert(!ui.confirmationHit(13, 240) && !ui.confirmationHit(240, 180));
+    char angleText[40]; std::snprintf(angleText, sizeof angleText, "%.1f°", double(view.target));
+    auto *target = findLabel(angleText); assert(target);
+    auto *current = findLabel("121°"); assert(current);
+    assert(lv_obj_get_style_text_font(target, LV_PART_MAIN) == &crowpanel_font_112);
+    assert(lv_obj_get_style_text_font(current, LV_PART_MAIN) == &crowpanel_font_36);
+    assert(lv_obj_get_y(current) + lv_obj_get_height(current) < lv_obj_get_y(caption));
+    assert(lv_obj_get_y(caption) + lv_obj_get_height(caption) < lv_obj_get_y(target));
+    assert(lv_obj_get_x(target) >= 30 && lv_obj_get_x(target) + lv_obj_get_width(target) <= 450);
+    assert(lv_obj_get_y(target) + lv_obj_get_height(target) < lv_obj_get_y(findLabel(view.status)));
+    std::snprintf(path, sizeof path, "%s/%s.ppm", argv[1], state.name); save(path);
+    const auto idle = flushes;
+    for (int i = 0; i < 10; ++i) { ui.update(view); lv_tick_inc(100); lv_timer_handler(); }
+    assert(flushes == idle);
+    view.target = 99.5f;
+    ui.update(view); settle(d);
+    assert(findLabel("99.5°") && findLabel("ЕХАТЬ"));
+    view.target = state.target; view.pending = false;
+    ui.update(view); settle(d);
+    assert(pixels == normal && !ui.confirmationHit(240, 224));
+    // Auto mode must never show the confirmation layout, even with stale pending state.
+    view.autoMode = true;
+    ui.update(view); settle(d);
+    const auto automatic = pixels;
+    view.pending = true;
+    ui.update(view); settle(d);
+    assert(pixels == automatic && !findLabel("ЕХАТЬ"));
+  }
+  view = forkrot::CrowPanelView{};
+  view.hud = view.feedback = view.targetValid = true;
+  std::strcpy(view.hudName, "Дача · G-800DXA");
+  std::strcpy(view.hudAddress, "hud:192.168.3.234");
+  std::strcpy(view.status, "Остановлен");
+  view.current = view.target = 225;
+  ui.update(view); settle(d);
+  assert(!redAt(350) && !redAt(100));
+  view.current = view.target = 265;
+  ui.update(view); lv_refr_now(d);
+  assert(markerAt(225, 0xeff5ff) && !markerAt(265, 0xeff5ff));
+  lv_tick_inc(80); lv_timer_handler(); lv_refr_now(d);
+  assert(markerAt(245, 0xeff5ff) && !markerAt(265, 0xeff5ff));
+  lv_tick_inc(80); lv_timer_handler(); lv_refr_now(d);
+  assert(markerAt(265, 0xeff5ff));
+  view.current = view.target = 359;
+  ui.update(view); settle(d);
+  view.current = 361; view.target = 1;
+  ui.update(view); lv_tick_inc(80); lv_timer_handler(); lv_refr_now(d);
+  assert(markerAt(360, 0xeff5ff) && !markerAt(180, 0xeff5ff));
+  settle(d);
+  // Full mechanical angles determine which side of 0/450 is unavailable.
+  view.target = 225;
+  view.current = 90;
+  ui.update(view); settle(d);
+  assert(redAt(350) && !redAt(10) && !redAt(100));
+  std::snprintf(path, sizeof path, "%s/lower-limit-90.ppm", argv[1]); save(path);
+  view.current = 350;
+  ui.update(view); settle(d);
+  assert(redAt(100) && !redAt(80) && !redAt(330));
+  std::snprintf(path, sizeof path, "%s/upper-limit-350.ppm", argv[1]); save(path);
+  view.current = 450;
+  ui.update(view); settle(d);
+  assert(redAt(100));
+  std::snprintf(path, sizeof path, "%s/upper-stop-450.ppm", argv[1]); save(path);
+  view.maximum = 360; view.current = 350;
+  ui.update(view); settle(d);
+  assert(redAt(10) && !redAt(330));
+  view.elevation = view.dualAxis = true; view.maximum = 180; view.current = 90; view.target = 120;
+  ui.update(view); settle(d);
+  assert(redAt(350) && redAt(190));
+  std::snprintf(path, sizeof path, "%s/elevation-limits.ppm", argv[1]); save(path);
+  view.feedback = false;
+  ui.update(view); settle(d);
+  assert(!redAt(350) && !redAt(190));
+  view.feedback = true; view.current = view.target = 120; view.sourceId = 42;
+  ui.update(view); lv_refr_now(d);
+  assert(markerAt(120, 0xeff5ff)); // New rotator/axis/feedback starts without a fictitious sweep.
+  settle(d);
+  const auto idle = flushes;
+  for (int i = 0; i < 10; ++i) { ui.update(view); lv_tick_inc(100); lv_timer_handler(); }
+  assert(flushes == idle);
+  std::puts("PASS: LVGL marker animation/wrap/reset, limit tails, confirmation hit/restoration, Wi-Fi, arrows, markers and idle redraw");
 }

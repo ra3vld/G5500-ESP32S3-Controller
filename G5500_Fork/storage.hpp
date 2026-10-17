@@ -12,6 +12,9 @@ namespace forkrot {
 enum class WifiSaveResult { Ok, InvalidSsid, InvalidPassword, OpenFailed, WriteFailed, VerifyFailed };
 class Storage {
 public:
+  void loadHud(Runtime &runtime);
+  bool saveHudConfig(const HudConfig &config);
+  bool saveHudPeers(const Hud &hud);
   void loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredentials &credentials);
   void saveCal(const Runtime &runtime, Calibration &calibration);
   WifiSaveResult saveWifi(const String &s, const String &p);

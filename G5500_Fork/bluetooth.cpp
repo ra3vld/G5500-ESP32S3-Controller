@@ -71,10 +71,15 @@ void Bluetooth::onGapEvent(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *p
     esp_bt_gap_ssp_confirm_reply(param->cfm_req.bda, true);
 }
 void Bluetooth::onData(const uint8_t *bytes, size_t size) {
+  const auto session = session_.load();
+  if (receiverSession_ != session) {
+    receiver_.cancelPending();
+    receiverSession_ = session;
+  }
   for (size_t i = 0; i < size; ++i) {
     std::string_view command;
-    if (receiver_.feed(static_cast<char>(bytes[i]), command) &&
-        !commands_.push(command, session_.load())) rxDropped_.fetch_add(1);
+    if (receiver_.feed(static_cast<char>(bytes[i]), command) && !commands_.push(command, session))
+      rxDropped_.fetch_add(1);
   }
 }
 #endif
@@ -196,3 +201,17 @@ bool Bluetooth::send(std::string_view reply) {
 #endif
 }
 }
+
+namespace forkrot {
+void Bluetooth::discardInput() {
+#if BLUETOOTH_BACKEND == BT_ESP32_SPP
+  session_.fetch_add(1); // Callback clears its own partial line; old queue tags are rejected.
+#elif BLUETOOTH_BACKEND == BT_HC05
+  ++inputSession_;
+  receiver_.cancelPending();
+  for (unsigned i = 0; i < 512 && serial_.available(); ++i)
+    receiver_.discard(char(serial_.read()));
+  receiver_.cancelPending();
+#endif
+}
+} // namespace forkrot

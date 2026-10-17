@@ -15,11 +15,21 @@ public:
                Hardware &hardware, Diagnostics &diagnostics, Network &network, Storage &storage)
       : runtime_(runtime), actions_(actions), calibration_(calibration), hardware_(hardware),
         diagnostics_(diagnostics), network_(network), storage_(storage) {
-    web_.setStopHandler([](void *context, int axis) {
-      auto &self = *static_cast<WebInterface *>(context);
-      self.runtime_.controller.stopNow(axis, millis());
-      self.hardware_.applyOutputs();
-    }, this);
+    web_.setStopHandler(
+        [](void *context, const StopRequest &request) {
+          auto &self = *static_cast<WebInterface *>(context);
+          if (self.runtime_.hud.isHud() && request.scoped &&
+              request.selection != self.runtime_.hud.selectionEpoch)
+            return BoundedWebServer::StopResult{409, 0};
+          self.runtime_.controller.stopNow(request.axis, millis());
+          self.hardware_.applyOutputs();
+          if (self.runtime_.hud.isHud())
+            return BoundedWebServer::StopResult{self.runtime_.hud.lastResult() == Result::Deferred ? 202
+                                                                                                   : 503,
+                                                self.runtime_.hud.requestId()};
+          return BoundedWebServer::StopResult{};
+        },
+        this);
     web_.setRequestBuffer(statusBuffer_, sizeof statusBuffer_);
     static const char *const lowMemoryPaths[] = {"/", "/api/status", "/diaglog", "/resetdiag", "/adc",
                                                 "/api/rssi?range=hour", "/api/rssi?range=day", "/api/rssi?range=week",
@@ -42,7 +52,18 @@ private:
     web_.sendBuffer(200, "application/json", j.data(), j.size());
   }
   void setupForkWeb();
+  void setupHudWeb();
   Response callApi(std::string_view path) {
+    if (path == "/api/settings") {
+      const unsigned n =
+          web_.hasArg("n1mmPort") ? web_.arg("n1mmPort").toInt() : runtime_.loggerSettings.n1mmPort;
+      const unsigned p =
+          web_.hasArg("pstPort") ? web_.arg("pstPort").toInt() : runtime_.loggerSettings.pstPort;
+      const unsigned r =
+          web_.hasArg("reportPort") ? web_.arg("reportPort").toInt() : runtime_.loggerSettings.reportPort;
+      if (!network_.hudPortValid(runtime_.hud.config.port, n, p, r))
+        return {400, "{\"ok\":false,\"result\":\"hud_port_conflict\"}"};
+    }
     std::array<FormArgument, HTTP_MAX_ARGUMENTS> arguments;
     const size_t count = web_.args();
     if (count > arguments.size()) return {400, "{\"error\":\"too_many_arguments\"}"};

@@ -12,10 +12,10 @@
 #include "sdkconfig.h"
 #if CONFIG_IDF_TARGET_ESP32S3
 #include "crowpanel_rgb_driver.h"
-// The SDK restarts through an S3 descriptor permanently bound to fbs[0].
-// That is incompatible with double-buffer rendering. Use normal DMA chaining.
+// Recover DMA/LCD alignment every VSYNC. Each framebuffer has its own
+// restart descriptor, so recovery never selects a buffer LVGL is drawing into.
 #undef CONFIG_LCD_RGB_RESTART_IN_VSYNC
-#define CONFIG_LCD_RGB_RESTART_IN_VSYNC 0
+#define CONFIG_LCD_RGB_RESTART_IN_VSYNC 1
 #if CONFIG_LCD_ENABLE_DEBUG_LOG
 // The local log level must be defined before including esp_log.h
 // Set the maximum log level for this source file
@@ -128,12 +128,14 @@ struct esp_rgb_panel_t {
     gdma_link_list_handle_t dma_fb_links[RGB_LCD_PANEL_MAX_FB_NUM]; // DMA link lists for multiple frame buffers
     gdma_link_list_handle_t dma_bb_link; // DMA link list for bounce buffer
 #if RGB_LCD_NEEDS_SEPARATE_RESTART_LINK
-    gdma_link_list_handle_t dma_restart_link; // DMA link list for restarting the DMA
+    gdma_link_list_handle_t dma_restart_links[RGB_LCD_PANEL_MAX_FB_NUM]; // One restart link per framebuffer
 #endif
     uint8_t *fbs[RGB_LCD_PANEL_MAX_FB_NUM]; // Frame buffers
     uint8_t *bounce_buffer[RGB_LCD_PANEL_BOUNCE_BUF_NUM]; // Pointer to the bounce buffers
     size_t fb_size;        // Size of frame buffer, in bytes
     size_t bb_size;        // Size of the bounce buffer, in bytes. If not-zero, the driver uses two bounce buffers allocated from internal memory
+    crowpanel_rgb_restart_stats_t restart_stats; // Guarded by spinlock
+    uint32_t frame_submitted, frame_presented; // protected by spinlock
     uint8_t cur_fb_index;  // Current frame buffer index
     uint8_t bb_fb_index;  // Current frame buffer index which used by bounce buffer
     size_t int_mem_align;  // DMA buffer alignment for internal memory
@@ -256,8 +258,10 @@ static esp_err_t lcd_rgb_panel_destroy(esp_rgb_panel_t *rgb_panel)
         gdma_del_link_list(rgb_panel->dma_bb_link);
     }
 #if RGB_LCD_NEEDS_SEPARATE_RESTART_LINK
-    if (rgb_panel->dma_restart_link) {
-        gdma_del_link_list(rgb_panel->dma_restart_link);
+    for (size_t i = 0; i < RGB_LCD_PANEL_MAX_FB_NUM; i++) {
+        if (rgb_panel->dma_restart_links[i]) {
+            gdma_del_link_list(rgb_panel->dma_restart_links[i]);
+        }
     }
 #endif
     if (rgb_panel->intr) {
@@ -363,8 +367,9 @@ esp_err_t esp_lcd_new_rgb_panel(const esp_lcd_rgb_panel_config_t *rgb_panel_conf
     // reset peripheral and FIFO after we select a correct clock source
     lcd_ll_fifo_reset(rgb_panel->hal.dev);
     lcd_ll_reset(rgb_panel->hal.dev);
-    // install interrupt service, (LCD peripheral shares the interrupt source with Camera by different mask)
-    int isr_flags = LCD_RGB_INTR_ALLOC_FLAGS | ESP_INTR_FLAG_SHARED | ESP_INTR_FLAG_LOWMED;
+    // CrowPanel has no camera. Give VSYNC a dedicated level-3 interrupt so
+    // lower-priority peripheral handlers cannot delay recovery into scanout.
+    int isr_flags = LCD_RGB_INTR_ALLOC_FLAGS | ESP_INTR_FLAG_LEVEL3;
     ret = esp_intr_alloc_intrstatus(lcd_periph_rgb_signals.panels[panel_id].irq_id, isr_flags,
                                     (uint32_t)lcd_ll_get_interrupt_status_reg(rgb_panel->hal.dev),
                                     LCD_LL_EVENT_RGB, rgb_lcd_default_isr_handler, rgb_panel, &rgb_panel->intr);
@@ -452,6 +457,29 @@ esp_err_t esp_lcd_rgb_panel_register_event_callbacks(esp_lcd_panel_handle_t pane
     rgb_panel->on_frame_buf_complete = callbacks->on_frame_buf_complete;
     rgb_panel->on_bounce_empty = callbacks->on_bounce_empty;
     rgb_panel->user_ctx = user_ctx;
+    return ESP_OK;
+}
+
+esp_err_t crowpanel_rgb_frame_status(esp_lcd_panel_handle_t panel, uint32_t *submitted, uint32_t *presented)
+{
+    if (!panel || !submitted || !presented) return ESP_ERR_INVALID_ARG;
+    esp_rgb_panel_t *rgb = __containerof(panel, esp_rgb_panel_t, base);
+    portENTER_CRITICAL(&rgb->spinlock);
+    *submitted = rgb->frame_submitted;
+    *presented = rgb->frame_presented;
+    portEXIT_CRITICAL(&rgb->spinlock);
+    return ESP_OK;
+}
+
+esp_err_t crowpanel_rgb_get_restart_stats(esp_lcd_panel_handle_t panel, crowpanel_rgb_restart_stats_t *stats)
+{
+    if (!panel || !stats) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    esp_rgb_panel_t *rgb_panel = __containerof(panel, esp_rgb_panel_t, base);
+    portENTER_CRITICAL(&rgb_panel->spinlock);
+    *stats = rgb_panel->restart_stats;
+    portEXIT_CRITICAL(&rgb_panel->spinlock);
     return ESP_OK;
 }
 
@@ -626,6 +654,21 @@ static esp_err_t rgb_panel_init(esp_lcd_panel_t *panel)
     return ret;
 }
 
+static esp_err_t lcd_rgb_panel_writeback(uint8_t *buffer, size_t bytes)
+{
+    // Arduino's prebuilt SDK disables interrupts for each C2M operation and
+    // does not enable chunked msync. A full 460800-byte frame can delay VSYNC
+    // into active scanout. Leave interrupt windows between cache-aligned chunks.
+    while (bytes) {
+        const size_t chunk = MIN(bytes, 4096);
+        ESP_RETURN_ON_ERROR(esp_cache_msync(buffer, chunk,
+            ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED), TAG, "frame cache writeback failed");
+        buffer += chunk;
+        bytes -= chunk;
+    }
+    return ESP_OK;
+}
+
 static esp_err_t rgb_panel_draw_bitmap(esp_lcd_panel_t *panel, int x_start, int y_start, int x_end, int y_end, const void *color_data)
 {
     esp_rgb_panel_t *rgb_panel = __containerof(panel, esp_rgb_panel_t, base);
@@ -689,7 +732,7 @@ static esp_err_t rgb_panel_draw_bitmap(esp_lcd_panel_t *panel, int x_start, int 
         }
         // do memory sync only when the frame buffer is mounted to the DMA link list and behind the cache
         if (!rgb_panel->bb_size && rgb_panel->flags.fb_behind_cache) {
-            esp_cache_msync(flush_ptr, bytes_to_flush, ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
+            ESP_RETURN_ON_ERROR(lcd_rgb_panel_writeback(flush_ptr, bytes_to_flush), TAG, "cache writeback failed");
         }
         // after the draw buffer finished copying, notify the user to recycle the draw buffer
         if (cb) {
@@ -697,14 +740,12 @@ static esp_err_t rgb_panel_draw_bitmap(esp_lcd_panel_t *panel, int x_start, int 
         }
     } else {
         ESP_LOGV(TAG, "draw buffer is part of the frame buffer");
-        // the new frame buffer index is changed
-        rgb_panel->cur_fb_index = draw_buf_fb_index;
         // when this function is called, the frame buffer already reflects the draw buffer changes
         // if the frame buffer is also mounted to the DMA, we need to do the sync between them
         if (!rgb_panel->bb_size && rgb_panel->flags.fb_behind_cache) {
             uint8_t *cache_sync_start = rgb_panel->fbs[draw_buf_fb_index] + (y_start * h_res) * bytes_per_pixel;
             size_t cache_sync_size = (y_end - y_start) * bytes_per_line;
-            esp_cache_msync(cache_sync_start, cache_sync_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
+            ESP_RETURN_ON_ERROR(lcd_rgb_panel_writeback(cache_sync_start, cache_sync_size), TAG, "cache writeback failed");
         }
         // after the draw buffer finished copying, notify the user to recycle the draw buffer
         if (cb) {
@@ -712,18 +753,24 @@ static esp_err_t rgb_panel_draw_bitmap(esp_lcd_panel_t *panel, int x_start, int 
         }
     }
 
-    if (!rgb_panel->bb_size) {
-        if (rgb_panel->flags.stream_mode) {
-            for (int i = 0; i < rgb_panel->num_fbs; i++) {
-                // Note, because of DMA prefetch, there's possibility that the old frame buffer might be sent out again
-                // it's hard to know the time when the new frame buffer starts
-                gdma_link_concat(rgb_panel->dma_fb_links[i], -1, rgb_panel->dma_fb_links[rgb_panel->cur_fb_index], 0);
-            }
-#if RGB_LCD_USE_GDMA_LINK_SWITCH_EVENT
-            ESP_RETURN_ON_ERROR(gdma_request_link_switch_event(rgb_panel->dma_chan), TAG, "request link switch event failed");
-#endif // RGB_LCD_USE_GDMA_LINK_SWITCH_EVENT
+    // Publish only after cache writeback. VSYNC must never start an unfinished
+    // buffer; changing its index and DMA tails is atomic with ISR selection.
+    portENTER_CRITICAL(&rgb_panel->spinlock);
+    if (!draw_buf_copy_to_fb) {
+        rgb_panel->cur_fb_index = draw_buf_fb_index;
+        ++rgb_panel->frame_submitted;
+    }
+    if (!rgb_panel->bb_size && rgb_panel->flags.stream_mode) {
+        for (int i = 0; i < rgb_panel->num_fbs; i++) {
+            gdma_link_concat(rgb_panel->dma_fb_links[i], -1, rgb_panel->dma_fb_links[rgb_panel->cur_fb_index], 0);
         }
     }
+    portEXIT_CRITICAL(&rgb_panel->spinlock);
+#if RGB_LCD_USE_GDMA_LINK_SWITCH_EVENT
+    if (!rgb_panel->bb_size && rgb_panel->flags.stream_mode) {
+        ESP_RETURN_ON_ERROR(gdma_request_link_switch_event(rgb_panel->dma_chan), TAG, "request link switch event failed");
+    }
+#endif // RGB_LCD_USE_GDMA_LINK_SWITCH_EVENT
     return ESP_OK;
 }
 
@@ -927,7 +974,12 @@ static IRAM_ATTR bool lcd_rgb_panel_fill_bounce_buffer(esp_rgb_panel_t *panel, u
     // If the bounce pos is larger than the frame buffer size, wrap around so the next isr starts pre-loading the next frame.
     if (panel->bounce_pos_px >= panel->fb_size / bytes_per_pixel) {
         panel->bounce_pos_px = 0;
+        portENTER_CRITICAL_SAFE(&panel->spinlock);
         panel->bb_fb_index = panel->cur_fb_index;
+        // All remaining pixels of the previous frame are now in internal RAM.
+        // Its PSRAM buffer can be reused, even before the LCD finishes scanning it.
+        panel->frame_presented = panel->frame_submitted;
+        portEXIT_CRITICAL_SAFE(&panel->spinlock);
         esp_lcd_rgb_panel_frame_buf_complete_cb_t cb = panel->on_frame_buf_complete;
         if (cb) {
             if (cb(&panel->base, NULL, panel->user_ctx)) {
@@ -962,8 +1014,11 @@ static IRAM_ATTR bool lcd_rgb_panel_eof_handler(gdma_channel_handle_t dma_chan, 
         portENTER_CRITICAL_ISR(&rgb_panel->spinlock);
         int bb = rgb_panel->bb_eof_count % RGB_LCD_PANEL_BOUNCE_BUF_NUM;
         rgb_panel->bb_eof_count++;
-        portEXIT_CRITICAL_ISR(&rgb_panel->spinlock);
+        // LCD VSYNC has a higher priority than the SDK's GDMA interrupt.
+        // Recovery must not reset bounce_pos_px or refill a buffer midway
+        // through this copy. Keep this one 20-row refill atomic with VSYNC.
         need_yield = lcd_rgb_panel_fill_bounce_buffer(rgb_panel, rgb_panel->bounce_buffer[bb]);
+        portEXIT_CRITICAL_ISR(&rgb_panel->spinlock);
     } else {
         // Once the preload has already done, the buffer complete callback is not reliable.
         if (rgb_panel->on_frame_buf_complete) {
@@ -1080,17 +1135,18 @@ static esp_err_t lcd_rgb_panel_init_trans_link(esp_rgb_panel_t *rgb_panel)
                 .check_owner = true,
             }
         };
-        ESP_RETURN_ON_ERROR(gdma_new_link_list(&restart_link_cfg, &rgb_panel->dma_restart_link), TAG, "create DMA restart link list failed");
+        ESP_RETURN_ON_ERROR(gdma_new_link_list(&restart_link_cfg, &rgb_panel->dma_restart_links[0]), TAG, "create DMA restart link list failed");
         gdma_buffer_mount_config_t restart_buffer_mount_cfg = {
             .buffer = rgb_panel->bounce_buffer[0] + restart_skip_bytes,
             .buffer_alignment = buffer_alignment,
-            .length = MIN(LCD_DMA_DESCRIPTOR_BUFFER_MAX_SIZE, rgb_panel->bb_size) - restart_skip_bytes,
+            .length = gdma_link_get_length(rgb_panel->dma_bb_link, 0) - restart_skip_bytes,
+            .flags.bypass_buffer_align_check = true,
         };
-        ESP_RETURN_ON_ERROR(gdma_link_mount_buffers(rgb_panel->dma_restart_link, 0, &restart_buffer_mount_cfg, 1, NULL),
+        ESP_RETURN_ON_ERROR(gdma_link_mount_buffers(rgb_panel->dma_restart_links[0], 0, &restart_buffer_mount_cfg, 1, NULL),
                             TAG, "mount DMA restart buffer failed");
 
         // Magic here: we use the restart link to restart the bounce buffer link list, so concat them
-        gdma_link_concat(rgb_panel->dma_restart_link, 0, rgb_panel->dma_bb_link, 1);
+        gdma_link_concat(rgb_panel->dma_restart_links[0], 0, rgb_panel->dma_bb_link, 1);
 #endif
     } else {
         // DMA is used to convey the frame buffer
@@ -1127,25 +1183,29 @@ static esp_err_t lcd_rgb_panel_init_trans_link(esp_rgb_panel_t *rgb_panel)
                 .check_owner = true,
             }
         };
-        ESP_RETURN_ON_ERROR(gdma_new_link_list(&restart_link_cfg, &rgb_panel->dma_restart_link), TAG, "create DMA restart link list failed");
-        gdma_buffer_mount_config_t restart_buffer_mount_cfg = {
-            .buffer = rgb_panel->fbs[0] + restart_skip_bytes,
-            .buffer_alignment = buffer_alignment,
-            .length = MIN(LCD_DMA_DESCRIPTOR_BUFFER_MAX_SIZE, rgb_panel->fb_size) - restart_skip_bytes,
-            .flags.bypass_buffer_align_check = true, // the restart buffer may doesn't match the buffer alignment but it doesn't really matter in this case
-        };
-        ESP_RETURN_ON_ERROR(gdma_link_mount_buffers(rgb_panel->dma_restart_link, 0, &restart_buffer_mount_cfg, 1, NULL),
-                            TAG, "mount DMA restart buffer failed");
-
-        // Magic here: we use the restart link to restart the frame buffer link list, so concat them
-        gdma_link_concat(rgb_panel->dma_restart_link, 0, rgb_panel->dma_fb_links[0], 1);
+        for (size_t i = 0; i < rgb_panel->num_fbs; i++) {
+            ESP_RETURN_ON_ERROR(gdma_new_link_list(&restart_link_cfg, &rgb_panel->dma_restart_links[i]), TAG, "create DMA restart link list failed");
+            gdma_buffer_mount_config_t restart_buffer_mount_cfg = {
+                .buffer = rgb_panel->fbs[i] + restart_skip_bytes,
+                .buffer_alignment = buffer_alignment,
+                // GDMA rounds each node down to the buffer's alignment. Using
+                // the nominal maximum here would repeat bytes at node 1.
+                .length = gdma_link_get_length(rgb_panel->dma_fb_links[i], 0) - restart_skip_bytes,
+                .flags.bypass_buffer_align_check = true,
+            };
+            ESP_RETURN_ON_ERROR(gdma_link_mount_buffers(rgb_panel->dma_restart_links[i], 0, &restart_buffer_mount_cfg, 1, NULL),
+                                TAG, "mount DMA restart buffer failed");
+            // The skipped FIFO prefix and the rest of this frame must belong
+            // to the same framebuffer. These links stay immutable at runtime.
+            gdma_link_concat(rgb_panel->dma_restart_links[i], 0, rgb_panel->dma_fb_links[i], 1);
+        }
 #endif
     }
 
     return ESP_OK;
 }
 
-// reset the GDMA channel every VBlank to stop permanent desyncs from happening.
+// Recover direct DMA every VBlank, or bounce DMA only after missing EOF events.
 // Note that this fix can lead to single-frame desyncs itself, as in: if this interrupt
 // is late enough, the display will shift as the LCD controller already read out the
 // first data bytes, and resetting DMA will re-send those. However, the single-frame
@@ -1156,20 +1216,21 @@ static IRAM_ATTR void lcd_rgb_panel_try_restart_transmission(esp_rgb_panel_t *pa
 {
     int bb_size_px = panel->bb_size / (panel->fb_bits_per_pixel / 8);
     bool do_restart = false;
-#if CONFIG_LCD_RGB_RESTART_IN_VSYNC
-    do_restart = true;
-#else
     portENTER_CRITICAL_ISR(&panel->spinlock);
     if (panel->flags.need_restart) {
         panel->flags.need_restart = false;
         do_restart = true;
     }
-    if (panel->bb_eof_count < panel->expect_eof_count) {
+    if (panel->bb_size && panel->bb_eof_count < panel->expect_eof_count) {
         do_restart = true;
     }
     panel->bb_eof_count = 0;
+#if CONFIG_LCD_RGB_RESTART_IN_VSYNC
+    // Direct PSRAM DMA cannot detect starvation. Bounce mode can count EOFs
+    // and only needs recovery after a missed refill, not on every healthy frame.
+    if (!panel->bb_size) do_restart = true;
+#endif
     portEXIT_CRITICAL_ISR(&panel->spinlock);
-#endif // CONFIG_LCD_RGB_RESTART_IN_VSYNC
 
     if (!do_restart) {
         return;
@@ -1189,8 +1250,18 @@ static IRAM_ATTR void lcd_rgb_panel_try_restart_transmission(esp_rgb_panel_t *pa
     lcd_ll_fifo_reset(panel->hal.dev);
     gdma_reset(panel->dma_chan);
 #if RGB_LCD_NEEDS_SEPARATE_RESTART_LINK
-    // restart the DMA by a special DMA node
-    gdma_start(panel->dma_chan, gdma_link_get_head_addr(panel->dma_restart_link));
+    portENTER_CRITICAL_ISR(&panel->spinlock);
+    const uint8_t restart_fb = panel->bb_size ? 0 : panel->cur_fb_index;
+    const esp_err_t restart_result = gdma_start(panel->dma_chan,
+        gdma_link_get_head_addr(panel->dma_restart_links[restart_fb]));
+    if (restart_result == ESP_OK) {
+        if (!panel->bb_size) panel->frame_presented = panel->frame_submitted;
+        panel->restart_stats.count++;
+        panel->restart_stats.frame_buffer_mask |= 1u << restart_fb;
+    } else {
+        panel->restart_stats.errors++;
+    }
+    portEXIT_CRITICAL_ISR(&panel->spinlock);
 #else
     if (panel->bb_size) {
         gdma_start(panel->dma_chan, gdma_link_get_head_addr(panel->dma_bb_link));

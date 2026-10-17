@@ -12,3 +12,17 @@
 #define esp_lcd_rgb_panel_refresh crowpanel_esp_lcd_rgb_panel_refresh
 #define esp_lcd_rgb_panel_set_yuv_conversion crowpanel_esp_lcd_rgb_panel_set_yuv_conversion
 #include <esp_lcd_panel_rgb.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+typedef struct {
+    uint32_t count;
+    uint32_t frame_buffer_mask;
+    uint32_t errors;
+} crowpanel_rgb_restart_stats_t;
+esp_err_t crowpanel_rgb_frame_status(esp_lcd_panel_handle_t panel, uint32_t *submitted, uint32_t *presented);
+esp_err_t crowpanel_rgb_get_restart_stats(esp_lcd_panel_handle_t panel, crowpanel_rgb_restart_stats_t *stats);
+#ifdef __cplusplus
+}
+#endif

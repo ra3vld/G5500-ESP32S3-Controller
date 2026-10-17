@@ -54,7 +54,12 @@ int main() {
   connect(largePost);fakeHeapFree=9000;web.handleClient();assert(testSocket.parsed==0 && testSocket.reset);
   connect(largePost);web.handleClient();assert(testSocket.handled==1 && !testSocket.reset);
   int stopped = -2;
-  web.setStopHandler([](void *context, int axis) { *static_cast<int *>(context) = axis; }, &stopped);
+  web.setStopHandler(
+      [](void *context, const StopRequest &request) {
+        *static_cast<int *>(context) = request.axis;
+        return BoundedWebServer::StopResult{};
+      },
+      &stopped);
   connect("GET /api/move?d=S HTTP/1.1\r\nHost: esp32\r\n\r\n");
   fakeHeapFree=3000; fakeHeapBlock=512;
   web.handleClient(); assert(stopped==-1 && testSocket.parsed==0);
@@ -69,6 +74,28 @@ int main() {
   connect("GET /api/move?d=S HTTP/1.1\r\nHost: incomplete");
   web.handleClient(); assert(stopped==-2);
   testSocket.peerClosed=true;web.handleClient();
+  web.setStopHandler([](void *, const StopRequest &) { return BoundedWebServer::StopResult{202, 42}; },
+                     nullptr);
+  connect("GET /api/move?d=S HTTP/1.1\r\n\r\n");
+  fakeHeapFree = 3000;
+  fakeHeapBlock = 512;
+  web.handleClient();
+  assert(testSocket.output.find("202 Accepted") != std::string::npos);
+  assert(testSocket.output.find("\"ok\":false") != std::string::npos);
+  assert(testSocket.output.find("\"requestId\":42") != std::string::npos);
+  web.setStopHandler(
+      [](void *, const StopRequest &r) {
+        assert(r.scoped && r.selection == 7);
+        return BoundedWebServer::StopResult{409, 0};
+      },
+      nullptr);
+  connect("GET /api/move?d=S&selection=7 HTTP/1.1\r\n\r\n");
+  fakeHeapFree = 3000;
+  fakeHeapBlock = 512;
+  web.handleClient();
+  assert(testSocket.parsed == 0 && testSocket.output.find("409 Conflict") != std::string::npos);
+  assert(testSocket.output.find("cancelled") != std::string::npos);
+  assert(emergencyStopAxis("GET /api/move?d=S&selection=7&d=R HTTP/1.1\r\n\r\n") == -2);
   // The exact fragmented heap reported by the device can serve fixed-buffer
   // status and flash pages, while allocating handlers retain their headroom.
   connect(request);fakeHeapFree=8172;fakeHeapBlock=1524;

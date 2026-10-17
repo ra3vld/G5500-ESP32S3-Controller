@@ -1,6 +1,7 @@
 #include "crowpanel_knob.hpp"
 #include "quadrature.hpp"
 #include "crowpanel_touch.hpp"
+#include "crowpanel_dial.hpp"
 #include <cassert>
 #include <cstdio>
 using namespace forkrot;
@@ -25,20 +26,50 @@ int main() {
   touch[1] = 0; touch[0] = 2; assert(!crowpanel::decodeTouch(touch, x, y));
   crowpanel::TouchButtons buttons;
   using crowpanel::TouchAction;
-  assert(buttons.sample(true, 240, 78) == TouchAction::Mode);
+  assert(buttons.sample(true, 240, 106) == TouchAction::Mode);
   assert(buttons.pressed() == TouchAction::Mode);
-  for (int i = 0; i < 100; ++i) assert(buttons.sample(true, 240, 78) == TouchAction::None);
+  for (int i = 0; i < 100; ++i) assert(buttons.sample(true, 240, 106) == TouchAction::None);
   buttons.sample(false, 0, 0);
   assert(buttons.pressed() == TouchAction::None);
-  assert(buttons.sample(true, 240, 78) == TouchAction::Mode);
-  assert(buttons.sample(true, 240, 320) == TouchAction::None); // Sliding cannot activate STOP or mode again.
+  assert(buttons.sample(true, 240, 106) == TouchAction::Mode);
+  assert(buttons.sample(true, 240, 320) == TouchAction::None); // Sliding out cancels the button.
   assert(buttons.pressed() == TouchAction::None);
   buttons.sample(false, 0, 0);
-  assert(buttons.sample(true, 240, 320) == TouchAction::Stop);
+  assert(buttons.sample(true, 240, 320) == TouchAction::None); // Removed STOP area is inert.
   buttons.sample(false, 0, 0);
-  assert(buttons.sample(true, 99, 78) == TouchAction::None);
-  assert(buttons.sample(true, 240, 78) == TouchAction::None); // Must start inside button.
+  assert(buttons.sample(true, 139, 106) == TouchAction::Target);
+  assert(buttons.sample(true, 240, 106) == TouchAction::None); // Must start inside button.
   buttons.sample(false, 0, 0);
+  // Broad annulus, compass bearings, one command per contact, no slide-in commands.
+  assert(crowpanel::dialContains(380, 240) && crowpanel::dialContains(479, 240));
+  assert(!crowpanel::dialContains(379, 240) && !crowpanel::dialContains(0, 0));
+  assert(!crowpanel::dialContains(65535, 65535));
+  assert(crowpanel::dialBearing(240, 13) == 0 && crowpanel::dialBearing(467, 240) == 90);
+  assert(crowpanel::dialBearing(240, 467) == 180 && crowpanel::dialBearing(13, 240) == 270);
+  assert(crowpanel::dialBearing(400, 80) == 45 && crowpanel::dialBearing(80, 80) == 315);
+  assert(buttons.sample(true, 467, 240) == TouchAction::Target);
+  assert(buttons.sample(true, 240, 467) == TouchAction::None);
+  buttons.sample(false, 0, 0);
+  assert(buttons.sample(true, 240, 240) == TouchAction::None);
+  assert(buttons.sample(true, 467, 240) == TouchAction::None);
+  buttons.sample(false, 0, 0);
+  assert(buttons.sample(true, 467, 240, false) == TouchAction::None); // HUD selector owns taps.
+  buttons.sample(false, 0, 0);
+  // The displayed confirmation owns overlapping ring taps and fires once.
+  assert(buttons.sample(true, 400, 280, true, true) == TouchAction::Confirm);
+  assert(buttons.sample(true, 400, 280, true, true) == TouchAction::None);
+  assert(buttons.sample(true, 400, 280, true, false) == TouchAction::None);
+  buttons.sample(false, 0, 0);
+  assert(buttons.sample(true, 400, 280, false, true) == TouchAction::None);
+  buttons.sample(false, 0, 0);
+  assert(buttons.sample(true, 240, 90, true, true) == TouchAction::Mode);
+  assert(crowpanel::limitOpacity(120) == 0 && crowpanel::limitOpacity(121) == 0);
+  assert(crowpanel::limitOpacity(90) > 0 && crowpanel::limitOpacity(90) < crowpanel::limitOpacity(20));
+  assert(crowpanel::limitOpacity(0) == 255 && crowpanel::limitOpacity(-1) == 255);
+  assert(crowpanel::limitOpacity(450 - 350) > 0 && crowpanel::limitOpacity(450 - 90) == 0);
+  assert(crowpanel::limitOpacity(NAN) == 0);
+  assert(crowpanel::shortestBearingDelta(359, 1) == 2);
+  assert(crowpanel::shortestBearingDelta(1, 359) == -2);
   Controller c;
   c.feedback(100, 20, true, true);
   CrowPanelKnob knob(c);
@@ -89,6 +120,15 @@ int main() {
   assert(c.target({200, 0, true, false}, true, now) == Result::Pending);
   press(); release(); sample(false, 0, 351);
   assert(c.axes[0].target == 200 && c.axes[0].tracking && !c.pendingValid);
+  // Touch confirmation executes a pending goal even during motion; it is not STOP.
+  if (knob.axis()) knob.selectAxis();
+  c.tick(now);
+  assert(c.moving());
+  assert(c.target({240, 0, true, false}, true, now) == Result::Pending);
+  knob.confirmPending(now + 1);
+  assert(c.axes[0].target == 240 && c.axes[0].tracking && !c.pendingValid);
+  knob.confirmPending(now + 2);
+  assert(c.axes[0].target == 240 && c.axes[0].tracking);
   knob.stop(now);
   c.setModel(Model::G800DXA); sample(false);
   assert(knob.axis() == 0);
@@ -185,5 +225,33 @@ int main() {
   quickKnob.sample(true, false, 0, 911);
   quick.tick(911);
   assert(quick.moving() && quick.axes[0].target == 120);
-  std::puts("PASS: CrowPanel immediate retargeting, single-click pause/resume, inversion, touch, gestures and faults");
+  Controller tapped;
+  tapped.feedback(400, 20, true, true);
+  CrowPanelKnob touchKnob(tapped);
+  touchKnob.setBearing(90, 100);
+  assert(tapped.axes[0].target == 450 && tapped.axes[0].tracking && !tapped.pendingValid);
+  touchKnob.setBearing(270, 110);
+  assert(tapped.axes[0].target == 270);
+  tapped.maximum = 360;
+  tapped.feedback(350, 20, true, true);
+  touchKnob.setBearing(0, 120);
+  assert(tapped.axes[0].target == 360); // Nearest reachable turn, not a full revolution.
+  touchKnob.selectAxis();
+  touchKnob.setBearing(90, 130);
+  assert(tapped.axes[1].target == 90 && tapped.axes[0].target == 360);
+  touchKnob.setBearing(270, 140);
+  assert(touchKnob.lastResult == Result::Invalid && tapped.axes[1].target == 90);
+  // A queued knob click must not stop the newly tapped target.
+  Controller clickThenTap;
+  clickThenTap.feedback(20, 30, true, true);
+  CrowPanelKnob pendingClick(clickThenTap);
+  pendingClick.sample(true, false, 0, 100);
+  pendingClick.sample(true, true, 0, 110);
+  pendingClick.sample(true, false, 0, 120);
+  pendingClick.sample(true, false, 0, 160);
+  pendingClick.setBearing(90, 170);
+  pendingClick.sample(true, false, 0, 600);
+  clickThenTap.tick(600);
+  assert(clickThenTap.axes[0].target == 90 && clickThenTap.moving());
+  std::puts("PASS: CrowPanel ring targets, gestures, pause/resume, inversion, touch and faults");
 }

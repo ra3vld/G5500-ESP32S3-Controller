@@ -125,6 +125,10 @@ Words words(std::string_view text) {
 } // namespace
 Packet Protocol::datagram(std::string_view input, uint32_t now) {
   Packet packet;
+  if (!controller_.available()) {
+    packet.result = Result::Unavailable;
+    return packet;
+  }
   auto text = trimView(input);
   if (text.size() > 4096 || text.find("<!") != std::string::npos ||
       text.find('&') != std::string::npos) {
@@ -194,7 +198,7 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
     }
     if (stopNode) {
       controller_.stop();
-      packet.result = Result::Ok;
+      packet.result = controller_.remote ? controller_.remote->lastResult() : Result::Ok;
       return packet;
     }
     auto az = field(root, "goazi");
@@ -258,7 +262,7 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
   }
   if (stop) {
     controller_.stop();
-    packet.result = Result::Ok;
+    packet.result = controller_.remote ? controller_.remote->lastResult() : Result::Ok;
     return packet;
   }
   auto query = root.text;
@@ -371,6 +375,12 @@ Packet Protocol::line(std::string_view input, uint32_t now, bool tcp) {
              (tcp && u == "S");
   packet.matched = true;
   packet.result = Result::Ok;
+  if (!controller_.available() && u != "H" && u != "H2" && u != "H3" && u != "H4" && u != "H5") {
+    packet.result = Result::Unavailable;
+    packet.reply = ham ? "RPRT -1\n" : "?>\r\n";
+    return packet;
+  }
+  const uint32_t before = controller_.remote ? controller_.remote->requestId() : 0;
   char b[100];
   if (cmd == "p" || cmd == "\\get_pos" || cmd == "get_pos") {
     JsonWriter reply(b, sizeof b);
@@ -400,7 +410,10 @@ Packet Protocol::line(std::string_view input, uint32_t now, bool tcp) {
     packet.result =
         controller_.jog(u == "U" || u == "D" ? 1 : 0, u == "R" || u == "U" ? 1 : -1, true, now);
   } else if (u == "X1" || u == "X2" || u == "X3" || u == "X4") {
-    controller_.speedPercent = (u[1] - '0') * 25;
+    if (controller_.remote)
+      packet.result = Result::Invalid;
+    else
+      controller_.speedPercent = (u[1] - '0') * 25;
   } else if (cmd == "P" || cmd == "\\set_pos" || cmd == "set_pos") {
     float az = 0, el = 0;
     if (v.size() != 3 || !number(v[1], az) || !number(v[2], el)) {
@@ -453,7 +466,8 @@ Packet Protocol::line(std::string_view input, uint32_t now, bool tcp) {
     }
   } else if (u == "T") {
     packet.result = controller_.sequence(loadedSequence_.data(), loadedSequence_.size(), loadedIntervalMs_, now);
-    if (packet.result == Result::Ok || packet.result == Result::Pending) loadedSequenceStarted_ = true;
+    if (packet.result == Result::Ok || packet.result == Result::Pending || packet.result == Result::Deferred)
+      loadedSequenceStarted_ = true;
   } else if (u == "N") {
     packet.reply = "N=" + std::to_string(controller_.sequenceIndex()) + "/" +
                    std::to_string(loadedSequenceStarted_ ? controller_.sequenceCount() : loadedSequence_.size()) + "\r\n";
@@ -462,11 +476,14 @@ Packet Protocol::line(std::string_view input, uint32_t now, bool tcp) {
     packet.matched = false;
     return packet;
   }
+  if (controller_.remote && controller_.remote->requestId() != before)
+    packet.result = controller_.remote->lastResult();
   if (ham) {
     packet.reply = packet.result == Result::Ok || packet.result == Result::Pending ? "RPRT 0\n"
                    : packet.result == Result::Ignored                              ? "RPRT -8\n"
                                                                                    : "RPRT -1\n";
-  } else if (packet.result == Result::Invalid || packet.result == Result::NotCalibrated) {
+  } else if (packet.result == Result::Invalid || packet.result == Result::NotCalibrated ||
+             packet.result == Result::Unavailable || packet.result == Result::Busy) {
     packet.reply = "?>\r\n";
   }
   return packet;

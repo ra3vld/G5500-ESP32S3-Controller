@@ -46,6 +46,10 @@ void WebInterface::setupWeb() {
   web_.on("/adc", HTTP_GET,
           [this] { sendHtml(ADC_TEST_PAGE, sizeof ADC_TEST_PAGE - 1, ADC_TEST_PAGE_GZIP, sizeof ADC_TEST_PAGE_GZIP); });
   web_.on("/api/adcdiag", HTTP_GET, [this] {
+    if (runtime_.hud.isHud()) {
+      web_.send(403, "application/json", "{\"error\":\"controller_settings_only\"}");
+      return;
+    }
     int azRaw = 0, azMv = 0, elRaw = 0, elMv = 0;
     hardware_.adcDiagRead(PIN_AZ_ADC, azRaw, azMv);
     if (runtime_.controller.model == forkrot::Model::G5500) {
@@ -72,6 +76,10 @@ void WebInterface::setupWeb() {
     web_.send(response.status, "application/json", response.body.c_str());
   });
   web_.on("/api/cal", HTTP_GET, [this] {
+    if (runtime_.hud.isHud()) {
+      web_.send(403, "application/json", "{\"error\":\"controller_settings_only\"}");
+      return;
+    }
     auto &calibrationState = calibration_.state();
     // MULTI-POINT. AZ is written only to the currently selected P36/P45 table.
     String p = web_.arg("p");
@@ -122,6 +130,10 @@ void WebInterface::setupWeb() {
   });
 
   web_.on("/api/cal2", HTTP_GET, [this] {
+    if (runtime_.hud.isHud()) {
+      web_.send(403, "application/json", "{\"error\":\"controller_settings_only\"}");
+      return;
+    }
     String p = web_.arg("p");
     p.toUpperCase();
     if (runtime_.controller.model == forkrot::Model::G800DXA && (p == "O2" || p == "F2")) {
@@ -137,6 +149,10 @@ void WebInterface::setupWeb() {
   });
 
   web_.on("/api/calmode", HTTP_GET, [this] {
+    if (runtime_.hud.isHud()) {
+      web_.send(403, "application/json", "{\"error\":\"controller_settings_only\"}");
+      return;
+    }
     String m = web_.arg("m");
     m.toLowerCase();
     if (m == "2" || m == "gs232" || m == "2point") {
@@ -152,6 +168,10 @@ void WebInterface::setupWeb() {
   });
 
   web_.on("/api/azmode", HTTP_GET, [this] {
+    if (runtime_.hud.isHud()) {
+      web_.send(403, "application/json", "{\"error\":\"controller_settings_only\"}");
+      return;
+    }
     int m = web_.arg("m").toInt();
     if (m != 36 && m != 45) {
       web_.send(400, "text/plain", "BAD AZ MODE");
@@ -162,6 +182,10 @@ void WebInterface::setupWeb() {
   });
 
   web_.on("/api/calreset", HTTP_GET, [this] {
+    if (runtime_.hud.isHud()) {
+      web_.send(403, "application/json", "{\"error\":\"controller_settings_only\"}");
+      return;
+    }
     auto &calibrationState = calibration_.state();
     String axis = web_.arg("axis");
     axis.toLowerCase();
@@ -304,7 +328,10 @@ void WebInterface::setupWeb() {
     const int *azTbl =
         (calibrationState.gsAzMode == 36) ? calibrationState.az36CalMv : calibrationState.az45CalMv;
     int azN = (calibrationState.gsAzMode == 36) ? AZ36_CAL_N : AZ45_CAL_N;
-    bool azLin = calibration_.activeAzLinearValid();
+    if (runtime_.hud.isHud())
+      calibrationState.gsAzMode = runtime_.controller.maximum == 360 ? 36 : 45;
+    bool azLin =
+        runtime_.hud.isHud() ? runtime_.controller.axes[0].calibrated : calibration_.activeAzLinearValid();
     bool azMul = calibration_.activeAzMultiValid();
     int az450v = (azN > 5) ? azTbl[5] : -1;
     int az2z = calibration_.activeAzOSet() ? calibration_.activeAz2Zero() : -1;
@@ -316,12 +343,15 @@ void WebInterface::setupWeb() {
     JsonWriter j(statusBuffer_, sizeof statusBuffer_);
     j << "{\"az\":" << runtime_.currentAz << ",\"el\":" << runtime_.currentEl
       << ",\"targetAz\":" << runtime_.targetAz << ",\"targetEl\":" << runtime_.targetEl
-      << ",\"targetValid\":" << (runtime_.targetValid ? "true" : "false")
-      << ",\"targetAgeMs\":" << targetAge
-      << ",\"calibrated\":" << (calibrationState.cal.valid ? "true" : "false")
-      << ",\"selectedCalOk\":" << (calibration_.selectedCalibrationValid() ? "true" : "false")
-      << ",\"azMode\":" << calibrationState.gsAzMode
-      << ",\"azLinear\":" << (azLin ? "true" : "false")
+      << ",\"targetValid\":" << (runtime_.targetValid ? "true" : "false") << ",\"targetAgeMs\":" << targetAge
+      << ",\"calibrated\":" << (calibrationState.cal.valid ? "true" : "false") << ",\"selectedCalOk\":"
+      << ((runtime_.hud.isHud()
+               ? runtime_.controller.axes[0].calibrated &&
+                     (runtime_.controller.model == Model::G800DXA || runtime_.controller.axes[1].calibrated)
+               : calibration_.selectedCalibrationValid())
+              ? "true"
+              : "false")
+      << ",\"azMode\":" << calibrationState.gsAzMode << ",\"azLinear\":" << (azLin ? "true" : "false")
       << ",\"azLinear36\":" << (calibrationState.az36LinearValid ? "true" : "false")
       << ",\"azLinear45\":" << (calibrationState.az45LinearValid ? "true" : "false")
       << ",\"elLinear\":" << (calibrationState.elLinearValid ? "true" : "false")
@@ -333,13 +363,11 @@ void WebInterface::setupWeb() {
       << ",\"az2p0\":" << az2z << ",\"az2pf\":" << az2f
       << ",\"el2p0\":" << (calibrationState.elOSet ? calibrationState.cal.el0 : -1)
       << ",\"el2pf\":" << (calibrationState.elFSet ? calibrationState.cal.elMax : -1)
-      << ",\"motion\":" << jsonQuoted(hardware_.motion().c_str())
-      << ",\"azp0\":" << azTbl[0] << ",\"azp90\":" << azTbl[1]
-      << ",\"azp180\":" << azTbl[2] << ",\"azp270\":" << azTbl[3]
-      << ",\"azp360\":" << azTbl[4] << ",\"azp450\":" << az450v
-      << ",\"elp0\":" << calibrationState.elCalMv[0] << ",\"elp45\":" << calibrationState.elCalMv[1]
-      << ",\"elp90\":" << calibrationState.elCalMv[2] << ",\"elp135\":" << calibrationState.elCalMv[3]
-      << ",\"elp180\":" << calibrationState.elCalMv[4]
+      << ",\"motion\":" << jsonQuoted(hardware_.motion().c_str()) << ",\"azp0\":" << azTbl[0]
+      << ",\"azp90\":" << azTbl[1] << ",\"azp180\":" << azTbl[2] << ",\"azp270\":" << azTbl[3]
+      << ",\"azp360\":" << azTbl[4] << ",\"azp450\":" << az450v << ",\"elp0\":" << calibrationState.elCalMv[0]
+      << ",\"elp45\":" << calibrationState.elCalMv[1] << ",\"elp90\":" << calibrationState.elCalMv[2]
+      << ",\"elp135\":" << calibrationState.elCalMv[3] << ",\"elp180\":" << calibrationState.elCalMv[4]
       << ",\"ip\":" << jsonQuoted(ip.c_str()) << ",\"apIp\":" << jsonQuoted(apIp.c_str())
       << ",\"staIp\":" << jsonQuoted(staIp.c_str()) << ",\"wifiMode\":" << jsonQuoted(mode)
       << ",\"ssid\":" << jsonQuoted(network_.credentials().wifiSsid.c_str())
@@ -350,7 +378,8 @@ void WebInterface::setupWeb() {
       << ",\"resetReason\":" << jsonQuoted(diagnostics_.bootReasonText().c_str())
       << ",\"uptimeSeconds\":" << uint32_t(esp_timer_get_time() / 1000000)
       << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMinFree\":" << heapMinBytes()
-      << ",\"heapMaxBlock\":" << heapMaxBlockBytes() << ",\"httpWriteFailures\":" << web_.diagnostics().writeFailures;
+      << ",\"heapMaxBlock\":" << heapMaxBlockBytes()
+      << ",\"httpWriteFailures\":" << web_.diagnostics().writeFailures;
     j << ",\"httpReadFailures\":" << web_.readFailures() << ",\"httpRejected\":" << web_.rejectedRequests()
       << ",\"httpAccepted\":" << web_.acceptedRequests() << ",\"httpRequests\":" << web_.diagnostics().requests;
     const auto tcp = tcpMemory();
@@ -359,6 +388,7 @@ void WebInterface::setupWeb() {
     j << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load()
       << ",\"maxFailedAllocation\":" << runtimeMetrics.largestFailedAllocation.load()
       << ",\"loopMaxUs\":" << runtimeMetrics.loopMaxUs << ",\"loopsOver20ms\":" << runtimeMetrics.loopsOver20ms;
+    runtime_.hud.writeStatus(j);
     if (!writeStateJson(j, runtime_.controller, runtime_.protocol, runtime_.loggerSettings, millis(), true)) {
       web_.send(503, "application/json", "{\"error\":\"status_too_large\"}");
       return;
@@ -366,10 +396,17 @@ void WebInterface::setupWeb() {
     web_.sendBuffer(200, "application/json", j.data(), j.size());
   });
   setupForkWeb();
+  setupHudWeb();
   web_.begin();
 }
 
 void WebInterface::setupForkWeb() {
+  web_.on("/api/move", HTTP_POST, [this] {
+    auto r = callApi("/api/move");
+    runtime_.controller.tick(millis());
+    hardware_.applyOutputs();
+    web_.send(r.status, "application/json", r.body.c_str());
+  });
   web_.on("/api/target", HTTP_POST, [this] {
     actions_.updatePosition();
     auto r = callApi("/api/target");

@@ -114,11 +114,15 @@ esp_lcd_panel_handle_t beginPanel() {
   rgb.clk_src = LCD_CLK_SRC_DEFAULT;
   rgb.data_width = 16;
   rgb.bits_per_pixel = 16;
-  // Arduino's prebuilt SDK has no PSRAM XIP. Avoid cache-dependent bounce ISRs.
+  // Cache-dependent callbacks must pause during flash/NVS writes in this SDK.
+#if !CONFIG_SPIRAM_XIP_FROM_PSRAM && (CONFIG_LCD_RGB_ISR_IRAM_SAFE || CONFIG_GDMA_ISR_IRAM_SAFE)
+#error "CrowPanel bounce buffers require cache-dependent interrupts or PSRAM XIP"
+#endif
   rgb.num_fbs = 2;
-  rgb.bounce_buffer_size_px = 0;
+  rgb.bounce_buffer_size_px = 480 * 20;
   rgb.dma_burst_size = 64;
   rgb.flags.fb_in_psram = true;
+  // Leave copying/rendering headroom at ~30 Hz.
   rgb.timings.pclk_hz = 8000000;
   rgb.timings.h_res = rgb.timings.v_res = 480;
   rgb.timings.hsync_pulse_width = rgb.timings.vsync_pulse_width = 4;

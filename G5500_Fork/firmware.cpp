@@ -31,8 +31,11 @@ void Application::controllerSetup() {
   beginRuntimeMetrics();
   diagnostics_.readBootReason();
 
+  storage_.loadHud(runtime_);
+  network_.beginHud();
   hardware_.beginDirections();
-  hardware_.allStop();
+  if (!runtime_.hud.isHud())
+    hardware_.allStop();
   hardware_.rgbSet(0, 0, 0);
 #if SELECTED_BOARD == BOARD_ESP32
   // UART0 belongs to GS-232. Keep IDF radio diagnostics off that byte stream.
@@ -48,7 +51,8 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln(String("[WIFI NVS] load=") +
                          (storage_.wifiCredentialsReadOk() ? "OK" : "namespace unavailable") +
                          ", saved SSID=" + (network_.credentials().wifiSsid.length() ? "present" : "empty"));
-  runtime_.controller.maximum = calibration_.activeAzMaxDeg();
+  if (!runtime_.hud.isHud())
+    runtime_.controller.maximum = calibration_.activeAzMaxDeg();
   loadProfilePresets();
   hardware_.beginInputs();
   display_.loadTouchCalibration();
@@ -63,7 +67,12 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrint(" | display=");
   diagnostics_.dbgPrint(DISPLAY_KIND == DISPLAY_CROWPANEL_21 ? "CROWPANEL_21" : DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE");
   diagnostics_.dbgPrint(" | drive=");
-  diagnostics_.dbgPrintln(SELECTED_BOARD == BOARD_CROWPANEL_21 ? (CROWPANEL_SIMULATION ? "SIMULATED 13.4 deg/s" : "NONE") : DRIVE_INTERFACE == DRIVE_YAESU ? "YAESU" : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960" : "SEPARATE_PWM");
+  diagnostics_.dbgPrintln(runtime_.hud.isHud() ? "HUD remote drive"
+                          : (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION) ? "SIMULATED 13.4 deg/s"
+                          : SELECTED_BOARD == BOARD_CROWPANEL_21 ? "NONE"
+                          : DRIVE_INTERFACE == DRIVE_YAESU   ? "YAESU"
+                          : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960"
+                                                             : "SEPARATE_PWM");
 #if SELECTED_BOARD == BOARD_ESP32
   diagnostics_.dbgPrintln("[DIAG] /diaglog: fixed 2048-byte log; UART0 H4: RAM and Wi-Fi status");
 #else
@@ -91,8 +100,9 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln("=== G5500 " FORK_CHIP_NAME " v1.6.23 WEB ===");
 #endif
   diagnostics_.dbgPrintln("Copyright (c) UA1CFM");
-  diagnostics_.dbgPrintln(
-      "UART0 USB: PSTROTATOR GS-232, 9600 baud (COM number assigned by Windows)");
+  diagnostics_.dbgPrintln(runtime_.hud.config.uart
+                              ? "UART0: HUD/1, 115200 8N1; GS-232 disabled on these pins"
+                              : "UART0 USB: PSTROTATOR GS-232, 9600 baud (COM number assigned by Windows)");
 #if FORK_NATIVE_USB
   diagnostics_.dbgPrintln("Native USB " FORK_USB_NAME
                           ": diagnostics + programming (COM number assigned by Windows)");
@@ -155,6 +165,7 @@ void Application::controllerSetup() {
 }
 void Application::controllerLoop() {
   const uint32_t startedUs = micros();
+  network_.serviceHud();
   updatePosition();
   runtime_.controller.tick(millis()); // expire the hour before accepting any external command
   if (PIN_CONFIRM >= 0 && confirmButton.sample(hardware_.buttonReleased(), millis())) {
@@ -168,6 +179,14 @@ void Application::controllerLoop() {
   web_server_.service();
   network_.serviceWifiReconnect();
   diagnostics_.serviceRssiHistory();
+  if (runtime_.hud.settingsDirty) {
+    runtime_.hud.settingsDirty = false;
+    storage_.saveForkSettings(runtime_);
+  }
+  if (runtime_.hud.presetsDirty) {
+    runtime_.hud.presetsDirty = false;
+    storage_.saveProfilePresets(runtime_);
+  }
   hardware_.controlRotator();
   display_.serviceTouch();
   display_.updateLocalDisplay();

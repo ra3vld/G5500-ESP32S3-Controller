@@ -23,6 +23,12 @@ public:
   std::string positionReport(float mechanicalAz) const;
   Packet datagram(std::string_view input, uint32_t now);
   Packet line(std::string_view input, uint32_t now, bool tcp = false);
+  void resetSession() {
+    resetPst();
+    loadedSequence_.clear();
+    loadedSequenceStarted_ = false;
+    loadedStopEpoch_ = controller_.stopEpoch;
+  }
   void resetPst() {
     pstBaseValid_ = false;
     longPath_ = false;

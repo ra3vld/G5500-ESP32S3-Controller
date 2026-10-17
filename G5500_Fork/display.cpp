@@ -42,6 +42,9 @@ void Display::tftButton(int x, int y, int w, int h, const String &label, bool ac
 }
 
 String Display::tftCalibrationText() {
+  if (runtime_.hud.isHud())
+    return runtime_.hud.available() ? (runtime_.controller.axes[0].calibrated ? "REMOTE OK" : "REMOTE CAL")
+                                    : "OFFLINE";
   if (calibration_.state().calibrationMode == CAL_MULTI_POINT) {
     return calibration_.selectedCalibrationValid() ? "MULTI OK" : "MULTI";
   }
@@ -71,8 +74,14 @@ void Display::drawDashboardStatic() {
   tft.fillScreen(TFT_BG);
   resetDashboardCache();
   tft.fillRoundRect(3, 3, 314, 29, 5, TFT_BLUE);
-  tftText(10, 9, 2, TFT_TEXT, TFT_BLUE, "G-5500 ROTATOR");
-  tftText(190, 9, 2, TFT_TEXT, TFT_BLUE, "(c)UA1CFM");
+  if (runtime_.hud.isHud())
+    tftText(10, 9, 2, TFT_TEXT, TFT_BLUE,
+            runtime_.hud.active() ? String(runtime_.hud.active()->label).substring(0, 24)
+                                  : "HUD: select rotator");
+  else {
+    tftText(10, 9, 2, TFT_TEXT, TFT_BLUE, "G-5500 ROTATOR");
+    tftText(190, 9, 2, TFT_TEXT, TFT_BLUE, "(c)UA1CFM");
+  }
 
   tft.drawRoundRect(3, 36, 154, 139, 6, TFT_BORDER);
   tft.drawRoundRect(163, 36, 154, 139, 6, TFT_BORDER);
@@ -110,6 +119,34 @@ void Display::drawDashboardStatic() {
 }
 
 void Display::updateDashboard() {
+  if (runtime_.hud.isHud()) {
+    const uint32_t now = millis();
+    if (!tftNeedsRedraw && uint32_t(now - lastDisplayMs) < 250)
+      return;
+    lastDisplayMs = now;
+    tftNeedsRedraw = false;
+    tft.fillScreen(TFT_BG);
+    const auto &c = runtime_.controller;
+    const auto *p = runtime_.hud.active();
+    tftText(10, 9, 2, TFT_TEXT, TFT_BG, p ? String(p->label).substring(0, 24) : "HUD: select rotator");
+    tftText(12, 45, 2, TFT_MUTED, TFT_BG, "AZ");
+    tftText(170, 45, 2, TFT_MUTED, TFT_BG, "EL");
+    const bool online = runtime_.hud.available();
+    tftText(12, 70, 4, TFT_AZ, TFT_BG, online ? String(c.axes[0].current, 0) : "---");
+    tftText(170, 70, 4, TFT_EL, TFT_BG,
+            online && c.model == Model::G5500 ? String(c.axes[1].current, 0) : "---");
+    tftText(12, 115, 2, TFT_TEXT, TFT_BG,
+            online ? (String(c.pendingValid ? "WAIT " : "TARGET ") +
+                      String(c.pendingValid ? c.pending.az : c.axes[0].target, 0))
+                   : "HUD OFFLINE");
+    tftText(12, 143, 1, TFT_MUTED, TFT_BG,
+            online ? (c.moving() ? "MOVING" : "STOPPED") : "No current position");
+    tftButton(4, 170, 100, 36, c.mode == Mode::Manual ? "MANUAL" : "AUTO");
+    tftButton(110, 170, 100, 36, "STOP");
+    tftButton(216, 170, 100, 36, "EXEC");
+    tftText(12, 218, 1, TFT_MUTED, TFT_BG, "Tap title to select / hold bottom to calibrate touch");
+    return;
+  }
   auto &calibrationState = calibration_.state();
   if (runtime_.controller.model == forkrot::Model::G800DXA) {
     if (millis() - lastDisplayMs < 500 && !tftNeedsRedraw) {
@@ -602,6 +639,10 @@ void Display::serviceHeaderImage() {
 }
 
 void Display::drawTftPage() {
+  if (tftPage == TFT_PAGE_HUD) {
+    drawHudList();
+    return;
+  }
   if (tftPage == TFT_PAGE_DASH) {
     drawDashboardStatic();
   } else if (tftPage == TFT_PAGE_CAL_HOME) {
@@ -750,6 +791,31 @@ void Display::serviceTouchRecoveryHold() {
   }
 }
 
+void Display::drawHudList() {
+  tft.fillScreen(TFT_BG);
+  tftText(12, 8, 2, TFT_TEXT, TFT_BG, "HUD: select / back");
+  size_t index = 0, shown = 0;
+  for (auto *p = runtime_.hud.peers(); p; p = p->next.get())
+    if (p->saved) {
+      if (index++ < hudPageOffset_)
+        continue;
+      if (shown == 3)
+        break;
+      tftText(12, 44 + int(shown) * 53, 2, p->id == runtime_.hud.config.selected ? TFT_OK : TFT_TEXT, TFT_BG,
+              p->label);
+      tftText(
+          12, 65 + int(shown) * 53, 1, TFT_MUTED, TFT_BG,
+          p->received
+              ? String(p->fresh(millis())
+                           ? ((p->state.axes[0].direction || p->state.axes[1].direction) ? "MOVE " : "STOP ")
+                           : "OLD ") +
+                    String(p->state.axes[0].current, 1) + " / " + String(p->state.axes[1].current, 1) +
+                    "  age " + String((millis() - p->receivedAt) / 1000) + "s"
+              : "OFFLINE");
+      ++shown;
+    }
+  tftText(20, 215, 2, TFT_TEXT, TFT_BG, "< PREV      NEXT >");
+}
 void Display::serviceTouch() {
   auto &calibrationState = calibration_.state();
   if (tftPage == TFT_PAGE_IMAGE) {
@@ -776,7 +842,7 @@ void Display::serviceTouch() {
   lastTouchMs = millis();
 
   // BACK exists on every calibration page.
-  if (tftPage != TFT_PAGE_DASH && hit(x, y, 235, 0, 85, 40)) {
+  if (tftPage != TFT_PAGE_DASH && tftPage != TFT_PAGE_HUD && hit(x, y, 235, 0, 85, 40)) {
     if (tftPage == TFT_PAGE_CAL_HOME) {
       tftPage = TFT_PAGE_DASH;
     } else {
@@ -787,6 +853,52 @@ void Display::serviceTouch() {
     return;
   }
 
+  if (runtime_.hud.isHud() && tftPage == TFT_PAGE_HUD) {
+    if (y < 40) {
+      tftPage = TFT_PAGE_DASH;
+      resetDashboardCache();
+      drawTftPage();
+      return;
+    }
+    if (y >= 200) {
+      if (x < 160)
+        hudPageOffset_ = hudPageOffset_ >= 3 ? hudPageOffset_ - 3 : 0;
+      else if (hudPageOffset_ + 3 < runtime_.hud.count())
+        hudPageOffset_ += 3;
+      drawHudList();
+      return;
+    }
+    const size_t wanted = hudPageOffset_ + size_t((y - 40) / 53);
+    size_t index = 0;
+    for (auto *p = runtime_.hud.peers(); p; p = p->next.get())
+      if (p->saved && index++ == wanted) {
+        runtime_.hud.select(p->id);
+        if (!storage_.saveHudConfig(runtime_.hud.config))
+          runtime_.hud.catalogError = true;
+        tftPage = TFT_PAGE_DASH;
+        resetDashboardCache();
+        drawTftPage();
+        break;
+      }
+    return;
+  }
+  if (runtime_.hud.isHud() && tftPage == TFT_PAGE_DASH) {
+    if (y < 40) {
+      tftPage = TFT_PAGE_HUD;
+      drawHudList();
+    } else if (y >= 170 && y < 206) {
+      if (x < 106) {
+        ControlCommand command;
+        command.op = ControlOp::ToggleMode;
+        runtime_.hud.submit(command);
+      } else if (x < 212)
+        runtime_.controller.stopNow(-1, millis());
+      else
+        runtime_.controller.execute(millis());
+      tftNeedsRedraw = true;
+    }
+    return;
+  }
   if (tftPage == TFT_PAGE_DASH) {
     // Tap the top title bar to show the cat image for 3 seconds.
     if (hit(x, y, 0, 0, 320, 40)) {
@@ -915,6 +1027,9 @@ void Display::updateLocalDisplay() {
   }
   if (tftPage == TFT_PAGE_DASH) {
     updateDashboard();
+  } else if (tftPage == TFT_PAGE_HUD && uint32_t(millis() - lastDisplayMs) >= 1000) {
+    lastDisplayMs = millis();
+    drawHudList();
   } else if (tftNeedsRedraw) {
     drawTftPage();
   }
@@ -953,7 +1068,11 @@ void Display::updateLocalDisplay() {
     char text[40];
     const auto &axis = runtime_.controller.axes[i];
     const char mode = runtime_.controller.pendingValid ? 'W' : runtime_.controller.mode == Mode::Manual ? 'M' : runtime_.controller.mode == Mode::AutoHour ? 'H' : 'A';
-    if (i && runtime_.controller.model == Model::G800DXA) {
+    if (runtime_.hud.isHud() && !runtime_.hud.available()) {
+      std::snprintf(text, sizeof text, "%-16.16s",
+                    i ? (runtime_.hud.active() ? runtime_.hud.active()->label : "Select via Web")
+                      : "HUD OFFLINE");
+    } else if (i && runtime_.controller.model == Model::G800DXA) {
       std::snprintf(text, sizeof text, "%s %-9s", runtime_.controller.pendingValid ? "WAIT" : "MODE", Controller::modeName(runtime_.controller.mode));
     } else {
       char target[12] = "---";

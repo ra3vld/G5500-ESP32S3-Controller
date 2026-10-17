@@ -17,13 +17,23 @@
 #include <WiFiClient.h>
 #include <WiFiServer.h>
 namespace forkrot {
-class Network {
+class Network : public HudTransport {
 public:
   Network(Runtime &runtime, DeviceActions &actions, Calibration &calibration, Hardware &hardware,
           Diagnostics &diagnostics)
       : runtime_(runtime), actions_(actions), calibration_(calibration), hardware_(hardware),
         diagnostics_(diagnostics) {}
   void beginSerial();
+  void beginHud();
+  void serviceHud();
+  bool sendHud(const HudEndpoint &, const uint8_t *, size_t) override;
+  void selectionChanged() override { resetHudInputs(); }
+  bool hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned report) const;
+  bool apAlwaysOn() const {
+    return runtime_.hud.config.wifi == HudWifi::Host ||
+           (runtime_.hud.config.wifi == HudWifi::Existing && board::WIFI_AP_ALWAYS_ON);
+  }
+
   WifiCredentials &credentials() {
     return credentials_;
   }
@@ -53,6 +63,7 @@ private:
   void rotctldSend(const String &s);
   void processRotctldCommand(std::string_view input);
   void restoreApOnlyAfterReconnectFail();
+  void serviceApSubnet();
   int formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity);
   Runtime &runtime_;
   DeviceActions &actions_;
@@ -60,9 +71,27 @@ private:
   Hardware &hardware_;
   Diagnostics &diagnostics_;
 
+  DatagramSocket hudUdp_;
+  uint8_t hudRx_[HUD_FRAME_MAX]{};
+  struct UartLink {
+    HudUartDecoder decoder;
+    uint8_t tx[HUD_FRAME_MAX + 8]{};
+    size_t size = 0, sent = 0;
+  };
+  std::unique_ptr<UartLink> hudUart_;
+  uint32_t inputEpoch_ = 0, tcpSession_ = 0, bluetoothSession_ = 0;
+  struct DeferredReply {
+    uint32_t id = 0, session = 0;
+    uint8_t port = 0;
+    bool ham = false, used = false;
+  };
+  DeferredReply deferred_[4];
+  bool deferReply(const Packet &, uint8_t port);
+  void resetHudInputs();
   WifiCredentials credentials_;
   WiFiServer tcpServer_{board::TCP_PORT};
   WiFiClient rotctldClient_;
+  SelectionLineBuffer tcpReceiver_;
   Bluetooth bluetooth_;
   uint32_t lastBtDropped_ = 0;
   bool btReady_ = false;

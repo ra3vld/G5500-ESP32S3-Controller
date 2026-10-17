@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <charconv>
 #include <cstdio>
+#include <cstring>
 namespace forkrot {
 namespace {
 constexpr uint32_t kAutoHourDurationMs = 3600000;
@@ -18,7 +19,7 @@ constexpr uint32_t kMaximumSequenceIntervalMs = 999000;
 } // namespace
 
 Controller::Controller() {
-#if SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION
+#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
   feedback(0, 0, true, true);
 #endif
   speeds[1].slowdownDegrees = 2;
@@ -31,6 +32,16 @@ Controller::Controller() {
 }
 Controller::Controller(const Controller &other) : Controller() { *this = other; }
 Controller &Controller::operator=(const Controller &other) {
+  remote = other.remote;
+  for (unsigned i = 0; i < 2; ++i) {
+    motionEpoch[i] = other.motionEpoch[i];
+    remoteVariable[i] = other.remoteVariable[i];
+    remoteTolerance[i] = other.remoteTolerance[i];
+  }
+  snapshotAt = other.snapshotAt;
+  remoteRemaining = other.remoteRemaining;
+  remoteSequenceIndex = other.remoteSequenceIndex;
+  remoteSequenceCount = other.remoteSequenceCount;
   model = other.model;
   mode = other.mode;
   maximum = other.maximum;
@@ -68,6 +79,16 @@ const char *Controller::resultName(Result result) {
     return "pending";
   case Result::Ignored:
     return "ignored";
+  case Result::Deferred:
+    return "deferred";
+  case Result::Unavailable:
+    return "unavailable";
+  case Result::Busy:
+    return "busy";
+  case Result::Timeout:
+    return "timeout";
+  case Result::Cancelled:
+    return "cancelled";
   case Result::NotCalibrated:
     return "not_calibrated";
   default:
@@ -75,6 +96,8 @@ const char *Controller::resultName(Result result) {
   }
 }
 void Controller::feedback(float azimuth, float elevation, bool azCalibrated, bool elCalibrated) {
+  if (remote)
+    return;
   axes[0].current = azimuth;
   axes[0].calibrated = azCalibrated && std::isfinite(azimuth);
   axes[1].current = model == Model::G800DXA ? 0 : elevation;
@@ -105,6 +128,7 @@ Result Controller::start(Target nextTarget, uint32_t, bool external) {
       const float value = i ? nextTarget.el : nextTarget.az;
       if (external && axis.accepted && std::abs(value - axis.acceptedTarget) <= tolerance(i)) continue;
       accepted = true;
+      ++motionEpoch[i];
       axis.acceptedTarget = value;
       axis.accepted = true;
       axis.completed = false;
@@ -123,6 +147,13 @@ Result Controller::start(Target nextTarget, uint32_t, bool external) {
   return Result::Ok;
 }
 Result Controller::target(Target nextTarget, bool external, uint32_t now) {
+  if (remote) {
+    ControlCommand c;
+    c.op = ControlOp::Target;
+    c.target = nextTarget;
+    c.external = external;
+    return remote->submit(c);
+  }
   expire(now);
   if (!valid(nextTarget)) {
     return Result::Invalid;
@@ -147,6 +178,14 @@ Result Controller::target(Target nextTarget, bool external, uint32_t now) {
   return result;
 }
 Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now) {
+  if (remote) {
+    ControlCommand c;
+    c.op = ControlOp::Jog;
+    c.axis = int(axis);
+    c.direction = direction;
+    c.external = external;
+    return remote->submit(c);
+  }
   expire(now);
   if (axis > 1 || (axis == 1 && model == Model::G800DXA) || direction < -1 || direction > 1) {
     return Result::Invalid;
@@ -164,6 +203,7 @@ Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now
     presetSlot = -1;
   }
   if (driveFault) return Result::Invalid;
+  ++motionEpoch[axis];
   axes[axis].completed = false;
   axes[axis].accepted = false;
   axes[axis].tracking = false;
@@ -172,6 +212,13 @@ Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now
   return Result::Ok;
 }
 void Controller::stop(int axis) {
+  if (remote) {
+    ControlCommand c;
+    c.op = ControlOp::Stop;
+    c.axis = axis;
+    remote->submit(c);
+    return;
+  }
   if (axis < -1 || axis > 1) {
     return;
   }
@@ -182,6 +229,7 @@ void Controller::stop(int axis) {
   presetSlot = -1;
   for (int i = 0; i < 2; ++i) {
     if (axis < 0 || axis == i) {
+      ++motionEpoch[i];
       axes[i].wanted = 0;
       axes[i].tracking = false;
       axes[i].completed = false;
@@ -190,13 +238,34 @@ void Controller::stop(int axis) {
   }
 }
 void Controller::stopNow(int axis, uint32_t now) {
+  if (remote) {
+    ControlCommand c;
+    c.op = ControlOp::Stop;
+    c.axis = axis;
+    remote->submit(c);
+    return;
+  }
   if (axis < -1 || axis > 1) return;
   stop(axis);
   // Apply STOP without running unrelated tick paths (which can set a fault
   // string). Preserve output()'s reverse dead-time and previous direction.
   for (unsigned i = 0; i < 2; ++i) if (axis < 0 || unsigned(axis) == i) output(i, 0, now);
 }
+bool Controller::stopOwnedJog(unsigned axis, uint32_t epoch, uint32_t now) {
+  if (remote || axis > 1 || motionEpoch[axis] != epoch || axes[axis].tracking)
+    return false;
+  ++motionEpoch[axis];
+  axes[axis].wanted = 0;
+  axes[axis].speedOutputPercent = 0;
+  output(axis, 0, now);
+  return true;
+}
 Result Controller::execute(uint32_t now) {
+  if (remote) {
+    ControlCommand c;
+    c.op = ControlOp::Execute;
+    return remote->submit(c);
+  }
   expire(now);
   if (presetActive) {
     return Result::Ignored;
@@ -217,6 +286,12 @@ Result Controller::execute(uint32_t now) {
   return result;
 }
 Result Controller::setMode(Mode nextMode, uint32_t now) {
+  if (remote) {
+    ControlCommand c;
+    c.op = ControlOp::Mode;
+    c.mode = nextMode;
+    return remote->submit(c);
+  }
   mode = nextMode;
   autoHourStartedAt_ = now;
   if (nextMode == Mode::Manual) {
@@ -234,9 +309,13 @@ Result Controller::setMode(Mode nextMode, uint32_t now) {
   return Result::Ok;
 }
 void Controller::restoreMode(Mode savedMode) {
+  if (remote)
+    return;
   mode = savedMode == Mode::Auto ? Mode::Auto : Mode::Manual;
 }
 void Controller::setModel(Model nextModel) {
+  if (remote)
+    return;
   stop();
   model = nextModel;
   mode = Mode::Manual;
@@ -250,6 +329,8 @@ void Controller::setModel(Model nextModel) {
   }
 }
 void Controller::setMaximum(float nextMaximum) {
+  if (remote)
+    return;
   if (nextMaximum != 360 && nextMaximum != 450) {
     return;
   }
@@ -261,6 +342,16 @@ void Controller::setMaximum(float nextMaximum) {
   lastTarget.hasAz = false;
 }
 Result Controller::savePreset(unsigned slot, const std::string &label, Target newTarget) {
+  if (remote) {
+    if (label.empty() || label.size() > 48)
+      return Result::Invalid;
+    ControlCommand c;
+    c.op = ControlOp::SavePreset;
+    c.slot = slot;
+    c.target = newTarget;
+    std::memcpy(c.label, label.data(), label.size());
+    return remote->submit(c);
+  }
   if (slot >= 4 || label.empty() || label.size() > 48 || !valid(newTarget)) {
     return Result::Invalid;
   }
@@ -273,6 +364,12 @@ Result Controller::savePreset(unsigned slot, const std::string &label, Target ne
   return Result::Ok;
 }
 Result Controller::preset(unsigned slot, uint32_t now) {
+  if (remote) {
+    ControlCommand c;
+    c.op = ControlOp::Preset;
+    c.slot = slot;
+    return remote->submit(c);
+  }
   expire(now);
   if (slot >= 4) {
     return Result::Invalid;
@@ -290,6 +387,16 @@ Result Controller::preset(unsigned slot, uint32_t now) {
   return result;
 }
 Result Controller::sequence(const Target *points, size_t count, uint32_t interval, uint32_t now) {
+  if (remote) {
+    if (!count || count > 16)
+      return Result::Invalid;
+    ControlCommand c;
+    c.op = ControlOp::Sequence;
+    c.count = uint8_t(count);
+    c.interval = interval;
+    std::copy_n(points, count, c.points.begin());
+    return remote->submit(c);
+  }
   expire(now);
   if (!count || count > 16 || interval < kMinimumSequenceIntervalMs ||
       interval > kMaximumSequenceIntervalMs) {
@@ -321,10 +428,14 @@ Result Controller::sequence(const Target *points, size_t count, uint32_t interva
   return result;
 }
 void Controller::cancelSequence() {
+  if (remote)
+    return;
   sequence_.clear();
   pendingSequence_.clear();
 }
 uint32_t Controller::remaining(uint32_t now) const {
+  if (remote)
+    return remoteRemaining > uint32_t(now - snapshotAt) ? remoteRemaining - uint32_t(now - snapshotAt) : 0;
   auto elapsed = uint32_t(now - autoHourStartedAt_);
   return mode == Mode::AutoHour && elapsed < kAutoHourDurationMs ? kAutoHourDurationMs - elapsed
                                                                  : 0;
@@ -366,20 +477,27 @@ void Controller::expire(uint32_t now) {
   }
 }
 bool Controller::variableSpeed(unsigned i) const {
-#if DRIVE_INTERFACE == DRIVE_YAESU
+  if (remote)
+    return i < 2 && remoteVariable[i];
+#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
+  (void)i;
+  return false; // Fixed-speed virtual drive, independent of physical PWM settings.
+#elif DRIVE_INTERFACE == DRIVE_YAESU
   return i == 0 && model == Model::G800DXA && speedEnabled;
 #else
   return i == 0 || model == Model::G5500;
 #endif
 }
 void Controller::tick(uint32_t now) {
+  if (remote)
+    return;
   expire(now);
   const uint32_t elapsed = speedUpdateStarted_ ? uint32_t(now - lastSpeedUpdateAt_) : 0;
   lastSpeedUpdateAt_ = now;
   speedUpdateStarted_ = true;
-#if SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION
+#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
   // Integrate the previous output over real elapsed time, independent of loop rate.
-  // This profile has no motor GPIO; all protocols share these simulated positions.
+  // Motor GPIO are disabled; all protocols share these simulated positions.
   for (unsigned i = 0; i < 2; ++i) {
     auto &axis = axes[i];
     if (!driveFault && axis.direction && (i == 0 || model == Model::G5500)) {

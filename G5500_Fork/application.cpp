@@ -3,7 +3,18 @@
 namespace forkrot {
 using namespace board;
 void Application::updatePosition() {
-#if SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION
+  if (runtime_.hud.isHud()) {
+    auto &c = runtime_.controller;
+    runtime_.currentAz = c.axes[0].current;
+    runtime_.currentEl = c.axes[1].current;
+    runtime_.targetAz = c.axes[0].target;
+    runtime_.targetEl = c.axes[1].target;
+    runtime_.targetValid = c.targetKnown;
+    runtime_.azTrack = c.axes[0].tracking;
+    runtime_.elTrack = c.axes[1].tracking;
+    return;
+  }
+#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
   runtime_.controller.tick(millis());
   runtime_.currentAz = runtime_.controller.axes[0].current;
   runtime_.currentEl = runtime_.controller.model == Model::G5500 ? runtime_.controller.axes[1].current : 0.f;
@@ -62,12 +73,16 @@ void Application::updatePosition() {
 }
 
 void Application::setCalibrationMode(CalibrationMode m) {
+  if (runtime_.hud.isHud())
+    return;
   auto &calibrationState = calibration_.state();
   calibrationState.calibrationMode = m;
   storage_.saveCalibrationMode(runtime_.controller.model, calibrationState.calibrationMode);
 }
 
 void Application::setGsAzMode(uint8_t m) {
+  if (runtime_.hud.isHud())
+    return;
   auto &calibrationState = calibration_.state();
   if (m != 36 && m != 45) {
     return;
@@ -106,6 +121,8 @@ void Application::setGsAzMode(uint8_t m) {
 }
 
 void Application::captureGs232Cal(const String &cmd) {
+  if (runtime_.hud.isHud())
+    return;
   auto &calibrationState = calibration_.state();
   if (runtime_.controller.model == forkrot::Model::G800DXA && (cmd == "O2" || cmd == "F2")) {
     return;

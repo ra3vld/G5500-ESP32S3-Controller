@@ -79,9 +79,12 @@ private:
     TFT_PAGE_CAL_AZ = 2,
     TFT_PAGE_CAL_EL = 3,
     TFT_PAGE_TOUCH_CAL = 4,
+    TFT_PAGE_HUD = 6,
     TFT_PAGE_IMAGE = 5
   };
   TftPage tftPage = TFT_PAGE_DASH;
+  size_t hudPageOffset_ = 0;
+  void drawHudList();
   uint32_t lastTouchMs = 0;
   uint32_t imagePageStartedMs = 0;
   static constexpr uint32_t IMAGE_PAGE_DURATION_MS = 3000;
@@ -122,6 +125,7 @@ private:
 #elif DISPLAY_KIND == DISPLAY_CROWPANEL_21
 #include "runtime.hpp"
 #include "crowpanel_knob.hpp"
+#include "hud_input.hpp"
 #include "crowpanel_ui.hpp"
 #include "crowpanel_board.hpp"
 namespace forkrot {
@@ -133,19 +137,25 @@ class Display {
   Diagnostics &diagnostics_;
   Network &network_;
   CrowPanelKnob knob_;
+  HudKnob hudKnob_;
+  Storage &storage_;
+  bool hudTouchDown_ = false;
   crowpanel::TouchButtons touchButtons_;
   CrowPanelUi ui_;
   esp_lcd_panel_handle_t panel_ = nullptr;
   lv_display_t *display_ = nullptr;
   uint32_t lastInput_ = 0, lastTouch_ = 0, lastUi_ = 0;
+  uint32_t flushGeneration_ = 0, flushStarted_ = 0;
+  bool flushPending_ = false;
   bool redraw_ = true, inputHealthy_ = true, inputReady_ = false;
   void serviceKnob();
   static void flushFrame(lv_display_t *display, const lv_area_t *area, uint8_t *pixels);
 public:
   Display(Runtime &runtime, DeviceActions &actions, Calibration &, Hardware &hardware,
-          Diagnostics &diagnostics, Network &network, Storage &)
-    : runtime_(runtime), actions_(actions), hardware_(hardware), diagnostics_(diagnostics),
-      network_(network), knob_(runtime.controller) {}
+          Diagnostics &diagnostics, Network &network, Storage &storage)
+      : runtime_(runtime), actions_(actions), hardware_(hardware), diagnostics_(diagnostics),
+        network_(network), knob_(runtime.controller), hudKnob_(runtime.hud, runtime.controller),
+        storage_(storage) {}
   void invalidate() { redraw_ = true; }
   void loadTouchCalibration() {}
   void startAfterCalibrationLoad() { redraw_ = true; inputReady_ = true; }

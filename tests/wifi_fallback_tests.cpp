@@ -5,6 +5,10 @@
 #include <thread>
 using namespace forkrot;
 int main() {
+  assert(serviceApAddress(0, 0) == 0x0104a8c0u);
+  assert(serviceApAddress(0x6304a8c0u, 0x00ffffffu) == 0x01ff1facu);
+  assert(serviceApAddress(0x6303a8c0u, 0x0000ffffu) == 0x01ff1facu);
+  assert(serviceApAddress(0x6303a8c0u, 0x00ffffffu) == 0x0104a8c0u);
   WifiFallback policy;
   policy.reset(100, true);
   assert(policy.update(101, true, true, false) == WifiAction::None);

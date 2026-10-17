@@ -56,6 +56,10 @@ int main() {
   assert(boundedForm("ssid=%D0%A2%D0%B5%D1%81%D1%82&pass=abc%26def",args) && args==2);
   args=0;assert(!boundedForm("ssid=bad%00name",args));
   args=0;assert(!boundedForm("x=%xx",args));
+  input.feed('M', line);
+  input.cancelPending();
+  assert(!input.feed('R', line) && !input.feed('\n', line));
+  assert(!input.feed('C', line) && input.feed('\n', line) && line == "C");
   deny=false;
   std::cout<<"PASS: 10000 bounded XML/sequence/line/byte-queue cycles with C++ allocations forbidden; early input rejection\n";
 }

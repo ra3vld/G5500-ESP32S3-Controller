@@ -13,9 +13,8 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 .wrap{max-width:980px;margin:auto;padding:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}h1{font-size:26px;margin:8px 0 10px}
 
 .nav{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px;padding:8px;background:#0b1720;border:1px solid #294153;border-radius:12px;position:sticky;top:0;z-index:20}
-.nav-tabs{display:flex;gap:8px;flex-wrap:wrap}
-.nav button,.nav a{border:0;cursor:pointer;font-family:inherit;display:inline-block;padding:9px 12px;border-radius:9px;background:#173044;color:#fff;text-decoration:none;font-weight:700;font-size:14px}
-.nav button.active{background:#167a5c}.nav button:hover,.nav a:hover{background:#235b78}
+.nav button{border:0;cursor:pointer;font-family:inherit;display:inline-block;padding:9px 12px;border-radius:9px;background:#173044;color:#fff;text-decoration:none;font-weight:700;font-size:14px}
+.nav button.active{background:#167a5c}.nav button:hover{background:#235b78}
 .card{background:var(--p);border:1px solid var(--b);border-radius:12px;padding:12px;margin-top:10px}
 .big{font-size:54px;font-weight:700}.targetbig{font-size:34px;font-weight:700;color:var(--a)}.sep{font-size:30px;color:var(--m);font-weight:400}.unit{font-size:25px;color:var(--m)}.label{color:var(--m);font-size:13px;text-transform:uppercase;letter-spacing:.08em}
 .bar{height:16px;border-radius:8px;background:#071018;overflow:hidden;margin-top:12px}.fill{height:100%;background:linear-gradient(90deg,#24d18d,#33b8ff)}
@@ -38,22 +37,33 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 .calreset{background:#9b2c2c;min-height:46px;font-size:15px;padding:8px 12px}
 select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t);border:1px solid #355063;font-size:16px} .preset-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.preset-grid button{overflow-wrap:anywhere}.preset-grid button.active{border-color:#24d18d} summary{cursor:pointer;font-weight:700} button:disabled{opacity:.45;cursor:default} #forkSettings input[type=checkbox]{width:auto} @media(max-width:700px){.preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}} .seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.seg .btn{min-height:42px;font-size:14px;border-radius:10px}.minirow{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.minirow .btn{min-height:42px;font-size:13px;border-radius:10px;padding:6px}.calbox{background:#0b1720;border:1px solid #294153;border-radius:12px;padding:10px;margin-top:8px}.calbox h3{margin:0 0 8px;font-size:15px}.calvalues{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-size:12px}.calvalues div{background:#071018;border-radius:8px;padding:7px}.hide{display:none!important}.rangebadge{display:inline-block;padding:4px 8px;border-radius:999px;background:#173044;color:#fff;font-size:12px;font-weight:700}
 @media(max-width:700px){.grid{grid-template-columns:1fr}.big{font-size:46px}.targetbig{font-size:30px}.sep{font-size:26px}}
-[hidden]{display:none!important}.nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+.hint{color:var(--m);font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.device-panel h2{font-size:20px;line-height:1.35;margin:0;overflow-wrap:anywhere}.device-panel #hudLink:empty{display:none}.device-panel #hudLink:not(:empty){margin-top:8px}
+.device-section{margin-top:14px;border-top:1px solid var(--b);padding-top:14px}.device-section summary{line-height:1.4;padding:4px 0}.device-section[open] summary{margin-bottom:14px}
+.device-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.device-fields .field{min-width:0}.device-fields label{display:block;margin-bottom:7px;color:var(--m);font-size:14px;line-height:1.4}.device-fields input,.device-fields select{min-height:44px;max-width:100%}
+.device-panel .btn{min-height:44px;font-size:15px;padding:10px 16px;border-radius:10px;cursor:pointer;touch-action:manipulation;overflow-wrap:anywhere}.device-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}.device-panel form{margin:0}.device-panel .hint{margin:12px 0}.device-address{display:grid;gap:12px;padding:16px 0}.device-address>.btn{justify-self:start}
+.device-list{display:grid;gap:10px}.device-peer{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px}.device-peer>.btn:first-child{text-align:left}.device-peer-note{grid-column:1/-1;color:var(--m);font-size:13px}.device-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0;font-size:13px;color:var(--m)}.device-pagination>span{text-align:center;overflow-wrap:anywhere}
+@media(max-width:600px){.device-fields{grid-template-columns:minmax(0,1fr);gap:14px}.device-actions>.btn,.device-address>.btn{width:100%}.device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}.device-peer>.btn:first-child{grid-column:1/-1}.device-pagination .btn{padding:10px 12px}}
+[hidden]{display:none!important}.nav button:focus-visible{outline:2px solid var(--a);outline-offset:2px}
 .current-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;padding:12px;font-size:13px}.current-status span{display:block;color:var(--m);margin-bottom:5px}.current-status b{font-size:14px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.current-status .online{color:var(--a)}.current-status .offline{color:#e5a94f}
+.diagnostic-links{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}.diagnostic-links a{color:var(--t);background:#173044;border-radius:9px;padding:12px;text-decoration:none;font-size:14px}
 </style></head><body><div class="wrap">
 <div style="font-size:13px;color:#96a9b7;margin:2px 0 6px">G5500 Fork 0.1.0 · оригинал &copy; UA1CFM</div>
 <h1 id="modelTitle">YAESU G-5500 / ESP32</h1>
-<nav class="nav" aria-label="Разделы контроллера">
-<div class="nav-tabs" role="tablist" aria-label="Управление и настройки">
+<nav class="nav" role="tablist" aria-label="Разделы контроллера">
 <button id="controlTab" class="active" role="tab" aria-controls="controlPanel" aria-selected="true" onclick="selectTab('control')">Управление</button>
 <button id="settingsTab" role="tab" aria-controls="settingsPanel" aria-selected="false" tabindex="-1" onclick="selectTab('settings')">Настройки</button>
-</div>
-<a href="/adc">ADC TEST</a>
-<a href="/resetdiag">RESET DIAG</a>
-<a href="/diaglog">DIAG CONSOLE</a>
 </nav>
 <div id="forkMessage" role="status" aria-live="polite"></div>
 <main id="controlPanel" role="tabpanel" aria-labelledby="controlTab">
+<div id="selectedRotor" class="hint hide" role="status"></div>
+<div class="card current-status" id="currentStatus" aria-label="Текущий статус устройства">
+<div><span>Wi-Fi</span><b id="statusWifi">—</b></div>
+<div><span>Bluetooth</span><b id="statusBt">—</b></div>
+<div><span>Сигнал Wi-Fi</span><b id="statusSignal">—</b></div>
+<div title="Свободная внутренняя RAM"><span>Свободная память</span><b id="statusMemory">—</b></div>
+<div><span>Uptime</span><b id="statusUptime">—</b></div>
+</div>
 <div class="grid">
 <div class="card"><div class="label">Азимут — текущее / задание</div><div><span id="az" class="big">--.-</span><span class="sep"> / </span><span id="azt" class="targetbig">---</span><span class="unit">°</span></div><div class="bar"><div id="azbar" class="fill"></div></div><div>0° <span id="azmaxlabel" style="float:right">450°</span></div></div>
 <div class="card"><div class="label">Элевация — текущее / задание</div><div><span id="el" class="big">--.-</span><span class="sep"> / </span><span id="elt" class="targetbig">---</span><span class="unit">°</span></div><div class="bar"><div id="elbar" class="fill"></div></div><div>0° <span style="float:right">180°</span></div></div>
@@ -81,13 +91,6 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div class="field"><label for="followMode">Следование командам</label><select id="followMode" onchange="forkPost('/api/mode',{mode:this.value})"><option value="manual">Ручной</option><option value="auto">Автоматический</option><option value="auto_1h">Авто 1 ч</option></select></div></div>
 <div id="hourLeft" aria-live="polite"></div>
 <div id="waitingTarget" style="margin-top:8px">Нет ожидающей цели</div>
-</div>
-<div class="card current-status" id="currentStatus" aria-label="Текущий статус устройства">
-<div><span>Wi-Fi</span><b id="statusWifi">—</b></div>
-<div><span>Bluetooth</span><b id="statusBt">—</b></div>
-<div><span>Сигнал Wi-Fi</span><b id="statusSignal">—</b></div>
-<div title="Свободная внутренняя RAM"><span>Свободная память</span><b id="statusMemory">—</b></div>
-<div><span>Uptime</span><b id="statusUptime">—</b></div>
 </div>
 </main>
 <section id="settingsPanel" role="tabpanel" aria-labelledby="settingsTab" hidden>
@@ -196,7 +199,31 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div class="row" style="margin-top:10px"><button class="btn rbtn active" data-r="hour">1 HOUR</button><button class="btn rbtn" data-r="day">1 DAY</button><button class="btn rbtn" data-r="week">1 WEEK</button><button class="btn rbtn" data-r="month">1 MONTH</button><button class="btn rbtn" data-r="year">1 YEAR</button></div>
 <canvas id="rchart" width="900" height="260"></canvas>
 <div class="kv" style="margin-top:10px"><div>MIN: <b id="rmin">-</b></div><div>MAX: <b id="rmax">-</b></div><div>AVG: <b id="ravg">-</b></div><div>Points: <b id="rcount">0</b></div></div></div>
-<div class="card"><div class="label">Подключение</div><div class="kv" style="margin-top:10px">
+<section class="card device-panel" id="hudPanel" aria-labelledby="hudHeading">
+<h2 id="hudHeading">Контроллер поворотки</h2>
+<div id="hudLink" class="hint" role="status"></div>
+<div id="hudControls" class="hide">
+<p class="hint">Команды программ, подключённых к HUD, идут выбранной поворотке.</p>
+<div id="hudPeers" class="device-list"></div>
+<div class="device-pagination"><button class="btn" id="hudPrev" onclick="hudPage(-1)">Назад</button><span id="hudPageInfo"></span><button class="btn" id="hudNext" onclick="hudPage(1)">Далее</button></div>
+<details class="device-section"><summary>Добавить поворотку</summary>
+<div class="device-actions"><button class="btn" onclick="hudSearch()">Найти в сети</button><button class="btn" id="hudUartSearch" onclick="hudSearch(true)">Найти по UART</button></div>
+<form class="device-address" onsubmit="event.preventDefault();hudSearch(false,true)">
+<div class="device-fields"><div class="field"><label for="hudAddress">IP контроллера</label><input id="hudAddress" placeholder="192.168.4.1"></div><div class="field"><label for="hudPeerPort">UDP-порт HUD</label><input id="hudPeerPort" type="number" min="1" max="65535" value="4534"></div></div>
+<button class="btn">Проверить адрес</button></form>
+<div id="hudDiscovered" class="device-list"></div>
+<div class="device-pagination"><button class="btn" onclick="hudDiscoveryPage(-1)">Назад</button><span id="hudDiscoveryInfo"></span><button class="btn" onclick="hudDiscoveryPage(1)">Далее</button></div>
+</details></div>
+<details class="device-section"><summary>Роль устройства и связь</summary>
+<form id="hudConfig" onsubmit="saveHudDevice(event)"><div class="device-fields">
+<div class="field"><label for="deviceRole">Роль после перезагрузки</label><select id="deviceRole" name="role"><option value="controller">Контроллер поворотки</option><option value="hud">HUD — удалённый пульт</option></select></div>
+<div class="field"><label for="deviceWifi">Подключение по Wi-Fi</label><select id="deviceWifi" name="wifi"><option value="existing">Через роутер / обычный режим</option><option value="host">Общая точка доступа</option><option value="client">Клиент общей точки доступа</option></select></div>
+<div class="field"><label for="deviceUart">Проводной UART</label><select id="deviceUart" name="uart"><option value="0">GS-232 для программ, 9600</option><option value="1">HUD ↔ поворотка, 115200</option></select></div>
+<div class="field"><label for="devicePort">UDP-порт HUD</label><input id="devicePort" name="port" type="number" min="1" max="65535" value="4534" required></div>
+</div><p class="hint">Для общей сети одно устройство создаёт точку доступа, остальные подключаются к ней через настройки Wi-Fi ниже. UART HUD занимает существующие провода GS-232.</p>
+<div class="device-actions"><button class="btn good" type="submit">Сохранить и перезагрузить</button></div></form>
+</details></section>
+<div class="card" id="networkSettings"><div class="label">Подключение</div><div class="kv" style="margin-top:10px">
 <div>Home IP: <b id="ip">-</b></div><div>AP IP: <b id="apip">-</b></div><div>TCP rotctld: <b>4533</b></div><div>Mode: <b id="mode">-</b></div><div>Home Wi-Fi RSSI: <b id="rssi">-</b></div><div>Signal: <b id="sig">-</b></div>
 <div id="btlinkrow" class="hide">Bluetooth-соединение: <b id="btlinkstate" role="status">-</b></div>
 <div><span id="btlabel">Bluetooth</span>: <b id="btstate" role="status">-</b></div><div id="bttransport">-</div>
@@ -208,6 +235,9 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div id="wifiMessage" class="hint" role="status" aria-live="polite"></div>
 <div class="field" style="margin-top:14px"><label>Access Point password (8..63 chars; empty = open AP)</label><input id="appass" type="password" minlength="8" maxlength="63" placeholder="leave empty for open AP"></div>
 <button class="btn good" style="margin-top:10px" onclick="saveAp()">Save AP password + reboot</button></div>
+<div class="card"><div class="label">Диагностика</div><div class="diagnostic-links">
+<a href="/adc">ADC TEST</a><a href="/resetdiag">RESET DIAG</a><a href="/diaglog">DIAG CONSOLE</a>
+</div></div>
 </section></div>
 <script>
 
@@ -237,10 +267,19 @@ function compactStatus(j){
 
 async function forkPost(path,body){
  try{
-  const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
-  const j=await r.json();
-  const messages={not_calibrated:'Сначала выполните калибровку',invalid:'Проверьте значения',ignored:'Сейчас выполняется предустановка',pending:'Цель ожидает подтверждения',ok:'Готово'};
-  document.getElementById('forkMessage').textContent=messages[j.result]||'Ошибка';
+  const selection=body.selection??window._forkState?.hudSelectionEpoch,name=window._forkState?.hudName;
+  if(window._forkState?.deviceRole==='hud'&&['/api/target','/api/move','/api/mode','/api/execute','/api/preset','/api/preset/run'].includes(path))body={...body,selection};
+  const fastStop=path==='/api/move'&&['S','A','E'].includes(body.d);
+  const r=await fetch(fastStop?path+'?d='+body.d+(body.selection===undefined?'':'&selection='+body.selection):path,fastStop?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
+  let j=await r.json();
+  if(r.status===202&&j.requestId){
+    document.getElementById('forkMessage').textContent='Ожидаем подтверждение поворотки…';
+    const started=Date.now();
+    while(j.result==='deferred'&&Date.now()-started<3000){await new Promise(resolve=>setTimeout(resolve,100));j=await (await fetch('/api/hud/command?id='+j.requestId,{cache:'no-store'})).json();}
+    if(j.result==='deferred')j={ok:false,result:'timeout'};
+  }
+  const messages={deferred:'Ожидаем подтверждение',timeout:'Нет подтверждения — проверьте состояние поворотки',unavailable:'Нет связи с повороткой',busy:'Поворотка занята, повторите команду',cancelled:'Команда отменена',storage_full:'Не хватает памяти для сохранения',hud_port_conflict:'Порт HUD совпадает с портом логгера',controller_settings_only:'Эти настройки доступны на контроллере поворотки',restart:'Сохранено. Устройство перезагружается',searching:'Поиск устройств…',invalid_or_port_conflict:'Проверьте настройки и порты',uart_in_use_by_hc05:'UART занят HC-05: нужна сборка без Bluetooth',not_calibrated:'Сначала выполните калибровку',invalid:'Проверьте значения',ignored:'Сейчас выполняется предустановка',pending:'Цель ожидает подтверждения',ok:'Готово'};
+  document.getElementById('forkMessage').textContent=(messages[j.result]||'Ошибка')+(r.status===202&&selection!==window._forkState?.hudSelectionEpoch?' · команда для '+name:'');
   await upd();return j.ok;
  }catch(e){document.getElementById('forkMessage').textContent='Нет связи с контроллером';return false}
 }
@@ -249,7 +288,7 @@ function fillPreset(){
  f.elements.label.value=p.label;f.elements.az.value=p.target.az;f.elements.el.value=p.target.el;
 }
 async function savePreset(e){e.preventDefault();await forkPost('/api/preset',Object.fromEntries(new FormData(e.target)))}
-async function saveFork(e){e.preventDefault();const body=Object.fromEntries(new FormData(e.target));if(window._forkState?.build?.drive==='YAESU')body.speedEnabled=e.target.elements.speedEnabled.checked?'true':'false';else delete body.speedEnabled;if(window._forkState?.build?.display==='CROWPANEL_21')body.encoderInverted=e.target.elements.encoderInverted.checked?'true':'false';else delete body.encoderInverted;if(await forkPost('/api/settings',body))delete e.target.dataset.dirty;}
+async function saveFork(e){e.preventDefault();const body=Object.fromEntries(new FormData(e.target));if(window._forkState?.build?.drive==='YAESU')body.speedEnabled=e.target.elements.speedEnabled.checked?'true':'false';else delete body.speedEnabled;if(window._forkState?.build?.display==='CROWPANEL_21')body.encoderInverted=e.target.elements.encoderInverted.checked?'true':'false';else delete body.encoderInverted;if(window._forkState?.deviceRole==='hud')for(const key of Object.keys(body))if(!['rotorName','n1mmPort','pstPort','reportPort','reportHost','encoderInverted'].includes(key))delete body[key];if(await forkPost('/api/settings',body))delete e.target.dataset.dirty;}
 function buttonTarget(j){return j.pendingValid?j.pending:j.lastTarget}
 function targetLabel(t,j){
  if(!t)return '';
@@ -275,7 +314,7 @@ async function targetAction(){
 function updateFork(j){
  const first=!window._forkState;window._forkState=j;
  const g800=j.model==='G800DXA';
- document.getElementById('modelTitle').textContent='YAESU '+(g800?'G-800DXA':'G-5500')+' / '+(j.build?.board||'ESP32');
+ document.getElementById('modelTitle').textContent=j.deviceRole==='hud'?'HUD / '+(j.build?.board||'ESP32'):'YAESU '+(g800?'G-800DXA':'G-5500')+' / '+(j.build?.board||'ESP32');
  document.getElementById('followMode').value=j.controlMode;
  document.getElementById('hourLeft').textContent=j.controlMode==='auto_1h'?'Осталось '+Math.ceil(j.remainingMs/60000)+' мин':'';
  document.getElementById('waitingTarget').textContent=j.pendingValid?'Ожидает: '+(j.pending.hasAz?'AZ '+j.pending.az.toFixed(1)+'° ':'')+(j.pending.hasEl&&!g800?'EL '+j.pending.el.toFixed(1)+'°':''):'Нет ожидающей цели';
@@ -313,12 +352,13 @@ function updateFork(j){
  const faults={target_not_calibrated:'Сначала выполните калибровку',continuous_motion_timeout:'Превышено время непрерывного вращения',udp_bind_failed:'Не удалось открыть UDP-порт',pwm_attach_failed:'Не удалось включить регулировку скорости'};if(j.fault)document.getElementById('forkMessage').textContent=faults[j.fault]||'Ошибка управления';
 }
 
-async function q(u){try{return await (await fetch(u,{cache:'no-store'})).text()}catch(e){return''}}
+async function q(u){try{if(window._forkState?.deviceRole==='hud'&&(u.startsWith('/api/move?')||u.startsWith('/api/target?'))){const url=new URL(u,location.origin);await forkPost(url.pathname,Object.fromEntries(url.searchParams));return ''}return await (await fetch(u,{cache:'no-store'})).text()}catch(e){return''}}
 async function mv(d){await q('/api/move?d='+d)}
 async function st(){await q('/api/move?d=S')}
-async function stopAxis(d){
-  if(d==='L'||d==='R') await q('/api/move?d=A');
-  else if(d==='U'||d==='D') await q('/api/move?d=E');
+async function stopAxis(d,selection){
+  const scope=selection===undefined?'':'&selection='+selection;
+  if(d==='L'||d==='R') await q('/api/move?d=A'+scope);
+  else if(d==='U'||d==='D') await q('/api/move?d=E'+scope);
 }
 async function go(){if(taz.value==='')return;const body={az:taz.value};if(window._forkState?.model!=='G800DXA'){if(tel.value==='')return;body.el=tel.value}await forkPost('/api/target',body)}
 function toggleCalMenu(){
@@ -360,7 +400,7 @@ async function wifi(){
   const response=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({ssid:network,pass:password}),cache:'no-store',signal:controller.signal});
   message.textContent=await response.text()||'Не удалось сохранить настройки Wi-Fi.';
   if(response.ok)document.getElementById('pass').value='';
- }catch(e){message.textContent='Ответ не получен. Проверьте адрес контроллера в домашней сети. Если подключения нет, используйте G5500-Rotator и проверьте SSID.';}
+ }catch(e){message.textContent='Ответ не получен. Проверьте адрес контроллера в домашней сети. Если подключения нет, подключитесь к сервисной сети G5500-HUD-… или G5500-Rotator-… и проверьте SSID.';}
  finally{clearTimeout(timeout);button.disabled=false;}
 }
 async function saveAp(){
@@ -376,7 +416,7 @@ if(statusPending)return;
 statusPending=true;
 const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5000);
 try{let j=await (await fetch('/api/status',{cache:'no-store',signal:controller.signal})).json();
-az.textContent=Number(j.az).toFixed(1);el.textContent=Number(j.el).toFixed(1);
+az.textContent=j.deviceRole==='hud'&&!j.hudOnline?'—':Number(j.az).toFixed(1);el.textContent=j.deviceRole==='hud'&&!j.hudOnline?'—':Number(j.el).toFixed(1);
 updateFork(j);
 azt.textContent=j.targetValid?Number(j.targetAz).toFixed(1):'---';
 elt.textContent=j.targetValid?Number(j.targetEl).toFixed(1):'---';
@@ -409,6 +449,7 @@ sig.textContent=j.signal||'-';
 btstate.textContent=j.build?.bluetooth===false?'Отключён в сборке':j.btConnected?'CONNECTED':'DISCONNECTED';
 btstate.style.color=j.btConnected?'#24d18d':'#e5a94f';
 if(document.activeElement!==ssid && !ssid.dataset.dirty) ssid.value=j.ssid||'';
+updateHud(j);
 compactStatus(j);
 }catch(e){
  const wifi=document.getElementById('statusWifi');wifi.textContent='Нет связи';wifi.className='offline';wifi.title='Не удалось обновить статус устройства';
@@ -438,7 +479,7 @@ setInterval(loadRssi,30000);
 setInterval(upd,500);upd();
 
 ssid.addEventListener('input',function(){ssid.dataset.dirty='1';});
-document.getElementById('forkSettings').addEventListener('input',event=>{event.currentTarget.dataset.dirty='1';});
+for(const id of ['forkSettings','hudConfig'])document.getElementById(id).addEventListener('input',event=>{event.currentTarget.dataset.dirty='1';});
 
 document.querySelectorAll('.btn').forEach(function(b){
   b.addEventListener('contextmenu',function(e){e.preventDefault();});
@@ -447,7 +488,7 @@ document.querySelectorAll('.btn').forEach(function(b){
 });
 
 document.querySelectorAll('.movebtn').forEach(function(b){
-  let active=false;
+  let active=false,selection;
 
   b.addEventListener('touchstart',function(e){
     e.preventDefault();
@@ -455,7 +496,7 @@ document.querySelectorAll('.movebtn').forEach(function(b){
 
   b.addEventListener('pointerdown',function(e){
     e.preventDefault();
-    active=true;
+    active=true;selection=window._forkState?.deviceRole==='hud'?window._forkState?.hudSelectionEpoch:undefined;
     try{ b.setPointerCapture(e.pointerId); }catch(x){}
     mv(b.dataset.dir);
   });
@@ -464,7 +505,7 @@ document.querySelectorAll('.movebtn').forEach(function(b){
     if(e) e.preventDefault();
     if(active){
       active=false;
-      stopAxis(b.dataset.dir);
+      stopAxis(b.dataset.dir,selection);
     }
   }
 
@@ -473,5 +514,56 @@ document.querySelectorAll('.movebtn').forEach(function(b){
   b.addEventListener('lostpointercapture',release);
   b.addEventListener('contextmenu',function(e){e.preventDefault();});
 });
+
+let hudSelection;
+let hudOffset=0,hudDiscoveredOffset=0,hudTotal=0,hudDiscoveryTotal=0,hudPollBusy=false,hudLastPoll=0;
+async function hudPage(delta){hudOffset=Math.max(0,Math.min(Math.max(0,hudTotal-1),hudOffset+delta*8));await loadHudPeers()}
+async function hudDiscoveryPage(delta){hudDiscoveredOffset=Math.max(0,Math.min(Math.max(0,hudDiscoveryTotal-1),hudDiscoveredOffset+delta*8));await loadHudDiscovery()}
+function hudRow(peer,discovered){
+ const row=document.createElement('div');row.className='device-peer';
+ const select=document.createElement('button');select.className='btn'+(peer.selected?' good':'');
+ const age=peer.ageMs===null?'нет данных':Math.round(peer.ageMs/1000)+' с назад';
+ select.textContent=peer.name+' · '+(peer.online?'AZ '+Number(peer.az).toFixed(1)+'° / EL '+Number(peer.el).toFixed(1)+'°'+(peer.moving?' · вращение':''):'нет связи')+' · '+age;
+ select.onclick=async()=>{await forkPost(discovered?'/api/hud/peers':'/api/hud/select',{id:peer.id});await loadHudPeers();if(discovered)await loadHudDiscovery()};row.append(select);
+ if(!discovered){
+  const rename=document.createElement('button');rename.className='btn';rename.textContent='Имя';rename.onclick=async()=>{const name=prompt('Имя поворотки',peer.name);if(name!==null){await forkPost('/api/hud/peers',{id:peer.id,name});await loadHudPeers()}};row.append(rename);
+  const remove=document.createElement('button');remove.className='btn';remove.textContent='Удалить';remove.onclick=async()=>{await forkPost('/api/hud/peers',{id:peer.id,action:'remove'});await loadHudPeers()};row.append(remove);
+ }else{const note=document.createElement('span');note.className='device-peer-note';note.textContent='Нажмите, чтобы сохранить';row.append(note)}
+ return row;
+}
+async function loadHudPeers(){
+ if(hudPollBusy)return;hudPollBusy=true;
+ try{const data=await (await fetch('/api/hud/peers?offset='+hudOffset,{cache:'no-store'})).json();hudTotal=data.total;
+ const box=document.getElementById('hudPeers');box.replaceChildren(...data.items.map(p=>hudRow(p,false)));
+ document.getElementById('hudPageInfo').textContent=hudTotal?`${hudOffset+1}–${Math.min(hudOffset+8,hudTotal)} / ${hudTotal}`:'Добавьте поворотку';
+ document.getElementById('hudPrev').disabled=hudOffset===0;document.getElementById('hudNext').disabled=hudOffset+8>=hudTotal;
+ }catch(e){}finally{hudPollBusy=false;hudLastPoll=Date.now()}
+}
+async function loadHudDiscovery(){try{const data=await (await fetch('/api/hud/peers?discovered=1&offset='+hudDiscoveredOffset,{cache:'no-store'})).json();hudDiscoveryTotal=data.total;document.getElementById('hudDiscovered').replaceChildren(...data.items.map(p=>hudRow(p,true)));document.getElementById('hudDiscoveryInfo').textContent='Найдено: '+data.total}catch(e){}}
+async function hudSearch(uart=false,manual=false){
+ await forkPost('/api/hud/discover',{transport:uart?'uart':'wifi',address:manual?document.getElementById('hudAddress').value:'',port:manual?document.getElementById('hudPeerPort').value:window._forkState?.hudPort||4534});
+ hudDiscoveredOffset=0;setTimeout(loadHudDiscovery,500);setTimeout(loadHudDiscovery,1800);
+}
+async function saveHudDevice(e){e.preventDefault();if(await forkPost('/api/device',Object.fromEntries(new FormData(e.target))))delete e.target.dataset.dirty;}
+function updateHud(j){
+ const hud=j.deviceRole==='hud';
+ const selected=document.getElementById('selectedRotor');selected.classList.toggle('hide',!hud);selected.textContent=hud?(j.hudName||'Выберите поворотку в настройках')+' · '+(j.hudOnline?'На связи':'Нет связи'):'';
+ if(hud&&hudSelection!==undefined&&hudSelection!==j.hudSelectionEpoch){document.getElementById('taz').value='';document.getElementById('tel').value='';fillPreset();}
+ hudSelection=j.hudSelectionEpoch;
+ document.getElementById('hudControls').classList.toggle('hide',!hud);
+ document.getElementById('hudHeading').textContent=hud?'HUD · '+(j.hudName||'Выберите поворотку')+(j.remoteDrive?' · '+j.model+' / '+j.remoteDrive:''):'Контроллер поворотки';
+ document.getElementById('hudLink').textContent=hud?(j.hudOnline?'Связь: '+j.hudTransport+' · '+j.hudAgeMs+' мс':'Нет связи с выбранной повороткой'):'';
+ if(j.hudCatalogError)document.getElementById('hudLink').textContent+=' · Ошибка памяти или сохранённых настроек';
+ document.getElementById('hudUartSearch').disabled=!j.hudUart;
+ const f=document.getElementById('hudConfig');if(!f.dataset.dirty&&!f.contains(document.activeElement)){f.elements.role.value=j.deviceRole||'controller';f.elements.wifi.value=['existing','host','client'][j.hudWifi||0];f.elements.uart.value=j.hudUart?'1':'0';f.elements.port.value=j.hudPort||4534;}
+ document.getElementById('caltoggle').closest('.card').classList.toggle('hide',hud);
+ document.getElementById('speedSettings').classList.toggle('hide',hud||document.getElementById('speedSettings').classList.contains('hide'));
+ for(const name of ['model'])document.querySelector('#forkSettings [name="'+name+'"]').closest('.field').classList.toggle('hide',hud);
+ document.querySelector('a[href="/adc"]').classList.toggle('hide',hud);
+ for(const b of document.querySelectorAll('.movebtn,#presetButtons button'))if(hud&&!j.hudOnline)b.disabled=true;else if(b.classList.contains('movebtn'))b.disabled=false;
+ document.getElementById('followMode').disabled=hud&&!j.hudOnline;
+ if(hud){document.getElementById('caltxt').textContent=j.hudOnline?(j.selectedCalOk?'Поворотка откалибрована':'Нужна калибровка на контроллере'):'Нет актуальных данных';if(!j.hudOnline){document.getElementById('motion').textContent='Нет связи';document.getElementById('azt').textContent='—';document.getElementById('elt').textContent='—';}if(Date.now()-hudLastPoll>1000)loadHudPeers();}
+}
+
 </script></body></html>
 )HTML";

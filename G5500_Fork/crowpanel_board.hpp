@@ -10,7 +10,12 @@ bool readTouch(uint16_t &x, uint16_t &y);
 void beginEncoder();
 int encoderDelta();
 esp_lcd_panel_handle_t beginPanel();
-struct DisplayStats { uint32_t vsyncs, frames, waitMaxUs, timeouts; bool failed; };
+struct DisplayStats {
+  uint32_t vsyncs, frames, waitMaxUs, timeouts;
+  bool failed;
+  uint32_t restarts, restartBufferMask, restartErrors;
+  uint32_t vsyncMinUs, vsyncMaxUs;
+};
 DisplayStats displayStats();
 }
 #endif

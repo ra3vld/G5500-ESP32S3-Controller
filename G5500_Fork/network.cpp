@@ -5,9 +5,11 @@
 #include "runtime_metrics.hpp"
 #include "crowpanel_board.hpp"
 #include <esp_app_desc.h>
+#include <esp_system.h>
 #include <cstdio>
 #include "write_budget.hpp"
 #include <cerrno>
+#include <new>
 namespace forkrot {
 using namespace board;
 void Network::serviceHeapDiagnostics() {
@@ -75,9 +77,12 @@ int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
   case 5: {
     const auto mode = WiFi.getMode();
     return std::snprintf(reply, capacity, "WIFI runtimeMode=%s apClients=%u apPolicy=%s\r\n",
-        mode == WIFI_STA ? "STA" : mode == WIFI_AP ? "AP" : mode == WIFI_AP_STA ? "AP+STA" : "OFF",
-        (mode & WIFI_AP) ? unsigned(WiFi.softAPgetStationNum()) : 0,
-        WIFI_AP_ALWAYS_ON ? "always" : "fallback");
+                         mode == WIFI_STA      ? "STA"
+                         : mode == WIFI_AP     ? "AP"
+                         : mode == WIFI_AP_STA ? "AP+STA"
+                                               : "OFF",
+                         (mode & WIFI_AP) ? unsigned(WiFi.softAPgetStationNum()) : 0,
+                         apAlwaysOn() ? "always" : "fallback");
   }
   case 6:
     return std::snprintf(reply, capacity,
@@ -142,6 +147,8 @@ void Network::processGs232Command(std::string_view input) {
     }
     runtime_.controller.tick(millis());
     hardware_.applyOutputs();
+    if (packet.result == Result::Deferred && deferReply(packet, uint8_t(gsReplyPort)))
+      return;
     if (!packet.reply.empty()) {
       sendReply(packet.reply.c_str());
     }
@@ -159,6 +166,11 @@ void Network::processGs232Command(std::string_view input) {
 
   // GS-232 azimuth operating range. This also defines the full-scale angle
   // captured by F in the GS232 2-POINT calibration mode.
+  if (runtime_.hud.isHud() && (cmd == "P36" || cmd == "P45" || cmd == "O" || cmd == "F" || cmd == "O2" ||
+                               cmd == "F2" || cmd.startsWith("SIM "))) {
+    sendReply("?>\r\n");
+    return;
+  }
   if (cmd == "P36") {
     actions_.setGsAzMode(36);
     return;
@@ -197,7 +209,7 @@ void Network::processGs232Command(std::string_view input) {
     return;
   }
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
-#if CROWPANEL_SIMULATION
+#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
   if (gsReplyPort == GS_REPLY_NATIVE_USB && cmd.startsWith("SIM ")) {
     float az = 0, el = 0; char extra;
     const auto result = std::sscanf(cmd.c_str(), "SIM %f %f %c", &az, &el, &extra) == 2
@@ -209,13 +221,19 @@ void Network::processGs232Command(std::string_view input) {
 #endif
   if (cmd == "H5") {
     const auto stats = crowpanel::displayStats();
-    char reply[256];
+    char reply[384];
     std::snprintf(reply, sizeof reply,
-        "CROW ms=%lu az=%.3f el=%.3f targetAz=%.3f targetEl=%.3f moving=%d sim=%d inv=%d vsync=%lu frames=%lu waitMaxUs=%lu timeouts=%lu failed=%d\r\n",
-        (unsigned long)millis(), double(runtime_.controller.axes[0].current), double(runtime_.controller.axes[1].current),
-        double(runtime_.controller.axes[0].target), double(runtime_.controller.axes[1].target),
-        int(runtime_.controller.moving()), CROWPANEL_SIMULATION, int(runtime_.loggerSettings.encoderInverted), (unsigned long)stats.vsyncs,
-        (unsigned long)stats.frames, (unsigned long)stats.waitMaxUs, (unsigned long)stats.timeouts, int(stats.failed));
+                  "CROW ms=%lu az=%.3f el=%.3f targetAz=%.3f targetEl=%.3f moving=%d sim=%d inv=%d vsync=%lu "
+                  "frames=%lu waitMaxUs=%lu timeouts=%lu failed=%d restarts=%lu restartMask=%lu restartErrors=%lu "
+                  "vsyncMinUs=%lu vsyncMaxUs=%lu\r\n",
+                  (unsigned long)millis(), double(runtime_.controller.axes[0].current),
+                  double(runtime_.controller.axes[1].current), double(runtime_.controller.axes[0].target),
+                  double(runtime_.controller.axes[1].target), int(runtime_.controller.moving()),
+                  int(!runtime_.hud.isHud() && (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)),
+                  int(runtime_.loggerSettings.encoderInverted), (unsigned long)stats.vsyncs,
+                  (unsigned long)stats.frames, (unsigned long)stats.waitMaxUs, (unsigned long)stats.timeouts,
+                  int(stats.failed), (unsigned long)stats.restarts, (unsigned long)stats.restartBufferMask,
+                  (unsigned long)stats.restartErrors, (unsigned long)stats.vsyncMinUs, (unsigned long)stats.vsyncMaxUs);
     sendReply(reply);
     return;
   }
@@ -227,6 +245,14 @@ void Network::handlePstRotatorSerial() {
   // Native USB allows memory/display diagnostics and the same simulated GS-232
   // commands without changing the host's Wi-Fi connection to the panel's AP.
   static forkrot::LineBuffer usbReceiver;
+  static uint32_t usbEpoch = 0;
+  if (usbEpoch != runtime_.hud.selectionEpoch) {
+    usbEpoch = runtime_.hud.selectionEpoch;
+    usbReceiver.cancelPending();
+    while (Serial.available())
+      usbReceiver.discard(char(Serial.read()));
+    usbReceiver.cancelPending();
+  }
   std::string_view usbCommand;
   const uint32_t usbStarted = millis();
   unsigned usbCommands = 0;
@@ -238,8 +264,17 @@ void Network::handlePstRotatorSerial() {
     }
   }
 #endif
-  if (PIN_UART_RX < 0 || PIN_UART_TX < 0) return;
+  if (runtime_.hud.config.uart || PIN_UART_RX < 0 || PIN_UART_TX < 0)
+    return;
   static forkrot::LineBuffer receiver;
+  static uint32_t serialEpoch = 0;
+  if (serialEpoch != runtime_.hud.selectionEpoch) {
+    serialEpoch = runtime_.hud.selectionEpoch;
+    receiver.cancelPending();
+    while (Serial0.available())
+      receiver.discard(char(Serial0.read()));
+    receiver.cancelPending();
+  }
   std::string_view command;
   const uint32_t started = millis();
   unsigned commands = 0;
@@ -304,6 +339,8 @@ void Network::processRotctldCommand(std::string_view input) {
     }
     runtime_.controller.tick(millis());
     hardware_.applyOutputs();
+    if (packet.result == Result::Deferred && deferReply(packet, 3))
+      return;
     if (!packet.reply.empty()) {
       rotctldSend(packet.reply.c_str());
     }
@@ -331,6 +368,11 @@ void Network::processRotctldCommand(std::string_view input) {
 
   String upper = cmd;
   upper.toUpperCase();
+  if (runtime_.hud.isHud() &&
+      (upper == "P36" || upper == "P45" || upper == "O" || upper == "F" || upper == "O2" || upper == "F2")) {
+    rotctldSend("RPRT -1\n");
+    return;
+  }
   if (upper == "P36") {
     actions_.setGsAzMode(36);
     return;
@@ -391,7 +433,6 @@ void Network::processRotctldCommand(std::string_view input) {
 }
 
 void Network::handleRotctldTcp() {
-  static forkrot::LineBuffer receiver;
   // Accept a client if none is currently connected.
   if (!rotctldClient_ || !rotctldClient_.connected()) {
     WiFiClient c = tcpServer_.accept();
@@ -400,7 +441,8 @@ void Network::handleRotctldTcp() {
         rotctldClient_.stop();
       }
       rotctldClient_ = c;
-      receiver.clear();
+      ++tcpSession_;
+      tcpReceiver_.clear();
 #if FORK_NATIVE_USB
       diagnostics_.dbgPrintln("[TCP] Look4Sat/rotctld client connected");
 #endif
@@ -419,7 +461,7 @@ void Network::handleRotctldTcp() {
       if (count == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) rotctldClient_.stop();
       break;
     }
-    if (receiver.feed(byte, command)) { ++commands; processRotctldCommand(command); }
+    if (tcpReceiver_.feed(byte, command)) { ++commands; processRotctldCommand(command); }
   }
 }
 
@@ -438,11 +480,12 @@ void Network::startWifi() {
 #if SELECTED_BOARD == BOARD_ESP32 && ESP32_FORCE_AP_STA
   diagnostics_.dbgPrintln("[WIFI] WARNING: forced AP+STA uses more RAM; may be unstable, especially with SPP");
 #endif
-  if (WIFI_AP_ALWAYS_ON) restoreApOnlyAfterReconnectFail();
-  if (credentials_.wifiSsid.length()) {
-    diagnostics_.dbgPrintln(WIFI_AP_ALWAYS_ON ? "[WIFI] starting STA; AP remains available"
-                                            : "[WIFI] starting STA; AP reserved for fallback");
-    if (WiFi.mode(WIFI_AP_ALWAYS_ON ? WIFI_AP_STA : WIFI_STA)) {
+  if (apAlwaysOn())
+    restoreApOnlyAfterReconnectFail();
+  if (credentials_.wifiSsid.length() && runtime_.hud.config.wifi != HudWifi::Host) {
+    diagnostics_.dbgPrintln(apAlwaysOn() ? "[WIFI] starting STA; AP remains available"
+                                         : "[WIFI] starting STA; AP reserved for fallback");
+    if (WiFi.mode(apAlwaysOn() ? WIFI_AP_STA : WIFI_STA)) {
       WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
       const uint32_t started = millis();
       while (WiFi.status() != WL_CONNECTED && uint32_t(millis() - started) < WifiFallback::AttemptMs)
@@ -451,18 +494,23 @@ void Network::startWifi() {
   }
   const bool connected = WiFi.status() == WL_CONNECTED;
   if (connected) {
-    diagnostics_.dbgPrint(WIFI_AP_ALWAYS_ON ? "[WIFI] STA connected, AP remains, IP = "
-                                          : "[WIFI] STA connected, AP off, IP = ");
+    diagnostics_.dbgPrint(apAlwaysOn() ? "[WIFI] STA connected, AP remains, IP = "
+                                       : "[WIFI] STA connected, AP off, IP = ");
     diagnostics_.dbgPrintln(WiFi.localIP().toString());
-  } else if (!WIFI_AP_ALWAYS_ON || WiFi.getMode() != WIFI_AP) {
+  } else if (!apAlwaysOn() || WiFi.getMode() != WIFI_AP) {
     restoreApOnlyAfterReconnectFail();
   }
+  serviceApSubnet();
   wifiFallback_.reset(millis(), connected);
+  if (!hudPortValid(runtime_.hud.config.port, runtime_.loggerSettings.n1mmPort,
+                    runtime_.loggerSettings.pstPort, runtime_.loggerSettings.reportPort) ||
+      !hudUdp_.begin(runtime_.hud.config.port))
+    diagnostics_.dbgPrintln("[HUD] UDP port unavailable");
   tcpServer_.begin();
   actions_.setupWeb();
   heapAfterWifi_ = heapFreeBytes();
-  diagnostics_.dbgPrintln(WIFI_AP_ALWAYS_ON ? "[WIFI] AP always on; STA retry 30s, attempt 8s"
-                                          : "[WIFI] STA preferred; AP fallback, retry 30s, attempt 8s");
+  diagnostics_.dbgPrintln(apAlwaysOn() ? "[WIFI] AP always on; STA retry 30s, attempt 8s"
+                                       : "[WIFI] STA preferred; AP fallback, retry 30s, attempt 8s");
 }
 
 void Network::restoreApOnlyAfterReconnectFail() {
@@ -473,18 +521,40 @@ void Network::restoreApOnlyAfterReconnectFail() {
     diagnostics_.dbgPrintln("[WIFI] AP mode failed");
     return;
   }
-  const IPAddress apIP(192, 168, 4, 1), apMask(255, 255, 255, 0);
+  IPAddress apIP(192, 168, 4, 1);
+  const IPAddress apMask(255, 255, 255, 0);
+  char apName[33];
+  std::snprintf(apName, sizeof apName, "G5500-%s-%06llX", runtime_.hud.isHud() ? "HUD" : "Rotator",
+                static_cast<unsigned long long>(runtime_.hud.id & 0xffffff));
   const bool configured = WiFi.softAPConfig(apIP, apIP, apMask);
-  const bool started = credentials_.apPass.length() >= 8
-      ? WiFi.softAP(AP_SSID, credentials_.apPass.c_str()) : WiFi.softAP(AP_SSID);
+  const bool started = credentials_.apPass.length() >= 8 ? WiFi.softAP(apName, credentials_.apPass.c_str())
+                                                         : WiFi.softAP(apName);
   heapAfterAp_ = heapFreeBytes(); // zero means AP has not been started this boot
   diagnostics_.dbgPrintln(configured && started ? "[WIFI] AP ready at 192.168.4.1"
                                                : "[WIFI] AP start failed");
 }
 
+void Network::serviceApSubnet() {
+  if (WiFi.status() != WL_CONNECTED || !(WiFi.getMode() & WIFI_AP))
+    return;
+  const uint32_t sta = uint32_t(WiFi.localIP()), mask = uint32_t(WiFi.subnetMask());
+  const uint32_t ap = uint32_t(WiFi.softAPIP()), commonMask = mask & 0x00ffffffu;
+  if (!mask || (sta & commonMask) != (ap & commonMask))
+    return;
+  const uint32_t chosen = serviceApAddress(sta, mask);
+  if (chosen && WiFi.softAPConfig(IPAddress(chosen), IPAddress(chosen), IPAddress(255, 255, 255, 0))) {
+    diagnostics_.dbgPrint("[WIFI] AP subnet changed to avoid STA overlap: ");
+    diagnostics_.dbgPrintln(WiFi.softAPIP().toString());
+  }
+}
+
 void Network::serviceWifiReconnect() {
-  const auto action = wifiFallback_.update(millis(), credentials_.wifiSsid.length() != 0,
-      WiFi.status() == WL_CONNECTED, (WiFi.getMode() & WIFI_AP) != 0, WIFI_AP_ALWAYS_ON);
+  serviceApSubnet();
+  if (runtime_.hud.config.wifi == HudWifi::Host)
+    return;
+  const auto action =
+      wifiFallback_.update(millis(), credentials_.wifiSsid.length() != 0, WiFi.status() == WL_CONNECTED,
+                           (WiFi.getMode() & WIFI_AP) != 0, apAlwaysOn());
   if (action == WifiAction::StopAp) {
     if (WiFi.mode(WIFI_STA)) diagnostics_.dbgPrintln("[WIFI] STA connected; fallback AP stopped");
     else diagnostics_.dbgPrintln("[WIFI] failed to stop fallback AP");
@@ -550,7 +620,7 @@ void Network::serviceLoggerUdp() {
       }
     }
   }
-  if (uint32_t(millis() - lastReportMs) >= 500) {
+  if (runtime_.controller.available() && uint32_t(millis() - lastReportMs) >= 500) {
     lastReportMs = millis();
     const auto message = runtime_.protocol.positionReport(runtime_.currentAz);
     for (auto peer : reportPeers) {
@@ -566,11 +636,128 @@ void Network::serviceLoggerUdp() {
   }
 }
 void Network::beginSerial() {
-  if (PIN_UART_RX >= 0 && PIN_UART_TX >= 0) Serial0.begin(9600, SERIAL_8N1, PIN_UART_RX, PIN_UART_TX);
+  if (PIN_UART_RX >= 0 && PIN_UART_TX >= 0)
+    Serial0.begin(runtime_.hud.config.uart ? 115200 : 9600, SERIAL_8N1, PIN_UART_RX, PIN_UART_TX);
   heapBeforeBt_ = heapFreeBytes();
   btReady_ = bluetooth_.begin();
   if (!btReady_) diagnostics_.dbgPrintln("[BT] initialization failed; USB and network remain available");
   heapAfterBt_ = heapFreeBytes();
 }
 
+} // namespace forkrot
+
+namespace forkrot {
+bool Network::hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned report) const {
+  return port && port <= 65535 && port != n1mm && port != pst && port != pst + 1 && port != report;
+}
+void Network::beginHud() {
+  runtime_.hud.begin(ESP.getEfuseMac() & 0xffffffffffffULL, (uint64_t(esp_random()) << 32) | esp_random());
+  runtime_.hud.setTransport(this);
+  if (runtime_.hud.config.uart) {
+    hudUart_.reset(new (std::nothrow) UartLink);
+    if (!hudUart_)
+      runtime_.hud.catalogError = true;
+  }
+  if (runtime_.hud.config.uart && (board::PIN_UART_RX < 0 || board::PIN_UART_TX < 0)) {
+    runtime_.hud.config.uart = false;
+    runtime_.hud.catalogError = true;
+  }
+}
+bool Network::sendHud(const HudEndpoint &e, const uint8_t *bytes, size_t size) {
+  if (e.uart) {
+    if (!runtime_.hud.config.uart || !hudUart_ || hudUart_->sent < hudUart_->size)
+      return false;
+    hudUart_->size = hudUartEncode(bytes, size, hudUart_->tx, sizeof hudUart_->tx);
+    hudUart_->sent = 0;
+    return hudUart_->size != 0;
+  }
+  return hudUdp_.send(e.address, e.port, {reinterpret_cast<const char *>(bytes), size});
+}
+bool Network::deferReply(const Packet &p, uint8_t port) {
+  if (p.result != Result::Deferred)
+    return false;
+  for (auto &reply : deferred_)
+    if (!reply.used) {
+      reply = {runtime_.hud.requestId(),
+               port == 3   ? tcpSession_
+               : port == 1 ? bluetooth_.sessionId()
+                           : 0,
+               port, p.reply.rfind("RPRT ", 0) == 0, true};
+      return true;
+    }
+  if (port == 3)
+    rotctldSend("RPRT -1\n");
+  else
+    sendReply("?>\r\n");
+  return true;
+}
+void Network::resetHudInputs() {
+  if (inputEpoch_ == runtime_.hud.selectionEpoch)
+    return;
+  inputEpoch_ = runtime_.hud.selectionEpoch;
+  bluetooth_.discardInput();
+  int queued = 0;
+  if (rotctldClient_ && ::ioctl(rotctldClient_.fd(), FIONREAD, &queued) < 0)
+    rotctldClient_.stop(); // A failed socket cannot provide a safe input boundary.
+  tcpReceiver_.select(queued > 0 ? size_t(queued) : 0);
+  // Keep the TCP session identity: replies to accepted commands still belong
+  // to this logger, including commands acknowledged after the selection changed.
+  setupLoggerUdp(); // Closing the sockets discards every buffered old-selection datagram.
+  for (auto &peer : reportPeers)
+    peer.used = false;
+}
+void Network::serviceHud() {
+  resetHudInputs();
+  auto &hud = runtime_.hud;
+  const uint32_t started = millis();
+  for (unsigned i = 0; i < 4 && uint32_t(millis() - started) < 2; ++i) {
+    uint32_t address = 0;
+    uint16_t port = 0;
+    const int n = hudUdp_.receiveInto(hudRx_, sizeof hudRx_, address, port);
+    if (n == -1)
+      break;
+    if (n > 0)
+      hud.receive({address, port, false}, hudRx_, size_t(n), millis());
+  }
+  if (hud.config.uart && hudUart_) {
+    for (unsigned i = 0; i < 256 && Serial0.available() && uint32_t(millis() - started) < 2; ++i) {
+      const auto n = hudUart_->decoder.feed(uint8_t(Serial0.read()), hudRx_, sizeof hudRx_);
+      if (n)
+        hud.receive({0, hud.config.port, true}, hudRx_, n, millis());
+    }
+    if (hudUart_->sent < hudUart_->size) {
+      const int available = Serial0.availableForWrite();
+      if (available > 0)
+        hudUart_->sent += Serial0.write(hudUart_->tx + hudUart_->sent,
+                                        std::min(size_t(available), hudUart_->size - hudUart_->sent));
+    }
+  }
+  hud.service(millis());
+  for (auto &reply : deferred_)
+    if (reply.used) {
+      const auto r = hud.result(reply.id);
+      if (r.result == Result::Deferred)
+        continue;
+      reply.used = false;
+      if (reply.port == 3 && reply.session != tcpSession_)
+        continue;
+      if (reply.port == 1 && reply.session != bluetooth_.sessionId())
+        continue;
+      const bool success = r.result == Result::Ok || r.result == Result::Pending;
+      const char *text = reply.ham ? (success                       ? "RPRT 0\n"
+                                      : r.result == Result::Ignored ? "RPRT -8\n"
+                                                                    : "RPRT -1\n")
+                                   : (success || r.result == Result::Ignored ? "" : "?>\r\n");
+      if (!*text)
+        continue;
+      if (reply.port == 3)
+        rotctldSend(text);
+      else {
+        const auto saved = gsReplyPort;
+        gsReplyPort = GsReplyPort(reply.port);
+        sendReply(text);
+        gsReplyPort = saved;
+      }
+    }
+}
 } // namespace forkrot

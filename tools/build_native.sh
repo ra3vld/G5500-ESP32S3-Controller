@@ -4,7 +4,8 @@ cd "$(dirname "$0")/.."
 mkdir -p build
 python3 tools/generate_web_assets.py --check
 python3 -m unittest discover -s tests -p web_assets_tests.py
-CORE_SOURCES="G5500_Fork/control.cpp G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/calibration.cpp"
+python3 -m unittest discover -s tests -p test_crowpanel_rgb.py
+CORE_SOURCES="G5500_Fork/control.cpp G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp"
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tools/simulator.cpp -o build/simulator
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/core_tests.cpp -o build/core_tests
 ./build/core_tests
@@ -55,3 +56,16 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 $CROW_FLAGS -I tests/fakes -I G
 ./build/crowpanel_simulation_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 $CROW_FLAGS -I G5500_Fork $CORE_SOURCES tests/build_metadata_tests.cpp -o build/crowpanel_metadata_tests
 ./build/crowpanel_metadata_tests
+
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork G5500_Fork/input.cpp tests/selection_input_tests.cpp -o build/selection_input_tests
+./build/selection_input_tests
+for test in hud_tests hud_memory_tests; do
+  ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/$test.cpp -o build/$test
+  ./build/$test
+done
+for drive in 0 1 2; do
+  ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_INTERFACE=$drive -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/hud_adapter_tests.cpp -o build/hud_adapter_tests_$drive
+  ./build/hud_adapter_tests_$drive
+done
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 $CROW_FLAGS -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/hud_adapter_tests.cpp -o build/hud_crowpanel_tests
+./build/hud_crowpanel_tests

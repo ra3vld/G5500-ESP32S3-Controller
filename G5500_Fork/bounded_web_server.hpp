@@ -4,6 +4,7 @@
 #include <lwip/sockets.h>
 #include <cerrno>
 #include <cstring>
+#include <cstdio>
 #include "write_budget.hpp"
 #include "http_request_gate.hpp"
 #include "heap_metrics.hpp"
@@ -16,7 +17,11 @@ public:
     requestBuffer_ = data;
     requestCapacity_ = std::min(capacity, size_t(4096));
   }
-  using StopHandler = void (*)(void *, int);
+  struct StopResult {
+    int status = 200;
+    uint32_t requestId = 0;
+  };
+  using StopHandler = StopResult (*)(void *, const StopRequest &);
   void setStopHandler(StopHandler handler, void *context) { stopHandler_ = handler; stopContext_ = context; }
   std::string_view argumentName(size_t i) const { return {_currentArgs[i].key.c_str(), _currentArgs[i].key.length()}; }
   std::string_view argumentValue(size_t i) const { return {_currentArgs[i].value.c_str(), _currentArgs[i].value.length()}; }
@@ -86,12 +91,32 @@ public:
       }
       // Leave headroom for request strings and handlers. The parser reads the
       // fixed snapshot, avoiding NetworkClient's separate 1436-byte RX malloc.
-      const int stopAxis = emergencyStopAxis({requestBuffer_, requestSize});
-      if (stopHandler_ && stopAxis != -2) {
-        stopHandler_(stopContext_, stopAxis); // stop before any parser/header allocation
+      const auto stop = emergencyStopRequest({requestBuffer_, requestSize});
+      if (stopHandler_ && stop.axis != -2) {
+        const auto result = stopHandler_(stopContext_, stop); // no parser/header allocation
         ++diagnostics_.requests;
-        static constexpr char reply[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 25\r\nConnection: close\r\n\r\n{\"ok\":true,\"result\":\"ok\"}";
-        _currentClientWrite(reply, sizeof reply - 1);
+        char body[96], reply[256];
+        const int n =
+            result.status == 202
+                ? std::snprintf(body, sizeof body, "{\"ok\":false,\"result\":\"deferred\",\"requestId\":%lu}",
+                                static_cast<unsigned long>(result.requestId))
+                : std::snprintf(body, sizeof body, "{\"ok\":%s,\"result\":\"%s\"}",
+                                result.status == 200 ? "true" : "false",
+                                result.status == 200   ? "ok"
+                                : result.status == 409 ? "cancelled"
+                                                       : "unavailable");
+        const int length =
+            std::snprintf(reply, sizeof reply,
+                          "HTTP/1.1 %d %s\r\nContent-Type: application/json\r\nContent-Length: "
+                          "%d\r\nConnection: close\r\n\r\n%s",
+                          result.status,
+                          result.status == 200   ? "OK"
+                          : result.status == 202 ? "Accepted"
+                          : result.status == 409 ? "Conflict"
+                                                 : "Service Unavailable",
+                          n, body);
+        if (length > 0 && size_t(length) < sizeof reply)
+          _currentClientWrite(reply, size_t(length));
         releaseClient();
         return;
       }

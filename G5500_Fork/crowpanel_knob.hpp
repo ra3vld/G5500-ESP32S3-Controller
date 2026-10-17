@@ -34,6 +34,21 @@ public:
   Result lastResult = Result::Ok;
   explicit CrowPanelKnob(Controller &controller) : controller_(controller) {}
   unsigned axis() const { return axis_; }
+  void confirmPending(uint32_t now) {
+    synchronize(inverted_);
+    if (controller_.mode != Mode::Manual || !controller_.pendingValid ||
+        !(axis_ ? controller_.pending.hasEl : controller_.pending.hasAz)) return;
+    canResume_ = click_ = false;
+    long_ = true;
+    lastResult = controller_.execute(now);
+  }
+  void setBearing(float bearing, uint32_t now) {
+    synchronize(inverted_);
+    canResume_ = click_ = false;
+    long_ = true;
+    const float target = axis_ ? bearing : nearest(bearing, controller_.axes[0].current, controller_.maximum);
+    lastResult = controller_.target({axis_ ? 0.f : target, axis_ ? target : 0.f, axis_ == 0, axis_ == 1}, false, now);
+  }
   void selectAxis() { axis_ = controller_.model == Model::G5500 ? 1 - axis_ : 0; canResume_ = false; }
   void stop(uint32_t now) {
     controller_.stopNow(-1, now);

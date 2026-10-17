@@ -11,7 +11,7 @@ public:
   inline static Database database;
   inline static std::vector<std::pair<std::string, bool>> opened;
   inline static bool beginSucceeds = true, readOnlyBeginSucceeds = true;
-  inline static std::string failedStringKey, corruptStringKey;
+  inline static std::string failedStringKey, corruptStringKey, failedBytesKey;
 
   bool begin(const char *name, bool readOnly = false) {
     if (active_) { throw std::runtime_error("nested NVS begin"); }
@@ -55,6 +55,7 @@ public:
     return length;
   }
   void putBytes(const char *key, const void *value, size_t length) {
+    if(failedBytesKey==key)return;
     const auto bytes = static_cast<const uint8_t *>(value);
     put(key, Bytes(bytes, bytes + length));
   }

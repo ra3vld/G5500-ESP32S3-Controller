@@ -10,10 +10,56 @@
 namespace forkrot {
 enum class Model { G5500, G800DXA };
 enum class Mode { Manual, Auto, AutoHour };
-enum class Result { Ok, Pending, Ignored, Invalid, NotCalibrated };
+enum class Result {
+  Ok,
+  Pending,
+  Ignored,
+  Invalid,
+  NotCalibrated,
+  Deferred,
+  Unavailable,
+  Busy,
+  Timeout,
+  Cancelled
+};
 struct Target {
   float az = 0, el = 0;
   bool hasAz = true, hasEl = false;
+};
+// Commands carry intent, never GPIO levels or simulated motor state.
+enum class ControlOp : uint8_t {
+  Target,
+  Jog,
+  Stop,
+  Execute,
+  Mode,
+  Preset,
+  SavePreset,
+  Sequence,
+  ReleaseJog,
+  ToggleMode
+};
+struct ControlCommand {
+  ControlOp op = ControlOp::Stop;
+  Target target{};
+  bool external = false;
+  int axis = -1, direction = 0;
+  unsigned slot = 0;
+  Mode mode = Mode::Manual;
+  uint32_t interval = 1000;
+  uint8_t count = 0;
+  std::array<Target, 16> points{};
+  char label[49] = {};
+};
+class CommandSink {
+public:
+  virtual ~CommandSink() = default;
+  virtual Result submit(const ControlCommand &) = 0;
+  virtual bool available() const = 0;
+  virtual uint32_t requestId() const = 0;
+  virtual uint32_t selectionGeneration() const { return 0; }
+  virtual Result lastResult() const = 0;
+  virtual float intendedTarget(unsigned, float fallback) const { return fallback; }
 };
 struct SpeedSettings {
   unsigned speedPercent = 100, startSpeedPercent = 18, approachSpeedPercent = 18;
@@ -34,6 +80,17 @@ struct Preset {
 };
 class Controller {
 public:
+  CommandSink *remote = nullptr; // Non-owning. A mirror must never run tick()/feedback().
+  uint32_t motionEpoch[2] = {};
+  uint32_t snapshotAt = 0, remoteRemaining = 0;
+  size_t remoteSequenceIndex = 0, remoteSequenceCount = 0;
+  bool remoteVariable[2] = {};
+  float remoteTolerance[2] = {};
+  float effectiveTolerance(unsigned i) const { return remote ? remoteTolerance[i] : tolerance(i); }
+  bool available() const { return !remote || remote->available(); }
+  float intendedTarget(unsigned axis, float fallback) const {
+    return remote ? remote->intendedTarget(axis, fallback) : fallback;
+  }
   Model model = Model::G5500;
   Mode mode = Mode::Manual;
   float maximum = 450;
@@ -54,15 +111,19 @@ public:
   bool driveFault = false;
   bool variableSpeed(unsigned i) const;
   static constexpr float tolerance(unsigned i) {
-#if SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION
+#if (SELECTED_BOARD == BOARD_CROWPANEL_21 && CROWPANEL_SIMULATION)
     (void)i;
     return 0.f; // Exact simulated feedback needs no ADC noise dead band.
 #else
     return i ? EL_STOP_TOLERANCE_DEG : AZ_STOP_TOLERANCE_DEG;
 #endif
   }
-  size_t sequenceIndex() const { return sequence_.empty() ? 0 : sequenceIndex_ + 1; }
-  size_t sequenceCount() const { return sequence_.empty() ? pendingSequence_.size() : sequence_.size(); }
+  size_t sequenceIndex() const {
+    return remote ? remoteSequenceIndex : sequence_.empty() ? 0 : sequenceIndex_ + 1;
+  }
+  size_t sequenceCount() const {
+    return remote ? remoteSequenceCount : sequence_.empty() ? pendingSequence_.size() : sequence_.size();
+  }
   Controller(const Controller &other);
   Controller &operator=(const Controller &other);
   uint32_t stopEpoch = 0;
@@ -73,6 +134,7 @@ public:
   Result jog(unsigned axis, int direction, bool external, uint32_t now);
   void stop(int axis = -1);
   void stopNow(int axis, uint32_t now);
+  bool stopOwnedJog(unsigned axis, uint32_t epoch, uint32_t now);
   Result execute(uint32_t now);
   Result setMode(Mode m, uint32_t now);
   void restoreMode(Mode m); // An expired/nonpersistent hour always boots manual.

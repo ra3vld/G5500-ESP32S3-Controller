@@ -6,11 +6,14 @@
 #include "crowpanel_touch.hpp"
 namespace forkrot {
 struct CrowPanelView {
+  bool hud = false, hudSelector = false;
+  char hudName[49]{}, hudAddress[32] = "hud:—", hudRows[3][128]{};
   bool dualAxis = false;
   bool elevation = false, feedback = false, targetValid = false;
   bool pending = false, moving = false, autoMode = false, autoHour = false;
   int direction = 0;
-  float current = 0, target = 0;
+  float current = 0, target = 0, maximum = 450;
+  uint64_t sourceId = 0;
   bool wifiConnected = false, wifiAp = false;
   int wifiRssi = -127;
   bool bluetoothEnabled = false, bluetoothConnected = false;
@@ -18,17 +21,36 @@ struct CrowPanelView {
   char status[80] = "Привод не подключён";
 };
 class CrowPanelUi {
+  lv_obj_t *hudName_ = nullptr, *hudAddress_ = nullptr, *hudList_ = nullptr, *hudRows_[3]{};
   lv_obj_t *mode_ = nullptr, *axis_ = nullptr, *angle_ = nullptr;
-  lv_obj_t *target_ = nullptr, *status_ = nullptr, *wifi_ = nullptr;
+  lv_obj_t *targetCaption_ = nullptr, *target_ = nullptr, *status_ = nullptr, *wifi_ = nullptr;
   lv_obj_t *wifiSlash_ = nullptr, *wifiAp_ = nullptr;
   lv_obj_t *bluetooth_ = nullptr, *ip_ = nullptr, *heap_ = nullptr;
-  lv_obj_t *modeButton_ = nullptr, *stopButton_ = nullptr;
+  lv_obj_t *modeButton_ = nullptr;
   lv_obj_t *currentMarker_ = nullptr, *targetMarker_ = nullptr;
   lv_obj_t *motionArrow_ = nullptr;
+  struct MarkerMotion {
+    lv_obj_t *object = nullptr;
+    float shown = 0, requested = 0;
+    int size = 0;
+    bool valid = false;
+  } currentMotion_, targetMotion_;
+  lv_obj_t *limits_ = nullptr;
+  uint8_t lowerLimit_ = 0, upperLimit_ = 0;
+  float maximum_ = 450;
+  uint64_t sourceId_ = 0;
+  bool elevation_ = false, confirmationVisible_ = false;
+  crowpanel::TouchRect confirmationCaption_{}, confirmationAngle_{};
+  static void animateMarker(void *motion, int32_t value);
+  static void updateMarker(MarkerMotion &motion, float degrees, bool valid, bool reset, bool shortest);
+  static void drawLimits(lv_event_t *event);
 public:
   void create();
   void update(const CrowPanelView &view);
   void setPressed(crowpanel::TouchAction action);
+  bool confirmationHit(uint16_t x, uint16_t y) const {
+    return confirmationVisible_ && (confirmationCaption_.contains(x, y) || confirmationAngle_.contains(x, y));
+  }
 };
 }
 #endif
