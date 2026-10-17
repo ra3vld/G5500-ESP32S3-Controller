@@ -118,15 +118,38 @@ void Display::serviceTouch() {
   if (uint32_t(now - lastTouch_) < 10) return;
   lastTouch_ = now;
   uint16_t x = 0, y = 0;
-  const bool touch = inputHealthy_ && crowpanel::readTouch(x, y);
+  bool touchHealthy = false;
+  const bool touch = inputHealthy_ && crowpanel::readTouch(x, y, &touchHealthy);
   if (display_) {
     const bool hud = runtime_.hud.isHud();
-    const bool targetAllowed = !hud || (!hudKnob_.menu && !crowpanel::HudNameButton.contains(x, y));
-    const bool confirm = targetAllowed && (!hud || runtime_.hud.available()) && ui_.confirmationHit(x, y);
-    const auto action = touchButtons_.sample(touch, x, y, targetAllowed, confirm);
+    auto layout = ui_.touchLayout();
+    layout.enabled = layout.enabled && !displayFailed && touchHealthy &&
+                     (!hud || (!hudKnob_.menu && (touchButtons_.contactDown() ||
+                                                  !crowpanel::HudNameButton.contains(x, y))));
+    const bool selectionChanged = touchSelection_ != runtime_.hud.selectionEpoch;
+    if (selectionChanged) {
+      layout.enabled = false;
+      touchSelection_ = runtime_.hud.selectionEpoch;
+    }
+    auto event = touchButtons_.sample(touch, x, y, layout);
+    const auto action = event.action;
+    if (event.manual && !selectionChanged) {
+      if (runtime_.controller.manualAvailable()) {
+        if (!++touchSerial_) {
+          ++touchSerial_;
+        }
+        runtime_.controller.manualDrive(0, 1, event.gesture, touchSerial_, event.mask, event.az,
+                                        event.el, event.release, now);
+      } else if (!event.release && hud && runtime_.hud.available()) {
+        touchNotice_ = true;
+        touchNoticeAt_ = now;
+      }
+      redraw_ = true;
+    }
     if (action == crowpanel::TouchAction::Confirm) {
-      if (hud) hudKnob_.confirmPending(now);
-      else knob_.confirmPending(now);
+      if (!hud || runtime_.hud.available()) {
+        runtime_.controller.executeDisplayed(now);
+      }
       redraw_ = true;
     }
     if (action == crowpanel::TouchAction::Target) {
@@ -254,8 +277,27 @@ void Display::updateLocalDisplay() {
     view.current = controller.axes[axis].current;
     view.direction = controller.axes[axis].direction;
     view.pending = controller.pendingValid && (axis ? controller.pending.hasEl : controller.pending.hasAz);
-    view.targetValid = view.pending || controller.targetKnown;
+    view.targetValid = view.pending || controller.axes[axis].targetKnown;
     view.target = view.pending ? (axis ? controller.pending.el : controller.pending.az) : controller.axes[axis].target;
+    const unsigned other = 1 - axis;
+    view.secondaryFeedback = view.dualAxis &&
+                             (view.hud ? runtime_.hud.available() : bool(DRIVE_SIMULATION)) &&
+                             controller.axes[other].calibrated;
+    view.secondaryCurrent = controller.axes[other].current;
+    view.secondaryPending = view.dualAxis && controller.pendingValid &&
+                            (other ? controller.pending.hasEl : controller.pending.hasAz);
+    view.secondaryTargetValid =
+        view.dualAxis && (view.secondaryPending || controller.axes[other].targetKnown);
+    view.secondaryTarget = view.secondaryPending
+                               ? (other ? controller.pending.el : controller.pending.az)
+                               : controller.axes[other].target;
+    view.azDirection = controller.axes[0].direction;
+    view.elDirection = controller.axes[1].direction;
+    if (touchNotice_ && uint32_t(now - touchNoticeAt_) < 2000) {
+      std::snprintf(view.status, sizeof view.status, "Обновите прошивку контроллера");
+    } else {
+      touchNotice_ = false;
+    }
     const bool connected = WiFi.status() == WL_CONNECTED;
     const bool ap = (WiFi.getMode() & WIFI_AP) != 0;
     view.wifiConnected = connected;

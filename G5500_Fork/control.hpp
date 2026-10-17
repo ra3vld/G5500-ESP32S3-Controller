@@ -37,7 +37,9 @@ enum class ControlOp : uint8_t {
   SavePreset,
   Sequence,
   ReleaseJog,
-  ToggleMode
+  ToggleMode,
+  ExecuteDisplayed,
+  ManualDrive
 };
 struct ControlCommand {
   ControlOp op = ControlOp::Stop;
@@ -50,6 +52,10 @@ struct ControlCommand {
   uint8_t count = 0;
   std::array<Target, 16> points{};
   char label[49] = {};
+  uint32_t gesture = 0;
+  uint8_t axesMask = 0;
+  float manual[2]{};
+  bool release = false;
 };
 class CommandSink {
 public:
@@ -60,6 +66,9 @@ public:
   virtual uint32_t selectionGeneration() const { return 0; }
   virtual Result lastResult() const = 0;
   virtual float intendedTarget(unsigned, float fallback) const { return fallback; }
+  virtual bool manualAvailable() const {
+    return false;
+  }
 };
 struct SpeedSettings {
   unsigned speedPercent = 100, startSpeedPercent = 18, approachSpeedPercent = 18;
@@ -72,6 +81,7 @@ struct Axis {
   int direction = 0, wanted = 0, previous = 0;
   uint32_t offAt = 0, runAt = 0;
   bool hasRun = false;
+  bool targetKnown = false;
   float speedOutputPercent = 0;
 };
 struct Preset {
@@ -136,6 +146,13 @@ public:
   void stopNow(int axis, uint32_t now);
   bool stopOwnedJog(unsigned axis, uint32_t epoch, uint32_t now);
   Result execute(uint32_t now);
+  Target displayedTarget() const;
+  Result executeDisplayed(uint32_t now);
+  bool manualAvailable() const {
+    return !remote || remote->manualAvailable();
+  }
+  Result manualDrive(uint64_t source, uint64_t boot, uint32_t gesture, uint32_t serial,
+                     uint8_t mask, float az, float el, bool release, uint32_t now);
   Result setMode(Mode m, uint32_t now);
   void restoreMode(Mode m); // An expired/nonpersistent hour always boots manual.
   void setModel(Model m);
@@ -155,6 +172,14 @@ public:
   static const char *resultName(Result r);
 
 private:
+  struct ManualSession {
+    uint64_t source = 0, boot = 0;
+    uint32_t gesture = 0, serial = 0, renewed = 0, epoch[2]{};
+    uint8_t claimed = 0, blocked = 0;
+    bool used = false, closed = false;
+  } manualSessions_[4];
+  float manualScale_[2] = {1, 1};
+  void closeManual(ManualSession &, uint32_t now);
   uint32_t autoHourStartedAt_ = 0, sequenceAdvancedAt_ = 0, sequenceIntervalMs_ = 0;
   uint32_t lastSpeedUpdateAt_ = 0;
   bool speedUpdateStarted_ = false;

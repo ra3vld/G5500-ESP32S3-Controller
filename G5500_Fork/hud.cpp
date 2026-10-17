@@ -7,7 +7,24 @@
 namespace forkrot {
 namespace {
 constexpr uint32_t TicketMs = 2000, LeaseMs = 1000;
-enum class Kind : uint8_t { Discover = 1, Query, State, Command, Ack, Renew, Subscribe, Telemetry, LiveCommand, LiveAck };
+enum class Kind : uint8_t {
+  Discover = 1,
+  Query,
+  State,
+  Command,
+  Ack,
+  Renew,
+  Subscribe,
+  Telemetry,
+  LiveCommand,
+  LiveAck,
+  ExtendedQuery,
+  ExtendedState,
+  ExtendedSubscribe,
+  ExtendedTelemetry,
+  Manual,
+  ManualAck
+};
 struct Header {
   Kind kind{};
   uint64_t source = 0, target = 0, boot = 0, targetBoot = 0;
@@ -118,7 +135,7 @@ bool header(Reader &r, Header &h) {
   h.targetBoot = r.u64();
   h.serial = r.u32();
   h.ticket = r.u32();
-  return r.ok && h.source && h.boot && uint8_t(h.kind) >= 1 && uint8_t(h.kind) <= 10;
+  return r.ok && h.source && h.boot && uint8_t(h.kind) >= 1 && uint8_t(h.kind) <= 16;
 }
 void target(Writer &w, const Target &t) {
   w.real(t.az);
@@ -170,6 +187,9 @@ void command(Writer &w, const ControlCommand &c) {
     break;
   case ControlOp::Execute:
   case ControlOp::ToggleMode:
+  case ControlOp::ExecuteDisplayed:
+    break;
+  case ControlOp::ManualDrive:
     break;
   }
 }
@@ -222,13 +242,14 @@ bool command(Reader &r, ControlCommand &c) {
     break;
   case ControlOp::Execute:
   case ControlOp::ToggleMode:
+  case ControlOp::ExecuteDisplayed:
     break;
   default:
     return false;
   }
   return r.done();
 }
-void state(Writer &w, const HudState &s, bool compact = false) {
+void state(Writer &w, const HudState &s, bool compact = false, bool extended = false) {
   w.u8(uint8_t(s.model));
   w.u8(uint8_t(s.mode));
   w.real(s.maximum);
@@ -263,8 +284,11 @@ void state(Writer &w, const HudState &s, bool compact = false) {
     w.text(p.label);
     target(w, p.target);
   }
+  if (extended) {
+    w.u8(s.axes[0].targetKnown | (s.axes[1].targetKnown << 1));
+  }
 }
-bool state(Reader &r, HudState &s, bool compact = false) {
+bool state(Reader &r, HudState &s, bool compact = false, bool extended = false) {
   s.model = Model(r.u8());
   s.mode = Mode(r.u8());
   s.maximum = r.real();
@@ -319,6 +343,15 @@ bool state(Reader &r, HudState &s, bool compact = false) {
     r.text(label, sizeof label);
     std::memcpy(p.label, label, sizeof label);
     p.target = target(r);
+  }
+  const auto known =
+      extended ? r.u8()
+               : uint8_t(s.targetKnown ? (s.lastTarget.hasAz | (s.lastTarget.hasEl << 1)) : 0);
+  if (known > 3) {
+    return false;
+  }
+  for (unsigned i = 0; i < 2; ++i) {
+    s.axes[i].targetKnown = known & (1u << i);
   }
   return r.done();
 }
@@ -572,6 +605,7 @@ bool Hud::select(uint64_t node) {
     c.op = ControlOp::ReleaseJog;
     submit(c);
   }
+  releaseManual();
   config.selected = node;
   ++selectionEpoch;
   protocol_.resetSession();
@@ -583,7 +617,9 @@ bool Hud::select(uint64_t node) {
   }
   if (auto *p = active()) {
     p->live = false; p->liveRevision = 0; p->subscribeSent = now - 250;
-    p->subscribeSerial[0] = p->subscribeSerial[1] = 0;
+    for (auto &serial : p->subscribeSerial) {
+      serial = 0;
+    }
   }
   selectedPoll_ = now - 100;
   if (transport_)
@@ -607,7 +643,43 @@ Result Hud::submit(const ControlCommand &c) {
   lastResult_ = Result::Unavailable;
   if (!available() || !p)
     return lastResult_;
+  if (c.op == ControlOp::ManualDrive) {
+    if (!p->manual) {
+      return lastResult_ = Result::Unavailable;
+    }
+    if (!c.release && c.gesture == client_->closedGesture) {
+      return lastResult_ = Result::Cancelled;
+    }
+    auto &j = client_->manual;
+    if (j.used && j.command.gesture != c.gesture) {
+      releaseManual();
+    }
+    if (!j.used || j.command.gesture != c.gesture) {
+      j = {};
+      j.used = true;
+      j.peer = p->id;
+      j.boot = p->boot;
+      j.endpoint = p->endpoint;
+      j.selection = selectionEpoch;
+      j.sent = now - 50;
+    }
+    j.command = c;
+    j.id = lastRequest_;
+    j.ticket = p->remoteTick;
+    j.started = now;
+    client_->manualInputAt = now;
+    if (c.release) {
+      client_->closedGesture = c.gesture;
+      sendManual(j);
+    }
+    return lastResult_ = Result::Deferred;
+  }
   const bool stop = c.op == ControlOp::Stop || c.op == ControlOp::ReleaseJog;
+  if (c.op != ControlOp::ReleaseJog) {
+    releaseManual();
+  }
+  // The new command must sort after the release emitted by takeover.
+  lastRequest_ = nextSerial();
   Job *slot = nullptr;
   if (stop) {
     slot = &client_->jobs[0];
@@ -662,18 +734,56 @@ void Hud::finish(Job &j, Result r) {
   }
   j.used = false;
 }
+bool Hud::sendManual(Job &j) {
+  Writer w{tx_, sizeof tx_};
+  if (!j.command.release) {
+    auto *p = peer(j.peer);
+    if (!p || !p->fresh(now) || p->boot != j.boot) {
+      return false;
+    }
+    j.id = nextSerial();
+    j.ticket = p->remoteTick;
+  }
+  header(w, {Kind::Manual, id, j.peer, boot, j.boot, j.id, j.ticket});
+  w.u32(j.command.gesture);
+  w.u8(j.command.axesMask);
+  w.u8(j.command.release);
+  w.real(j.command.manual[0]);
+  w.real(j.command.manual[1]);
+  const auto n = w.finish();
+  j.sent = now;
+  return n && transport_ && transport_->sendHud(j.endpoint, tx_, n);
+}
+void Hud::releaseManual() {
+  if (!client_ || !client_->manual.used || client_->manual.command.release) {
+    return;
+  }
+  auto &j = client_->manual;
+  j.command.release = true;
+  j.id = nextSerial();
+  j.started = now;
+  client_->closedGesture = j.command.gesture;
+  sendManual(j);
+}
 bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
   const uint32_t serial = nextSerial();
   Writer w{tx_, sizeof tx_};
-  header(w, {discovery ? Kind::Discover : Kind::Query, id, targetId, boot, 0, serial, 0});
+  const auto *selected = peer(targetId);
+  const bool extended = !discovery && selected && selected->manual && selected->fresh(now);
+  header(w, {discovery  ? Kind::Discover
+             : extended ? Kind::ExtendedQuery
+                        : Kind::Query,
+             id, targetId, boot, extended ? selected->boot : 0, serial, 0});
   const auto n = w.finish();
   if (!transport_ || !n || !transport_->sendHud(e, tx_, n))
     return false;
   if (discovery)
     scanSerial_ = serial;
   else if (auto *p = peer(targetId)) {
-    p->querySerial[1] = p->querySerial[0];
-    p->queryAt[1] = p->queryAt[0];
+    for (unsigned i = 11; i > 0; --i) {
+      p->querySerial[i] = p->querySerial[i - 1];
+      p->queryAt[i] = p->queryAt[i - 1];
+    }
     p->querySerial[0] = serial;
     p->queryAt[0] = now;
   }
@@ -753,6 +863,11 @@ Result Hud::execute(const ControlCommand &c, uint64_t source, uint64_t session, 
     r = controller_.setMode(controller_.mode == Mode::Manual ? Mode::Auto : Mode::Manual, now);
     settingsDirty = true;
     break;
+  case ControlOp::ExecuteDisplayed:
+    r = controller_.executeDisplayed(now);
+    break;
+  case ControlOp::ManualDrive:
+    break; // Uses its own coalesced, leased stream.
   case ControlOp::Execute:
     r = controller_.execute(now);
     break;
@@ -795,9 +910,22 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
   }
   ++received;
   const bool ack = h.kind == Kind::Ack || h.kind == Kind::LiveAck;
-  const bool telemetry = h.kind == Kind::Telemetry;
+  const bool extended = h.kind == Kind::ExtendedState || h.kind == Kind::ExtendedTelemetry;
+  const bool telemetry = h.kind == Kind::Telemetry || h.kind == Kind::ExtendedTelemetry;
   const bool compact = telemetry || h.kind == Kind::LiveAck;
-  if (h.kind == Kind::State || ack || telemetry) {
+  if (h.kind == Kind::ManualAck) {
+    const uint32_t gesture = r.u32();
+    const auto result = Result(r.u8());
+    if (isHud() && client_ && r.done() && h.targetBoot == boot) {
+      auto &j = client_->manual;
+      if (j.used && j.peer == h.source && j.boot == h.boot && j.id == h.serial &&
+          j.command.gesture == gesture && j.command.release && result <= Result::Cancelled) {
+        j.used = false;
+      }
+    }
+    return;
+  }
+  if (h.kind == Kind::State || h.kind == Kind::ExtendedState || ack || telemetry) {
     if (!isHud() || !client_ || h.target != id || h.targetBoot != boot)
       return;
     Result result = Result::Ok;
@@ -813,7 +941,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     const uint32_t revision = telemetry ? r.u32() : 0;
     HudState s;
     if (compact) s = p->state;
-    if (!state(r, s, compact)) {
+    if (!state(r, s, compact, extended)) {
       ++rejected;
       return;
     }
@@ -828,12 +956,19 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       requested = true;
       requestedAt = scanAt_;
     }
-    if (h.kind == Kind::State && p)
-      for (unsigned i = 0; i < 2; ++i)
+    if ((h.kind == Kind::State || h.kind == Kind::ExtendedState) && p) {
+      for (unsigned i = 0; i < 12; ++i) {
         if (h.serial == p->querySerial[i] && uint32_t(now - p->queryAt[i]) < 1000) {
           requested = true;
           requestedAt = p->queryAt[i];
         }
+      }
+    }
+    if (h.kind == Kind::ExtendedState && p && h.serial == p->capabilitySerial &&
+        uint32_t(now - p->capabilityAt) < 1000) {
+      requested = true;
+      requestedAt = p->capabilityAt;
+    }
     if (ack)
       for (const auto &job : client_->jobs)
         if (job.used && job.peer == h.source && job.boot == h.boot && job.id == h.serial) {
@@ -842,15 +977,17 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
           break;
         }
     if (telemetry && p && p->id == config.selected) {
-      for (unsigned i = 0; i < 2; ++i)
+      for (unsigned i = 0; i < 4; ++i) {
         if (h.serial == p->subscribeSerial[i] && uint32_t(now - p->subscribeAt[i]) < 1000) {
           requested = true;
           requestedAt = p->subscribeAt[i];
         }
+      }
       if (p->live && int32_t(revision - p->liveRevision) < 0) return;
     }
-    if (!requested)
+    if (!requested || uint32_t(now - requestedAt) >= 1000) {
       return; // Delayed unsolicited state cannot make an offline drive appear fresh.
+    }
     if (!p) {
       if (!discovery)
         return;
@@ -864,6 +1001,10 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       else
         return;
     }
+    // Capability is stable for a boot even if a newer state overtook this reply.
+    if (extended && (!p->boot || p->boot == h.boot)) {
+      p->manual = true;
+    }
     if (p->received && ((!telemetry && int32_t(h.serial - p->stateSerial) < 0) ||
                         (p->boot == h.boot && int32_t(h.ticket - p->remoteTick) < 0))) {
       if (ack)
@@ -875,8 +1016,12 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       return;
     }
     if (p->boot && p->boot != h.boot) {
-      p->live = false; p->liveRevision = 0;
-      p->subscribeSerial[0] = p->subscribeSerial[1] = 0;
+      p->live = false;
+      p->manual = false;
+      p->liveRevision = 0;
+      for (auto &serial : p->subscribeSerial) {
+        serial = 0;
+      }
       for (auto &j : client_->jobs)
         if (j.used && j.peer == p->id)
           finish(j, Result::Cancelled);
@@ -885,14 +1030,22 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
           held.active = false;
     }
     p->boot = h.boot;
+    if (!extended && p->manual && p->boot == h.boot && s.targetKnown) {
+      for (unsigned i = 0; i < 2; ++i) {
+        s.axes[i].targetKnown = s.axes[i].targetKnown || p->state.axes[i].targetKnown;
+      }
+    }
+    if (extended) {
+      p->manual = true;
+    }
     p->state = std::move(s);
     p->received = true;
-    p->receivedAt = requestedAt;
+    p->receivedAt = now; // Freshness starts at a validated arrival, not its delayed request.
     p->remoteTick = h.ticket;
     if (!telemetry) p->stateSerial = h.serial;
     if (telemetry) { p->live = true; p->liveAt = now; p->liveRevision = revision; }
     if (p->saved && p->id == config.selected)
-      p->state.apply(controller_, protocol_, requestedAt);
+      p->state.apply(controller_, protocol_, now);
     if (ack)
       for (auto &j : client_->jobs)
         if (j.used && j.peer == p->id && j.boot == h.boot && j.id == h.serial) {
@@ -903,6 +1056,20 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
   }
   if (isHud())
     return; // No HUD-to-HUD forwarding, including accidental loops.
+  if (h.kind == Kind::ExtendedQuery) {
+    if (h.target == id && h.targetBoot == boot && r.done()) {
+      Writer w{tx_, sizeof tx_};
+      header(w, {Kind::ExtendedState, id, h.source, boot, h.boot, h.serial, now});
+      HudState s;
+      s.capture(controller_, protocol_, now);
+      state(w, s, false, true);
+      const auto n = w.finish();
+      if (n && transport_) {
+        transport_->sendHud(e, tx_, n);
+      }
+    }
+    return;
+  }
   if (h.kind == Kind::Discover || h.kind == Kind::Query) {
     if (r.done())
       sendState(e, h.source, h.serial, false, Result::Ok, h.boot);
@@ -912,7 +1079,45 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     ++rejected;
     return;
   }
-  if (h.kind == Kind::Subscribe) {
+  if (h.kind == Kind::Manual) {
+    const uint32_t gesture = r.u32();
+    const auto mask = r.u8();
+    const auto release = r.u8();
+    const float az = r.real(), el = r.real();
+    if (!r.done() || release > 1) {
+      ++rejected;
+      return;
+    }
+    Dedup *barrier = nullptr;
+    bool stale = false;
+    for (auto &d : dedup_) {
+      if (d.used && d.source == h.source && d.boot == h.boot) {
+        barrier = &d;
+        stale = int32_t(h.serial - d.seq) <= 0;
+        break;
+      }
+      if ((!d.used || uint32_t(now - d.ticket) >= TicketMs) && (&d != &dedup_[0] || release)) {
+        barrier = &d;
+      }
+    }
+    const auto result = stale      ? Result::Cancelled
+                        : !barrier ? Result::Busy
+                                   : controller_.manualDrive(h.source, h.boot, gesture, h.serial,
+                                                             mask, az, el, release, now);
+    if (!stale && barrier) {
+      *barrier = {h.source, h.boot, h.serial, h.ticket, result, true};
+    }
+    Writer w{tx_, sizeof tx_};
+    header(w, {Kind::ManualAck, id, h.source, boot, h.boot, h.serial, now});
+    w.u32(gesture);
+    w.u8(uint8_t(result));
+    const auto n = w.finish();
+    if (n && transport_) {
+      transport_->sendHud(e, tx_, n);
+    }
+    return;
+  }
+  if (h.kind == Kind::Subscribe || h.kind == Kind::ExtendedSubscribe) {
     if (!r.done()) return;
     Subscription *slot = nullptr;
     for (auto &sub : subscriptions_) {
@@ -923,7 +1128,11 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       }
       if (!sub.used && !slot) slot = &sub;
     }
-    if (slot) *slot = {e, h.source, h.boot, h.serial, now, now - 250, 0, true};
+    if (slot) {
+      *slot = {e,        h.source, h.boot,
+               h.serial, now,      now - 250,
+               0,        true,     h.kind == Kind::ExtendedSubscribe};
+    }
     return;
   }
   if (h.kind == Kind::Renew) {
@@ -984,11 +1193,15 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
 bool Hud::subscribe(HudPeer &p) {
   const uint32_t seq = nextSerial();
   Writer w{tx_, sizeof tx_};
-  header(w, {Kind::Subscribe, id, p.id, boot, p.boot, seq, p.remoteTick});
+  header(w, {p.manual ? Kind::ExtendedSubscribe : Kind::Subscribe, id, p.id, boot, p.boot, seq,
+             p.remoteTick});
   const auto n = w.finish();
   p.subscribeSent = now;
   if (!n || !transport_ || !transport_->sendHud(p.endpoint, tx_, n)) return false;
-  p.subscribeSerial[1] = p.subscribeSerial[0]; p.subscribeAt[1] = p.subscribeAt[0];
+  for (unsigned i = 3; i > 0; --i) {
+    p.subscribeSerial[i] = p.subscribeSerial[i - 1];
+    p.subscribeAt[i] = p.subscribeAt[i - 1];
+  }
   p.subscribeSerial[0] = seq; p.subscribeAt[0] = now;
   return true;
 }
@@ -1001,11 +1214,13 @@ void Hud::publishLive() {
   if (!any) return;
   HudState current; current.capture(controller_, protocol_, now);
   current.remaining = (current.remaining / 1000) * 1000;
-  Writer fingerprint{tx_, sizeof tx_}; state(fingerprint, current, true);
+  Writer fingerprint{tx_, sizeof tx_};
+  state(fingerprint, current, true, true);
   const uint32_t hash = hudCrc(tx_, fingerprint.size);
   HudState control = current;
   for (auto &axis : control.axes) { axis.current = 0; axis.speedOutputPercent = 0; }
-  fingerprint = {tx_, sizeof tx_}; state(fingerprint, control, true);
+  fingerprint = {tx_, sizeof tx_};
+  state(fingerprint, control, true, true);
   const uint32_t controlHash = hudCrc(tx_, fingerprint.size);
   if (hash != liveHash_ && (controlHash != controlHash_ || uint32_t(now - liveChangedAt_) >= 20)) {
     liveHash_ = hash; controlHash_ = controlHash; liveChangedAt_ = now; ++liveRevision_;
@@ -1013,8 +1228,10 @@ void Hud::publishLive() {
   for (auto &sub : subscriptions_) {
     if (!sub.used || (sub.revision == liveRevision_ && uint32_t(now - sub.sent) < 250)) continue;
     Writer w{tx_, sizeof tx_};
-    header(w, {Kind::Telemetry, id, sub.source, boot, sub.boot, sub.serial, now});
-    w.u32(liveRevision_); state(w, current, true);
+    header(w, {sub.extended ? Kind::ExtendedTelemetry : Kind::Telemetry, id, sub.source, boot,
+               sub.boot, sub.serial, now});
+    w.u32(liveRevision_);
+    state(w, current, true, sub.extended);
     const auto n = w.finish();
     if (n && transport_ && transport_->sendHud(sub.endpoint, tx_, n)) {
       sub.sent = now; sub.revision = liveRevision_;
@@ -1042,8 +1259,40 @@ void Hud::service(uint32_t at) {
     invalidateMirror();
     return;
   }
-  if (!available())
+  if (!available()) {
+    releaseManual();
     invalidateMirror();
+  }
+  if (auto *p = active();
+      p && !p->manual && p->fresh(now) && uint32_t(now - p->capabilityAt) >= 500) {
+    Writer w{tx_, sizeof tx_};
+    const auto seq = nextSerial();
+    header(w, {Kind::ExtendedQuery, id, p->id, boot, p->boot, seq, p->remoteTick});
+    const auto n = w.finish();
+    p->capabilitySerial = seq;
+    p->capabilityAt = now;
+    for (unsigned i = 11; i > 0; --i) {
+      p->querySerial[i] = p->querySerial[i - 1];
+      p->queryAt[i] = p->queryAt[i - 1];
+    }
+    p->querySerial[0] = seq;
+    p->queryAt[0] = now;
+    if (n && transport_) {
+      transport_->sendHud(p->endpoint, tx_, n);
+    }
+  }
+  auto &manual = client_->manual;
+  if (manual.used) {
+    if (!manual.command.release &&
+        (uint32_t(now - client_->manualInputAt) >= 100 || manual.selection != selectionEpoch)) {
+      releaseManual();
+    }
+    if (uint32_t(now - manual.started) >= 1000 && manual.command.release) {
+      manual.used = false;
+    } else if (uint32_t(now - manual.sent) >= (manual.command.release ? 100u : 50u)) {
+      sendManual(manual);
+    }
+  }
   for (auto &j : client_->jobs)
     if (j.used) {
       if (uint32_t(now - j.started) >= 1000) {
@@ -1154,7 +1403,9 @@ void Hud::writeStatus(JsonWriter &j, bool live) const {
     j << unsigned(p->state.board);
   else
     j << "null";
-  j << ",\"hudCatalogError\":" << (catalogError ? "true" : "false") << ",\"hudRejected\":" << rejected
-    << ",\"hudTimeouts\":" << timeouts << ",\"hudBusy\":" << busy;
+  j << ",\"hudCatalogError\":" << (catalogError ? "true" : "false")
+    << ",\"hudRejected\":" << rejected << ",\"hudTimeouts\":" << timeouts << ",\"hudBusy\":" << busy
+    << ",\"hudReceived\":" << received << ",\"hudSent\":" << sent
+    << ",\"hudSendErrors\":" << sendErrors;
 }
 } // namespace forkrot

@@ -6,7 +6,7 @@
 namespace forkrot::crowpanel {
 bool beginBus();
 bool readButton(bool &down);
-bool readTouch(uint16_t &x, uint16_t &y);
+bool readTouch(uint16_t &x, uint16_t &y, bool *healthy = nullptr);
 void beginEncoder();
 int encoderDelta();
 esp_lcd_panel_handle_t beginPanel();

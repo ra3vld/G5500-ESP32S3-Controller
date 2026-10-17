@@ -13,6 +13,9 @@ struct CrowPanelView {
   bool pending = false, moving = false, autoMode = false, autoHour = false;
   int direction = 0;
   float current = 0, target = 0, maximum = 450;
+  float secondaryCurrent = 0, secondaryTarget = 0;
+  bool secondaryFeedback = false, secondaryTargetValid = false, secondaryPending = false;
+  int azDirection = 0, elDirection = 0;
   uint64_t sourceId = 0;
   bool wifiConnected = false, wifiAp = false;
   int wifiRssi = -127;
@@ -28,7 +31,8 @@ class CrowPanelUi {
   lv_obj_t *bluetooth_ = nullptr, *ip_ = nullptr, *heap_ = nullptr;
   lv_obj_t *modeButton_ = nullptr;
   lv_obj_t *currentMarker_ = nullptr, *targetMarker_ = nullptr;
-  lv_obj_t *motionArrow_ = nullptr;
+  lv_obj_t *arrows_[4]{}, *secondaryAngle_ = nullptr, *secondaryTarget_ = nullptr;
+  crowpanel::TouchLayout touchLayout_{};
   struct MarkerMotion {
     lv_obj_t *object = nullptr;
     float shown = 0, requested = 0;
@@ -46,6 +50,9 @@ class CrowPanelUi {
   static void updateMarker(MarkerMotion &motion, float degrees, bool valid, bool reset, bool shortest);
   static void drawLimits(lv_event_t *event);
 public:
+  const crowpanel::TouchLayout &touchLayout() const {
+    return touchLayout_;
+  }
   void create();
   void update(const CrowPanelView &view);
   void setPressed(crowpanel::TouchAction action);

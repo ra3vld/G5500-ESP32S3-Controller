@@ -12,7 +12,10 @@ int main() {
   auto &c = runtime.controller;
   hw.beginDirections(); hw.beginAdc(); hw.beginInputs(); hw.allStop();
   assert(c.axes[0].calibrated && c.axes[1].calibrated && !c.driveFault);
-  assert(!c.variableSpeed(0) && !c.variableSpeed(1));
+  assert(c.variableSpeed(0) && c.variableSpeed(1));
+  for (auto &s : c.speeds) {
+    s = {100, 100, 100, 0, 0, 1};
+  }
   assert(stateJson(c, runtime.protocol, runtime.loggerSettings, 0).find("\"drive\":\"SIMULATED\"") != std::string::npos);
   fakeHardware.now = 100;
   c.tick(100);

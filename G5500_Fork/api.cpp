@@ -86,8 +86,9 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
   json << ",\"moving\":" << (controller.moving() ? "true" : "false")
        << ",\"presetActive\":" << (controller.presetActive ? "true" : "false")
        << ",\"presetSlot\":" << controller.presetSlot << ",\"speedEnabled\":"
-       << ((controller.remote ? controller.variableSpeed(0)
-                              : (DRIVE_INTERFACE != DRIVE_YAESU || controller.speedEnabled))
+       << (((controller.remote || DRIVE_SIMULATION)
+                ? controller.variableSpeed(0)
+                : (DRIVE_INTERFACE != DRIVE_YAESU || controller.speedEnabled))
                ? "true"
                : "false")
        << ",\"speedPercent\":" << controller.speedPercent
@@ -97,11 +98,14 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"decelerationMs\":" << controller.decelerationMs
        << ",\"slowdownDegrees\":" << controller.slowdownDegrees
        << ",\"speedOutputPercent\":" << controller.axes[0].speedOutputPercent
-       << ",\"fault\":" << jsonQuoted(controller.fault) << ",\"rotorName\":" << jsonQuoted(protocol.rotorName)
+       << ",\"fault\":" << jsonQuoted(controller.fault)
+       << ",\"rotorName\":" << jsonQuoted(protocol.rotorName)
        << ",\"n1mmPort\":" << settings.n1mmPort << ",\"pstPort\":" << settings.pstPort
-       << ",\"reportPort\":" << settings.reportPort << ",\"reportHost\":" << jsonQuoted(settings.reportHost)
-       << ",\"n1mmReport\":\"" << jsonEscaped(protocol.rotorName) << '@'
-       << int(std::lround(heading(controller.axes[0].current) * 10)) % 3600 << '"' << ",\"presets\":[";
+       << ",\"reportPort\":" << settings.reportPort
+       << ",\"reportHost\":" << jsonQuoted(settings.reportHost) << ",\"n1mmReport\":\""
+       << jsonEscaped(protocol.rotorName) << '@'
+       << int(std::lround(heading(controller.axes[0].current) * 10)) % 3600 << '"'
+       << ",\"presets\":[";
   for (unsigned i = 0; i < 4; ++i) {
     if (i) {
       json << ',';
@@ -300,7 +304,8 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
         if (old && modern && aliased != prefixed) valid = false;
         if (modern || old) field = modern ? prefixed : aliased;
       };
-      const unsigned minimum = DRIVE_INTERFACE == DRIVE_YAESU && i == 0 ? 25 : 1;
+      const unsigned minimum =
+          !DRIVE_SIMULATION && DRIVE_INTERFACE == DRIVE_YAESU && i == 0 ? 25 : 1;
       value("speedPercent", speed.speedPercent, minimum, 100);
       value("startSpeedPercent", speed.startSpeedPercent, minimum, 100);
       value("approachSpeedPercent", speed.approachSpeedPercent, minimum, 100);

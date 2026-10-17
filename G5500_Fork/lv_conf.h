@@ -13,7 +13,7 @@
 #define LV_FONT_MONTSERRAT_22 1
 #define LV_FONT_MONTSERRAT_28 1
 #define LV_FONT_DEFAULT &crowpanel_font_22
-#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(crowpanel_font_11) LV_FONT_DECLARE(crowpanel_font_22) LV_FONT_DECLARE(crowpanel_font_36) LV_FONT_DECLARE(crowpanel_font_112)
+#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(crowpanel_font_11) LV_FONT_DECLARE(crowpanel_font_22) LV_FONT_DECLARE(crowpanel_font_36) LV_FONT_DECLARE(crowpanel_font_112) LV_FONT_DECLARE(crowpanel_font_28) LV_FONT_DECLARE(crowpanel_font_80)
 #define LV_USE_ARC 1
 #define LV_USE_BUTTON 1
 #define LV_USE_LABEL 1

@@ -43,6 +43,138 @@ public:
     return fresh ? active_ : TouchAction::None;
   }
 };
+// Geometry is supplied by the actual LVGL layout. A contact keeps its initial role.
+struct TouchLayout {
+  TouchRect current{}, target{}, arrows[4]{}; // left, right, up, down
+  bool dualAxis = false, enabled = true;
+};
+struct TouchEvent {
+  TouchAction action = TouchAction::None;
+  bool manual = false, release = false;
+  uint32_t gesture = 0;
+  uint8_t mask = 0;
+  float az = 0, el = 0;
+};
+class TouchGesture {
+  enum class Role { None, Mode, Ring, Target, Swipe, Arrow } role_ = Role::None;
+  bool down_ = false, cancelled_ = false, blocked_ = false;
+  uint16_t startX_ = 0, startY_ = 0, lastX_ = 0, lastY_ = 0;
+  unsigned arrow_ = 0;
+  uint8_t mask_ = 0;
+  uint32_t gesture_ = 0;
+  TouchLayout captured_{};
+  static float scale(int displacement) {
+    const int distance = std::abs(displacement);
+    if (distance <= 12) {
+      return 0;
+    }
+    const float magnitude = distance >= 100 ? 1.f : float(distance - 12) / 88.f;
+    return displacement < 0 ? -magnitude : magnitude;
+  }
+
+public:
+  bool contactDown() const {
+    return down_;
+  }
+  TouchAction pressed() const {
+    return down_ && role_ == Role::Mode ? TouchAction::Mode : TouchAction::None;
+  }
+  TouchEvent sample(bool down, uint16_t x, uint16_t y, const TouchLayout &layout) {
+    TouchEvent e;
+    if (blocked_) {
+      down_ = down;
+      if (!down && layout.enabled) {
+        blocked_ = false;
+      }
+      return e;
+    }
+    if (down) {
+      lastX_ = x;
+      lastY_ = y;
+    } else {
+      x = lastX_;
+      y = lastY_;
+    }
+    if (down && !down_) {
+      captured_ = layout;
+      startX_ = x;
+      startY_ = y;
+      mask_ = 0;
+      cancelled_ = false;
+      role_ = Role::None;
+      if (layout.enabled) {
+        if (ModeButton.contains(x, y)) {
+          role_ = Role::Mode;
+          e.action = TouchAction::Mode;
+        } else {
+          for (unsigned i = 0; i < (layout.dualAxis ? 4u : 2u); ++i) {
+            if (layout.arrows[i].contains(x, y)) {
+              role_ = Role::Arrow;
+              arrow_ = i;
+              break;
+            }
+          }
+          if (role_ == Role::None) {
+            if (layout.current.contains(x, y)) {
+              role_ = Role::Swipe;
+            } else if (layout.target.contains(x, y)) {
+              role_ = Role::Target;
+            } else if (dialContains(x, y)) {
+              role_ = Role::Ring;
+              e.action = TouchAction::Target;
+            }
+          }
+        }
+      }
+      if (role_ == Role::Swipe || role_ == Role::Arrow) {
+        if (!++gesture_) {
+          ++gesture_;
+        }
+      }
+    }
+    if (down && (std::abs(int(x) - startX_) > 12 || std::abs(int(y) - startY_) > 12)) {
+      cancelled_ = true;
+    }
+    if (role_ == Role::Swipe || role_ == Role::Arrow) {
+      if (down || down_) {
+        e.manual = true;
+        e.release = !down || !layout.enabled;
+        e.gesture = gesture_;
+        if (!e.release) {
+          if (role_ == Role::Arrow) {
+            if (arrow_ < 2) {
+              e.az = arrow_ ? 1 : -1;
+            } else {
+              e.el = arrow_ == 2 ? 1 : -1;
+            }
+          } else {
+            e.az = scale(int(x) - startX_);
+            e.el = captured_.dualAxis ? scale(int(startY_) - y) : 0;
+          }
+          if (e.az) {
+            mask_ |= 1;
+          }
+          if (e.el) {
+            mask_ |= 2;
+          }
+        }
+        e.mask = mask_;
+      }
+    } else if (!down && down_ && role_ == Role::Target && !cancelled_ && layout.enabled &&
+               captured_.target.contains(x, y)) {
+      e.action = TouchAction::Confirm;
+    }
+    if (!layout.enabled) {
+      role_ = Role::None;
+      blocked_ = true;
+    }
+    if (!down) {
+      role_ = Role::None;
+    }
+    down_ = down;
+    return e;
+  }
+};
 // CST8xx registers 0x02..0x06: finger count, event/XH, XL, YH, YL.
 // Native panel coordinates, matching Elecrow Board21.h (no UI-specific offset).
 inline bool decodeTouch(const uint8_t (&data)[5], uint16_t &x, uint16_t &y) {

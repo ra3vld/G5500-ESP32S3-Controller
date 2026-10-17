@@ -46,6 +46,12 @@ Controller &Controller::operator=(const Controller &other) {
   mode = other.mode;
   maximum = other.maximum;
   axes = other.axes;
+  for (unsigned i = 0; i < 4; ++i) {
+    manualSessions_[i] = other.manualSessions_[i];
+  }
+  for (unsigned i = 0; i < 2; ++i) {
+    manualScale_[i] = other.manualScale_[i];
+  }
   presets = other.presets;
   pending = other.pending;
   lastTarget = other.lastTarget;
@@ -133,6 +139,8 @@ Result Controller::start(Target nextTarget, uint32_t, bool external) {
       axis.accepted = true;
       axis.completed = false;
       axis.target = value;
+      axis.targetKnown = true;
+      manualScale_[i] = 1;
       float difference = axis.target - axis.current;
       axis.wanted = std::abs(difference) <= tolerance(i) ? 0 : difference > 0 ? 1 : -1;
       axis.tracking = axis.wanted != 0;
@@ -204,6 +212,7 @@ Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now
   }
   if (driveFault) return Result::Invalid;
   ++motionEpoch[axis];
+  manualScale_[axis] = 1;
   axes[axis].completed = false;
   axes[axis].accepted = false;
   axes[axis].tracking = false;
@@ -285,6 +294,150 @@ Result Controller::execute(uint32_t now) {
   }
   return result;
 }
+Target Controller::displayedTarget() const {
+  Target t{axes[0].target, axes[1].target, axes[0].targetKnown,
+           model == Model::G5500 && axes[1].targetKnown};
+  if (pendingValid) {
+    if (pending.hasAz) {
+      t.az = pending.az;
+      t.hasAz = true;
+    }
+    if (pending.hasEl && model == Model::G5500) {
+      t.el = pending.el;
+      t.hasEl = true;
+    }
+  }
+  return t;
+}
+Result Controller::executeDisplayed(uint32_t now) {
+  if (remote) {
+    if (!remote->manualAvailable()) {
+      return pendingValid ? execute(now) : target(displayedTarget(), false, now);
+    }
+    ControlCommand c;
+    c.op = ControlOp::ExecuteDisplayed;
+    return remote->submit(c);
+  }
+  if (presetActive) {
+    return Result::Ignored;
+  }
+  const auto t = displayedTarget();
+  if (!valid(t)) {
+    return Result::Invalid;
+  }
+  if (pendingValid) {
+    pending = t;
+    return execute(now); // Preserve a pending sequence and its progression.
+  }
+  return target(t, false, now);
+}
+void Controller::closeManual(ManualSession &s, uint32_t now) {
+  for (unsigned i = 0; i < 2; ++i) {
+    if (s.claimed & (1u << i)) {
+      stopOwnedJog(i, s.epoch[i], now);
+    }
+  }
+  s.closed = true;
+}
+Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t gesture,
+                               uint32_t serial, uint8_t mask, float az, float el, bool release,
+                               uint32_t now) {
+  if (!gesture || !serial || mask > 3 || (!release && model == Model::G800DXA && (mask & 2)) ||
+      !std::isfinite(az) || !std::isfinite(el) || std::abs(az) > 1 || std::abs(el) > 1) {
+    return Result::Invalid;
+  }
+  if (remote) {
+    ControlCommand c;
+    c.op = ControlOp::ManualDrive;
+    c.gesture = gesture;
+    c.axesMask = mask;
+    c.manual[0] = az;
+    c.manual[1] = el;
+    c.release = release;
+    return remote->submit(c);
+  }
+  ManualSession *s = nullptr, *free = nullptr;
+  for (auto &candidate : manualSessions_) {
+    if (candidate.used && candidate.source == source && candidate.boot == sessionBoot) {
+      s = &candidate;
+      break;
+    }
+    // Tombstones outlive the 2-second HUD command ticket.
+    if (!candidate.used || (candidate.closed && uint32_t(now - candidate.renewed) >= 3000)) {
+      free = &candidate;
+    }
+  }
+  if (!s) {
+    if (!free) {
+      return Result::Busy;
+    }
+    s = free;
+    *s = {};
+    s->used = true;
+    s->source = source;
+    s->boot = sessionBoot;
+  }
+  if (s->gesture != gesture) {
+    if (s->gesture && int32_t(gesture - s->gesture) <= 0) {
+      return Result::Cancelled;
+    }
+    closeManual(*s, now);
+    s->gesture = gesture;
+    s->serial = 0;
+    s->claimed = s->blocked = 0;
+    s->closed = false;
+    for (unsigned i = 0; i < 2; ++i) {
+      s->epoch[i] = motionEpoch[i];
+    }
+  }
+  if (s->serial && int32_t(serial - s->serial) <= 0) {
+    return Result::Cancelled;
+  }
+  s->serial = serial;
+  if (s->closed) {
+    return Result::Cancelled;
+  }
+  if (s->claimed && uint32_t(now - s->renewed) >= 1000) {
+    closeManual(*s, now);
+    return Result::Cancelled;
+  }
+  s->renewed = now;
+  if (release) {
+    closeManual(*s, now);
+    return Result::Ok;
+  }
+  if (driveFault) {
+    closeManual(*s, now);
+    return Result::Invalid;
+  }
+  const float values[] = {az, el};
+  for (unsigned i = 0; i < 2; ++i) {
+    const uint8_t bit = 1u << i;
+    if (motionEpoch[i] != s->epoch[i]) {
+      s->blocked |= bit;
+    }
+    if (!(mask & bit) || (s->blocked & bit)) {
+      continue;
+    }
+    if (!(s->claimed & bit)) {
+      if (!values[i]) {
+        continue;
+      }
+      s->claimed |= bit;
+      jog(i, values[i] > 0 ? 1 : -1, false, now);
+      s->epoch[i] = motionEpoch[i];
+    }
+    const int direction = values[i] > 0 ? 1 : values[i] < 0 ? -1 : 0;
+    if (!direction) {
+      stopOwnedJog(i, s->epoch[i], now);
+      s->epoch[i] = motionEpoch[i];
+    } else {
+      axes[i].wanted = direction;
+      manualScale_[i] = std::abs(values[i]);
+    }
+  }
+  return Result::Ok;
+}
 Result Controller::setMode(Mode nextMode, uint32_t now) {
   if (remote) {
     ControlCommand c;
@@ -326,6 +479,7 @@ void Controller::setModel(Model nextModel) {
     axis.calibrated = false;
     axis.hasRun = false;
     axis.accepted = false;
+    axis.targetKnown = false;
   }
 }
 void Controller::setMaximum(float nextMaximum) {
@@ -338,6 +492,7 @@ void Controller::setMaximum(float nextMaximum) {
   stop(0);
   maximum = nextMaximum;
   axes[0].accepted = false;
+  axes[0].targetKnown = false;
   axes[0].target = std::max(0.f, std::min(maximum, axes[0].current));
   lastTarget.hasAz = false;
 }
@@ -480,8 +635,7 @@ bool Controller::variableSpeed(unsigned i) const {
   if (remote)
     return i < 2 && remoteVariable[i];
 #if DRIVE_SIMULATION
-  (void)i;
-  return false; // Fixed-speed virtual drive, independent of physical PWM settings.
+  return i == 0 || (i == 1 && model == Model::G5500); // Virtual PWM on every available axis.
 #elif DRIVE_INTERFACE == DRIVE_YAESU
   return i == 0 && model == Model::G800DXA && speedEnabled;
 #else
@@ -491,6 +645,11 @@ bool Controller::variableSpeed(unsigned i) const {
 void Controller::tick(uint32_t now) {
   if (remote)
     return;
+  for (auto &s : manualSessions_) {
+    if (s.used && !s.closed && uint32_t(now - s.renewed) >= 1000) {
+      closeManual(s, now);
+    }
+  }
   expire(now);
   const uint32_t elapsed = speedUpdateStarted_ ? uint32_t(now - lastSpeedUpdateAt_) : 0;
   lastSpeedUpdateAt_ = now;
@@ -501,7 +660,7 @@ void Controller::tick(uint32_t now) {
   for (unsigned i = 0; i < 2; ++i) {
     auto &axis = axes[i];
     if (!driveFault && axis.direction && (i == 0 || model == Model::G5500)) {
-      float step = 13.4f * (float(elapsed) / 1000.f);
+      float step = 13.4f * (axis.speedOutputPercent / 100.f) * (float(elapsed) / 1000.f);
       const float distance = axis.target - axis.current;
       if (axis.tracking && distance * axis.direction >= 0 && step >= std::abs(distance))
         axis.current = axis.target;
@@ -572,7 +731,7 @@ void Controller::tick(uint32_t now) {
       axis.speedOutputPercent = 0;
       continue;
     }
-    float requested = float(speed.speedPercent);
+    float requested = float(speed.speedPercent) * manualScale_[i];
     if (axis.tracking) {
       const float distance = std::abs(axis.target - axis.current);
       const float fraction = std::max(0.f, std::min(1.f, (distance - tolerance(i)) /

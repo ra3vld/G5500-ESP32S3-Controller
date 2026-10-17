@@ -312,9 +312,9 @@ void Storage::loadForkSettings(Runtime &runtime) {
                                                                  : forkrot::Mode::Manual);
 #if DRIVE_INTERFACE == DRIVE_YAESU
   runtime.controller.speedEnabled = prefs_.getBool("speedon", false);
-  runtime.controller.speedPercent = constrain(prefs_.getUInt("speed", 50), 25u, 100u);
-  runtime.controller.startSpeedPercent = constrain(prefs_.getUInt("startspd", 25), 25u, 100u);
-  runtime.controller.approachSpeedPercent = constrain(prefs_.getUInt("approachspd", 25), 25u, 100u);
+  runtime.controller.speedPercent = constrain(prefs_.getUInt("speed", 50), DRIVE_SIMULATION ? 1u : 25u, 100u);
+  runtime.controller.startSpeedPercent = constrain(prefs_.getUInt("startspd", 25), DRIVE_SIMULATION ? 1u : 25u, 100u);
+  runtime.controller.approachSpeedPercent = constrain(prefs_.getUInt("approachspd", 25), DRIVE_SIMULATION ? 1u : 25u, 100u);
   runtime.controller.accelerationMs = constrain(prefs_.getUInt("accelms", 2000), 100u, 10000u);
   runtime.controller.decelerationMs = constrain(prefs_.getUInt("decelms", 1500), 100u, 10000u);
   runtime.controller.slowdownDegrees = constrain(prefs_.getUInt("slowdeg", 10), 1u, 90u);
@@ -329,17 +329,17 @@ void Storage::loadForkSettings(Runtime &runtime) {
   runtime.loggerSettings.encoderInverted = prefs_.getBool("encinv", true);
 #endif
   prefs_.end();
-#if DRIVE_INTERFACE != DRIVE_YAESU
+#if DRIVE_INTERFACE != DRIVE_YAESU || DRIVE_SIMULATION
   prefs_.begin("forkpwm", true);
   for (unsigned i=0; i<2; ++i) {
     auto &speed = runtime.controller.speeds[i];
     const String prefix = i ? "el" : "az";
-    speed.speedPercent = constrain(prefs_.getUInt((prefix + "work").c_str(), 100), 1u, 100u);
-    speed.startSpeedPercent = constrain(prefs_.getUInt((prefix + "start").c_str(), 18), 1u, 100u);
-    speed.approachSpeedPercent = constrain(prefs_.getUInt((prefix + "approach").c_str(), 18), 1u, 100u);
-    speed.accelerationMs = constrain(prefs_.getUInt((prefix + "accel").c_str(), 1800), 100u, 10000u);
-    speed.decelerationMs = constrain(prefs_.getUInt((prefix + "decel").c_str(), 1200), 100u, 10000u);
-    speed.slowdownDegrees = constrain(prefs_.getUInt((prefix + "slow").c_str(), i ? 2 : 3), 1u, 90u);
+    speed.speedPercent = constrain(prefs_.getUInt((prefix + "work").c_str(), speed.speedPercent), 1u, 100u);
+    speed.startSpeedPercent = constrain(prefs_.getUInt((prefix + "start").c_str(), speed.startSpeedPercent), 1u, 100u);
+    speed.approachSpeedPercent = constrain(prefs_.getUInt((prefix + "approach").c_str(), speed.approachSpeedPercent), 1u, 100u);
+    speed.accelerationMs = constrain(prefs_.getUInt((prefix + "accel").c_str(), speed.accelerationMs), 100u, 10000u);
+    speed.decelerationMs = constrain(prefs_.getUInt((prefix + "decel").c_str(), speed.decelerationMs), 100u, 10000u);
+    speed.slowdownDegrees = constrain(prefs_.getUInt((prefix + "slow").c_str(), speed.slowdownDegrees), 1u, 90u);
   }
   prefs_.end();
 #endif
@@ -370,7 +370,7 @@ void Storage::saveForkSettings(const Runtime &runtime) {
   prefs_.putBool("encinv", runtime.loggerSettings.encoderInverted);
 #endif
   prefs_.end();
-#if DRIVE_INTERFACE != DRIVE_YAESU
+#if DRIVE_INTERFACE != DRIVE_YAESU || DRIVE_SIMULATION
   if (runtime.hud.isHud())
     return;
   prefs_.begin("forkpwm", false);

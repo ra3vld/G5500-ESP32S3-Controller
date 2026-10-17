@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstring>
 #include <cmath>
+#include <algorithm>
+#include <initializer_list>
 namespace forkrot {
 namespace {
 constexpr uint32_t bg = 0x0a111c, text = 0xeff5ff, muted = 0x8fabc3;
@@ -13,10 +15,10 @@ constexpr int weakWifiRssi = -80;
 constexpr lv_point_precise_t wifiSlash[] = {{2, 2}, {26, 26}};
 constexpr int dialRadius = 227;
 constexpr int currentMarkerSize = 20, targetMarkerSize = 26;
-constexpr lv_point_precise_t arrowLeft[] = {{34, 18}, {2, 18}, {14, 6}, {2, 18}, {14, 30}};
-constexpr lv_point_precise_t arrowRight[] = {{2, 18}, {34, 18}, {22, 6}, {34, 18}, {22, 30}};
-constexpr lv_point_precise_t arrowDown[] = {{18, 2}, {18, 34}, {6, 22}, {18, 34}, {30, 22}};
-constexpr lv_point_precise_t arrowUp[] = {{18, 34}, {18, 2}, {6, 14}, {18, 2}, {30, 14}};
+constexpr lv_point_precise_t arrowLeft[] = {{25, 7}, {12, 18}, {25, 29}};
+constexpr lv_point_precise_t arrowRight[] = {{11, 7}, {24, 18}, {11, 29}};
+constexpr lv_point_precise_t arrowDown[] = {{7, 11}, {18, 24}, {29, 11}};
+constexpr lv_point_precise_t arrowUp[] = {{7, 25}, {18, 12}, {29, 25}};
 lv_obj_t *label(int y, int width, const lv_font_t *font, uint32_t color) {
   auto *object = lv_label_create(lv_screen_active());
   lv_obj_set_width(object, width);
@@ -215,13 +217,21 @@ void CrowPanelUi::create() {
   mode_ = buttonLabel(modeButton_);
   axis_ = label(132, 320, &crowpanel_font_22, muted);
   angle_ = label(170, LV_SIZE_CONTENT, &crowpanel_font_112, text);
-  motionArrow_ = lv_line_create(screen);
-  lv_obj_remove_style_all(motionArrow_);
-  lv_obj_set_size(motionArrow_, 36, 36);
-  lv_obj_set_style_line_width(motionArrow_, 4, 0);
-  lv_obj_set_style_line_rounded(motionArrow_, true, 0);
-  lv_obj_set_style_line_color(motionArrow_, lv_color_hex(text), 0);
-  lv_obj_set_hidden(motionArrow_, true);
+  secondaryAngle_ = label(170, LV_SIZE_CONTENT, &crowpanel_font_28, text);
+  secondaryTarget_ = label(282, LV_SIZE_CONTENT, &crowpanel_font_22, targetColor);
+  lv_obj_set_align(angle_, LV_ALIGN_TOP_LEFT);
+  lv_obj_set_align(secondaryAngle_, LV_ALIGN_TOP_LEFT);
+  lv_obj_set_align(secondaryTarget_, LV_ALIGN_TOP_LEFT);
+  const lv_point_precise_t *points[] = {arrowLeft, arrowRight, arrowUp, arrowDown};
+  for (unsigned i = 0; i < 4; ++i) {
+    arrows_[i] = lv_line_create(screen);
+    lv_obj_remove_style_all(arrows_[i]);
+    lv_obj_set_size(arrows_[i], 36, 36);
+    lv_line_set_points(arrows_[i], points[i], 3);
+    lv_obj_set_style_line_width(arrows_[i], 4, 0);
+    lv_obj_set_style_line_rounded(arrows_[i], true, 0);
+    lv_obj_set_style_line_color(arrows_[i], lv_color_hex(0x64717e), 0);
+  }
   targetCaption_ = label(282, LV_SIZE_CONTENT, &crowpanel_font_22, targetColor);
   target_ = label(282, LV_SIZE_CONTENT, &crowpanel_font_36, targetColor);
   lv_obj_set_align(targetCaption_, LV_ALIGN_TOP_LEFT);
@@ -282,52 +292,137 @@ void CrowPanelUi::update(const CrowPanelView &v) {
   set(mode_, v.autoHour ? "АВТО · 1 ЧАС" : v.autoMode ? "АВТО" : "РУЧНОЙ");
   color(mode_, v.autoMode ? 0x63dfb5 : 0xf0b85c);
   set(axis_, !v.hudSelector && v.dualAxis ? (v.elevation ? "ЭЛЕВАЦИЯ · EL" : "АЗИМУТ · AZ") : "");
-  const bool confirmation = !v.autoMode && v.targetValid && v.pending;
-  font(angle_, confirmation ? &crowpanel_font_36 : &crowpanel_font_112);
+  const bool confirmation = !v.autoMode && ((v.targetValid && v.pending) ||
+                                            (v.secondaryTargetValid && v.secondaryPending));
+  const auto *mainFont = confirmation ? &crowpanel_font_36
+                         : v.dualAxis ? &crowpanel_font_80
+                                      : &crowpanel_font_112;
+  const auto *otherFont = confirmation ? &crowpanel_font_22 : &crowpanel_font_28;
+  const auto *goalFont =
+      confirmation ? (v.dualAxis ? &crowpanel_font_80 : &crowpanel_font_112) : &crowpanel_font_36;
+  font(angle_, mainFont);
+  font(secondaryAngle_, otherFont);
+  font(target_, goalFont);
   font(targetCaption_, confirmation ? &crowpanel_font_36 : &crowpanel_font_22);
-  font(target_, confirmation ? &crowpanel_font_112 : &crowpanel_font_36);
-  lv_obj_set_y(status_, confirmation ? 350 : 322);
   char value[80];
-  if (v.feedback) std::snprintf(value, sizeof value, "%.0f°", double(v.current));
-  else std::snprintf(value, sizeof value, "—");
+  if (v.feedback) {
+    std::snprintf(value, sizeof value, "%.0f°", double(v.current));
+  } else {
+    std::snprintf(value, sizeof value, "—");
+  }
   set(angle_, value);
-  lv_obj_set_hidden(angle_, v.hudSelector);
-  lv_obj_set_hidden(targetCaption_, v.hudSelector);
-  lv_obj_set_hidden(target_, v.hudSelector);
-  const bool showDirection = !v.hudSelector && v.feedback && std::isfinite(v.current) && v.direction != 0;
-  if (showDirection) {
-    const bool decreasing = v.direction < 0;
-    const auto *points = v.elevation ? (decreasing ? arrowDown : arrowUp) : (decreasing ? arrowLeft : arrowRight);
-    if (lv_line_get_points(motionArrow_) != points) lv_line_set_points(motionArrow_, points, 5);
-    lv_obj_set_hidden(motionArrow_, false);
-    lv_obj_update_layout(angle_);
-    lv_obj_set_pos(motionArrow_, lv_obj_get_x(angle_) + (decreasing ? -50 : lv_obj_get_width(angle_) + 14),
-                   lv_obj_get_y(angle_) + (lv_obj_get_height(angle_) - 36) / 2);
-  } else lv_obj_set_hidden(motionArrow_, true);
-  if (v.targetValid) std::snprintf(value, sizeof value, "%.1f°", double(v.target));
-  else std::snprintf(value, sizeof value, "—");
-  set(targetCaption_, confirmation ? "ЕХАТЬ" : "Цель");
+  if (v.secondaryFeedback) {
+    std::snprintf(value, sizeof value, v.elevation ? "%.0f° / " : " / %.0f°", double(v.secondaryCurrent));
+  } else {
+    std::snprintf(value, sizeof value, "%s", v.elevation ? "— / " : " / —");
+  }
+  set(secondaryAngle_, v.dualAxis ? value : "");
+  if (v.targetValid) {
+    std::snprintf(value, sizeof value, "%.1f°", double(v.target));
+  } else {
+    std::snprintf(value, sizeof value, "—");
+  }
   set(target_, value);
+  if (v.secondaryTargetValid) {
+    std::snprintf(value, sizeof value, v.elevation ? "%.1f° / " : " / %.1f°", double(v.secondaryTarget));
+  } else {
+    std::snprintf(value, sizeof value, "%s", v.elevation ? "— / " : " / —");
+  }
+  set(secondaryTarget_, v.dualAxis ? value : "");
+  set(targetCaption_, confirmation ? "ЕХАТЬ" : "Цель");
   color(targetCaption_, confirmation ? 0xf0b85c : targetColor);
   color(target_, confirmation ? 0xf0b85c : targetColor);
-  lv_obj_update_layout(target_);
-  if (confirmation) {
-    // Give the received angle the central, large readout until it is confirmed.
-    lv_obj_set_pos(targetCaption_, (480 - lv_obj_get_width(targetCaption_)) / 2, 210);
-    lv_obj_set_pos(target_, (480 - lv_obj_get_width(target_)) / 2, 250);
-    lv_obj_update_layout(target_);
-    confirmationCaption_ = paddedBounds(targetCaption_);
-    confirmationAngle_ = paddedBounds(target_);
-  } else {
-    // Keep the mixed-size caption and angle centered on a shared text baseline.
-    const int captionWidth = lv_obj_get_width(targetCaption_);
-    const int targetX = (480 - captionWidth - 12 - lv_obj_get_width(target_)) / 2;
-    const int captionY = 282 + crowpanel_font_36.line_height - crowpanel_font_36.base_line
-                            - crowpanel_font_22.line_height + crowpanel_font_22.base_line;
-    lv_obj_set_pos(targetCaption_, targetX, captionY);
-    lv_obj_set_pos(target_, targetX + captionWidth + 12, 282);
+  color(secondaryTarget_, confirmation ? 0xf0b85c : targetColor);
+  auto row = [&](lv_obj_t *primary, lv_obj_t *secondary, const lv_font_t *large,
+                 const lv_font_t *small, int y, int prefix) {
+    lv_obj_update_layout(primary);
+    lv_obj_update_layout(secondary);
+    const int width =
+        lv_obj_get_width(primary) + (v.dualAxis ? lv_obj_get_width(secondary) : 0) + prefix;
+    const int x = (480 - width) / 2;
+    // Keep AZ on the left and EL on the right; selection only changes font size.
+    const bool secondaryFirst = v.dualAxis && v.elevation;
+    lv_obj_set_pos(primary, x + prefix + (secondaryFirst ? lv_obj_get_width(secondary) : 0), y);
+    lv_obj_set_pos(secondary, x + prefix + (secondaryFirst ? 0 : lv_obj_get_width(primary)),
+                   y + large->line_height - large->base_line - small->line_height +
+                       small->base_line);
+    return x;
+  };
+  font(axis_, v.dualAxis && confirmation ? &crowpanel_font_11 : &crowpanel_font_22);
+  const int currentY = v.dualAxis ? (confirmation ? 184 : 198) : 170;
+  const int currentLeft = row(angle_, secondaryAngle_, mainFont, otherFont, currentY, 0);
+  lv_obj_update_layout(angle_);
+  lv_obj_update_layout(secondaryAngle_);
+  const int currentWidth =
+      lv_obj_get_width(angle_) + (v.dualAxis ? lv_obj_get_width(secondaryAngle_) : 0);
+  const int currentHeight = lv_obj_get_height(angle_);
+  const int goalY = confirmation ? (v.dualAxis ? 300 : 250) : (v.dualAxis ? 316 : 282);
+  lv_obj_update_layout(targetCaption_);
+  const int captionWidth = lv_obj_get_width(targetCaption_);
+  const int goalX = row(target_, secondaryTarget_, goalFont, &crowpanel_font_22, goalY,
+                        confirmation ? 0 : captionWidth + 12);
+  lv_obj_set_pos(targetCaption_, confirmation ? (480 - captionWidth) / 2 : goalX,
+                 confirmation ? (v.dualAxis ? 266 : 210)
+                              : goalY + goalFont->line_height - goalFont->base_line -
+                                    crowpanel_font_22.line_height + crowpanel_font_22.base_line);
+  for (auto *obj : {angle_, secondaryAngle_, targetCaption_, target_, secondaryTarget_}) {
+    lv_obj_set_hidden(obj, v.hudSelector);
   }
+  lv_obj_update_layout(target_);
   confirmationVisible_ = confirmation && !v.hudSelector;
+  confirmationCaption_ = paddedBounds(targetCaption_);
+  confirmationAngle_ = paddedBounds(target_);
+  lv_obj_update_layout(secondaryTarget_);
+  if (v.dualAxis) {
+    const auto other = paddedBounds(secondaryTarget_);
+    const int left = std::min(int(confirmationAngle_.x), int(other.x));
+    const int right = std::max(int(confirmationAngle_.x + confirmationAngle_.width), int(other.x + other.width));
+    confirmationAngle_.x = uint16_t(left);
+    confirmationAngle_.width = uint16_t(right - left);
+  }
+  const int goalLeft = confirmation ? std::min(int(confirmationCaption_.x), goalX) : goalX;
+  const int goalRight = std::max(int(confirmationCaption_.x + confirmationCaption_.width),
+                                 std::max(int(lv_obj_get_x(target_) + lv_obj_get_width(target_)),
+                                          v.dualAxis ? int(lv_obj_get_x(secondaryTarget_) +
+                                                           lv_obj_get_width(secondaryTarget_)) : 0));
+  const int goalTop = confirmation ? int(lv_obj_get_y(targetCaption_)) : goalY;
+  const int goalBottom = goalY + goalFont->line_height;
+  touchLayout_.dualAxis = v.dualAxis;
+  touchLayout_.enabled = !v.hudSelector;
+  touchLayout_.current = {uint16_t(currentLeft), uint16_t(currentY), uint16_t(currentWidth),
+                          uint16_t(currentHeight)};
+  touchLayout_.target = (v.targetValid || v.secondaryTargetValid)
+                            ? crowpanel::TouchRect{uint16_t(goalLeft - 4), uint16_t(goalTop),
+                                                   uint16_t(goalRight - goalLeft + 8),
+                                                   uint16_t(goalBottom - goalTop + 4)}
+                            : crowpanel::TouchRect{};
+  const int centerY = currentY + currentHeight / 2;
+  touchLayout_.arrows[0] = {uint16_t(std::max(12, currentLeft - 52)), uint16_t(centerY - 22), 44,
+                            44};
+  touchLayout_.arrows[1] = {uint16_t(std::min(424, currentLeft + currentWidth + 8)),
+                            uint16_t(centerY - 22), 44, 44};
+  touchLayout_.arrows[2] = {218, uint16_t(currentY - 46), 44, 44};
+  touchLayout_.arrows[3] = {218, uint16_t(currentY + currentHeight + 2), 44, 44};
+  for (unsigned i = 0; i < 4; ++i) {
+    const auto &r = touchLayout_.arrows[i];
+    lv_obj_set_pos(arrows_[i], r.x + 4, r.y + 4);
+    lv_obj_set_hidden(arrows_[i], v.hudSelector || (i >= 2 && !v.dualAxis));
+    const int az = v.azDirection ? v.azDirection : (!v.elevation ? v.direction : 0);
+    const int el = v.elDirection ? v.elDirection : (v.elevation ? v.direction : 0);
+    const bool moving = i == 0 ? az < 0 : i == 1 ? az > 0 : i == 2 ? el > 0 : el < 0;
+    const auto tint = lv_color_hex(moving ? text : 0x64717e);
+    if (lv_color_to_u32(lv_obj_get_style_line_color(arrows_[i], LV_PART_MAIN)) !=
+        lv_color_to_u32(tint)) {
+      lv_obj_set_style_line_color(arrows_[i], tint, 0);
+    }
+  }
+  lv_obj_set_y(status_, v.dualAxis ? (confirmation ? 372 : 350) : (confirmation ? 350 : 322));
+  lv_obj_set_y(bluetooth_, v.dualAxis && confirmation ? 402 : 378);
+  lv_obj_set_y(ip_, v.dualAxis && confirmation ? 417 : 393);
+  lv_obj_set_y(heap_, v.dualAxis && confirmation ? 432 : 408);
+  lv_obj_set_y(wifi_, v.dualAxis && confirmation ? 451 : 435);
+  lv_obj_set_y(wifiSlash_, v.dualAxis && confirmation ? 449 : 433);
+  lv_obj_set_y(wifiAp_, v.dualAxis && confirmation ? 458 : 442);
   set(status_, v.status);
   color(wifi_, v.wifiConnected ? wifiWarning : wifiDisconnected);
   lv_obj_set_hidden(wifi_, v.wifiConnected && v.wifiRssi > weakWifiRssi);

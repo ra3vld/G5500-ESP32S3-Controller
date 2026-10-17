@@ -51,10 +51,12 @@ struct HudPeer {
   char label[49]{};
   HudState state;
   uint32_t receivedAt = 0, remoteTick = 0, lastPoll = 0, stateSerial = 0;
-  uint32_t querySerial[2]{}, queryAt[2]{};
-  uint32_t subscribeSerial[2]{}, subscribeAt[2]{}, subscribeSent = 0;
+  uint32_t querySerial[12]{}, queryAt[12]{};
+  uint32_t subscribeSerial[4]{}, subscribeAt[4]{}, subscribeSent = 0;
   uint32_t liveAt = 0, liveRevision = 0;
   bool live = false;
+  bool manual = false;
+  uint32_t capabilitySerial = 0, capabilityAt = 0;
   bool received = false, saved = false;
   std::unique_ptr<HudPeer> next;
   bool fresh(uint32_t now, uint32_t age = 0) const {
@@ -94,7 +96,8 @@ public:
   HudConfig config;
   uint64_t id = 0, boot = 0;
   uint32_t selectionEpoch = 0, now = 0;
-  uint32_t received = 0, rejected = 0, duplicates = 0, timeouts = 0, busy = 0;
+  uint32_t received = 0, rejected = 0, duplicates = 0, timeouts = 0, busy = 0, sent = 0,
+           sendErrors = 0;
   bool settingsDirty = false, presetsDirty = false, selectionDirty = false, catalogError = false;
   void begin(uint64_t node, uint64_t session);
   void setTransport(HudTransport *transport) { transport_ = transport; }
@@ -105,6 +108,10 @@ public:
   Result lastResult() const override { return lastResult_; }
   float intendedTarget(unsigned axis, float fallback) const override;
   Result submit(const ControlCommand &) override;
+  bool manualAvailable() const override {
+    const auto *p = active();
+    return available() && p && p->manual;
+  }
   HudReply result(uint32_t request) const;
   void service(uint32_t at);
   void receive(const HudEndpoint &, const uint8_t *, size_t, uint32_t at);
@@ -161,12 +168,14 @@ private:
     History history[12];
     unsigned nextHistory = 0;
     HeldJog held[2];
+    Job manual;
+    uint32_t manualInputAt = 0, closedGesture = 0;
   };
   struct Subscription {
     HudEndpoint endpoint;
     uint64_t source = 0, boot = 0;
     uint32_t serial = 0, renewed = 0, sent = 0, revision = 0;
-    bool used = false;
+    bool used = false, extended = false;
   } subscriptions_[4];
   uint32_t liveRevision_ = 0, liveHash_ = 0, controlHash_ = 0, liveChangedAt_ = 0;
   std::unique_ptr<Client> client_;
@@ -184,6 +193,8 @@ private:
   bool sendState(const HudEndpoint &, uint64_t target, uint32_t seq, bool ack = false, Result r = Result::Ok,
                  uint64_t targetBoot = 0, bool compact = false);
   bool subscribe(HudPeer &);
+  bool sendManual(Job &);
+  void releaseManual();
   void publishLive();
   void sendRenew(unsigned axis);
   Result execute(const ControlCommand &, uint64_t source, uint64_t session, uint32_t seq);

@@ -6,12 +6,18 @@
 #include <cstdio>
 namespace forkrot::crowpanel { bool beginBus() { return true; } }
 using namespace forkrot;
+static void fast(Controller &c) {
+  for (auto &s : c.speeds) {
+    s = {100, 100, 100, 0, 0, 1};
+  }
+}
 static void close(float value, float expected) { assert(std::abs(value - expected) < 0.002f); }
 int main() {
   Runtime runtime;
   Hardware hw(runtime);
   hw.beginDirections(); hw.beginAdc(); hw.beginInputs();
   auto &c = runtime.controller;
+  fast(c);
   assert(!c.driveFault && c.axes[0].calibrated && c.axes[1].calibrated);
   c.tick(100);
   assert(c.target({134, 67, true, true}, false, 100) == Result::Ok);
@@ -36,10 +42,14 @@ int main() {
   const float beforeReverse = c.axes[0].current;
   c.target({0, 0, true, false}, false, 23100); c.tick(23100);
   close(c.axes[0].current, beforeReverse);
-  c.tick(23400); c.tick(24400); close(c.axes[0].current, beforeReverse - 13.4f);
+  for (uint32_t at=23120;at<=23420;at+=20) c.tick(at);
+  assert(c.axes[0].direction==-1);
+  const float reversePosition=c.axes[0].current;
+  c.tick(24420); close(c.axes[0].current, reversePosition-13.4f);
   c.tick(100000); close(c.axes[0].current, 0); assert(!c.moving());
   // Jog obeys mechanical bounds and millis wraparound; no GPIO/ADC calls.
   Controller wrap;
+  fast(wrap);
   wrap.tick(0xfffffff0u); wrap.jog(0, 1, false, 0xfffffff0u); wrap.tick(0xfffffff0u);
   wrap.tick(uint32_t(0xfffffff0u + 1000u)); close(wrap.axes[0].current, 13.4f);
   wrap.tick(uint32_t(0xfffffff0u + 200000u)); close(wrap.axes[0].current, 450);
@@ -49,6 +59,7 @@ int main() {
     for (unsigned axis = 0; axis < 2; ++axis) {
       for (bool reverse : {false, true}) {
         Controller following;
+        fast(following);
         following.feedback(reverse ? 140.f : 0.f, reverse ? 140.f : 0.f, true, true);
         following.setMode(mode, 100);
         CrowPanelKnob encoder(following);
@@ -72,7 +83,9 @@ int main() {
   }
   // Knob pause holds both axes; the next single click reaches the original targets.
   for (const auto mode : {Mode::Manual, Mode::Auto}) {
-    Controller paused; CrowPanelKnob pauseKnob(paused);
+    Controller paused;
+    fast(paused);
+    CrowPanelKnob pauseKnob(paused);
     uint32_t now = 100;
     auto sample = [&](bool down, uint32_t elapsed = 40) {
       now += elapsed; paused.tick(now); pauseKnob.sample(true, down, 0, now); paused.tick(now);
@@ -94,6 +107,7 @@ int main() {
   }
   // Actual CrowPanel settings: one detent starts motion in manual without a click.
   Controller immediate;
+  fast(immediate);
   CrowPanelKnob knob(immediate);
   immediate.tick(100);
   knob.sample(true, false, -1, 100);

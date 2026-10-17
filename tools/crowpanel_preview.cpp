@@ -10,11 +10,12 @@ static std::array<uint16_t, 480 * 40> stripe{};
 static std::array<uint16_t, 480 * 480> frame1{}, frame2{};
 static bool directMode = false;
 static unsigned flushes = 0;
-static lv_obj_t *findLabel(const char *text) {
+static lv_obj_t *findLabel(const char *text, int minimumY = 0) {
   auto *screen = lv_screen_active();
   for (unsigned i = 0; i < lv_obj_get_child_count(screen); ++i) {
     auto *child = lv_obj_get_child(screen, i);
-    if (lv_obj_check_type(child, &lv_label_class) && !std::strcmp(lv_label_get_text(child), text)) return child;
+    if (lv_obj_check_type(child, &lv_label_class) && !std::strcmp(lv_label_get_text(child), text) &&
+        lv_obj_get_y(child) >= minimumY) return child;
   }
   return nullptr;
 }
@@ -297,12 +298,17 @@ int main(int argc, char **argv) {
     ui.update(view); settle(d);
     assert(pixels != normal);
     auto *caption = findLabel("ЕХАТЬ"); assert(caption);
-    assert(ui.confirmationHit(240, 224) && ui.confirmationHit(240, 290));
+    const auto &hit = ui.touchLayout().target;
+    assert(hit.contains(hit.x + hit.width / 2, hit.y + hit.height / 2));
+    if (!view.dualAxis) {
+      assert(ui.confirmationHit(240, 224) && ui.confirmationHit(240, 290));
+    }
     assert(!ui.confirmationHit(13, 240) && !ui.confirmationHit(240, 180));
     char angleText[40]; std::snprintf(angleText, sizeof angleText, "%.1f°", double(view.target));
     auto *target = findLabel(angleText); assert(target);
     auto *current = findLabel("121°"); assert(current);
-    assert(lv_obj_get_style_text_font(target, LV_PART_MAIN) == &crowpanel_font_112);
+    assert(lv_obj_get_style_text_font(target, LV_PART_MAIN) ==
+           (view.dualAxis ? &crowpanel_font_80 : &crowpanel_font_112));
     assert(lv_obj_get_style_text_font(current, LV_PART_MAIN) == &crowpanel_font_36);
     assert(lv_obj_get_y(current) + lv_obj_get_height(current) < lv_obj_get_y(caption));
     assert(lv_obj_get_y(caption) + lv_obj_get_height(caption) < lv_obj_get_y(target));
@@ -317,7 +323,7 @@ int main(int argc, char **argv) {
     assert(findLabel("99.5°") && findLabel("ЕХАТЬ"));
     view.target = state.target; view.pending = false;
     ui.update(view); settle(d);
-    assert(pixels == normal && !ui.confirmationHit(240, 224));
+    assert(pixels == normal && !findLabel("ЕХАТЬ"));
     // Auto mode must never show the confirmation layout, even with stale pending state.
     view.autoMode = true;
     ui.update(view); settle(d);
@@ -445,6 +451,99 @@ int main(int argc, char **argv) {
     view.maximum = maximum;
     ui.update(view); settle(d);
     checkFullRedraw(d, argv[1]);
+  }
+  // Dual readouts and all control hit areas must stay distinct at maximum values.
+  auto overlaps = [](const forkrot::crowpanel::TouchRect &a,
+                     const forkrot::crowpanel::TouchRect &b) {
+    return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height &&
+           b.y < a.y + a.height;
+  };
+  for (bool elevation : {false, true}) {
+    for (bool pending : {false, true}) {
+      view = forkrot::CrowPanelView{};
+      view.dualAxis = true;
+      view.elevation = elevation;
+      view.feedback = view.targetValid = view.secondaryFeedback = view.secondaryTargetValid = true;
+      view.current = elevation ? 180 : 450;
+      view.secondaryCurrent = elevation ? 450 : 180;
+      view.target = view.current;
+      view.secondaryTarget = view.secondaryCurrent;
+      view.pending = pending && !elevation;
+      view.secondaryPending = pending && elevation;
+      view.maximum = elevation ? 180 : 450;
+      view.azDirection = 1;
+      view.elDirection = -1;
+      std::strcpy(view.status, "Вращение");
+      ui.update(view);
+      settle(d);
+      checkFullRedraw(d, argv[1]);
+      const auto &layout = ui.touchLayout();
+      assert(!overlaps(layout.current, layout.target));
+      for (unsigned i = 0; i < 4; ++i) {
+        assert(layout.arrows[i].width >= 44 && layout.arrows[i].height >= 44);
+        assert(!overlaps(layout.arrows[i], layout.current));
+        assert(!overlaps(layout.arrows[i], layout.target));
+        assert(!overlaps(layout.arrows[i], forkrot::crowpanel::ModeButton));
+        for (unsigned j = 0; j < i; ++j) {
+          assert(!overlaps(layout.arrows[i], layout.arrows[j]));
+        }
+      }
+      auto *main = findLabel(elevation ? "180°" : "450°");
+      assert(main);
+      assert(lv_obj_get_style_text_font(main, LV_PART_MAIN) ==
+             (pending ? &crowpanel_font_36 : &crowpanel_font_80));
+      auto *other = findLabel(elevation ? "450° / " : " / 180°");
+      auto *goal = findLabel(elevation ? "180.0°" : "450.0°");
+      auto *otherGoal = findLabel(elevation ? "450.0° / " : " / 180.0°");
+      assert(other && goal && otherGoal);
+      auto checkRow = [&](lv_obj_t *primary, lv_obj_t *secondary,
+                          const forkrot::crowpanel::TouchRect &hit) {
+        auto *az = elevation ? secondary : primary;
+        auto *el = elevation ? primary : secondary;
+        if (lv_obj_get_x(az) + lv_obj_get_width(az) > lv_obj_get_x(el))
+          std::fprintf(stderr, "Axis order: EL selected=%d pending=%d AZ='%s' x=%d w=%d EL='%s' x=%d w=%d\n",
+                       elevation, pending, lv_label_get_text(az), int(lv_obj_get_x(az)),
+                       int(lv_obj_get_width(az)), lv_label_get_text(el), int(lv_obj_get_x(el)),
+                       int(lv_obj_get_width(el)));
+        assert(lv_obj_get_x(az) + lv_obj_get_width(az) <= lv_obj_get_x(el));
+        for (auto *number : {az, el}) {
+          assert(hit.contains(lv_obj_get_x(number), lv_obj_get_y(number)));
+          assert(hit.contains(lv_obj_get_x(number) + lv_obj_get_width(number) - 1,
+                              lv_obj_get_y(number) + lv_obj_get_height(number) - 1));
+        }
+        const auto *azFont = lv_obj_get_style_text_font(az, LV_PART_MAIN);
+        const auto *elFont = lv_obj_get_style_text_font(el, LV_PART_MAIN);
+        assert(lv_obj_get_y(az) + azFont->line_height - azFont->base_line ==
+               lv_obj_get_y(el) + elFont->line_height - elFont->base_line);
+      };
+      checkRow(main, other, layout.current);
+      checkRow(goal, otherGoal, layout.target);
+      assert(lv_obj_get_style_text_font(goal, LV_PART_MAIN) ==
+             (pending ? &crowpanel_font_80 : &crowpanel_font_36));
+      const auto &right = layout.arrows[1], &down = layout.arrows[3];
+      assert(nearColor(right.x + 28, right.y + 22, 3, 0xeff5ff));
+      assert(nearColor(down.x + 22, down.y + 28, 3, 0xeff5ff));
+      std::snprintf(path, sizeof path, "%s/dual-%s-%s.ppm", argv[1], elevation ? "el" : "az",
+                    pending ? "pending" : "normal");
+      save(path);
+      // Missing values keep their axis position and retain the entire touch row.
+      for (bool missingPrimary : {false, true}) {
+        view.feedback = view.targetValid = !missingPrimary;
+        view.secondaryFeedback = view.secondaryTargetValid = missingPrimary;
+        ui.update(view); settle(d); checkFullRedraw(d, argv[1]);
+        main = findLabel(missingPrimary ? "—" : elevation ? "180°" : "450°");
+        other = findLabel(missingPrimary ? (elevation ? "450° / " : " / 180°")
+                                        : (elevation ? "— / " : " / —"));
+        goal = findLabel(missingPrimary ? "—" : elevation ? "180.0°" : "450.0°",
+                         ui.touchLayout().target.y);
+        otherGoal = findLabel(missingPrimary ? (elevation ? "450.0° / " : " / 180.0°")
+                                            : (elevation ? "— / " : " / —"),
+                              ui.touchLayout().target.y);
+        assert(main && other && goal && otherGoal);
+        checkRow(main, other, ui.touchLayout().current);
+        checkRow(goal, otherGoal, ui.touchLayout().target);
+      }
+    }
   }
   std::puts("PASS: red/cyan stop-line fading and removal match full redraw before the opposite limit appears");
   view.maximum = 450; view.elevation = view.dualAxis = false;

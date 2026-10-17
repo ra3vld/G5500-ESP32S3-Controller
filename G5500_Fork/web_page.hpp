@@ -376,8 +376,8 @@ function updateFork(j){
  j.presets.forEach((p,i)=>{const b=buttons.children[i];setText(b,p.label);b.disabled=!p.valid;b.classList.toggle('active',j.presetSlot===i&&j.presetActive)});
  const elNodes=[document.getElementById('el').closest('.card'),document.getElementById('tel').closest('.field'),document.getElementById('el2p0').parentElement,document.getElementById('elp0').parentElement.parentElement,document.getElementById('calel').closest('.calhead'),document.getElementById('b_el0').parentElement,document.getElementById('b2_elo'),document.getElementById('b2_elf'),...Array.from(document.querySelectorAll('button')).filter(b=>b.textContent==='RESET EL'),...document.querySelectorAll('.el-setting,.movebtn[data-dir="U"],.movebtn[data-dir="D"]')];
  [...elNodes,...document.querySelectorAll('.el-help')].forEach(n=>{if(n)n.classList.toggle('hide',g800)});
- const independent=['SEPARATE_PWM','BTS7960'].includes(j.build?.drive);
- document.getElementById('speedSettings').classList.toggle('hide',['NONE','SIMULATED'].includes(j.build?.drive)||(!g800&&!independent));
+ const independent=['SEPARATE_PWM','BTS7960','SIMULATED'].includes(j.build?.drive);
+ document.getElementById('speedSettings').classList.toggle('hide',j.build?.drive==='NONE'||(!g800&&!independent));
  document.getElementById('analogSpeedToggle').classList.toggle('hide',independent);
  document.getElementById('elSpeedSettings').classList.toggle('hide',g800||!independent);
  const btBackend=j.build?.bluetoothBackend||(j.build?.bluetooth===false?'NONE':'HC05');

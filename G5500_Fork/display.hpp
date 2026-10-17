@@ -141,7 +141,9 @@ class Display {
   HudKnob hudKnob_;
   Storage &storage_;
   bool hudTouchDown_ = false;
-  crowpanel::TouchButtons touchButtons_;
+  crowpanel::TouchGesture touchButtons_;
+  uint32_t touchSerial_ = 0, touchSelection_ = 0, touchNoticeAt_ = 0;
+  bool touchNotice_ = false;
   CrowPanelUi ui_;
   esp_lcd_panel_handle_t panel_ = nullptr;
   lv_display_t *display_ = nullptr;
@@ -159,7 +161,11 @@ public:
         storage_(storage) {}
   void invalidate() { redraw_ = true; }
   void loadTouchCalibration() {}
-  void startAfterCalibrationLoad() { redraw_ = true; inputReady_ = true; }
+  void startAfterCalibrationLoad() {
+    redraw_ = true;
+    inputReady_ = true;
+    touchSelection_ = runtime_.hud.selectionEpoch;
+  }
   void serviceTouch();
   void initLocalDisplay();
   void updateLocalDisplay();
