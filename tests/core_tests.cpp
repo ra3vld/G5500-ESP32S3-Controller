@@ -10,6 +10,12 @@ Controller ready(Model model=Model::G5500){Controller c;c.model=model;c.feedback
 Controller rampReady(){auto c=ready(Model::G800DXA);c.speedEnabled=true;c.decelerationMs=1000;return c;}
 std::string n1(float a,const std::string& name="G5500",int offset=0,int bi=0){return "<N1MMRotor><rotor>"+name+"</rotor><goazi>"+std::to_string(a)+"</goazi><offset>"+std::to_string(offset)+"</offset><bidirectional>"+std::to_string(bi)+"</bidirectional></N1MMRotor>";}
 int main(){try{
+ {auto c=ready();Protocol p(c);Settings cfg;c.feedback(20,30,true,false);
+ const auto response=api(c,p,cfg,"/api/target",{{"az","90"},{"el","45"}},0);
+ CHECK(response.status==400);CHECK(response.body.find("not_calibrated")!=std::string::npos);
+ CHECK(!c.moving()&&!c.targetKnown);CHECK(c.axes[0].target==0&&c.axes[1].target==0);
+ CHECK(api(c,p,cfg,"/api/target",{{"az","90"}},1).status==200);
+ CHECK(c.axes[0].tracking&&!c.axes[1].tracking);}
  {auto c=ready();Protocol p(c);Settings cfg;
  CHECK(!c.lastTarget.hasAz&&!c.lastTarget.hasEl);
  CHECK(c.target({170,0,true,false},true,0)==Result::Pending);CHECK(!c.lastTarget.hasAz);

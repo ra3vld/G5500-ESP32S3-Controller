@@ -443,7 +443,9 @@ async function forkPost(path,body){
     while(j.result==='deferred'&&Date.now()-started<3000){await new Promise(resolve=>setTimeout(resolve,100));j=await (await request('/api/hud/command?id='+j.requestId,{cache:'no-store'})).json();}
     if(j.result==='deferred')j={ok:false,result:'timeout'};
   }
-  const messages={deferred:'Ожидаем подтверждение',timeout:'Нет подтверждения — проверьте состояние поворотки',unavailable:'Нет связи с повороткой',busy:'Поворотка занята, повторите команду',cancelled:'Команда отменена',storage_full:'Не хватает памяти для сохранения',hud_port_conflict:'Порт HUD совпадает с портом логгера',controller_settings_only:'Эти настройки доступны на контроллере поворотки',restart:'Сохранено. Устройство перезагружается',searching:'Поиск устройств…',invalid_or_port_conflict:'Проверьте настройки и порты',uart_in_use_by_hc05:'UART занят HC-05: нужна сборка без Bluetooth',not_calibrated:'Сначала выполните калибровку',invalid:'Проверьте значения',ignored:'Сейчас выполняется предустановка',pending:'Цель ожидает подтверждения',ok:'Готово'};
+  const missingCalibration=path==='/api/target'?['az','el'].filter((axis,i)=>body[axis]!==undefined&&window._forkState?.axes?.[i]?.calibrated===false).map(axis=>axis.toUpperCase()):[];
+  const calibrationMessage='Сначала выполните калибровку'+(missingCalibration.length?' '+missingCalibration.join(' и '):'');
+  const messages={deferred:'Ожидаем подтверждение',timeout:'Нет подтверждения — проверьте состояние поворотки',unavailable:'Нет связи с повороткой',busy:'Поворотка занята, повторите команду',cancelled:'Команда отменена',storage_full:'Не хватает памяти для сохранения',hud_port_conflict:'Порт HUD совпадает с портом логгера',controller_settings_only:'Эти настройки доступны на контроллере поворотки',restart:'Сохранено. Устройство перезагружается',searching:'Поиск устройств…',invalid_or_port_conflict:'Проверьте настройки и порты',uart_in_use_by_hc05:'UART занят HC-05: нужна сборка без Bluetooth',not_calibrated:calibrationMessage,invalid:'Проверьте значения',ignored:'Сейчас выполняется предустановка',pending:'Цель ожидает подтверждения',ok:'Готово'};
   document.getElementById('forkMessage').textContent=(messages[j.result]||'Ошибка')+(path!=='/api/hud/select'&&name&&selection!==window._forkState?.hudSelectionEpoch?' · команда для '+name:'');
   const ok=r.status<400&&!!j.ok;
   notice?.finish(ok,ok&&j.result==='ok'?success:(messages[j.result]||'Не удалось выполнить действие'));
@@ -528,7 +530,19 @@ async function stopAxis(d,selection){
   if(d==='L'||d==='R') await q('/api/move?d=A'+scope);
   else if(d==='U'||d==='D') await q('/api/move?d=E'+scope);
 }
-async function go(){if(taz.value==='')return;const body={az:taz.value};if(window._forkState?.model!=='G800DXA'){if(tel.value==='')return;body.el=tel.value}await forkPost('/api/target',body)}
+async function go(){
+ const body={},g800=window._forkState?.model==='G800DXA';
+ for(const [key,id] of g800?[['az','taz']]:[['az','taz'],['el','tel']]){
+  const input=document.getElementById(id);
+  if(!input.reportValidity())return;
+  if(input.value!=='')body[key]=input.value;
+ }
+ if(!Object.keys(body).length){
+  document.getElementById('forkMessage').textContent=g800?'Введите угол AZ':'Введите угол AZ или EL';
+  document.getElementById('taz').focus();return;
+ }
+ await forkPost('/api/target',body);
+}
 async function cal(p){await calibrationAction('/api/cal?p='+p,'Точка '+p.slice(0,2).toUpperCase()+' '+p.slice(2)+'° запомнена')}
 async function cal2(p){await calibrationAction('/api/cal2?p='+p,(p[0]==='f'?'Конец':'Начало')+' диапазона '+(p.endsWith('2')?'EL':'AZ')+' запомнено')}
 async function setCalMode(m){await calibrationAction('/api/calmode?m='+m,m==='multi'?'Выбрана многоточечная калибровка':'Выбрана двухточечная калибровка')}
