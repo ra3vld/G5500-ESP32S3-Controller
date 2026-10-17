@@ -90,6 +90,10 @@ void invalidateLimit(lv_obj_t *object, float boundary, bool lower) {
   lv_area_t area;
   lv_draw_arc_get_area(240, 240, 240, arcAngle(boundary - (lower ? 120 : 0)),
                       arcAngle(boundary + (lower ? 0 : 120)), 34, false, &area);
+  // The 3px stop line straddles the sector edge. Include its half-width and
+  // antialias fringe so fading/removal also clears pixels outside the arc.
+  area.x1 -= 3; area.y1 -= 3;
+  area.x2 += 3; area.y2 += 3;
   lv_obj_invalidate_area(object, &area);
 }
 crowpanel::TouchRect paddedBounds(lv_obj_t *object) {
@@ -140,42 +144,49 @@ void CrowPanelUi::updateMarker(MarkerMotion &motion, float degrees, bool valid, 
 void CrowPanelUi::drawLimits(lv_event_t *event) {
   auto &self = *static_cast<CrowPanelUi *>(lv_event_get_user_data(event));
   auto *layer = lv_event_get_layer(event);
-  if (!self.lowerLimit_ && !self.upperLimit_) return;
-  const auto opacity = [&](float bearing) {
-    const auto tail = [](float distance, uint8_t strength) {
-      distance = std::fmod(distance + 720.f, 360.f);
-      const float fade = std::max(0.f, 1.f - distance / 120.f);
-      return uint8_t(std::lround(strength * fade * fade));
+  const auto drawBand = [&](uint8_t lower, uint8_t upper, uint32_t tint,
+                            int radius, int width, int stopInner, int stopOuter) {
+    if (!lower && !upper) return;
+    const auto opacity = [&](float bearing) {
+      const auto tail = [](float distance, uint8_t strength) {
+        distance = std::fmod(distance + 720.f, 360.f);
+        const float fade = std::max(0.f, 1.f - distance / 120.f);
+        return uint8_t(std::lround(strength * fade * fade));
+      };
+      return std::max(tail(-bearing, lower), tail(bearing - self.maximum_, upper));
     };
-    return std::max(tail(-bearing, self.lowerLimit_), tail(bearing - self.maximum_, self.upperLimit_));
+    lv_draw_arc_dsc_t arc;
+    lv_draw_arc_dsc_init(&arc);
+    arc.center = {240, 240};
+    arc.radius = radius; arc.width = width;
+    // Blend against the empty inner rim, then overlap opaque arc ends. This
+    // avoids dark antialias seams between translucent segments of the gradient.
+    for (int bearing = 0; bearing < 360; bearing += 2) {
+      const auto alpha = opacity(float(bearing + 1));
+      if (!alpha) continue;
+      arc.opa = LV_OPA_COVER;
+      arc.color = lv_color_mix(lv_color_hex(tint), lv_color_hex(bg), alpha);
+      arc.start_angle = arcAngle(bearing);
+      arc.end_angle = arcAngle(bearing + 2 + (opacity(float(bearing + 3)) ? 1 : 0));
+      lv_draw_arc(layer, &arc);
+    }
+    for (unsigned end = 0; end < 2; ++end) {
+      const uint8_t strength = end ? upper : lower;
+      if (!strength) continue;
+      const float boundary = end ? self.maximum_ : 0.f;
+      const float radians = boundary * (3.14159265358979323846f / 180.f);
+      lv_draw_line_dsc_t line;
+      lv_draw_line_dsc_init(&line);
+      line.p1 = {lv_value_precise_t(240 + stopInner * std::sin(radians)), lv_value_precise_t(240 - stopInner * std::cos(radians))};
+      line.p2 = {lv_value_precise_t(240 + stopOuter * std::sin(radians)), lv_value_precise_t(240 - stopOuter * std::cos(radians))};
+      line.width = 3; line.color = lv_color_hex(tint); line.opa = strength;
+      lv_draw_line(layer, &line);
+    }
   };
-  lv_draw_arc_dsc_t arc;
-  lv_draw_arc_dsc_init(&arc);
-  arc.center = {240, 240};
-  arc.radius = 225; arc.width = 16;
-  // Blend against the empty inner rim, then overlap opaque arc ends. This
-  // avoids dark antialias seams between translucent segments of the gradient.
-  for (int bearing = 0; bearing < 360; bearing += 2) {
-    const auto alpha = opacity(float(bearing + 1));
-    if (!alpha) continue;
-    arc.opa = LV_OPA_COVER;
-    arc.color = lv_color_mix(lv_color_hex(0xff3b3b), lv_color_hex(bg), alpha);
-    arc.start_angle = arcAngle(bearing);
-    arc.end_angle = arcAngle(bearing + 2 + (opacity(float(bearing + 3)) ? 1 : 0));
-    lv_draw_arc(layer, &arc);
-  }
-  for (unsigned end = 0; end < 2; ++end) {
-    const uint8_t strength = end ? self.upperLimit_ : self.lowerLimit_;
-    if (!strength) continue;
-    const float boundary = end ? self.maximum_ : 0.f;
-    const float radians = boundary * (3.14159265358979323846f / 180.f);
-    lv_draw_line_dsc_t line;
-    lv_draw_line_dsc_init(&line);
-    line.p1 = {lv_value_precise_t(240 + 207 * std::sin(radians)), lv_value_precise_t(240 - 207 * std::cos(radians))};
-    line.p2 = {lv_value_precise_t(240 + 239 * std::sin(radians)), lv_value_precise_t(240 - 239 * std::cos(radians))};
-    line.width = 3; line.color = lv_color_hex(0xff3b3b); line.opa = strength;
-    lv_draw_line(layer, &line);
-  }
+  drawBand(self.lowerLimit_, self.upperLimit_, 0xff3b3b, 225, 16, 207, 239);
+  // The selected goal has its own outer lane, so it cannot hide the actual
+  // position warning when both approach the same mechanical stop.
+  drawBand(self.targetLowerLimit_, self.targetUpperLimit_, targetColor, 239, 10, 230, 239);
 }
 void CrowPanelUi::create() {
   auto *screen = lv_screen_active();
@@ -325,15 +336,21 @@ void CrowPanelUi::update(const CrowPanelView &v) {
   set(bluetooth_, !v.bluetoothEnabled ? "" : v.bluetoothConnected ? "Bluetooth: подключён" : "Bluetooth: нет связи");
   set(ip_, v.ip); set(heap_, v.heap);
   const bool contextChanged = sourceId_ != v.sourceId || elevation_ != v.elevation || maximum_ != v.maximum;
-  const bool rangeValid = v.feedback && std::isfinite(v.current) && std::isfinite(v.maximum) && v.maximum > 0;
+  const bool maximumValid = std::isfinite(v.maximum) && v.maximum > 0;
+  const bool rangeValid = v.feedback && std::isfinite(v.current) && maximumValid;
   const auto lower = rangeValid ? crowpanel::limitOpacity(v.current) : uint8_t(0);
   const auto upper = rangeValid ? crowpanel::limitOpacity(v.maximum - v.current) : uint8_t(0);
-  if (lower != lowerLimit_) invalidateLimit(limits_, 0, true);
-  if (upper != upperLimit_ || maximum_ != v.maximum) {
+  const bool targetRangeValid = maximumValid && v.targetValid && std::isfinite(v.target) &&
+                                v.target >= 0 && v.target <= v.maximum;
+  const auto targetLower = targetRangeValid ? crowpanel::limitOpacity(v.target) : uint8_t(0);
+  const auto targetUpper = targetRangeValid ? crowpanel::limitOpacity(v.maximum - v.target) : uint8_t(0);
+  if (lower != lowerLimit_ || targetLower != targetLowerLimit_) invalidateLimit(limits_, 0, true);
+  if (upper != upperLimit_ || targetUpper != targetUpperLimit_ || maximum_ != v.maximum) {
     invalidateLimit(limits_, maximum_, false);
     if (std::isfinite(v.maximum)) invalidateLimit(limits_, v.maximum, false);
   }
   lowerLimit_ = lower; upperLimit_ = upper;
+  targetLowerLimit_ = targetLower; targetUpperLimit_ = targetUpper;
   maximum_ = std::isfinite(v.maximum) ? v.maximum : 450;
   sourceId_ = v.sourceId; elevation_ = v.elevation;
   updateMarker(currentMotion_, v.current, v.feedback, contextChanged, false);

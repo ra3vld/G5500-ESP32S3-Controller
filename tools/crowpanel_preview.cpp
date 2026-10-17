@@ -41,6 +41,18 @@ static bool redAt(float degrees) {
   }
   return false;
 }
+static bool blueLimitAt(float degrees) {
+  const float radians = degrees * 3.14159265358979323846f / 180.f;
+  const int cx = 240 + std::lround(235 * std::sin(radians));
+  const int cy = 240 - std::lround(235 * std::cos(radians));
+  for (int y = cy - 2; y <= cy + 2; ++y) for (int x = cx - 2; x <= cx + 2; ++x) {
+    const auto pixel = pixels[y * 480 + x];
+    const int r = ((pixel >> 11) & 31) * 255 / 31;
+    const int g = ((pixel >> 5) & 63) * 255 / 63, b = (pixel & 31) * 255 / 31;
+    if (b - r > 24 && g - r > 16) return true;
+  }
+  return false;
+}
 static void flush(lv_display_t *d, const lv_area_t *a, uint8_t *data) {
   ++flushes;
   if (directMode) {
@@ -71,6 +83,26 @@ static void settle(lv_display_t *display) {
   lv_tick_inc(200);
   lv_timer_handler();
   lv_refr_now(display);
+}
+static void checkFullRedraw(lv_display_t *display, const char *directory) {
+  const auto incremental = pixels;
+  lv_obj_invalidate(lv_screen_active());
+  lv_refr_now(display);
+  if (incremental != pixels) {
+    int count = 0, left = 480, top = 480, right = 0, bottom = 0;
+    for (int y = 0; y < 480; ++y) for (int x = 0; x < 480; ++x)
+      if (incremental[y * 480 + x] != pixels[y * 480 + x]) {
+        ++count; left = std::min(left, x); right = std::max(right, x);
+        top = std::min(top, y); bottom = std::max(bottom, y);
+      }
+    std::fprintf(stderr, "Stale stop pixels: %d in (%d,%d)-(%d,%d)\n", count, left, top, right, bottom);
+    char path[512];
+    std::snprintf(path, sizeof path, "%s/stop-full.ppm", directory); save(path);
+    const auto full = pixels; pixels = incremental;
+    std::snprintf(path, sizeof path, "%s/stop-incremental.ppm", directory); save(path);
+    pixels = full;
+  }
+  assert(incremental == pixels);
 }
 int main(int argc, char **argv) {
   assert(argc == 2 || argc == 3);
@@ -339,6 +371,83 @@ int main(int argc, char **argv) {
   view.feedback = false;
   ui.update(view); settle(d);
   assert(!redAt(350) && !redAt(190));
+  // Goal warnings update while the measured position is stationary. Both
+  // lanes stay visible at the same stop and old tails clear when only the
+  // target, its validity, or the mechanical range changes.
+  view.elevation = view.dualAxis = false; view.maximum = 450;
+  view.feedback = true; view.current = 225; view.target = 120;
+  ui.update(view); settle(d);
+  assert(!blueLimitAt(350) && !blueLimitAt(100));
+  view.target = 90;
+  ui.update(view); settle(d);
+  assert(blueLimitAt(350) && !blueLimitAt(100) && !redAt(350));
+  std::snprintf(path, sizeof path, "%s/target-lower-limit-90.ppm", argv[1]); save(path);
+  view.target = 330;
+  ui.update(view); settle(d);
+  assert(!blueLimitAt(350) && !blueLimitAt(100));
+  view.target = 350;
+  ui.update(view); settle(d);
+  assert(!blueLimitAt(350) && blueLimitAt(100) && !redAt(100));
+  view.current = 90;
+  ui.update(view); settle(d);
+  assert(redAt(350) && blueLimitAt(100));
+  std::snprintf(path, sizeof path, "%s/current-low-target-high.ppm", argv[1]); save(path);
+  view.current = view.target = 450;
+  ui.update(view); settle(d);
+  assert(redAt(100) && blueLimitAt(100));
+  std::snprintf(path, sizeof path, "%s/current-target-upper-stop.ppm", argv[1]); save(path);
+  view.target = 90; // Same bearing as 450, but the opposite mechanical stop.
+  ui.update(view); settle(d);
+  assert(blueLimitAt(350) && !blueLimitAt(100) && redAt(100));
+  for (const float invalid : {NAN, -1.f, 451.f}) {
+    view.target = invalid;
+    ui.update(view); settle(d);
+    assert(!blueLimitAt(350) && !blueLimitAt(100) && redAt(100));
+  }
+  view.target = 350; view.targetValid = false;
+  ui.update(view); settle(d);
+  assert(!blueLimitAt(100) && redAt(100));
+  view.targetValid = true; view.maximum = 360; view.current = 225;
+  ui.update(view); settle(d);
+  assert(blueLimitAt(10) && !blueLimitAt(100) && !blueLimitAt(350));
+  view.elevation = view.dualAxis = true; view.maximum = 180;
+  view.current = view.target = 90;
+  ui.update(view); settle(d);
+  assert(blueLimitAt(350) && blueLimitAt(190) && redAt(350) && redAt(190));
+  std::snprintf(path, sizeof path, "%s/current-target-elevation.ppm", argv[1]); save(path);
+  view.feedback = false;
+  ui.update(view); settle(d);
+  assert(blueLimitAt(350) && blueLimitAt(190) && !redAt(350) && !redAt(190));
+  view.maximum = NAN;
+  ui.update(view); settle(d);
+  assert(!blueLimitAt(350) && !blueLimitAt(190));
+  // A stop's 3px line extends to both sides of its sector boundary. Exercise
+  // fading and disappearance before the opposite warning can repaint it.
+  for (bool targetOnly : {false, true}) {
+    view = forkrot::CrowPanelView{};
+    view.feedback = view.targetValid = true;
+    view.current = targetOnly ? 225 : 400; view.target = targetOnly ? 400 : 225;
+    ui.update(view); settle(d);
+    lv_obj_invalidate(lv_screen_active()); lv_refr_now(d);
+    for (float angle : {380.f, 350.f, 331.f, 330.f, 225.f, 100.f, 120.f, 225.f}) {
+      if (targetOnly) view.target = angle; else view.current = angle;
+      ui.update(view); settle(d);
+      checkFullRedraw(d, argv[1]);
+      if (angle == 330.f) {
+        std::snprintf(path, sizeof path, "%s/stop-cleared-%s.ppm", argv[1], targetOnly ? "target" : "current");
+        save(path);
+      }
+    }
+  }
+  view = forkrot::CrowPanelView{};
+  view.feedback = view.targetValid = true; view.current = view.target = 350;
+  for (float maximum : {450.f, 360.f, 180.f, 450.f}) {
+    view.maximum = maximum;
+    ui.update(view); settle(d);
+    checkFullRedraw(d, argv[1]);
+  }
+  std::puts("PASS: red/cyan stop-line fading and removal match full redraw before the opposite limit appears");
+  view.maximum = 450; view.elevation = view.dualAxis = false;
   view.feedback = true; view.current = view.target = 120; view.sourceId = 42;
   ui.update(view); lv_refr_now(d);
   assert(markerAt(120, 0xeff5ff)); // New rotator/axis/feedback starts without a fictitious sweep.
@@ -346,5 +455,5 @@ int main(int argc, char **argv) {
   const auto idle = flushes;
   for (int i = 0; i < 10; ++i) { ui.update(view); lv_tick_inc(100); lv_timer_handler(); }
   assert(flushes == idle);
-  std::puts("PASS: LVGL marker animation/wrap/reset, limit tails, confirmation hit/restoration, Wi-Fi, arrows, markers and idle redraw");
+  std::puts("PASS: LVGL marker animation/wrap/reset, independent current/target limit tails, confirmation hit/restoration, Wi-Fi, arrows, markers and idle redraw");
 }

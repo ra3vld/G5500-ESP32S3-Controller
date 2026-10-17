@@ -37,6 +37,7 @@ class CrowPanelUi {
   } currentMotion_, targetMotion_;
   lv_obj_t *limits_ = nullptr;
   uint8_t lowerLimit_ = 0, upperLimit_ = 0;
+  uint8_t targetLowerLimit_ = 0, targetUpperLimit_ = 0;
   float maximum_ = 450;
   uint64_t sourceId_ = 0;
   bool elevation_ = false, confirmationVisible_ = false;
