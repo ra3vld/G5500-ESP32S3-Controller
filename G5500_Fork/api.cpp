@@ -97,6 +97,8 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"accelerationMs\":" << controller.accelerationMs
        << ",\"decelerationMs\":" << controller.decelerationMs
        << ",\"slowdownDegrees\":" << controller.slowdownDegrees
+       << ",\"coastDegrees\":" << controller.speeds[0].coastDegrees
+       << ",\"decelerationFactor\":" << controller.speeds[0].decelerationFactor
        << ",\"speedOutputPercent\":" << controller.axes[0].speedOutputPercent
        << ",\"fault\":" << jsonQuoted(controller.fault)
        << ",\"rotorName\":" << jsonQuoted(protocol.rotorName)
@@ -158,6 +160,8 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
     json << ",\"" << prefix << "AccelerationMs\":" << speed.accelerationMs;
     json << ",\"" << prefix << "DecelerationMs\":" << speed.decelerationMs;
     json << ",\"" << prefix << "SlowdownDegrees\":" << speed.slowdownDegrees;
+    json << ",\"" << prefix << "CoastDegrees\":" << speed.coastDegrees;
+    json << ",\"" << prefix << "DecelerationFactor\":" << speed.decelerationFactor;
     json << ",\"" << prefix << "SpeedEnabled\":" << (controller.variableSpeed(i) ? "true" : "false");
     json << ",\"" << prefix << "SpeedOutputPercent\":" << controller.axes[i].speedOutputPercent;
   }
@@ -312,6 +316,18 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       value("accelerationMs", speed.accelerationMs, 100, 10000);
       value("decelerationMs", speed.decelerationMs, 100, 10000);
       value("slowdownDegrees", speed.slowdownDegrees, 1, 90);
+      auto realValue = [&](const char *legacy, float &field, float lo, float hi) {
+        char key[32];
+        std::snprintf(key, sizeof key, "%s%c%s", prefix, std::toupper(legacy[0]), legacy + 1);
+        float aliased = field, prefixed = field;
+        const bool old = i == 0 && has(form, legacy), modern = has(form, key);
+        if (old) valid = (number(get(form, legacy), aliased) && aliased >= lo && aliased <= hi) && valid;
+        if (modern) valid = (number(get(form, key), prefixed) && prefixed >= lo && prefixed <= hi) && valid;
+        if (old && modern && aliased != prefixed) valid = false;
+        if (modern || old) field = modern ? prefixed : aliased;
+      };
+      realValue("coastDegrees", speed.coastDegrees, 0, 90);
+      realValue("decelerationFactor", speed.decelerationFactor, 0.1f, 10);
     }
     valid = valid && next.n1mmPort != next.pstPort;
     if (valid) {

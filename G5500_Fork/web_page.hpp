@@ -183,7 +183,11 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <p id="pstPortHelp" style="margin:8px 0;color:var(--m);font-size:13px;line-height:1.4">PstRotator UDP — для UR5EQF и 5MContest. В логгере выберите PstRotator/UDP; отдельно запускать программу PstRotator не требуется.<br>Log4OM 2, DXLog.net, TR4W (с 4.148.6), Swisslog и LogHX также имеют интеграцию с PstRotator, но с нашим контроллером не тестировались.</p>
 <div class="hint" id="buildInfo"></div>
 <div id="encoderSettings" class="hide"><label><input name="encoderInverted" type="checkbox" checked> Инверсия энкодера</label></div>
-<div id="speedSettings"><label id="analogSpeedToggle"><input name="speedEnabled" type="checkbox"> Управлять скоростью через внешний модуль 0–5 В</label>
+<div id="coastSettings"><h3>Выбег и остановка</h3><div class="row">
+<div class="field"><label for="coastDegrees">Угол выбега AZ, °</label><input id="coastDegrees" name="coastDegrees" type="number" min="0" max="90" step="0.1" value="5" required></div>
+<div class="field el-setting"><label for="elCoastDegrees">Угол выбега EL, °</label><input id="elCoastDegrees" name="elCoastDegrees" type="number" min="0" max="90" step="0.1" value="5" required></div>
+</div><p class="hint">Привод отключается за этот угол до цели, оставляя запас на механический выбег. 0° — отключение при достижении цели. Для короткого хода угол ограничен 10% полного хода. После отключения обратной коррекции нет.</p></div>
+<div id="speedSettings"><h3>Скорость и плавность движения</h3><label id="analogSpeedToggle"><input name="speedEnabled" type="checkbox"> Управлять скоростью через внешний модуль 0–5 В</label>
 <p>AZ</p><div class="row">
 <div class="field"><label>Рабочая скорость, %</label><input name="speedPercent" type="number" min="25" max="100" step="1" value="50" required></div>
 <div class="field"><label>Скорость старта, %</label><input name="startSpeedPercent" type="number" min="25" max="100" step="1" value="25" required></div>
@@ -191,6 +195,7 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div class="field"><label>Время разгона 0–100% рабочей скорости, мс</label><input name="accelerationMs" type="number" min="100" max="10000" step="1" value="2000" required></div>
 <div class="field"><label>Время торможения 100–0% рабочей скорости, мс</label><input name="decelerationMs" type="number" min="100" max="10000" step="1" value="1500" required></div>
 <div class="field"><label>Начинать замедление за, °</label><input name="slowdownDegrees" type="number" min="1" max="90" step="1" value="10" required></div>
+<div class="field"><label for="decelerationFactor">Коэффициент торможения AZ</label><input id="decelerationFactor" name="decelerationFactor" type="number" min="0.1" max="10" step="0.1" value="1" required></div>
 </div><div class="hint">Выход AZ: <b id="speedOutput">0%</b></div><div id="elSpeedSettings"><p>EL</p><div class="row">
 <div class="field"><label>Рабочая скорость, %</label><input name="elSpeedPercent" type="number" min="1" max="100" step="1" value="100" required></div>
 <div class="field"><label>Скорость старта, %</label><input name="elStartSpeedPercent" type="number" min="1" max="100" step="1" value="18" required></div>
@@ -198,7 +203,8 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div class="field"><label>Время разгона 0–100% рабочей скорости, мс</label><input name="elAccelerationMs" type="number" min="100" max="10000" step="1" value="1800" required></div>
 <div class="field"><label>Время торможения 100–0% рабочей скорости, мс</label><input name="elDecelerationMs" type="number" min="100" max="10000" step="1" value="1200" required></div>
 <div class="field"><label>Начинать замедление за, °</label><input name="elSlowdownDegrees" type="number" min="1" max="90" step="1" value="2" required></div>
-</div><div class="hint">Выход EL: <b id="elSpeedOutput">0%</b></div></div><p class="hint">Проценты задают выход привода. Замедление начинается перед зоной остановки ±5°. Реверс: торможение и пауза 300 мс. STOP выключает привод сразу.</p></div>
+<div class="field"><label for="elDecelerationFactor">Коэффициент торможения EL</label><input id="elDecelerationFactor" name="elDecelerationFactor" type="number" min="0.1" max="10" step="0.1" value="1" required></div>
+</div><div class="hint">Выход EL: <b id="elSpeedOutput">0%</b></div></div><p class="hint">Проценты задают выход привода. Замедление начинается перед зоной остановки. Коэффициент 1 — обычный спад скорости; 2 — вдвое быстрее; 0,5 — вдвое медленнее. Он действует также при снижении рабочей скорости и реверсе. Реверс: торможение и пауза 300 мс. STOP выключает привод сразу.</p></div>
 <button class="btn" type="submit">Сохранить настройки</button></form></details></div>
 <div class="card"><div class="label">История RSSI домашнего Wi-Fi</div>
 <div class="row" style="margin-top:10px"><button class="btn rbtn active" data-r="hour">1 HOUR</button><button class="btn rbtn" data-r="day">1 DAY</button><button class="btn rbtn" data-r="week">1 WEEK</button><button class="btn rbtn" data-r="month">1 MONTH</button><button class="btn rbtn" data-r="year">1 YEAR</button></div>
@@ -392,8 +398,8 @@ function updateFork(j){
  setText(document.getElementById('btmac'),j.btMac||'Недоступен');
  document.getElementById('movementButtons').classList.toggle('az-only',g800);
  const f=document.getElementById('forkSettings');
- for(const key of ['model','rotorName','n1mmPort','pstPort','reportPort','reportHost','speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees'])if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements[key].value=j[key];
- for(const key of ['speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees']){const elKey='el'+key[0].toUpperCase()+key.slice(1);if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements[elKey].value=j[elKey];if(key.endsWith('Percent'))f.elements[key].min=independent?1:25;}
+ for(const key of ['model','rotorName','n1mmPort','pstPort','reportPort','reportHost','speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees','coastDegrees','decelerationFactor'])if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements[key].value=j[key];
+ for(const key of ['speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees','coastDegrees','decelerationFactor']){const elKey='el'+key[0].toUpperCase()+key.slice(1);if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements[elKey].value=j[elKey];if(key.endsWith('Percent'))f.elements[key].min=independent?1:25;}
  setText(document.getElementById('elSpeedOutput'),(j.elSpeedOutputPercent||0).toFixed(1)+'%');
  setText(document.getElementById('speedOutput'),j.speedOutputPercent.toFixed(1)+'%');
  if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements.speedEnabled.checked=j.speedEnabled;
@@ -614,6 +620,7 @@ function updateHud(j){
  const f=document.getElementById('hudConfig');if(!f.dataset.dirty&&!f.contains(document.activeElement)){f.elements.role.value=j.deviceRole||'controller';f.elements.wifi.value=['existing','host','client'][j.hudWifi||0];f.elements.uart.value=j.hudUart?'1':'0';f.elements.port.value=j.hudPort||4534;}
  document.getElementById('caltoggle').closest('.card').classList.toggle('hide',hud);
  document.getElementById('speedSettings').classList.toggle('hide',hud||document.getElementById('speedSettings').classList.contains('hide'));
+ document.getElementById('coastSettings').classList.toggle('hide',hud);
  for(const name of ['model'])document.querySelector('#forkSettings [name="'+name+'"]').closest('.field').classList.toggle('hide',hud);
  document.querySelector('a[href="/adc"]').classList.toggle('hide',hud);
  for(const b of document.querySelectorAll('.movebtn,#presetButtons button'))if(hud&&!j.hudOnline)b.disabled=true;else if(b.classList.contains('movebtn'))b.disabled=false;

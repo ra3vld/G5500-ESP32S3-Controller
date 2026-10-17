@@ -26,6 +26,10 @@ Controller::Controller() {
 #if DRIVE_INTERFACE == DRIVE_YAESU
   speeds[0] = {50, 25, 25, 2000, 1500, 10};
 #endif
+#if !DRIVE_SIMULATION
+  speeds[0].coastDegrees = AZ_STOP_TOLERANCE_DEG;
+  speeds[1].coastDegrees = EL_STOP_TOLERANCE_DEG;
+#endif
   for (unsigned i = 0; i < 4; ++i) {
     presets[i] = {std::to_string(i * 90) + "°", {float(i * 90), 0, true, true}};
   }
@@ -720,7 +724,8 @@ void Controller::tick(uint32_t now) {
       // Brake in the old direction, then let output() enforce the 300 ms interlock.
       axis.speedOutputPercent =
           std::max(0.f, axis.speedOutputPercent -
-                            speed.speedPercent * float(elapsed) / std::max(1u, speed.decelerationMs));
+                            speed.decelerationFactor * speed.speedPercent * float(elapsed) /
+                                std::max(1u, speed.decelerationMs));
       if (axis.speedOutputPercent > 0) {
         continue;
       }
@@ -748,7 +753,8 @@ void Controller::tick(uint32_t now) {
     } else {
       axis.speedOutputPercent =
           std::max(requested, axis.speedOutputPercent -
-                                  speed.speedPercent * float(elapsed) / std::max(1u, speed.decelerationMs));
+                                  speed.decelerationFactor * speed.speedPercent * float(elapsed) /
+                                      std::max(1u, speed.decelerationMs));
     }
   }
   if (presetActive && !moving()) {

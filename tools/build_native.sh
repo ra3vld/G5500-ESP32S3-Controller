@@ -95,3 +95,9 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_F
 ./build/hud_memory_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 $CROW_FLAGS -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/hud_adapter_tests.cpp -o build/hud_crowpanel_tests
 ./build/hud_crowpanel_tests
+
+for variant in 0:0 1:0 2:0 2:1; do
+  drive=${variant%:*}; simulation=${variant#*:}
+  ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=$simulation -DDRIVE_INTERFACE=$drive -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/coast_settings_tests.cpp -o build/coast_settings_tests
+  ./build/coast_settings_tests
+done

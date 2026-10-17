@@ -1,6 +1,7 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
 #include "build_config.hpp"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <string>
@@ -73,6 +74,7 @@ public:
 struct SpeedSettings {
   unsigned speedPercent = 100, startSpeedPercent = 18, approachSpeedPercent = 18;
   unsigned accelerationMs = 1800, decelerationMs = 1200, slowdownDegrees = 3;
+  float coastDegrees = 0, decelerationFactor = 1;
 };
 struct Axis {
   float current = 0, target = 0;
@@ -120,13 +122,8 @@ public:
   unsigned &slowdownDegrees = speeds[0].slowdownDegrees;
   bool driveFault = false;
   bool variableSpeed(unsigned i) const;
-  static constexpr float tolerance(unsigned i) {
-#if DRIVE_SIMULATION
-    (void)i;
-    return 0.f; // Exact simulated feedback needs no ADC noise dead band.
-#else
-    return i ? EL_STOP_TOLERANCE_DEG : AZ_STOP_TOLERANCE_DEG;
-#endif
+  float tolerance(unsigned i) const {
+    return std::min(speeds[i].coastDegrees, (i ? 180.f : maximum) / 10);
   }
   size_t sequenceIndex() const {
     return remote ? remoteSequenceIndex : sequence_.empty() ? 0 : sequenceIndex_ + 1;

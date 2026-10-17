@@ -75,5 +75,5 @@ private:
   size_t capacity_, size_ = 0;
   bool good_ = true;
 };
-inline constexpr size_t STATUS_JSON_CAPACITY = 5120;
+inline constexpr size_t STATUS_JSON_CAPACITY = 5376;
 } // namespace forkrot

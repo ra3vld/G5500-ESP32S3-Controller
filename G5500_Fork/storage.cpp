@@ -4,6 +4,7 @@
 #include <time.h>
 #include <cstdlib>
 #include <cstring>
+#include <cmath>
 namespace forkrot {
 using namespace board;
 const char *Storage::calNamespace(const Runtime &runtime) {
@@ -318,6 +319,14 @@ void Storage::loadForkSettings(Runtime &runtime) {
   runtime.controller.accelerationMs = constrain(prefs_.getUInt("accelms", 2000), 100u, 10000u);
   runtime.controller.decelerationMs = constrain(prefs_.getUInt("decelms", 1500), 100u, 10000u);
   runtime.controller.slowdownDegrees = constrain(prefs_.getUInt("slowdeg", 10), 1u, 90u);
+  for (unsigned i = 0; i < 2; ++i) {
+    auto &speed = runtime.controller.speeds[i];
+    const String prefix = i ? "el" : "az";
+    const float coast = prefs_.getFloat((prefix + "coast").c_str(), speed.coastDegrees);
+    const float factor = prefs_.getFloat((prefix + "decelf").c_str(), 1);
+    if (std::isfinite(coast) && coast >= 0 && coast <= 90) speed.coastDegrees = coast;
+    if (std::isfinite(factor) && factor >= 0.1f && factor <= 10) speed.decelerationFactor = factor;
+  }
 #endif
   const String savedName = prefs_.getString("name", "G5500");
   runtime.protocol.rotorName = (runtime.hud.isHud() ? prefs_.getString("hudname", savedName) : savedName).c_str();
@@ -340,6 +349,10 @@ void Storage::loadForkSettings(Runtime &runtime) {
     speed.accelerationMs = constrain(prefs_.getUInt((prefix + "accel").c_str(), speed.accelerationMs), 100u, 10000u);
     speed.decelerationMs = constrain(prefs_.getUInt((prefix + "decel").c_str(), speed.decelerationMs), 100u, 10000u);
     speed.slowdownDegrees = constrain(prefs_.getUInt((prefix + "slow").c_str(), speed.slowdownDegrees), 1u, 90u);
+    const float coast = prefs_.getFloat((prefix + "coast").c_str(), speed.coastDegrees);
+    const float factor = prefs_.getFloat((prefix + "decelf").c_str(), 1);
+    if (std::isfinite(coast) && coast >= 0 && coast <= 90) speed.coastDegrees = coast;
+    if (std::isfinite(factor) && factor >= 0.1f && factor <= 10) speed.decelerationFactor = factor;
   }
   prefs_.end();
 #endif
@@ -358,6 +371,12 @@ void Storage::saveForkSettings(const Runtime &runtime) {
   prefs_.putUInt("accelms", runtime.controller.accelerationMs);
   prefs_.putUInt("decelms", runtime.controller.decelerationMs);
   prefs_.putUInt("slowdeg", runtime.controller.slowdownDegrees);
+  for (unsigned i = 0; i < 2; ++i) {
+    const auto &speed = runtime.controller.speeds[i];
+    const String prefix = i ? "el" : "az";
+    prefs_.putFloat((prefix + "coast").c_str(), speed.coastDegrees);
+    prefs_.putFloat((prefix + "decelf").c_str(), speed.decelerationFactor);
+  }
 #endif
   prefs_.putString("name", runtime.protocol.rotorName.c_str());
   } else
@@ -383,6 +402,8 @@ void Storage::saveForkSettings(const Runtime &runtime) {
     prefs_.putUInt((prefix + "accel").c_str(), speed.accelerationMs);
     prefs_.putUInt((prefix + "decel").c_str(), speed.decelerationMs);
     prefs_.putUInt((prefix + "slow").c_str(), speed.slowdownDegrees);
+    prefs_.putFloat((prefix + "coast").c_str(), speed.coastDegrees);
+    prefs_.putFloat((prefix + "decelf").c_str(), speed.decelerationFactor);
   }
   prefs_.end();
 #endif
