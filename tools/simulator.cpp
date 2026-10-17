@@ -49,7 +49,7 @@ int main(){
   auto state=stateJson(c,p,cfg,now);state.pop_back();
   std::ostringstream extra;extra<<",\"az\":"<<az<<",\"el\":"<<(c.model==Model::G800DXA?0:el)<<",\"targetAz\":"<<c.axes[0].target<<",\"targetEl\":"<<c.axes[1].target<<",\"targetValid\":"<<(c.targetKnown?"true":"false")<<",\"azMode\":"<<(c.maximum==360?36:45)
    <<",\"directionAz\":"<<c.axes[0].direction<<",\"directionEl\":"<<c.axes[1].direction<<",\"wantedAz\":"<<c.axes[0].wanted
-   <<",\"calibrated\":true,\"selectedCalOk\":true,\"calMode\":\"2\",\"ip\":\"SIMULATOR\",\"wifiMode\":\"Виртуальное оборудование\",\"ssid\":\"\",\"rssi\":null,\"btConnected\":false,\"motion\":"<<jsonQuote(c.moving()?"MOVING":"STOP");
+   <<",\"calibrated\":true,\"selectedCalOk\":true,\"calMode\":\"2\",\"ip\":\"SIMULATOR\",\"wifiMode\":\"Виртуальное оборудование\",\"ssid\":\"\",\"rssi\":null,\"btConnected\":false,\"motion\":"<<jsonQuote(c.moving()?"MOVING":"STOP")<<",\"uptimeSeconds\":"<<now/1000;
   for(auto key:{"az2p0","az2pf","el2p0","el2pf","azp0","azp90","azp180","azp270","azp360","azp450","elp0","elp45","elp90","elp135","elp180"})extra<<",\""<<key<<"\":0";
   state+=extra.str()+"}";
   std::cout<<"{\"status\":"<<response.status<<",\"body\":"<<jsonQuote(response.body)<<",\"reply\":"<<jsonQuote(reply)<<",\"state\":"<<state<<"}"<<std::endl;

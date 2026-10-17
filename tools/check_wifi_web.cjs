@@ -10,6 +10,7 @@ const html=source.split('R"HTML(')[1].split(')HTML";')[0];
 const status=JSON.parse(execFileSync(path.join(root,'build/simulator'),{input:'step 0\n',encoding:'utf8'}).trim()).state;
 status.ssid='Saved network';
 status.wifiMode='Wi-Fi Client';status.apIp='-';
+status.rssi=-62;status.heapFree=65536;status.uptimeSeconds=90061;
 
 (async()=>{
  const browser=await chromium.launch({...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),headless:true,args:['--no-sandbox']});
@@ -35,11 +36,54 @@ status.wifiMode='Wi-Fi Client';status.apIp='-';
   });
   await page.goto('http://controller.test/');
   await page.waitForFunction(()=>document.getElementById('ssid').value==='Saved network');
+  assert.equal(await page.locator('#statusWifi').textContent(),'Подключён');
+  assert.equal(await page.locator('#statusSignal').textContent(),'-62 dBm');
+  assert.equal(await page.locator('#statusMemory').textContent(),'64.0 КиБ');
+  assert.equal(await page.locator('#statusUptime').textContent(),'1 д 01:01:01');
+  assert.equal(await page.locator('#settingsPanel').isVisible(),false);
+  assert.equal(await page.locator('#controlPanel form').count(),0,'editors belong to Settings');
+  for(const [name,href] of [['ADC TEST','/adc'],['RESET DIAG','/resetdiag'],['DIAG CONSOLE','/diaglog']]){
+   const link=page.getByRole('link',{name,exact:true});
+   assert.equal(await link.isVisible(),true);
+   assert.equal(await link.getAttribute('href'),href);
+  }
+  assert.equal(await page.locator('#controlPanel').evaluate(e=>e.lastElementChild.id),'currentStatus');
+  fs.mkdirSync(path.join(root,'artifacts/screenshots'),{recursive:true});
+  for(const width of [1100,390,320]){
+   await page.setViewportSize({width,height:844});
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`control overflow at ${width}`);
+   await page.screenshot({path:path.join(root,`artifacts/screenshots/control-tab-${width}.png`),fullPage:true});
+  }
+  await page.getByRole('tab',{name:'Управление',exact:true}).focus();
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await page.getByRole('tab',{name:'Настройки',exact:true}).getAttribute('aria-selected'),'true');
+  assert.equal(await page.locator('#controlPanel').isVisible(),false);
+  assert.equal(await page.locator('.nav a:visible').count(),3,'diagnostics remain available in Settings');
+  await page.locator('#forkSettings').evaluate(e=>e.closest('details').open=true);
+  await page.locator('#forkSettings [name=rotorName]').fill('Unsaved name');
+  await page.getByRole('tab',{name:'Управление',exact:true}).click();
+  await page.waitForTimeout(600);
+  await page.getByRole('tab',{name:'Настройки',exact:true}).click();
+  assert.equal(await page.locator('#forkSettings [name=rotorName]').inputValue(),'Unsaved name');
+  await page.reload();
+  await page.waitForFunction(()=>!!window._forkState);
+  assert.equal(await page.locator('#settingsPanel').isVisible(),true,'reload keeps the Settings tab');
+  for(const width of [1100,390,320]){
+   await page.setViewportSize({width,height:844});
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`settings overflow at ${width}`);
+   await page.screenshot({path:path.join(root,`artifacts/screenshots/settings-tab-${width}.png`),fullPage:true});
+  }
   assert.equal(await page.locator('#apip').textContent(),'-');
   assert.equal(await page.locator('#mode').textContent(),'Wi-Fi Client');
-  status.wifiMode='Access Point';status.apIp='192.168.4.1';
+  status.wifiMode='Access Point';status.apIp='192.168.4.1';status.rssi=null;status.uptimeSeconds=0;status.heapFree=0;
+  status.btLinkConnected=true;status.btConnected=false;status.build.bluetooth=true;status.build.bluetoothBackend='ESP32_SPP';
   await page.waitForFunction(()=>document.getElementById('apip').textContent==='192.168.4.1');
   assert.equal(await page.locator('#mode').textContent(),'Access Point');
+  assert.equal(await page.locator('#statusWifi').textContent(),'Точка доступа');
+  assert.equal(await page.locator('#statusSignal').textContent(),'—');
+  assert.equal(await page.locator('#statusBt').textContent(),'Связь без SPP');
+  assert.equal(await page.locator('#statusMemory').textContent(),'0.0 КиБ');
+  assert.equal(await page.locator('#statusUptime').textContent(),'00:00:00');
   const ssid='Тестовая сеть & +',password='dummy=&+?% password';
   await page.locator('#ssid').fill(ssid);
   await page.locator('#pass').fill(password);

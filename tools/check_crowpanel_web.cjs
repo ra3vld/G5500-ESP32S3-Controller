@@ -27,6 +27,7 @@ status.build.display='CROWPANEL_21';status.build.drive='SIMULATED';status.encode
   async function open(){
    await page.goto('http://controller.test/');
    await page.waitForFunction(()=>!!window._forkState);
+   await page.getByRole('tab',{name:'Настройки',exact:true}).click();
    await page.locator('#forkSettings').evaluate(e=>e.closest('details').open=true);
   }
   await open();

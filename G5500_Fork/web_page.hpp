@@ -13,16 +13,17 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 .wrap{max-width:980px;margin:auto;padding:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}h1{font-size:26px;margin:8px 0 10px}
 
 .nav{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px;padding:8px;background:#0b1720;border:1px solid #294153;border-radius:12px;position:sticky;top:0;z-index:20}
-.nav a{display:inline-block;padding:9px 12px;border-radius:9px;background:#173044;color:#fff;text-decoration:none;font-weight:700;font-size:14px}
-.nav a.active{background:#167a5c}.nav a:hover{background:#235b78}
+.nav-tabs{display:flex;gap:8px;flex-wrap:wrap}
+.nav button,.nav a{border:0;cursor:pointer;font-family:inherit;display:inline-block;padding:9px 12px;border-radius:9px;background:#173044;color:#fff;text-decoration:none;font-weight:700;font-size:14px}
+.nav button.active{background:#167a5c}.nav button:hover,.nav a:hover{background:#235b78}
 .card{background:var(--p);border:1px solid var(--b);border-radius:12px;padding:12px;margin-top:10px}
 .big{font-size:54px;font-weight:700}.targetbig{font-size:34px;font-weight:700;color:var(--a)}.sep{font-size:30px;color:var(--m);font-weight:400}.unit{font-size:25px;color:var(--m)}.label{color:var(--m);font-size:13px;text-transform:uppercase;letter-spacing:.08em}
 .bar{height:16px;border-radius:8px;background:#071018;overflow:hidden;margin-top:12px}.fill{height:100%;background:linear-gradient(90deg,#24d18d,#33b8ff)}
 .controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.btn{border:0;border-radius:14px;min-height:48px;background:#235b78;color:white;font-size:19px;font-weight:700;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none;-webkit-tap-highlight-color:transparent}.btn *{pointer-events:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.movebtn{cursor:pointer}
 .stop{background:var(--s);font-size:23px;min-height:60px}.good{background:#167a5c}.warn{background:#81541d}.blank{visibility:hidden}
 #executeTarget{min-height:60px;white-space:pre-line;font-size:clamp(16px,4vw,23px)}
-.target-controls{border-top:1px solid var(--b);margin-top:10px;padding-top:10px}.target-controls .row{align-items:flex-end}.mode-controls{display:grid;grid-template-columns:minmax(0,1fr)}.controls.az-only .blank{display:none}#hourLeft:not(:empty){margin-top:8px;color:var(--a)}#forkMessage:empty{display:none}.row{display:flex;gap:10px;flex-wrap:wrap}.field{flex:1;min-width:160px}input{width:100%;padding:9px;border-radius:10px;border:1px solid #355063;background:#07121a;color:white;font-size:16px}
-.kv{display:grid;grid-template-columns:1fr 1fr;gap:8px}.kv div{background:#0b1720;padding:9px;border-radius:9px}
+.target-controls{border-top:1px solid var(--b);margin-top:10px;padding-top:10px}.target-controls .row{align-items:flex-end}.mode-controls{display:grid;grid-template-columns:minmax(0,1fr)}.controls.az-only .blank{display:none}#hourLeft:not(:empty){margin-top:8px;color:var(--a)}#forkMessage:empty{display:none}#forkMessage{margin:10px 0;padding:10px 12px;background:var(--p2);border-radius:10px}.row{display:flex;gap:10px;flex-wrap:wrap}.field{flex:1;min-width:160px}input{width:100%;padding:9px;border-radius:10px;border:1px solid #355063;background:#07121a;color:white;font-size:16px}
+.kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;overflow-wrap:anywhere}.kv div{background:#0b1720;padding:9px;border-radius:9px}
 .status{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border-radius:999px;background:#0a151e;border:1px solid #294153;font-size:13px}
 .dot{width:9px;height:9px;border-radius:50%;background:#697f8e}.dot.on{background:var(--a);box-shadow:0 0 10px #24d18d}
 .rbtn{min-height:38px;font-size:13px;padding:7px 10px}.rbtn.active{outline:2px solid #24d18d}canvas{width:100%;height:260px;background:#071018;border-radius:10px;margin-top:10px}
@@ -37,15 +38,22 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 .calreset{background:#9b2c2c;min-height:46px;font-size:15px;padding:8px 12px}
 select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t);border:1px solid #355063;font-size:16px} .preset-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.preset-grid button{overflow-wrap:anywhere}.preset-grid button.active{border-color:#24d18d} summary{cursor:pointer;font-weight:700} button:disabled{opacity:.45;cursor:default} #forkSettings input[type=checkbox]{width:auto} @media(max-width:700px){.preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}} .seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.seg .btn{min-height:42px;font-size:14px;border-radius:10px}.minirow{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.minirow .btn{min-height:42px;font-size:13px;border-radius:10px;padding:6px}.calbox{background:#0b1720;border:1px solid #294153;border-radius:12px;padding:10px;margin-top:8px}.calbox h3{margin:0 0 8px;font-size:15px}.calvalues{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-size:12px}.calvalues div{background:#071018;border-radius:8px;padding:7px}.hide{display:none!important}.rangebadge{display:inline-block;padding:4px 8px;border-radius:999px;background:#173044;color:#fff;font-size:12px;font-weight:700}
 @media(max-width:700px){.grid{grid-template-columns:1fr}.big{font-size:46px}.targetbig{font-size:30px}.sep{font-size:26px}}
+[hidden]{display:none!important}.nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+.current-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;padding:12px;font-size:13px}.current-status span{display:block;color:var(--m);margin-bottom:5px}.current-status b{font-size:14px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.current-status .online{color:var(--a)}.current-status .offline{color:#e5a94f}
 </style></head><body><div class="wrap">
 <div style="font-size:13px;color:#96a9b7;margin:2px 0 6px">G5500 Fork 0.1.0 · оригинал &copy; UA1CFM</div>
 <h1 id="modelTitle">YAESU G-5500 / ESP32</h1>
-<nav class="nav">
-<a class="active" href="/">УПРАВЛЕНИЕ</a>
+<nav class="nav" aria-label="Разделы контроллера">
+<div class="nav-tabs" role="tablist" aria-label="Управление и настройки">
+<button id="controlTab" class="active" role="tab" aria-controls="controlPanel" aria-selected="true" onclick="selectTab('control')">Управление</button>
+<button id="settingsTab" role="tab" aria-controls="settingsPanel" aria-selected="false" tabindex="-1" onclick="selectTab('settings')">Настройки</button>
+</div>
 <a href="/adc">ADC TEST</a>
 <a href="/resetdiag">RESET DIAG</a>
 <a href="/diaglog">DIAG CONSOLE</a>
 </nav>
+<div id="forkMessage" role="status" aria-live="polite"></div>
+<main id="controlPanel" role="tabpanel" aria-labelledby="controlTab">
 <div class="grid">
 <div class="card"><div class="label">Азимут — текущее / задание</div><div><span id="az" class="big">--.-</span><span class="sep"> / </span><span id="azt" class="targetbig">---</span><span class="unit">°</span></div><div class="bar"><div id="azbar" class="fill"></div></div><div>0° <span id="azmaxlabel" style="float:right">450°</span></div></div>
 <div class="card"><div class="label">Элевация — текущее / задание</div><div><span id="el" class="big">--.-</span><span class="sep"> / </span><span id="elt" class="targetbig">---</span><span class="unit">°</span></div><div class="bar"><div id="elbar" class="fill"></div></div><div>0° <span style="float:right">180°</span></div></div>
@@ -66,21 +74,30 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <button class="btn good" onclick="go()">Повернуть</button></div></div>
 </div>
 <div class="card"><div class="label">Предустановки</div><div id="presetButtons" class="preset-grid" style="margin-top:10px"></div>
-<details style="margin-top:12px"><summary>Настроить предустановки</summary>
-<form id="presetEditor" onsubmit="savePreset(event)">
-<div class="row"><div class="field"><label>Кнопка</label><select name="slot" onchange="fillPreset()"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div>
-<div class="field"><label>Название</label><input name="label" maxlength="24" required></div>
-<div class="field"><label>AZ, °</label><input name="az" type="number" min="0" max="450" step="0.1" required></div>
-<div class="field el-setting"><label>EL, °</label><input name="el" type="number" min="0" max="180" step="0.1" value="0"></div></div>
-<button class="btn" type="submit">Сохранить предустановку</button></form></details></div>
+</div>
 <div class="card">
 <div class="label">Режим управления</div>
 <div class="mode-controls" style="margin-top:8px">
 <div class="field"><label for="followMode">Следование командам</label><select id="followMode" onchange="forkPost('/api/mode',{mode:this.value})"><option value="manual">Ручной</option><option value="auto">Автоматический</option><option value="auto_1h">Авто 1 ч</option></select></div></div>
 <div id="hourLeft" aria-live="polite"></div>
 <div id="waitingTarget" style="margin-top:8px">Нет ожидающей цели</div>
-<div id="forkMessage" role="status" style="margin-top:10px"></div>
 </div>
+<div class="card current-status" id="currentStatus" aria-label="Текущий статус устройства">
+<div><span>Wi-Fi</span><b id="statusWifi">—</b></div>
+<div><span>Bluetooth</span><b id="statusBt">—</b></div>
+<div><span>Сигнал Wi-Fi</span><b id="statusSignal">—</b></div>
+<div title="Свободная внутренняя RAM"><span>Свободная память</span><b id="statusMemory">—</b></div>
+<div><span>Uptime</span><b id="statusUptime">—</b></div>
+</div>
+</main>
+<section id="settingsPanel" role="tabpanel" aria-labelledby="settingsTab" hidden>
+<div class="card"><details><summary>Настроить предустановки</summary>
+<form id="presetEditor" onsubmit="savePreset(event)">
+<div class="row"><div class="field"><label>Кнопка</label><select name="slot" onchange="fillPreset()"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div>
+<div class="field"><label>Название</label><input name="label" maxlength="24" required></div>
+<div class="field"><label>AZ, °</label><input name="az" type="number" min="0" max="450" step="0.1" required></div>
+<div class="field el-setting"><label>EL, °</label><input name="el" type="number" min="0" max="180" step="0.1" value="0"></div></div>
+<button class="btn" type="submit">Сохранить предустановку</button></form></details></div>
 <div class="card">
 <button id="caltoggle" class="cal-toggle" onclick="toggleCalMenu()">Калибровка <span class="arrow">▼</span></button>
 <div id="calbody" class="cal-body">
@@ -191,8 +208,32 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 <div id="wifiMessage" class="hint" role="status" aria-live="polite"></div>
 <div class="field" style="margin-top:14px"><label>Access Point password (8..63 chars; empty = open AP)</label><input id="appass" type="password" minlength="8" maxlength="63" placeholder="leave empty for open AP"></div>
 <button class="btn good" style="margin-top:10px" onclick="saveAp()">Save AP password + reboot</button></div>
-</div>
+</section></div>
 <script>
+
+function selectTab(name,updateHash=true){
+ const settings=name==='settings',opening=settings&&document.getElementById('settingsPanel').hidden;
+ for(const tab of ['control','settings']){
+  const active=(tab==='settings')===settings,button=document.getElementById(tab+'Tab');
+  document.getElementById(tab+'Panel').hidden=!active;
+  button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;
+ }
+ if(updateHash&&location.hash!==(settings?'#settings':'#control'))location.hash=settings?'settings':'control';
+ if(opening)loadRssi();
+}
+function compactStatus(j){
+ const wifi=document.getElementById('statusWifi'),bt=document.getElementById('statusBt');
+ const wifiModes={'Wi-Fi Client':'Подключён','AP + Wi-Fi Client':'Подключён + AP','Access Point':'Точка доступа','Disconnected':'Нет подключения'};
+ wifi.textContent=wifiModes[j.wifiMode]||j.wifiMode||'—';wifi.title=j.ssid||'';
+ wifi.className=Number.isFinite(j.rssi)?'online':'offline';
+ const btEnabled=j.build?.bluetooth!==false&&j.build?.bluetoothBackend!=='NONE';
+ bt.textContent=!btEnabled?'Отключён':j.btConnected?'Подключён':j.btLinkConnected?'Связь без SPP':'Нет подключения';
+ bt.className=btEnabled?(j.btConnected?'online':'offline'):'';
+ document.getElementById('statusSignal').textContent=Number.isFinite(j.rssi)?j.rssi+' dBm':'—';
+ document.getElementById('statusMemory').textContent=Number.isFinite(j.heapFree)?(j.heapFree/1024).toFixed(1)+' КиБ':'—';
+ const seconds=j.uptimeSeconds;
+ document.getElementById('statusUptime').textContent=Number.isFinite(seconds)?(seconds>=86400?Math.floor(seconds/86400)+' д ':'')+[Math.floor(seconds/3600)%24,Math.floor(seconds/60)%60,Math.floor(seconds)%60].map(n=>String(n).padStart(2,'0')).join(':'):'—';
+}
 
 async function forkPost(path,body){
  try{
@@ -208,7 +249,7 @@ function fillPreset(){
  f.elements.label.value=p.label;f.elements.az.value=p.target.az;f.elements.el.value=p.target.el;
 }
 async function savePreset(e){e.preventDefault();await forkPost('/api/preset',Object.fromEntries(new FormData(e.target)))}
-async function saveFork(e){e.preventDefault();const body=Object.fromEntries(new FormData(e.target));if(window._forkState?.build?.drive==='YAESU')body.speedEnabled=e.target.elements.speedEnabled.checked?'true':'false';else delete body.speedEnabled;if(window._forkState?.build?.display==='CROWPANEL_21')body.encoderInverted=e.target.elements.encoderInverted.checked?'true':'false';else delete body.encoderInverted;await forkPost('/api/settings',body)}
+async function saveFork(e){e.preventDefault();const body=Object.fromEntries(new FormData(e.target));if(window._forkState?.build?.drive==='YAESU')body.speedEnabled=e.target.elements.speedEnabled.checked?'true':'false';else delete body.speedEnabled;if(window._forkState?.build?.display==='CROWPANEL_21')body.encoderInverted=e.target.elements.encoderInverted.checked?'true':'false';else delete body.encoderInverted;if(await forkPost('/api/settings',body))delete e.target.dataset.dirty;}
 function buttonTarget(j){return j.pendingValid?j.pending:j.lastTarget}
 function targetLabel(t,j){
  if(!t)return '';
@@ -260,13 +301,13 @@ function updateFork(j){
  document.getElementById('btmac').textContent=j.btMac||'Недоступен';
  document.getElementById('movementButtons').classList.toggle('az-only',g800);
  const f=document.getElementById('forkSettings');
- for(const key of ['model','rotorName','n1mmPort','pstPort','reportPort','reportHost','speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees'])if(first||!f.contains(document.activeElement))f.elements[key].value=j[key];
- for(const key of ['speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees']){const elKey='el'+key[0].toUpperCase()+key.slice(1);if(first||!f.contains(document.activeElement))f.elements[elKey].value=j[elKey];if(key.endsWith('Percent'))f.elements[key].min=independent?1:25;}
+ for(const key of ['model','rotorName','n1mmPort','pstPort','reportPort','reportHost','speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees'])if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements[key].value=j[key];
+ for(const key of ['speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees']){const elKey='el'+key[0].toUpperCase()+key.slice(1);if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements[elKey].value=j[elKey];if(key.endsWith('Percent'))f.elements[key].min=independent?1:25;}
  document.getElementById('elSpeedOutput').textContent=(j.elSpeedOutputPercent||0).toFixed(1)+'%';
  document.getElementById('speedOutput').textContent=j.speedOutputPercent.toFixed(1)+'%';
- if(first||!f.contains(document.activeElement))f.elements.speedEnabled.checked=j.speedEnabled;
+ if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements.speedEnabled.checked=j.speedEnabled;
  document.getElementById('encoderSettings').classList.toggle('hide',j.build?.display!=='CROWPANEL_21');
- if(first||!f.contains(document.activeElement))f.elements.encoderInverted.checked=j.encoderInverted??true;
+ if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements.encoderInverted.checked=j.encoderInverted??true;
  document.querySelector('#presetEditor [name=az]').max=j.azMode===36?360:450;
  if(first)fillPreset();
  const faults={target_not_calibrated:'Сначала выполните калибровку',continuous_motion_timeout:'Превышено время непрерывного вращения',udp_bind_failed:'Не удалось открыть UDP-порт',pwm_attach_failed:'Не удалось включить регулировку скорости'};if(j.fault)document.getElementById('forkMessage').textContent=faults[j.fault]||'Ошибка управления';
@@ -368,7 +409,11 @@ sig.textContent=j.signal||'-';
 btstate.textContent=j.build?.bluetooth===false?'Отключён в сборке':j.btConnected?'CONNECTED':'DISCONNECTED';
 btstate.style.color=j.btConnected?'#24d18d':'#e5a94f';
 if(document.activeElement!==ssid && !ssid.dataset.dirty) ssid.value=j.ssid||'';
-}catch(e){}finally{clearTimeout(timeout);statusPending=false;}}
+compactStatus(j);
+}catch(e){
+ const wifi=document.getElementById('statusWifi');wifi.textContent='Нет связи';wifi.className='offline';wifi.title='Не удалось обновить статус устройства';
+ for(const id of ['statusBt','statusSignal','statusMemory','statusUptime']){const node=document.getElementById(id);node.textContent='—';node.className='';}
+}finally{clearTimeout(timeout);statusPending=false;}}
 let rrange='hour';
 function drawRssi(j){
  const c=document.getElementById('rchart'),x=c.getContext('2d'),w=c.width,h=c.height;
@@ -380,12 +425,20 @@ function drawRssi(j){
  x.fillStyle='#96a9b7';x.fillText('oldest',left,bottom+18);x.fillText('now',right-24,bottom+18);
  rmin.textContent=j.min===null?'-':j.min+' dBm';rmax.textContent=j.max===null?'-':j.max+' dBm';ravg.textContent=j.avg===null?'-':j.avg+' dBm';rcount.textContent=j.count||0;
 }
-async function loadRssi(){try{let j=await (await fetch('/api/rssi?range='+rrange,{cache:'no-store'})).json();drawRssi(j)}catch(e){}}
+async function loadRssi(){if(document.getElementById('settingsPanel').hidden)return;try{let j=await (await fetch('/api/rssi?range='+rrange,{cache:'no-store'})).json();drawRssi(j)}catch(e){}}
 document.querySelectorAll('.rbtn').forEach(b=>b.addEventListener('click',()=>{rrange=b.dataset.r;document.querySelectorAll('.rbtn').forEach(q=>q.classList.remove('active'));b.classList.add('active');loadRssi();}));
-setInterval(loadRssi,30000);loadRssi();
+window.addEventListener('hashchange',()=>selectTab(location.hash==='#settings'?'settings':'control',false));
+document.querySelectorAll('[role=tab]').forEach(tab=>tab.addEventListener('keydown',event=>{
+ if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+ event.preventDefault();const next=event.key==='Home'?'control':event.key==='End'?'settings':tab.id==='controlTab'?'settings':'control';
+ selectTab(next);document.getElementById(next+'Tab').focus();
+}));
+selectTab(location.hash==='#settings'?'settings':'control',false);
+setInterval(loadRssi,30000);
 setInterval(upd,500);upd();
 
 ssid.addEventListener('input',function(){ssid.dataset.dirty='1';});
+document.getElementById('forkSettings').addEventListener('input',event=>{event.currentTarget.dataset.dirty='1';});
 
 document.querySelectorAll('.btn').forEach(function(b){
   b.addEventListener('contextmenu',function(e){e.preventDefault();});

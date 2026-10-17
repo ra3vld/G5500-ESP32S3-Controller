@@ -6,6 +6,7 @@
 #include "web_encoding.hpp"
 #include "tcp_memory.hpp"
 #include "runtime_metrics.hpp"
+#include <esp_timer.h>
 namespace forkrot {
 using namespace board;
 void WebInterface::sendHtml(const char *raw, size_t rawSize, const unsigned char *gzip, size_t gzipSize) {
@@ -347,6 +348,7 @@ void WebInterface::setupWeb() {
       << ",\"btLinkConnected\":" << (network_.bluetoothLinkConnected() ? "true" : "false")
       << ",\"btMac\":" << jsonQuoted(btMac)
       << ",\"resetReason\":" << jsonQuoted(diagnostics_.bootReasonText().c_str())
+      << ",\"uptimeSeconds\":" << uint32_t(esp_timer_get_time() / 1000000)
       << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMinFree\":" << heapMinBytes()
       << ",\"heapMaxBlock\":" << heapMaxBlockBytes() << ",\"httpWriteFailures\":" << web_.diagnostics().writeFailures;
     j << ",\"httpReadFailures\":" << web_.readFailures() << ",\"httpRejected\":" << web_.rejectedRequests()
