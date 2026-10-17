@@ -40,11 +40,11 @@ for name in (['arduino','platformio'] if a.tool=='all' else [a.tool]):
     except BlockingIOError:raise SystemExit('Another '+name+' matrix is running; finish it first')
     locks.append(handle)
 source=ROOT/'G5500_Fork'
-source_hash=hashlib.sha256(b''.join(f.name.encode()+f.read_bytes() for f in sorted(source.iterdir()) if f.suffix in {'.ino','.cpp','.hpp','.h','.csv'} and not f.name.endswith('.ino.cpp'))).hexdigest()
+source_hash=hashlib.sha256(b''.join(f.name.encode()+f.read_bytes() for f in sorted(source.iterdir()) if f.suffix in {'.ino','.c','.cpp','.hpp','.h','.csv'} and not f.name.endswith('.ino.cpp'))).hexdigest()
 frozen=ROOT/'build/matrix/sources'/source_hash/a.tool/'G5500_Fork'
 frozen.mkdir(parents=True,exist_ok=True)
 for f in source.iterdir():
-    if f.suffix in {'.ino','.cpp','.hpp','.h','.csv'} and not f.name.endswith('.ino.cpp'): shutil.copy2(f,frozen/f.name)
+    if f.suffix in {'.ino','.c','.cpp','.hpp','.h','.csv'} and not f.name.endswith('.ino.cpp'): shutil.copy2(f,frozen/f.name)
 source=frozen
 combinations=list(itertools.product(a.boards,range(3),range(2),range(3)))
 if a.select=='lcd': combinations=[case for case in combinations if case[1]==2]
@@ -60,7 +60,7 @@ def build(tool,board,display,bt,drive):
     if tool=='arduino':
         sketch=work/'G5500_Fork';sketch.mkdir(exist_ok=True)
         for f in source.iterdir():
-            if f.suffix in {'.ino','.cpp','.hpp','.h'} and not f.name.endswith('.ino.cpp'): shutil.copy2(f,sketch/f.name)
+            if f.suffix in {'.ino','.c','.cpp','.hpp','.h'} and not f.name.endswith('.ino.cpp'): shutil.copy2(f,sketch/f.name)
         shutil.copy2(source/partition_file,sketch/'partitions.csv')
         fqbn=f'{a.arduino_vendor}:esp32:'+('esp32s3:FlashSize=16M,PSRAM=opi,PartitionScheme=custom,USBMode=hwcdc,CDCOnBoot=cdc,FlashMode=qio' if board=='s3' else 'lolin_s2_mini:CDCOnBoot=default' if board=='s2-mini' else 'esp32:FlashSize=4M,PSRAM=disabled,PartitionScheme=huge_app,FlashMode=dio,FlashFreq=40,DebugLevel=none' if board=='esp32' else 'esp32s2:FlashSize=4M,PSRAM=disabled,PartitionScheme=min_spiffs,CDCOnBoot=cdc,UploadMode=cdc')
         cmd=[a.arduino_cli]
@@ -72,7 +72,7 @@ def build(tool,board,display,bt,drive):
     else:
         snapshot=work/'G5500_Fork';snapshot.mkdir(exist_ok=True)
         for f in source.iterdir():
-            if f.suffix in {'.ino','.cpp','.hpp','.h','.csv'} and not f.name.endswith('.ino.cpp'): shutil.copy2(f,snapshot/f.name)
+            if f.suffix in {'.ino','.c','.cpp','.hpp','.h','.csv'} and not f.name.endswith('.ino.cpp'): shutil.copy2(f,snapshot/f.name)
         config=work/'platformio.ini'
         extra='-DBOARD_HAS_PSRAM -DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=1' if board=='s3' else '-DARDUINO_USB_MODE=0 -DARDUINO_USB_CDC_ON_BOOT='+('0' if board=='esp32' else '1')+(' -DBOARD_HAS_PSRAM' if board=='s2-mini' else '')
         memory='board_build.arduino.memory_type = qio_opi\nboard_build.psram_type = opi\n' if board=='s3' else ''

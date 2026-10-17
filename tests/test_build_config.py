@@ -144,7 +144,7 @@ class BuildConfigTests(unittest.TestCase):
                                  '--target', 'crowpanel'], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         sketch = self.root / 'build/arduino-crowpanel/G5500_Fork'
-        for name in ('lv_conf.h', 'crowpanel_lcd_init.hpp', 'crowpanel_font_96.cpp', 'crowpanel_rgb_driver.c', 'crowpanel_rgb_driver.h'):
+        for name in ('lv_conf.h', 'crowpanel_lcd_init.hpp', 'crowpanel_font_36.cpp', 'crowpanel_font_112.cpp', 'crowpanel_rgb_driver.c', 'crowpanel_rgb_driver.h'):
             self.assertEqual((sketch / name).read_bytes(), (self.source / name).read_bytes())
         self.assertEqual((sketch / 'partitions.csv').read_bytes(), (self.source / 'partitions_s3.csv').read_bytes())
 

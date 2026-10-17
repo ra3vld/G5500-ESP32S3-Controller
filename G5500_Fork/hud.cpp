@@ -7,7 +7,7 @@
 namespace forkrot {
 namespace {
 constexpr uint32_t TicketMs = 2000, LeaseMs = 1000;
-enum class Kind : uint8_t { Discover = 1, Query, State, Command, Ack, Renew };
+enum class Kind : uint8_t { Discover = 1, Query, State, Command, Ack, Renew, Subscribe, Telemetry, LiveCommand, LiveAck };
 struct Header {
   Kind kind{};
   uint64_t source = 0, target = 0, boot = 0, targetBoot = 0;
@@ -118,7 +118,7 @@ bool header(Reader &r, Header &h) {
   h.targetBoot = r.u64();
   h.serial = r.u32();
   h.ticket = r.u32();
-  return r.ok && h.source && h.boot && uint8_t(h.kind) >= 1 && uint8_t(h.kind) <= 6;
+  return r.ok && h.source && h.boot && uint8_t(h.kind) >= 1 && uint8_t(h.kind) <= 10;
 }
 void target(Writer &w, const Target &t) {
   w.real(t.az);
@@ -228,7 +228,7 @@ bool command(Reader &r, ControlCommand &c) {
   }
   return r.done();
 }
-void state(Writer &w, const HudState &s) {
+void state(Writer &w, const HudState &s, bool compact = false) {
   w.u8(uint8_t(s.model));
   w.u8(uint8_t(s.mode));
   w.real(s.maximum);
@@ -242,7 +242,7 @@ void state(Writer &w, const HudState &s) {
   w.u8(s.board);
   target(w, s.pending);
   target(w, s.lastTarget);
-  w.text(s.name);
+  if (!compact) w.text(s.name);
   w.text(s.fault);
   for (unsigned i = 0; i < 2; ++i) {
     const auto &a = s.axes[i];
@@ -253,17 +253,18 @@ void state(Writer &w, const HudState &s) {
     w.u8(a.calibrated | a.tracking << 1 | a.completed << 2 | s.variable[i] << 3);
     w.u8(uint8_t(a.direction + 1));
     w.u8(uint8_t(a.wanted + 1));
+    if (compact) continue;
     const auto &v = s.speeds[i];
     for (unsigned n : {v.speedPercent, v.startSpeedPercent, v.approachSpeedPercent, v.accelerationMs,
                        v.decelerationMs, v.slowdownDegrees})
       w.u32(n);
   }
-  for (const auto &p : s.presets) {
+  if (!compact) for (const auto &p : s.presets) {
     w.text(p.label);
     target(w, p.target);
   }
 }
-bool state(Reader &r, HudState &s) {
+bool state(Reader &r, HudState &s, bool compact = false) {
   s.model = Model(r.u8());
   s.mode = Mode(r.u8());
   s.maximum = r.real();
@@ -282,7 +283,7 @@ bool state(Reader &r, HudState &s) {
   s.board = r.u8();
   s.pending = target(r);
   s.lastTarget = target(r);
-  r.text(s.name, sizeof s.name);
+  if (!compact) r.text(s.name, sizeof s.name);
   r.text(s.fault, sizeof s.fault);
   if (s.model > Model::G800DXA || s.mode > Mode::AutoHour || (s.maximum != 360 && s.maximum != 450) ||
       s.presetSlot > 3 || s.sequenceCount > 16 || s.sequenceIndex > 16 || f > 31 || s.drive > 4)
@@ -300,6 +301,7 @@ bool state(Reader &r, HudState &s) {
     s.variable[i] = f & 8;
     a.direction = int(r.u8()) - 1;
     a.wanted = int(r.u8()) - 1;
+    if (!compact) {
     auto &v = s.speeds[i];
     v.speedPercent = r.u32();
     v.startSpeedPercent = r.u32();
@@ -307,11 +309,12 @@ bool state(Reader &r, HudState &s) {
     v.accelerationMs = r.u32();
     v.decelerationMs = r.u32();
     v.slowdownDegrees = r.u32();
+    }
     if (f > 15 || std::abs(a.direction) > 1 || std::abs(a.wanted) > 1 || a.current < 0 ||
         a.current > (i ? 180 : s.maximum) || a.speedOutputPercent < 0 || a.speedOutputPercent > 100)
       return false;
   }
-  for (auto &p : s.presets) {
+  if (!compact) for (auto &p : s.presets) {
     char label[49]{};
     r.text(label, sizeof label);
     std::memcpy(p.label, label, sizeof label);
@@ -451,6 +454,7 @@ void HudState::apply(Controller &c, Protocol &p, uint32_t now) const {
 void Hud::begin(uint64_t node, uint64_t session) {
   id = node;
   boot = session ? session : 1;
+  for (auto &sub : subscriptions_) sub = {};
   controller_.remote = isHud() ? this : nullptr;
   if (isHud()) {
     if (!client_)
@@ -577,6 +581,10 @@ bool Hud::select(uint64_t node) {
     if (!p->fresh(now))
       invalidateMirror();
   }
+  if (auto *p = active()) {
+    p->live = false; p->liveRevision = 0; p->subscribeSent = now - 250;
+    p->subscribeSerial[0] = p->subscribeSerial[1] = 0;
+  }
   selectedPoll_ = now - 100;
   if (transport_)
     transport_->selectionChanged();
@@ -631,6 +639,7 @@ Result Hud::submit(const ControlCommand &c) {
   slot->ticket = p->remoteTick;
   slot->started = now;
   slot->selection = selectionEpoch;
+  slot->live = p->live && uint32_t(now - p->liveAt) < 1000;
   return lastResult_ = Result::Deferred;
 }
 HudReply Hud::result(uint32_t request) const {
@@ -677,20 +686,20 @@ bool Hud::discover(HudEndpoint e) {
   return sendQuery(e, 0, true);
 }
 bool Hud::sendState(const HudEndpoint &e, uint64_t targetId, uint32_t seq, bool ack, Result result,
-                    uint64_t targetBoot) {
+                    uint64_t targetBoot, bool compact) {
   Writer w{tx_, sizeof tx_};
-  header(w, {ack ? Kind::Ack : Kind::State, id, targetId, boot, targetBoot, seq, now});
+  header(w, {ack ? (compact ? Kind::LiveAck : Kind::Ack) : Kind::State, id, targetId, boot, targetBoot, seq, now});
   if (ack)
     w.u8(uint8_t(result));
   HudState s;
   s.capture(controller_, protocol_, now);
-  state(w, s);
+  state(w, s, compact);
   auto n = w.finish();
   return transport_ && n && transport_->sendHud(e, tx_, n);
 }
 bool Hud::sendJob(Job &j) {
   Writer w{tx_, sizeof tx_};
-  header(w, {Kind::Command, id, j.peer, boot, j.boot, j.id, j.ticket});
+  header(w, {j.live ? Kind::LiveCommand : Kind::Command, id, j.peer, boot, j.boot, j.id, j.ticket});
   command(w, j.command);
   auto n = w.finish();
   if (!transport_ || !n || !transport_->sendHud(j.endpoint, tx_, n))
@@ -785,23 +794,29 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     return;
   }
   ++received;
-  if (h.kind == Kind::State || h.kind == Kind::Ack) {
+  const bool ack = h.kind == Kind::Ack || h.kind == Kind::LiveAck;
+  const bool telemetry = h.kind == Kind::Telemetry;
+  const bool compact = telemetry || h.kind == Kind::LiveAck;
+  if (h.kind == Kind::State || ack || telemetry) {
     if (!isHud() || !client_ || h.target != id || h.targetBoot != boot)
       return;
     Result result = Result::Ok;
-    if (h.kind == Kind::Ack) {
+    if (ack) {
       result = Result(r.u8());
       if (result > Result::Cancelled) {
         ++rejected;
         return;
       }
     }
+    auto *p = peer(h.source);
+    if (compact && (!p || !p->received || p->boot != h.boot)) return;
+    const uint32_t revision = telemetry ? r.u32() : 0;
     HudState s;
-    if (!state(r, s)) {
+    if (compact) s = p->state;
+    if (!state(r, s, compact)) {
       ++rejected;
       return;
     }
-    auto *p = peer(h.source);
     uint32_t requestedAt = now;
     bool requested = false;
     const bool discovery =
@@ -819,13 +834,21 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
           requested = true;
           requestedAt = p->queryAt[i];
         }
-    if (h.kind == Kind::Ack)
+    if (ack)
       for (const auto &job : client_->jobs)
         if (job.used && job.peer == h.source && job.boot == h.boot && job.id == h.serial) {
           requested = true;
           requestedAt = job.started;
           break;
         }
+    if (telemetry && p && p->id == config.selected) {
+      for (unsigned i = 0; i < 2; ++i)
+        if (h.serial == p->subscribeSerial[i] && uint32_t(now - p->subscribeAt[i]) < 1000) {
+          requested = true;
+          requestedAt = p->subscribeAt[i];
+        }
+      if (p->live && int32_t(revision - p->liveRevision) < 0) return;
+    }
     if (!requested)
       return; // Delayed unsolicited state cannot make an offline drive appear fresh.
     if (!p) {
@@ -841,9 +864,9 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       else
         return;
     }
-    if (p->received && (int32_t(h.serial - p->stateSerial) < 0 ||
+    if (p->received && ((!telemetry && int32_t(h.serial - p->stateSerial) < 0) ||
                         (p->boot == h.boot && int32_t(h.ticket - p->remoteTick) < 0))) {
-      if (h.kind == Kind::Ack)
+      if (ack)
         for (auto &j : client_->jobs)
           if (j.used && j.peer == p->id && j.boot == h.boot && j.id == h.serial) {
             finish(j, result);
@@ -852,6 +875,8 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       return;
     }
     if (p->boot && p->boot != h.boot) {
+      p->live = false; p->liveRevision = 0;
+      p->subscribeSerial[0] = p->subscribeSerial[1] = 0;
       for (auto &j : client_->jobs)
         if (j.used && j.peer == p->id)
           finish(j, Result::Cancelled);
@@ -864,10 +889,11 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     p->received = true;
     p->receivedAt = requestedAt;
     p->remoteTick = h.ticket;
-    p->stateSerial = h.serial;
+    if (!telemetry) p->stateSerial = h.serial;
+    if (telemetry) { p->live = true; p->liveAt = now; p->liveRevision = revision; }
     if (p->saved && p->id == config.selected)
       p->state.apply(controller_, protocol_, requestedAt);
-    if (h.kind == Kind::Ack)
+    if (ack)
       for (auto &j : client_->jobs)
         if (j.used && j.peer == p->id && j.boot == h.boot && j.id == h.serial) {
           finish(j, result);
@@ -886,6 +912,20 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     ++rejected;
     return;
   }
+  if (h.kind == Kind::Subscribe) {
+    if (!r.done()) return;
+    Subscription *slot = nullptr;
+    for (auto &sub : subscriptions_) {
+      if (sub.used && uint32_t(now - sub.renewed) >= 1000) sub.used = false;
+      if (sub.used && sub.source == h.source && sub.boot == h.boot) {
+        if (int32_t(h.serial - sub.serial) <= 0) return;
+        slot = &sub; break;
+      }
+      if (!sub.used && !slot) slot = &sub;
+    }
+    if (slot) *slot = {e, h.source, h.boot, h.serial, now, now - 250, 0, true};
+    return;
+  }
   if (h.kind == Kind::Renew) {
     const unsigned axis = r.u8();
     if (axis > 1 || !r.done())
@@ -896,7 +936,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       l.renewed = now;
     return;
   }
-  if (h.kind != Kind::Command)
+  if (h.kind != Kind::Command && h.kind != Kind::LiveCommand)
     return;
   ControlCommand c;
   if (!command(r, c)) {
@@ -915,11 +955,11 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     if (d.source == h.source && d.boot == h.boot) {
       if (d.seq == h.serial) {
         ++duplicates;
-        sendState(e, h.source, h.serial, true, d.result, h.boot);
+        sendState(e, h.source, h.serial, true, d.result, h.boot, h.kind == Kind::LiveCommand);
         return;
       }
       if (int32_t(h.serial - d.seq) < 0) {
-        sendState(e, h.source, h.serial, true, Result::Cancelled, h.boot);
+        sendState(e, h.source, h.serial, true, Result::Cancelled, h.boot, h.kind == Kind::LiveCommand);
         return;
       }
     }
@@ -933,17 +973,58 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     }
   if (!free) {
     ++busy;
-    sendState(e, h.source, h.serial, true, Result::Busy, h.boot);
+    sendState(e, h.source, h.serial, true, Result::Busy, h.boot, h.kind == Kind::LiveCommand);
     return;
   }
   (void)stop;
   const auto result = execute(c, h.source, h.boot, h.serial);
   *free = {h.source, h.boot, h.serial, h.ticket, result, true};
-  sendState(e, h.source, h.serial, true, result, h.boot);
+  sendState(e, h.source, h.serial, true, result, h.boot, h.kind == Kind::LiveCommand);
+}
+bool Hud::subscribe(HudPeer &p) {
+  const uint32_t seq = nextSerial();
+  Writer w{tx_, sizeof tx_};
+  header(w, {Kind::Subscribe, id, p.id, boot, p.boot, seq, p.remoteTick});
+  const auto n = w.finish();
+  p.subscribeSent = now;
+  if (!n || !transport_ || !transport_->sendHud(p.endpoint, tx_, n)) return false;
+  p.subscribeSerial[1] = p.subscribeSerial[0]; p.subscribeAt[1] = p.subscribeAt[0];
+  p.subscribeSerial[0] = seq; p.subscribeAt[0] = now;
+  return true;
+}
+void Hud::publishLive() {
+  bool any = false;
+  for (auto &sub : subscriptions_) {
+    if (sub.used && uint32_t(now - sub.renewed) >= 1000) sub.used = false;
+    any |= sub.used;
+  }
+  if (!any) return;
+  HudState current; current.capture(controller_, protocol_, now);
+  current.remaining = (current.remaining / 1000) * 1000;
+  Writer fingerprint{tx_, sizeof tx_}; state(fingerprint, current, true);
+  const uint32_t hash = hudCrc(tx_, fingerprint.size);
+  HudState control = current;
+  for (auto &axis : control.axes) { axis.current = 0; axis.speedOutputPercent = 0; }
+  fingerprint = {tx_, sizeof tx_}; state(fingerprint, control, true);
+  const uint32_t controlHash = hudCrc(tx_, fingerprint.size);
+  if (hash != liveHash_ && (controlHash != controlHash_ || uint32_t(now - liveChangedAt_) >= 20)) {
+    liveHash_ = hash; controlHash_ = controlHash; liveChangedAt_ = now; ++liveRevision_;
+  }
+  for (auto &sub : subscriptions_) {
+    if (!sub.used || (sub.revision == liveRevision_ && uint32_t(now - sub.sent) < 250)) continue;
+    Writer w{tx_, sizeof tx_};
+    header(w, {Kind::Telemetry, id, sub.source, boot, sub.boot, sub.serial, now});
+    w.u32(liveRevision_); state(w, current, true);
+    const auto n = w.finish();
+    if (n && transport_ && transport_->sendHud(sub.endpoint, tx_, n)) {
+      sub.sent = now; sub.revision = liveRevision_;
+    }
+  }
 }
 void Hud::service(uint32_t at) {
   now = at;
   if (!isHud()) {
+    publishLive();
     for (unsigned i = 0; i < 2; ++i) {
       auto &l = leases_[i];
       if (!l.active)
@@ -974,11 +1055,13 @@ void Hud::service(uint32_t at) {
   for (unsigned i = 0; i < 2; ++i)
     if (client_->held[i].active && uint32_t(now - client_->held[i].sent) >= 250)
       sendRenew(i);
+  if (auto *activePeer = active(); activePeer && activePeer->fresh(now) &&
+      uint32_t(now - activePeer->subscribeSent) >= 250) subscribe(*activePeer);
   // At most 20 state requests/s, active 10Hz and fair round-robin for every other saved peer.
   if (uint32_t(now - lastPoll_) < 50)
     return;
   auto *p = active();
-  if (p && p->saved && uint32_t(now - selectedPoll_) >= 100) {
+  if (p && p->saved && uint32_t(now - selectedPoll_) >= (p->live && uint32_t(now - p->liveAt) < 1000 ? 1000u : 100u)) {
     sendQuery(p->endpoint, p->id);
     p->lastPoll = selectedPoll_ = lastPoll_ = now;
     return;
@@ -1040,7 +1123,7 @@ bool Hud::writePeers(JsonWriter &j, size_t offset, size_t limit, bool discovered
   j << "]}";
   return j.good();
 }
-void Hud::writeStatus(JsonWriter &j) const {
+void Hud::writeStatus(JsonWriter &j, bool live) const {
   char node[17], selected[17];
   idText(node, id);
   idText(selected, config.selected);
@@ -1050,10 +1133,11 @@ void Hud::writeStatus(JsonWriter &j) const {
     << ",\"hudSelected\":" << jsonQuoted(selected) << ",\"hudSelectionEpoch\":" << selectionEpoch
     << ",\"hudOnline\":" << (available() ? "true" : "false") << ",\"hudAgeMs\":";
   if (freshnessAge() != UINT32_MAX)
-    j << freshnessAge();
+    j << (live ? (freshnessAge() / 250) * 250 : freshnessAge());
   else
     j << "null";
   auto *p = active();
+  j << ",\"hudLive\":" << (p && p->live && uint32_t(now-p->liveAt)<1000 ? "true" : "false");
   j << ",\"hudName\":" << jsonQuoted(p ? p->label : "")
     << ",\"hudTransport\":" << jsonQuoted(p ? (p->endpoint.uart ? "uart" : "wifi") : "")
     << ",\"hudPeers\":" << count() << ",\"remoteDrive\":";

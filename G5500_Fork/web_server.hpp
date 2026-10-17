@@ -8,6 +8,7 @@
 #include "network.hpp"
 #include "storage.hpp"
 #include "device_actions.hpp"
+#include "live_server.hpp"
 namespace forkrot {
 class WebInterface {
 public:
@@ -44,6 +45,8 @@ public:
     if (restart_.consume(millis())) ESP.restart();
   }
   void setupWeb();
+  void serviceLiveCommands() { live_.commands(millis()); }
+  void publishLive() { live_.publish(millis()); }
 
 private:
   void sendHtml(const char *raw, size_t rawSize, const unsigned char *gzip, size_t gzipSize);
@@ -78,6 +81,7 @@ private:
   Diagnostics &diagnostics_;
   Network &network_;
   Storage &storage_;
+  LiveServer live_{runtime_};
   BoundedWebServer web_{80};
   RestartDelay restart_;
   char statusBuffer_[STATUS_JSON_CAPACITY];

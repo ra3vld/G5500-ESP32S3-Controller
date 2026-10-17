@@ -34,6 +34,7 @@ public:
   void updateLocalDisplay();
 
 private:
+  String hudFields_[7];
   void tftText(int16_t x, int16_t y, uint8_t size, uint16_t fg, uint16_t bg, const String &txt);
   void tftButton(int x, int y, int w, int h, const String &label, bool active = false,
                  bool saved = false);
@@ -177,6 +178,7 @@ class Display {
   LiquidCrystal lcd_{board::PIN_LCD_RS, board::PIN_LCD_E, board::PIN_LCD_D4,
                      board::PIN_LCD_D5, board::PIN_LCD_D6, board::PIN_LCD_D7};
   uint32_t updatedAt_ = 0;
+  uint8_t lcdPrevious_[2][16]{};
   bool redraw_ = true;
 public:
   Display(Runtime &runtime, DeviceActions &, Calibration &, Hardware &, Diagnostics &, Network &, Storage &) : runtime_(runtime) {}

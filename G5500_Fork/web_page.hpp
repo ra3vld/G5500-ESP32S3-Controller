@@ -240,6 +240,8 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 </div></div>
 </section></div>
 <script>
+function setText(node,value){const text=String(value??'');if(node.textContent!==text)node.textContent=text;}
+
 
 function selectTab(name,updateHash=true){
  const settings=name==='settings',opening=settings&&document.getElementById('settingsPanel').hidden;
@@ -265,12 +267,60 @@ function compactStatus(j){
  document.getElementById('statusUptime').textContent=Number.isFinite(seconds)?(seconds>=86400?Math.floor(seconds/86400)+' д ':'')+[Math.floor(seconds/3600)%24,Math.floor(seconds/60)%60,Math.floor(seconds)%60].map(n=>String(n).padStart(2,'0')).join(':'):'—';
 }
 
+// Live commands are never replayed after reconnecting.
+const livePaths=new Set(['/api/target','/api/move','/api/mode','/api/execute','/api/preset/run','/api/hud/select']);
+const live={socket:null,ready:false,boot:null,revision:0,next:0,pending:new Map(),state:null,retry:null,last:0};
+let httpState=null,liveFrame=0;
+function renderLive(){liveFrame=0;if(httpState)renderStatus(live.ready&&live.state?{...httpState,...live.state}:httpState);}
+function queueLiveRender(){if(!liveFrame)liveFrame=requestAnimationFrame(renderLive);}
+function connectLive(port){
+ if(port===0||live.socket||live.retry||window.G5500_HTTP_ONLY)return;
+ const socket=new WebSocket('ws://'+location.hostname+':'+(port||81)+'/api/live');live.socket=socket;
+ socket.onmessage=event=>{
+  let message;try{message=JSON.parse(event.data)}catch(e){socket.close();return}
+  if(message.v!==1||!message.boot)return;
+  live.last=Date.now();
+  if(message.type==='state'){
+   if(live.boot&&message.boot!==live.boot){for(const p of live.pending.values()){clearTimeout(p.timer);p.reject(new Error('restarted'))}live.pending.clear();live.revision=0;live.state=null;}
+   if(live.ready&&message.boot===live.boot&&message.revision<=live.revision)return;
+   const changed=live.state&&live.state.hudSelectionEpoch!==message.state.hudSelectionEpoch;
+   live.boot=message.boot;live.revision=message.revision;live.state=message.state;live.ready=true;queueLiveRender();
+   if(changed)setTimeout(()=>upd(true),0);
+  }else if(message.type==='result'&&message.boot===live.boot){
+   const pending=live.pending.get(message.id);if(!pending)return;
+   if(message.result.result==='deferred'){document.getElementById('forkMessage').textContent='Ожидаем подтверждение поворотки…';return;}
+   clearTimeout(pending.timer);live.pending.delete(message.id);
+   pending.resolve({status:message.result.ok?200:409,json:async()=>message.result});
+  }
+ };
+ socket.onclose=()=>{
+  if(live.socket!==socket)return;
+  live.socket=null;live.ready=false;live.state=null;live.boot=null;live.revision=0;
+  for(const p of live.pending.values()){clearTimeout(p.timer);p.reject(new Error('disconnected'))}live.pending.clear();
+  live.retry=setTimeout(()=>{live.retry=null;connectLive(port)},1000);upd(true);
+ };
+ socket.onerror=()=>socket.close();
+}
+function sendLive(path,body){
+ if(!live.ready||live.socket?.readyState!==WebSocket.OPEN)return Promise.reject(new Error('offline'));
+ const stop=path==='/api/move'&&['S','A','E'].includes(body.d);
+ if(live.pending.size>=(stop?9:8)||live.socket.bufferedAmount>(stop?4096:2048))return Promise.resolve({status:503,json:async()=>({ok:false,result:'busy'})});
+ const id=++live.next,packet=new URLSearchParams({...body,v:1,cid:id,boot:live.boot,selection:body.selection??window._forkState?.hudSelectionEpoch??0,path}).toString();
+ return new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>{live.pending.delete(id);resolve({status:504,json:async()=>({ok:false,result:'timeout'})})},1500);
+  live.pending.set(id,{resolve,reject,timer});
+  try{live.socket.send(packet)}catch(e){clearTimeout(timer);live.pending.delete(id);reject(e)}
+ });
+}
+setInterval(()=>{if(live.ready&&Date.now()-live.last>1500)live.socket.close()},250);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){queueLiveRender();upd(true)}});
 async function forkPost(path,body){
  try{
   const selection=body.selection??window._forkState?.hudSelectionEpoch,name=window._forkState?.hudName;
   if(window._forkState?.deviceRole==='hud'&&['/api/target','/api/move','/api/mode','/api/execute','/api/preset','/api/preset/run'].includes(path))body={...body,selection};
   const fastStop=path==='/api/move'&&['S','A','E'].includes(body.d);
-  const r=await fetch(fastStop?path+'?d='+body.d+(body.selection===undefined?'':'&selection='+body.selection):path,fastStop?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
+  const usingLive=live.ready&&livePaths.has(path);
+  const r=usingLive?await sendLive(path,body):await fetch(fastStop?path+'?d='+body.d+(body.selection===undefined?'':'&selection='+body.selection):path,fastStop?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
   let j=await r.json();
   if(r.status===202&&j.requestId){
     document.getElementById('forkMessage').textContent='Ожидаем подтверждение поворотки…';
@@ -279,8 +329,8 @@ async function forkPost(path,body){
     if(j.result==='deferred')j={ok:false,result:'timeout'};
   }
   const messages={deferred:'Ожидаем подтверждение',timeout:'Нет подтверждения — проверьте состояние поворотки',unavailable:'Нет связи с повороткой',busy:'Поворотка занята, повторите команду',cancelled:'Команда отменена',storage_full:'Не хватает памяти для сохранения',hud_port_conflict:'Порт HUD совпадает с портом логгера',controller_settings_only:'Эти настройки доступны на контроллере поворотки',restart:'Сохранено. Устройство перезагружается',searching:'Поиск устройств…',invalid_or_port_conflict:'Проверьте настройки и порты',uart_in_use_by_hc05:'UART занят HC-05: нужна сборка без Bluetooth',not_calibrated:'Сначала выполните калибровку',invalid:'Проверьте значения',ignored:'Сейчас выполняется предустановка',pending:'Цель ожидает подтверждения',ok:'Готово'};
-  document.getElementById('forkMessage').textContent=(messages[j.result]||'Ошибка')+(r.status===202&&selection!==window._forkState?.hudSelectionEpoch?' · команда для '+name:'');
-  await upd();return j.ok;
+  document.getElementById('forkMessage').textContent=(messages[j.result]||'Ошибка')+(path!=='/api/hud/select'&&name&&selection!==window._forkState?.hudSelectionEpoch?' · команда для '+name:'');
+  if(!usingLive)await upd(true);return j.ok;
  }catch(e){document.getElementById('forkMessage').textContent='Нет связи с контроллером';return false}
 }
 function fillPreset(){
@@ -314,14 +364,14 @@ async function targetAction(){
 function updateFork(j){
  const first=!window._forkState;window._forkState=j;
  const g800=j.model==='G800DXA';
- document.getElementById('modelTitle').textContent=j.deviceRole==='hud'?'HUD / '+(j.build?.board||'ESP32'):'YAESU '+(g800?'G-800DXA':'G-5500')+' / '+(j.build?.board||'ESP32');
+ setText(document.getElementById('modelTitle'),j.deviceRole==='hud'?'HUD / '+(j.build?.board||'ESP32'):'YAESU '+(g800?'G-800DXA':'G-5500')+' / '+(j.build?.board||'ESP32'));
  document.getElementById('followMode').value=j.controlMode;
- document.getElementById('hourLeft').textContent=j.controlMode==='auto_1h'?'Осталось '+Math.ceil(j.remainingMs/60000)+' мин':'';
- document.getElementById('waitingTarget').textContent=j.pendingValid?'Ожидает: '+(j.pending.hasAz?'AZ '+j.pending.az.toFixed(1)+'° ':'')+(j.pending.hasEl&&!g800?'EL '+j.pending.el.toFixed(1)+'°':''):'Нет ожидающей цели';
+ setText(document.getElementById('hourLeft'),j.controlMode==='auto_1h'?'Осталось '+Math.ceil(j.remainingMs/60000)+' мин':'');
+ setText(document.getElementById('waitingTarget'),j.pendingValid?'Ожидает: '+(j.pending.hasAz?'AZ '+j.pending.az.toFixed(1)+'° ':'')+(j.pending.hasEl&&!g800?'EL '+j.pending.el.toFixed(1)+'°':''):'Нет ожидающей цели');
  updateTargetButton(j);
  const buttons=document.getElementById('presetButtons');
  if(!buttons.children.length)for(let slot=1;slot<=4;slot++){const b=document.createElement('button');b.className='btn';b.onclick=()=>forkPost('/api/preset/run',{slot});buttons.append(b)}
- j.presets.forEach((p,i)=>{const b=buttons.children[i];b.textContent=p.label;b.disabled=!p.valid;b.classList.toggle('active',j.presetSlot===i&&j.presetActive)});
+ j.presets.forEach((p,i)=>{const b=buttons.children[i];setText(b,p.label);b.disabled=!p.valid;b.classList.toggle('active',j.presetSlot===i&&j.presetActive)});
  const elNodes=[document.getElementById('el').closest('.card'),document.getElementById('tel').closest('.field'),document.getElementById('el2p0').parentElement,document.getElementById('elp0').parentElement.parentElement,document.getElementById('calel').closest('.calhead'),document.getElementById('b_el0').parentElement,document.getElementById('b2_elo'),document.getElementById('b2_elf'),...Array.from(document.querySelectorAll('button')).filter(b=>b.textContent==='RESET EL'),...document.querySelectorAll('.el-setting,.movebtn[data-dir="U"],.movebtn[data-dir="D"]')];
  [...elNodes,...document.querySelectorAll('.el-help')].forEach(n=>{if(n)n.classList.toggle('hide',g800)});
  const independent=['SEPARATE_PWM','BTS7960'].includes(j.build?.drive);
@@ -331,28 +381,28 @@ function updateFork(j){
  const btBackend=j.build?.bluetoothBackend||(j.build?.bluetooth===false?'NONE':'HC05');
  const btName=btBackend==='ESP32_SPP'?'Встроенный Bluetooth SPP':btBackend==='HC05'?'HC-05':'Bluetooth отключён';
  const nativeBt=btBackend==='ESP32_SPP';
- document.getElementById('buildInfo').textContent=j.build?`${j.build.board} · ${j.build.drive} · ${j.build.display} · ${btName}`:'';
- document.getElementById('btlabel').textContent=nativeBt?'Канал SPP':btName;
- document.getElementById('bttransport').textContent=btBackend==='ESP32_SPP'?'G5500-Rotator · SPP / виртуальный COM':btBackend==='HC05'?'HC-05 UART: 9600 baud':'';
+ setText(document.getElementById('buildInfo'),j.build?`${j.build.board} · ${j.build.drive} · ${j.build.display} · ${btName}`:'');
+ setText(document.getElementById('btlabel'),nativeBt?'Канал SPP':btName);
+ setText(document.getElementById('bttransport'),btBackend==='ESP32_SPP'?'G5500-Rotator · SPP / виртуальный COM':btBackend==='HC05'?'HC-05 UART: 9600 baud':'');
  for(const id of ['btlinkrow','btmacrow','bthelp'])document.getElementById(id).classList.toggle('hide',!nativeBt);
  const btLink=!!(j.btLinkConnected??j.btConnected),linkState=document.getElementById('btlinkstate');
- linkState.textContent=btLink?'Подключено':'Нет подключения';linkState.style.color=btLink?'#24d18d':'#e5a94f';
- document.getElementById('btmac').textContent=j.btMac||'Недоступен';
+ setText(linkState,btLink?'Подключено':'Нет подключения');linkState.style.color=btLink?'#24d18d':'#e5a94f';
+ setText(document.getElementById('btmac'),j.btMac||'Недоступен');
  document.getElementById('movementButtons').classList.toggle('az-only',g800);
  const f=document.getElementById('forkSettings');
  for(const key of ['model','rotorName','n1mmPort','pstPort','reportPort','reportHost','speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees'])if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements[key].value=j[key];
  for(const key of ['speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees']){const elKey='el'+key[0].toUpperCase()+key.slice(1);if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements[elKey].value=j[elKey];if(key.endsWith('Percent'))f.elements[key].min=independent?1:25;}
- document.getElementById('elSpeedOutput').textContent=(j.elSpeedOutputPercent||0).toFixed(1)+'%';
- document.getElementById('speedOutput').textContent=j.speedOutputPercent.toFixed(1)+'%';
+ setText(document.getElementById('elSpeedOutput'),(j.elSpeedOutputPercent||0).toFixed(1)+'%');
+ setText(document.getElementById('speedOutput'),j.speedOutputPercent.toFixed(1)+'%');
  if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements.speedEnabled.checked=j.speedEnabled;
  document.getElementById('encoderSettings').classList.toggle('hide',j.build?.display!=='CROWPANEL_21');
  if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements.encoderInverted.checked=j.encoderInverted??true;
  document.querySelector('#presetEditor [name=az]').max=j.azMode===36?360:450;
  if(first)fillPreset();
- const faults={target_not_calibrated:'Сначала выполните калибровку',continuous_motion_timeout:'Превышено время непрерывного вращения',udp_bind_failed:'Не удалось открыть UDP-порт',pwm_attach_failed:'Не удалось включить регулировку скорости'};if(j.fault)document.getElementById('forkMessage').textContent=faults[j.fault]||'Ошибка управления';
+ const faults={target_not_calibrated:'Сначала выполните калибровку',continuous_motion_timeout:'Превышено время непрерывного вращения',udp_bind_failed:'Не удалось открыть UDP-порт',pwm_attach_failed:'Не удалось включить регулировку скорости'};if(j.fault)setText(document.getElementById('forkMessage'),faults[j.fault]||'Ошибка управления');
 }
 
-async function q(u){try{if(window._forkState?.deviceRole==='hud'&&(u.startsWith('/api/move?')||u.startsWith('/api/target?'))){const url=new URL(u,location.origin);await forkPost(url.pathname,Object.fromEntries(url.searchParams));return ''}return await (await fetch(u,{cache:'no-store'})).text()}catch(e){return''}}
+async function q(u){try{if((live.ready||window._forkState?.deviceRole==='hud')&&(u.startsWith('/api/move?')||u.startsWith('/api/target?'))){const url=new URL(u,location.origin);await forkPost(url.pathname,Object.fromEntries(url.searchParams));return ''}return await (await fetch(u,{cache:'no-store'})).text()}catch(e){return''}}
 async function mv(d){await q('/api/move?d='+d)}
 async function st(){await q('/api/move?d=S')}
 async function stopAxis(d,selection){
@@ -391,16 +441,16 @@ async function wifi(){
  const button=document.getElementById('wifiSaveButton');
  if(button.disabled)return;
  const network=document.getElementById('ssid').value,password=document.getElementById('pass').value;
- if(!network){message.textContent='Укажите SSID сети Wi-Fi.';return;}
+ if(!network){setText(message,'Укажите SSID сети Wi-Fi.');return;}
  if(!confirm('Сохранить Wi‑Fi и перезагрузить контроллер?'))return;
  button.disabled=true;
  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);
- message.textContent='Сохранение настроек Wi-Fi…';
+ setText(message,'Сохранение настроек Wi-Fi…');
  try{
   const response=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({ssid:network,pass:password}),cache:'no-store',signal:controller.signal});
-  message.textContent=await response.text()||'Не удалось сохранить настройки Wi-Fi.';
+  setText(message,await response.text()||'Не удалось сохранить настройки Wi-Fi.');
   if(response.ok)document.getElementById('pass').value='';
- }catch(e){message.textContent='Ответ не получен. Проверьте адрес контроллера в домашней сети. Если подключения нет, подключитесь к сервисной сети G5500-HUD-… или G5500-Rotator-… и проверьте SSID.';}
+ }catch(e){setText(message,'Ответ не получен. Проверьте адрес контроллера в домашней сети. Если подключения нет, подключитесь к сервисной сети G5500-HUD-… или G5500-Rotator-… и проверьте SSID.');}
  finally{clearTimeout(timeout);button.disabled=false;}
 }
 async function saveAp(){
@@ -411,50 +461,54 @@ async function saveAp(){
 }
 function pct(v,m){v=Math.max(0,Math.min(m,v));return(v/m*100).toFixed(1)+'%'}
 let statusPending=false;
-async function upd(){
+async function upd(force=false){
+if(live.ready&&!force)return;
 if(statusPending)return;
 statusPending=true;
 const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5000);
 try{let j=await (await fetch('/api/status',{cache:'no-store',signal:controller.signal})).json();
-az.textContent=j.deviceRole==='hud'&&!j.hudOnline?'—':Number(j.az).toFixed(1);el.textContent=j.deviceRole==='hud'&&!j.hudOnline?'—':Number(j.el).toFixed(1);
+httpState=j;connectLive(j.livePort);queueLiveRender();
+}catch(e){
+ const wifi=document.getElementById('statusWifi');setText(wifi,'Нет связи');wifi.className='offline';wifi.title='Не удалось обновить статус устройства';
+ for(const id of ['statusBt','statusSignal','statusMemory','statusUptime']){const node=document.getElementById(id);setText(node,'—');node.className='';}
+}finally{clearTimeout(timeout);statusPending=false;}}
+function renderStatus(j){
+setText(az,j.deviceRole==='hud'&&!j.hudOnline?'—':Number(j.az).toFixed(1));setText(el,j.deviceRole==='hud'&&!j.hudOnline?'—':Number(j.el).toFixed(1));
 updateFork(j);
-azt.textContent=j.targetValid?Number(j.targetAz).toFixed(1):'---';
-elt.textContent=j.targetValid?Number(j.targetEl).toFixed(1):'---';
-calaz.textContent=Number(j.az).toFixed(1);calel.textContent=Number(j.el).toFixed(1);
-const azmx=j.azMode===36?360:450;azbar.style.width=pct(j.az,azmx);azmaxlabel.textContent=azmx+'°';taz.max=azmx;tazlbl.textContent='AZ 0..'+azmx+'°';elbar.style.width=pct(j.el,180);
-motion.textContent=j.motion;
+setText(azt,j.targetValid?Number(j.targetAz).toFixed(1):'---');
+setText(elt,j.targetValid?Number(j.targetEl).toFixed(1):'---');
+setText(calaz,Number(j.az).toFixed(1));setText(calel,Number(j.el).toFixed(1));
+const azmx=j.azMode===36?360:450;azbar.style.width=pct(j.az,azmx);setText(azmaxlabel,azmx+'°');taz.max=azmx;setText(tazlbl,'AZ 0..'+azmx+'°');elbar.style.width=pct(j.el,180);
+setText(motion,j.motion);
 window._azMode=Number(j.azMode)||45;
 const selok=!!j.selectedCalOk;
-caltxt.textContent=(j.calMode==='multi'?'MULTI-POINT':'GS-232 2-POINT')+' · P'+j.azMode+(selok?' OK':' NOT CALIBRATED');
+setText(caltxt,(j.calMode==='multi'?'MULTI-POINT':'GS-232 2-POINT')+' · P'+j.azMode+(selok?' OK':' NOT CALIBRATED'));
 caldot.className='dot '+(selok?'on':'');
-calmode.textContent=j.calMode==='multi'?'MULTI-POINT':'GS-232 2-POINT';
+setText(calmode,j.calMode==='multi'?'MULTI-POINT':'GS-232 2-POINT');
 mode2.classList.toggle('good',j.calMode==='2');modem.classList.toggle('good',j.calMode==='multi');
 azm36.classList.toggle('good',j.azMode===36);azm45.classList.toggle('good',j.azMode===45);
-azrange.textContent='P'+j.azMode+' · '+(j.azMode===36?'360°':'450°');
-resetazrange.textContent='P'+j.azMode;
+setText(azrange,'P'+j.azMode+' · '+(j.azMode===36?'360°':'450°'));
+setText(resetazrange,'P'+j.azMode);
 panel2.classList.toggle('hide',j.calMode!=='2');panelm.classList.toggle('hide',j.calMode!=='multi');
 b_az450.classList.toggle('hide',j.azMode===36);azv450.classList.toggle('hide',j.azMode===36);
-az2p0.textContent=j.az2p0;az2pf.textContent=j.az2pf;el2p0.textContent=j.el2p0;el2pf.textContent=j.el2pf;
+setText(az2p0,j.az2p0);setText(az2pf,j.az2pf);setText(el2p0,j.el2p0);setText(el2pf,j.el2pf);
 markCalBtn('b2_azo',j.az2p0>=0);markCalBtn('b2_azf',j.az2pf>=0);
 markCalBtn('b2_elo',j.el2p0>=0);markCalBtn('b2_elf',j.el2pf>=0);
-azp0.textContent=j.azp0;azp90.textContent=j.azp90;azp180.textContent=j.azp180;azp270.textContent=j.azp270;azp360.textContent=j.azp360;azp450.textContent=j.azp450;
-elp0.textContent=j.elp0;elp45.textContent=j.elp45;elp90.textContent=j.elp90;elp135.textContent=j.elp135;elp180.textContent=j.elp180;
+setText(azp0,j.azp0);setText(azp90,j.azp90);setText(azp180,j.azp180);setText(azp270,j.azp270);setText(azp360,j.azp360);setText(azp450,j.azp450);
+setText(elp0,j.elp0);setText(elp45,j.elp45);setText(elp90,j.elp90);setText(elp135,j.elp135);setText(elp180,j.elp180);
 markCalBtn('b_az0',j.azp0>=0);markCalBtn('b_az90',j.azp90>=0);markCalBtn('b_az180',j.azp180>=0);
 markCalBtn('b_az270',j.azp270>=0);markCalBtn('b_az360',j.azp360>=0);markCalBtn('b_az450',j.azMode===45&&j.azp450>=0);
 markCalBtn('b_el0',j.elp0>=0);markCalBtn('b_el45',j.elp45>=0);markCalBtn('b_el90',j.elp90>=0);
 markCalBtn('b_el135',j.elp135>=0);markCalBtn('b_el180',j.elp180>=0);
-ip.textContent=j.ip;document.getElementById('apip').textContent=j.apIp||'-';mode.textContent=j.wifiMode;
-rssi.textContent=(j.rssi===null?'-':j.rssi+' dBm');
-sig.textContent=j.signal||'-';
-btstate.textContent=j.build?.bluetooth===false?'Отключён в сборке':j.btConnected?'CONNECTED':'DISCONNECTED';
+setText(ip,j.ip);setText(document.getElementById('apip'),j.apIp||'-');setText(mode,j.wifiMode);
+setText(rssi,(j.rssi===null?'-':j.rssi+' dBm'));
+setText(sig,j.signal||'-');
+setText(btstate,j.build?.bluetooth===false?'Отключён в сборке':j.btConnected?'CONNECTED':'DISCONNECTED');
 btstate.style.color=j.btConnected?'#24d18d':'#e5a94f';
 if(document.activeElement!==ssid && !ssid.dataset.dirty) ssid.value=j.ssid||'';
 updateHud(j);
 compactStatus(j);
-}catch(e){
- const wifi=document.getElementById('statusWifi');wifi.textContent='Нет связи';wifi.className='offline';wifi.title='Не удалось обновить статус устройства';
- for(const id of ['statusBt','statusSignal','statusMemory','statusUptime']){const node=document.getElementById(id);node.textContent='—';node.className='';}
-}finally{clearTimeout(timeout);statusPending=false;}}
+}
 let rrange='hour';
 function drawRssi(j){
  const c=document.getElementById('rchart'),x=c.getContext('2d'),w=c.width,h=c.height;
@@ -464,7 +518,7 @@ function drawRssi(j){
  let a=j.values||[],n=a.length;x.strokeStyle='#24d18d';x.lineWidth=2;x.beginPath();let pen=false;
  for(let i=0;i<n;i++){let v=a[i];if(v===null){pen=false;continue}let px=left+(n<=1?0:i/(n-1))*(right-left);let py=top+(-30-Math.max(-100,Math.min(-30,v)))/70*(bottom-top);if(!pen){x.moveTo(px,py);pen=true}else x.lineTo(px,py);}x.stroke();
  x.fillStyle='#96a9b7';x.fillText('oldest',left,bottom+18);x.fillText('now',right-24,bottom+18);
- rmin.textContent=j.min===null?'-':j.min+' dBm';rmax.textContent=j.max===null?'-':j.max+' dBm';ravg.textContent=j.avg===null?'-':j.avg+' dBm';rcount.textContent=j.count||0;
+ setText(rmin,j.min===null?'-':j.min+' dBm');setText(rmax,j.max===null?'-':j.max+' dBm');setText(ravg,j.avg===null?'-':j.avg+' dBm');setText(rcount,j.count||0);
 }
 async function loadRssi(){if(document.getElementById('settingsPanel').hidden)return;try{let j=await (await fetch('/api/rssi?range='+rrange,{cache:'no-store'})).json();drawRssi(j)}catch(e){}}
 document.querySelectorAll('.rbtn').forEach(b=>b.addEventListener('click',()=>{rrange=b.dataset.r;document.querySelectorAll('.rbtn').forEach(q=>q.classList.remove('active'));b.classList.add('active');loadRssi();}));
@@ -476,7 +530,7 @@ document.querySelectorAll('[role=tab]').forEach(tab=>tab.addEventListener('keydo
 }));
 selectTab(location.hash==='#settings'?'settings':'control',false);
 setInterval(loadRssi,30000);
-setInterval(upd,500);upd();
+setInterval(upd,500);setInterval(()=>upd(true),5000);upd();
 
 ssid.addEventListener('input',function(){ssid.dataset.dirty='1';});
 for(const id of ['forkSettings','hudConfig'])document.getElementById(id).addEventListener('input',event=>{event.currentTarget.dataset.dirty='1';});

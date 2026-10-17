@@ -15,6 +15,7 @@
 #include "diagnostic_stream.hpp"
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include "hud_uart_tx.hpp"
 #include <WiFiServer.h>
 namespace forkrot {
 class Network : public HudTransport {
@@ -75,8 +76,7 @@ private:
   uint8_t hudRx_[HUD_FRAME_MAX]{};
   struct UartLink {
     HudUartDecoder decoder;
-    uint8_t tx[HUD_FRAME_MAX + 8]{};
-    size_t size = 0, sent = 0;
+    HudUartTx tx;
   };
   std::unique_ptr<UartLink> hudUart_;
   uint32_t inputEpoch_ = 0, tcpSession_ = 0, bluetoothSession_ = 0;

@@ -175,6 +175,12 @@ void Application::controllerLoop() {
   network_.handlePstRotatorSerial(); // UART0 USB / PSTROTATOR / GS-232
   network_.handleBluetoothSerial(); // selected Bluetooth transport / GS-232B
   network_.handleRotctldTcp();       // Wi-Fi TCP 4533 / Look4Sat / Hamlib rotctld
+  web_server_.serviceLiveCommands();
+  hardware_.controlRotator();
+  display_.serviceTouch();
+  network_.serviceHud();
+  hardware_.controlRotator();
+  web_server_.publishLive();
   network_.serviceHeapDiagnostics();
   web_server_.service();
   network_.serviceWifiReconnect();
@@ -182,6 +188,10 @@ void Application::controllerLoop() {
   if (runtime_.hud.settingsDirty) {
     runtime_.hud.settingsDirty = false;
     storage_.saveForkSettings(runtime_);
+  }
+  if (runtime_.hud.selectionDirty) {
+    runtime_.hud.selectionDirty = false;
+    if (!storage_.saveHudConfig(runtime_.hud.config)) runtime_.hud.catalogError = true;
   }
   if (runtime_.hud.presetsDirty) {
     runtime_.hud.presetsDirty = false;

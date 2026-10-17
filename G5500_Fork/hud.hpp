@@ -52,9 +52,14 @@ struct HudPeer {
   HudState state;
   uint32_t receivedAt = 0, remoteTick = 0, lastPoll = 0, stateSerial = 0;
   uint32_t querySerial[2]{}, queryAt[2]{};
+  uint32_t subscribeSerial[2]{}, subscribeAt[2]{}, subscribeSent = 0;
+  uint32_t liveAt = 0, liveRevision = 0;
+  bool live = false;
   bool received = false, saved = false;
   std::unique_ptr<HudPeer> next;
-  bool fresh(uint32_t now, uint32_t age = 2000) const { return received && uint32_t(now - receivedAt) < age; }
+  bool fresh(uint32_t now, uint32_t age = 0) const {
+    return received && uint32_t(now - receivedAt) < (age ? age : live ? 1000u : 2000u);
+  }
 };
 struct HudReply {
   Result result = Result::Unavailable;
@@ -90,7 +95,7 @@ public:
   uint64_t id = 0, boot = 0;
   uint32_t selectionEpoch = 0, now = 0;
   uint32_t received = 0, rejected = 0, duplicates = 0, timeouts = 0, busy = 0;
-  bool settingsDirty = false, presetsDirty = false, catalogError = false;
+  bool settingsDirty = false, presetsDirty = false, selectionDirty = false, catalogError = false;
   void begin(uint64_t node, uint64_t session);
   void setTransport(HudTransport *transport) { transport_ = transport; }
   bool isHud() const { return config.role == DeviceRole::Hud; }
@@ -113,7 +118,7 @@ public:
   bool select(uint64_t);
   size_t count(bool saved = true) const;
   bool writePeers(JsonWriter &, size_t offset, size_t limit, bool discovered = false) const;
-  void writeStatus(JsonWriter &) const;
+  void writeStatus(JsonWriter &, bool live = false) const;
   uint32_t freshnessAge() const;
   void invalidateMirror();
 
@@ -128,7 +133,7 @@ private:
     uint64_t peer = 0, boot = 0;
     uint32_t id = 0, ticket = 0, started = 0, sent = 0, selection = 0;
     uint8_t attempts = 0;
-    bool used = false;
+    bool used = false, live = false;
   };
   struct History {
     HudReply reply;
@@ -157,6 +162,13 @@ private:
     unsigned nextHistory = 0;
     HeldJog held[2];
   };
+  struct Subscription {
+    HudEndpoint endpoint;
+    uint64_t source = 0, boot = 0;
+    uint32_t serial = 0, renewed = 0, sent = 0, revision = 0;
+    bool used = false;
+  } subscriptions_[4];
+  uint32_t liveRevision_ = 0, liveHash_ = 0, controlHash_ = 0, liveChangedAt_ = 0;
   std::unique_ptr<Client> client_;
   uint32_t serial_ = 0, lastRequest_ = 0, lastPoll_ = 0, selectedPoll_ = 0, scanAt_ = 0;
   uint64_t pollCursor_ = 0;
@@ -170,7 +182,9 @@ private:
   bool sendJob(Job &);
   bool sendQuery(const HudEndpoint &, uint64_t target, bool discovery = false);
   bool sendState(const HudEndpoint &, uint64_t target, uint32_t seq, bool ack = false, Result r = Result::Ok,
-                 uint64_t targetBoot = 0);
+                 uint64_t targetBoot = 0, bool compact = false);
+  bool subscribe(HudPeer &);
+  void publishLive();
   void sendRenew(unsigned axis);
   Result execute(const ControlCommand &, uint64_t source, uint64_t session, uint32_t seq);
 };

@@ -5,7 +5,13 @@ mkdir -p build
 python3 tools/generate_web_assets.py --check
 python3 -m unittest discover -s tests -p web_assets_tests.py
 python3 -m unittest discover -s tests -p test_crowpanel_rgb.py
-CORE_SOURCES="G5500_Fork/control.cpp G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp"
+CORE_SOURCES="G5500_Fork/control.cpp G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp"
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/live_tests.cpp -o build/live_tests
+./build/live_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -pthread -DARDUINO_ARCH_ESP32 -DBOARD_PROFILE=4 -I tests/live_fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/live_server.cpp tests/live_server_tests.cpp -o build/live_server_tests
+./build/live_server_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/hud_live_tests.cpp -o build/hud_live_tests
+./build/hud_live_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tools/simulator.cpp -o build/simulator
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/core_tests.cpp -o build/core_tests
 ./build/core_tests

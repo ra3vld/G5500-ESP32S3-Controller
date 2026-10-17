@@ -1,57 +1,212 @@
 #include "api.hpp"
+#include "live.hpp"
 #include "input.hpp"
+#include "hud.hpp"
+#include "hud_input.hpp"
+#include "datagram_socket.hpp"
 #include <iostream>
 #include <sstream>
 #include <chrono>
 #include <cmath>
 using namespace forkrot;
-int main(){
- Controller c;Protocol p(c);Settings cfg;
- std::array<std::array<Preset,4>,2> profiles{{c.presets,c.presets}};
- for(auto& preset:profiles[1])preset.target.hasEl=false;
- c.feedback(0,0,true,true);
- uint32_t now=0;float az=0,el=0;Button button;
- std::string line;
- while(std::getline(std::cin,line)){
-  std::string reply;Response response;std::string kind;
-  auto split=line.find(' ');kind=line.substr(0,split);auto args=split==std::string::npos?"":line.substr(split+1);
-  if(kind=="step"){
-   unsigned ms=std::stoul(args);
-   // Integrate the speed ramp at 20 ms even for accelerated simulation time.
-   while(ms){
-   unsigned slice=(c.variableSpeed(0)||c.variableSpeed(1))?std::min(ms,20u):ms;
-   float seconds=slice/1000.f;
-   const float azSpeed=c.variableSpeed(0)?c.axes[0].speedOutputPercent/100.f:1.f;
-   az=std::max(0.f,std::min(c.maximum,az+c.axes[0].direction*6.f*seconds*azSpeed));
-   const float elSpeed=c.variableSpeed(1)?c.axes[1].speedOutputPercent/100.f:1.f;
-   el=std::max(0.f,std::min(180.f,el+c.axes[1].direction*6.f*seconds*elSpeed));
-   if(c.axes[0].tracking){if(c.axes[0].direction>0)az=std::min(az,c.axes[0].target);else if(c.axes[0].direction<0)az=std::max(az,c.axes[0].target);}
-   if(c.axes[1].tracking){if(c.axes[1].direction>0)el=std::min(el,c.axes[1].target);else if(c.axes[1].direction<0)el=std::max(el,c.axes[1].target);}
-   c.feedback(az,el,true,true);now+=slice;c.tick(now);ms-=slice;
-   }
-  }else if(kind=="udp"||kind=="line"){
-   auto packet=decodeForm(args)["packet"];
-   auto result=kind=="udp"?p.datagram(packet,now):p.line(packet,now,true);
-   response.status=result.result==Result::Invalid?400:200;
-   reply=result.reply;response.body=std::string("{\"result\":")+jsonQuote(Controller::resultName(result.result))+",\"matched\":"+(result.matched?"true":"false")+"}";
-  }else if(kind=="button"){
-   if(button.sample(args=="released",now))c.execute(now);
-  }else if(kind=="http"){
-   auto pos=args.find(' ');std::string path=args.substr(0,pos);auto form=decodeForm(pos==std::string::npos?"":args.substr(pos+1));
-   auto old=c.model;auto oldIndex=old==Model::G5500?0:1;profiles[oldIndex]=c.presets;
-   if(path=="/api/azmode"){
-    float v;if(number(form["m"],v)&&(v==36||v==45))c.setMaximum(v==36?360:450);else response.status=400;
-   }else if(path=="/api/calmode"||path=="/api/cal"||path=="/api/cal2")response.body="{\"ok\":true}";
-   else response=api(c,p,cfg,path,form,now);
-   if(old!=c.model){c.presets=profiles[c.model==Model::G5500?0:1];c.feedback(az,el,true,true);}
+class SimHudTransport : public HudTransport {
+public:
+  DatagramSocket socket;
+  bool sendHud(const HudEndpoint &e, const uint8_t *p, size_t n) override {
+    return !e.uart && socket.send(e.address, e.port, {reinterpret_cast<const char *>(p), n});
   }
-  c.tick(now);
-  auto state=stateJson(c,p,cfg,now);state.pop_back();
-  std::ostringstream extra;extra<<",\"az\":"<<az<<",\"el\":"<<(c.model==Model::G800DXA?0:el)<<",\"targetAz\":"<<c.axes[0].target<<",\"targetEl\":"<<c.axes[1].target<<",\"targetValid\":"<<(c.targetKnown?"true":"false")<<",\"azMode\":"<<(c.maximum==360?36:45)
-   <<",\"directionAz\":"<<c.axes[0].direction<<",\"directionEl\":"<<c.axes[1].direction<<",\"wantedAz\":"<<c.axes[0].wanted
-   <<",\"calibrated\":true,\"selectedCalOk\":true,\"calMode\":\"2\",\"ip\":\"SIMULATOR\",\"wifiMode\":\"Виртуальное оборудование\",\"ssid\":\"\",\"rssi\":null,\"btConnected\":false,\"motion\":"<<jsonQuote(c.moving()?"MOVING":"STOP")<<",\"uptimeSeconds\":"<<now/1000;
-  for(auto key:{"az2p0","az2pf","el2p0","el2pf","azp0","azp90","azp180","azp270","azp360","azp450","elp0","elp45","elp90","elp135","elp180"})extra<<",\""<<key<<"\":0";
-  state+=extra.str()+"}";
-  std::cout<<"{\"status\":"<<response.status<<",\"body\":"<<jsonQuote(response.body)<<",\"reply\":"<<jsonQuote(reply)<<",\"state\":"<<state<<"}"<<std::endl;
- }
+  void receive(Hud &hud, uint32_t now) {
+    uint8_t data[HUD_FRAME_MAX];
+    for (unsigned i = 0; i < 16; ++i) {
+      uint32_t address;
+      uint16_t port;
+      int n = socket.receiveInto(data, sizeof data, address, port);
+      if (n == -1)
+        break;
+      if (n > 0)
+        hud.receive({address, port, false}, data, size_t(n), now);
+    }
+  }
+};
+int main(){
+  Controller c;
+  Protocol p(c);
+  Settings cfg;
+  Hud hud(c, p);
+  SimHudTransport link;
+  hud.setTransport(&link);
+  std::array<std::array<Preset, 4>, 2> profiles{{c.presets, c.presets}};
+  for (auto &preset : profiles[1])
+    preset.target.hasEl = false;
+  c.feedback(0, 0, true, true);
+  hud.begin(1, uint64_t(std::chrono::steady_clock::now().time_since_epoch().count()));
+  uint32_t now = 0;
+  float az = 0, el = 0;
+  Button button;
+  HudKnob knob(hud,c);
+  std::string line;
+  while (std::getline(std::cin, line)) {
+    std::string reply;
+    Response response;
+    std::string kind;
+    auto split = line.find(' ');
+    kind = line.substr(0, split);
+    auto args = split == std::string::npos ? "" : line.substr(split + 1);
+    if (kind == "live_state") {
+      char data[LIVE_STATE_CAPACITY]; JsonWriter writer(data,sizeof data);
+      writeLiveState(writer,c,hud,now); char boot[17];liveBootText(boot,hud.boot);
+      response.body="{\"boot\":"+jsonQuote(boot)+",\"control\":"+std::to_string(liveControlFingerprint(c,hud))+",\"state\":"+std::string(writer.data(),writer.size())+"}";
+    } else if (kind == "live") {
+      LiveRequest request;
+      response=request.parse(args)?executeLive(request,c,p,cfg,hud,now):Response{400,"{\"ok\":false,\"result\":\"invalid\"}"};
+    } else if (kind == "hud_init") {
+      auto form = decodeForm(args);
+      hud.config.role = form["role"] == "hud" ? DeviceRole::Hud : DeviceRole::Controller;
+      hud.config.port = uint16_t(std::stoul(form["port"]));
+      hud.begin(std::stoull(form["id"], nullptr, 16),
+                uint64_t(std::chrono::steady_clock::now().time_since_epoch().count()));
+      if (!link.socket.begin(hud.config.port))
+        response = {503, "{\"ok\":false}"};
+    } else if (kind == "step") {
+      unsigned ms = std::stoul(args);
+      if (hud.isHud()) {
+        now += ms;
+        ms = 0;
+        hud.service(now);
+        link.receive(hud, now);
+        az = c.axes[0].current;
+        el = c.axes[1].current;
+      }
+
+      // Integrate the speed ramp at 20 ms even for accelerated simulation time.
+      while (ms) {
+        unsigned slice = (c.variableSpeed(0) || c.variableSpeed(1)) ? std::min(ms, 20u) : ms;
+        float seconds = slice / 1000.f;
+        const float azSpeed = c.variableSpeed(0) ? c.axes[0].speedOutputPercent / 100.f : 1.f;
+        az = std::max(0.f, std::min(c.maximum, az + c.axes[0].direction * 6.f * seconds * azSpeed));
+        const float elSpeed = c.variableSpeed(1) ? c.axes[1].speedOutputPercent / 100.f : 1.f;
+        el = std::max(0.f, std::min(180.f, el + c.axes[1].direction * 6.f * seconds * elSpeed));
+        if (c.axes[0].tracking) {
+          if (c.axes[0].direction > 0)
+            az = std::min(az, c.axes[0].target);
+          else if (c.axes[0].direction < 0)
+            az = std::max(az, c.axes[0].target);
+        }
+        if (c.axes[1].tracking) {
+          if (c.axes[1].direction > 0)
+            el = std::min(el, c.axes[1].target);
+          else if (c.axes[1].direction < 0)
+            el = std::max(el, c.axes[1].target);
+        }
+        c.feedback(az, el, true, true);
+        now += slice;
+        c.tick(now);
+        ms -= slice;
+      }
+    } else if (kind == "udp" || kind == "line") {
+      auto packet = decodeForm(args)["packet"];
+      auto result = kind == "udp" ? p.datagram(packet, now) : p.line(packet, now, true);
+      response.status = result.result == Result::Deferred  ? 202
+                        : result.result == Result::Invalid ? 400
+                                                           : 200;
+      reply = result.reply;
+      response.body = std::string("{\"result\":") + jsonQuote(Controller::resultName(result.result)) +
+                      ",\"matched\":" + (result.matched ? "true" : "false") +
+                      ",\"requestId\":" + std::to_string(hud.requestId()) + "}";
+    } else if (kind == "encoder") {
+      knob.sample(true,false,std::stoi(args),now,false);
+      response.body=std::string("{\"result\":")+jsonQuote(Controller::resultName(knob.lastResult))+
+                    ",\"target\":"+std::to_string(hud.intendedTarget(0,c.axes[0].current))+
+                    ",\"requestId\":"+std::to_string(hud.requestId())+"}";
+    } else if (kind == "button") {
+      if (button.sample(args == "released", now))
+        c.execute(now);
+    } else if (kind == "http") {
+      auto pos = args.find(' ');
+      std::string path = args.substr(0, pos);
+      auto form = decodeForm(pos == std::string::npos ? "" : args.substr(pos + 1));
+      auto old = c.model;
+      auto oldIndex = old == Model::G5500 ? 0 : 1;
+      profiles[oldIndex] = c.presets;
+      if (path == "/api/hud/peers" && !form.count("id")) {
+        char data[4096];
+        JsonWriter j(data, sizeof data);
+        hud.writePeers(j, form.count("offset") ? std::stoul(form["offset"]) : 0, 8,
+                       form["discovered"] == "1");
+        response.body = j.data();
+      } else if (path == "/api/hud/discover") {
+        in_addr address{};
+        const auto ip = form["address"].empty() ? "255.255.255.255" : form["address"].c_str();
+        if (inet_pton(AF_INET, ip, &address) != 1)
+          response.status = 400;
+        else
+          hud.discover({address.s_addr,
+                        uint16_t(form["port"].empty() ? hud.config.port : std::stoul(form["port"])), false});
+        response.body = "{\"ok\":true,\"result\":\"searching\"}";
+      } else if (path == "/api/hud/peers") {
+        const uint64_t id = std::stoull(form["id"], nullptr, 16);
+        auto *peer = hud.peer(id);
+        if (!peer)
+          response.status = 404;
+        else if (form["action"] == "remove")
+          hud.remove(id);
+        else {
+          hud.add(id, peer->endpoint, form["name"].empty() ? peer->state.name : form["name"].c_str(), true);
+          if (!hud.config.selected)
+            hud.select(id);
+        }
+        response.body = response.status == 200 ? "{\"ok\":true,\"result\":\"ok\"}" : "{\"ok\":false}";
+      } else if (path == "/api/hud/select") {
+        const bool ok = hud.select(std::stoull(form["id"], nullptr, 16));
+        response = {ok ? 200 : 400, ok ? "{\"ok\":true,\"result\":\"ok\"}" : "{\"ok\":false}"};
+      } else if (path == "/api/hud/command") {
+        const auto r = hud.result(uint32_t(std::stoul(form["id"])));
+        response = {r.result == Result::Deferred ? 202 : 200,
+                    std::string("{\"requestId\":") + std::to_string(r.id) + ",\"ok\":" +
+                        ((r.result == Result::Ok || r.result == Result::Pending) ? "true" : "false") +
+                        ",\"result\":" + jsonQuote(Controller::resultName(r.result)) + "}"};
+      } else if (path == "/api/azmode") {
+        float v;
+        if (number(form["m"], v) && (v == 36 || v == 45))
+          c.setMaximum(v == 36 ? 360 : 450);
+        else
+          response.status = 400;
+      } else if (path == "/api/calmode" || path == "/api/cal" || path == "/api/cal2")
+        response.body = "{\"ok\":true}";
+      else
+        response = api(c, p, cfg, path, form, now);
+      if (old != c.model) {
+        c.presets = profiles[c.model == Model::G5500 ? 0 : 1];
+        c.feedback(az, el, true, true);
+      }
+    }
+    hud.service(now);
+    link.receive(hud, now);
+    c.tick(now);
+    if (hud.isHud()) {
+      az = c.axes[0].current;
+      el = c.axes[1].current;
+    }
+    auto state = stateJson(c, p, cfg, now);
+    state.pop_back();
+    std::ostringstream extra;
+    extra
+        << ",\"az\":" << az << ",\"el\":" << (c.model == Model::G800DXA ? 0 : el)
+        << ",\"targetAz\":" << c.axes[0].target << ",\"targetEl\":" << c.axes[1].target
+        << ",\"targetValid\":" << (c.targetKnown ? "true" : "false")
+        << ",\"azMode\":" << (c.maximum == 360 ? 36 : 45) << ",\"directionAz\":" << c.axes[0].direction
+        << ",\"directionEl\":" << c.axes[1].direction << ",\"wantedAz\":" << c.axes[0].wanted
+        << ",\"calibrated\":true,\"selectedCalOk\":true,\"calMode\":\"2\",\"ip\":\"SIMULATOR\",\"wifiMode\":"
+           "\"Виртуальное оборудование\",\"ssid\":\"\",\"rssi\":null,\"btConnected\":false,\"motion\":"
+        << jsonQuote(c.moving() ? "MOVING" : "STOP") << ",\"uptimeSeconds\":" << now / 1000;
+    for (auto key : {"az2p0", "az2pf", "el2p0", "el2pf", "azp0", "azp90", "azp180", "azp270", "azp360",
+                     "azp450", "elp0", "elp45", "elp90", "elp135", "elp180"})
+      extra << ",\"" << key << "\":0";
+    char hudJson[1536];
+    JsonWriter hj(hudJson, sizeof hudJson);
+    hud.writeStatus(hj);
+    state += extra.str() + std::string(hj.data(), hj.size()) + "}";
+    std::cout << "{\"status\":" << response.status << ",\"body\":" << jsonQuote(response.body)
+              << ",\"reply\":" << jsonQuote(reply) << ",\"state\":" << state << "}" << std::endl;
+  }
 }

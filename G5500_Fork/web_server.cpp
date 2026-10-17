@@ -341,7 +341,9 @@ void WebInterface::setupWeb() {
     char btMac[18];
     network_.bluetoothMac(btMac);
     JsonWriter j(statusBuffer_, sizeof statusBuffer_);
-    j << "{\"az\":" << runtime_.currentAz << ",\"el\":" << runtime_.currentEl
+    j << "{\"livePort\":" << (live_.started() ? 81 : 0);
+    live_.writeDiagnostics(j);
+    j << ",\"az\":" << runtime_.currentAz << ",\"el\":" << runtime_.currentEl
       << ",\"targetAz\":" << runtime_.targetAz << ",\"targetEl\":" << runtime_.targetEl
       << ",\"targetValid\":" << (runtime_.targetValid ? "true" : "false") << ",\"targetAgeMs\":" << targetAge
       << ",\"calibrated\":" << (calibrationState.cal.valid ? "true" : "false") << ",\"selectedCalOk\":"
@@ -398,6 +400,7 @@ void WebInterface::setupWeb() {
   setupForkWeb();
   setupHudWeb();
   web_.begin();
+  if (!live_.begin()) diagnostics_.dbgPrintln("[LIVE] WebSocket unavailable; HTTP fallback");
 }
 
 void WebInterface::setupForkWeb() {

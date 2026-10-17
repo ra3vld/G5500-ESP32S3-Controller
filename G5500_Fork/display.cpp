@@ -121,35 +121,35 @@ void Display::drawDashboardStatic() {
 void Display::updateDashboard() {
   if (runtime_.hud.isHud()) {
     const uint32_t now = millis();
-    if (!tftNeedsRedraw && uint32_t(now - lastDisplayMs) < 250)
-      return;
+    if (!tftNeedsRedraw && uint32_t(now - lastDisplayMs) < 20) return;
     lastDisplayMs = now;
-    tftNeedsRedraw = false;
-    tft.fillScreen(TFT_BG);
+    if (tftNeedsRedraw) {
+      tft.fillScreen(TFT_BG);
+      for (auto &field : hudFields_) field = "\1";
+      tftText(12,45,2,TFT_MUTED,TFT_BG,"AZ");tftText(170,45,2,TFT_MUTED,TFT_BG,"EL");
+      tftButton(110,170,100,36,"STOP");tftButton(216,170,100,36,"EXEC");
+      tftText(12,218,1,TFT_MUTED,TFT_BG,"Tap title to select / hold bottom to calibrate touch");
+      tftNeedsRedraw = false;
+    }
     const auto &c = runtime_.controller;
     const auto *p = runtime_.hud.active();
-    tftText(10, 9, 2, TFT_TEXT, TFT_BG, p ? String(p->label).substring(0, 24) : "HUD: select rotator");
-    tftText(12, 45, 2, TFT_MUTED, TFT_BG, "AZ");
-    tftText(170, 45, 2, TFT_MUTED, TFT_BG, "EL");
     const bool online = runtime_.hud.available();
-    tftText(12, 70, 4, TFT_AZ, TFT_BG, online ? String(c.axes[0].current, 0) : "---");
-    tftText(170, 70, 4, TFT_EL, TFT_BG,
-            online && c.model == Model::G5500 ? String(c.axes[1].current, 0) : "---");
-    tftText(12, 115, 2, TFT_TEXT, TFT_BG,
-            online ? (String(c.pendingValid ? "WAIT " : "TARGET ") +
-                      String(c.pendingValid ? c.pending.az : c.axes[0].target, 0))
-                   : "HUD OFFLINE");
-    tftText(12, 143, 1, TFT_MUTED, TFT_BG,
-            online ? (c.moving() ? "MOVING" : "STOPPED") : "No current position");
-    tftButton(4, 170, 100, 36, c.mode == Mode::Manual ? "MANUAL" : "AUTO");
-    tftButton(110, 170, 100, 36, "STOP");
-    tftButton(216, 170, 100, 36, "EXEC");
-    tftText(12, 218, 1, TFT_MUTED, TFT_BG, "Tap title to select / hold bottom to calibrate touch");
+    const auto field = [&](unsigned i,int x,int y,int w,int h,int size,uint16_t color,const String &text) {
+      if (hudFields_[i] == text) return;
+      hudFields_[i] = text;tft.fillRect(x,y,w,h,TFT_BG);tftText(x,y,size,color,TFT_BG,text);
+    };
+    field(0,10,9,300,22,2,TFT_TEXT,p ? String(p->label).substring(0,24) : "HUD: select rotator");
+    field(1,12,70,150,36,4,TFT_AZ,online ? String(c.axes[0].current,0) : "---");
+    field(2,170,70,145,36,4,TFT_EL,online && c.model==Model::G5500 ? String(c.axes[1].current,0) : "---");
+    field(3,12,115,300,22,2,TFT_TEXT,online ? String(c.pendingValid ? "WAIT " : "TARGET ")+String(c.pendingValid?c.pending.az:c.axes[0].target,0) : "HUD OFFLINE");
+    field(4,12,143,300,16,1,TFT_MUTED,online ? (c.moving()?"MOVING":"STOPPED") : "No current position");
+    const String mode=c.mode==Mode::Manual?"MANUAL":"AUTO";
+    if(hudFields_[5]!=mode){hudFields_[5]=mode;tftButton(4,170,100,36,mode);}
     return;
   }
   auto &calibrationState = calibration_.state();
   if (runtime_.controller.model == forkrot::Model::G800DXA) {
-    if (millis() - lastDisplayMs < 500 && !tftNeedsRedraw) {
+    if (millis() - lastDisplayMs < 20 && !tftNeedsRedraw) {
       return;
     }
     lastDisplayMs = millis();
@@ -157,32 +157,32 @@ void Display::updateDashboard() {
       tft.fillScreen(TFT_BG);
       tft.fillRoundRect(3, 3, 314, 29, 5, TFT_BLUE);
       tftText(10, 9, 2, TFT_TEXT, TFT_BLUE, "G-800DXA / UA1CFM");
+      for(auto &field:hudFields_)field="\1";
       tftButton(3, 180, 118, 26, "CAL");
       tftButton(202, 210, 115, 26, "TOUCH");
       tftNeedsRedraw = false;
     }
-    tft.fillRect(3, 36, 314, 138, TFT_BG);
-    tftText(12, 40, 2, TFT_MUTED, TFT_BG, "AZIMUTH");
-    tftText(12, 62, 5, TFT_AZ, TFT_BG, String(runtime_.currentAz, 1));
-    tftText(12, 110, 2, TFT_TEXT, TFT_BG, String("TARGET ") + String(runtime_.targetAz, 1));
-    tftText(12, 136, 2, TFT_MUTED, TFT_BG,
-            String(runtime_.controller.pendingValid ? "WAIT " : "MODE ") +
-                (runtime_.controller.pendingValid
-                     ? String(runtime_.controller.pending.az, 1)
-                     : String(forkrot::Controller::modeName(runtime_.controller.mode))));
-    tftText(12, 160, 1, TFT_TEXT, TFT_BG,
-            String(calibrationState.gsAzMode == 36 ? "P36 " : "P45 ") + hardware_.motion() + " " +
-                tftCalibrationText());
-    tft.fillRect(12, 150, 296, 5, TFT_PANEL);
-    tft.fillRect(12, 150, int(runtime_.controller.axes[0].speedOutputPercent*2.96f), 5, TFT_AZ);
-    tftText(220, 136, 1, TFT_AZ, TFT_BG, String(runtime_.controller.axes[0].speedOutputPercent, 0) + "%");
-    tft.fillRect(126, 180, 191, 27, TFT_BG);
-    tftText(130, 187, 1, TFT_TEXT, TFT_BG,
-            WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString());
+    const auto field = [&](unsigned i,int x,int y,int w,int h,int size,uint16_t color,const String &text) {
+      if(hudFields_[i]==text)return;
+      hudFields_[i]=text;tft.fillRect(x,y,w,h,TFT_BG);tftText(x,y,size,color,TFT_BG,text);
+    };
+    field(0,12,40,250,18,2,TFT_MUTED,"AZIMUTH");
+    field(1,12,62,290,42,5,TFT_AZ,String(runtime_.currentAz,1));
+    field(2,12,110,290,22,2,TFT_TEXT,String("TARGET ")+String(runtime_.targetAz,1));
+    field(3,12,136,205,14,1,TFT_MUTED,String(runtime_.controller.pendingValid?"WAIT ":"MODE ")+
+          (runtime_.controller.pendingValid?String(runtime_.controller.pending.az,1):String(Controller::modeName(runtime_.controller.mode))));
+    field(4,12,160,300,14,1,TFT_TEXT,String(calibrationState.gsAzMode==36?"P36 ":"P45 ")+hardware_.motion()+" "+tftCalibrationText());
+    const String speed=String(runtime_.controller.axes[0].speedOutputPercent,0)+"%";
+    if(hudFields_[5]!=speed){
+      tft.fillRect(12,150,296,5,TFT_PANEL);
+      tft.fillRect(12,150,int(runtime_.controller.axes[0].speedOutputPercent*2.96f),5,TFT_AZ);
+      field(5,220,136,80,14,1,TFT_AZ,speed);
+    }
+    field(6,130,187,185,18,1,TFT_TEXT,WiFi.status()==WL_CONNECTED?WiFi.localIP().toString():WiFi.softAPIP().toString());
     return;
   }
-  // 4 Hz is enough for a rotator display and avoids wasting SPI bandwidth.
-  if (millis() - lastDisplayMs < 500 && !tftNeedsRedraw) {
+  // Cached fields bound SPI writes; service live state every 20 ms.
+  if (millis() - lastDisplayMs < 20 && !tftNeedsRedraw) {
     return;
   }
   lastDisplayMs = millis();
@@ -1062,7 +1062,8 @@ void Display::initLocalDisplay() {
 }
 void Display::updateLocalDisplay() {
   const uint32_t now = millis();
-  if (!redraw_ && uint32_t(now-updatedAt_) < 250) return;
+  if (!redraw_ && uint32_t(now-updatedAt_) < 20) return;
+  const bool force = redraw_;
   redraw_ = false; updatedAt_ = now;
   for (unsigned i=0; i<2; ++i) {
     char text[40];
@@ -1081,12 +1082,13 @@ void Display::updateLocalDisplay() {
       if (waiting || c.targetKnown) std::snprintf(target, sizeof target, "%3d", int(lroundf(waiting ? (i ? c.pending.el : c.pending.az) : axis.target)));
       std::snprintf(text, sizeof text, "%c%3d>%3s %3d%%%c%c", i ? 'E' : 'A', int(lroundf(axis.current)), target, int(lroundf(axis.speedOutputPercent)), mode, axis.direction > 0 ? '+' : axis.direction < 0 ? '-' : '=');
     }
-    lcd_.setCursor(0, i);
     for (unsigned col=0; col<16; ++col) {
+      uint8_t value;
       if (col==15 && !(i && runtime_.controller.model == Model::G800DXA)) {
         const uint8_t width=uint8_t(lroundf(axis.speedOutputPercent*5.f/100.f));
-        lcd_.write(width ? width : uint8_t(' '));
-      } else lcd_.write(col < std::strlen(text) ? text[col] : ' ');
+        value = width ? width : uint8_t(' ');
+      } else value = col < std::strlen(text) ? text[col] : ' ';
+      if(force || value!=lcdPrevious_[i][col]){lcd_.setCursor(col,i);lcd_.write(value);lcdPrevious_[i][col]=value;}
     }
   }
 }

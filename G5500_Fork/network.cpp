@@ -441,6 +441,7 @@ void Network::handleRotctldTcp() {
         rotctldClient_.stop();
       }
       rotctldClient_ = c;
+      rotctldClient_.setNoDelay(true);
       ++tcpSession_;
       tcpReceiver_.clear();
 #if FORK_NATIVE_USB
@@ -665,11 +666,7 @@ void Network::beginHud() {
 }
 bool Network::sendHud(const HudEndpoint &e, const uint8_t *bytes, size_t size) {
   if (e.uart) {
-    if (!runtime_.hud.config.uart || !hudUart_ || hudUart_->sent < hudUart_->size)
-      return false;
-    hudUart_->size = hudUartEncode(bytes, size, hudUart_->tx, sizeof hudUart_->tx);
-    hudUart_->sent = 0;
-    return hudUart_->size != 0;
+    return runtime_.hud.config.uart && hudUart_ && hudUart_->tx.enqueue(bytes, size);
   }
   return hudUdp_.send(e.address, e.port, {reinterpret_cast<const char *>(bytes), size});
 }
@@ -725,12 +722,9 @@ void Network::serviceHud() {
       if (n)
         hud.receive({0, hud.config.port, true}, hudRx_, n, millis());
     }
-    if (hudUart_->sent < hudUart_->size) {
-      const int available = Serial0.availableForWrite();
-      if (available > 0)
-        hudUart_->sent += Serial0.write(hudUart_->tx + hudUart_->sent,
-                                        std::min(size_t(available), hudUart_->size - hudUart_->sent));
-    }
+    const int available = Serial0.availableForWrite();
+    hudUart_->tx.drain(available > 0 ? size_t(available) : 0,
+                      [](const uint8_t *data, size_t n) { return Serial0.write(data, n); });
   }
   hud.service(millis());
   for (auto &reply : deferred_)

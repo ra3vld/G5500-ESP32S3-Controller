@@ -28,6 +28,19 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  assert.equal(await page.locator('#settingsPanel').isVisible(),false);
  assert.equal(await page.locator('#currentStatus').isVisible(),true);
  assert.equal(await page.locator('#presetEditor').isVisible(),false);
+ await page.getByRole('tab',{name:'Настройки',exact:true}).click();
+ // Device configuration sits immediately before Wi-Fi and remains usable when expanded.
+ assert.equal(await page.locator('#hudPanel').evaluate(e=>e.nextElementSibling.id),'networkSettings');
+ await page.locator('#hudConfig').evaluate(e=>e.closest('details').open=true);
+ for(const width of [1100,390,320]) {
+  await page.setViewportSize({width,height:850});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`device settings overflow at ${width}`);
+  assert.equal(await page.locator('#hudConfig').evaluate(form=>[...form.querySelectorAll('input,select,button')].every(e=>e.getBoundingClientRect().width>=44)),true);
+  await page.locator('#hudPanel').screenshot({path:path.join(root,`artifacts/screenshots/controller-settings-${width}.png`)});
+ }
+ await page.locator('#hudConfig').evaluate(e=>e.closest('details').open=false);
+ await page.setViewportSize({width:1100,height:850});
+ await page.getByRole('tab',{name:'Управление',exact:true}).click();
  assert.equal(await page.locator('#presetButtons button').count(),4);
  assert.equal(await page.locator('#executeTarget').isDisabled(),true);
  assert.equal(await page.locator('#movementButtons #executeTarget').count(),1);
@@ -137,7 +150,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  await page.screenshot({path:path.join(root,'artifacts/screenshots/web_mobile_g5500.png'),fullPage:true});
  // Exercise build capabilities and independent EL settings in the shared page.
  await page.route('**/api/status',async route=>{
-  const j=await state();j.build={...j.build,board:'LOLIN S2 Mini',drive:'BTS7960',display:'LCD1602',bluetooth:false};
+  const j=await state();j.livePort=0;j.build={...j.build,board:'LOLIN S2 Mini',drive:'BTS7960',display:'LCD1602',bluetooth:false};
   j.elSpeedOutputPercent=31;
   await route.fulfill({contentType:'application/json',body:JSON.stringify(j)});
  });
@@ -159,7 +172,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  await page.unroute('**/api/status');
  let btLink=false,btSpp=false;
  await page.route('**/api/status',async route=>{
-  const j=await state();j.build={...j.build,board:'ESP32 WROOM/WROVER DevKit',bluetooth:true,bluetoothBackend:'ESP32_SPP'};
+  const j=await state();j.livePort=0;j.build={...j.build,board:'ESP32 WROOM/WROVER DevKit',bluetooth:true,bluetoothBackend:'ESP32_SPP'};
   j.btConnected=btSpp;j.btLinkConnected=btLink;j.btMac='02:0A:B0:C1:00:FF';
   await route.fulfill({contentType:'application/json',body:JSON.stringify(j)});
  });
