@@ -8,11 +8,98 @@
 #include <cmath>
 namespace forkrot {
 using namespace board;
+bool Storage::writeHardware(const HardwareRecord &record) {
+  const auto bytes = encodeHardware(record);
+  if (!prefs_.begin("hardware", false)) { prefs_.end(); return false; }
+  prefs_.putBytes("config1", bytes.data(), bytes.size());
+  HardwareBytes verified{};
+  const bool ok = prefs_.getBytesLength("config1") == verified.size() &&
+      prefs_.getBytes("config1", verified.data(), verified.size()) == verified.size() && verified == bytes;
+  prefs_.end(); return ok;
+}
+void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
+  runtime.hardwareHudUart = runtime.hud.config.uart;
+  HardwareRecord record;
+  bool readable = prefs_.begin("hardware", false);
+  bool valid = true;
+  const bool fresh = readable && !prefs_.isKey("config1");
+  if (readable && !fresh) {
+    HardwareBytes bytes{};
+    valid = prefs_.getBytesLength("config1") == bytes.size() &&
+        prefs_.getBytes("config1", bytes.data(), bytes.size()) == bytes.size() && decodeHardware(bytes, record);
+  }
+  prefs_.end();
+  if (!readable || !valid || validateHardware(record.good, runtime.hud.config.uart) ||
+      validateHardware(record.candidate, runtime.hud.config.uart)) {
+    record = {};
+    record.phase = ConfigPhase::Recovery;
+    record.reason = !readable ? RecoveryReason::Storage : RecoveryReason::Invalid;
+  } else if (fresh) {
+    record.phase = ConfigPhase::Recovery; record.reason = RecoveryReason::Initial;
+  } else if (forceRecovery || record.phase == ConfigPhase::Testing || record.phase == ConfigPhase::Starting) {
+    if (record.phase != ConfigPhase::Recovery) record.reason = RecoveryReason::Unconfirmed;
+    record.phase = ConfigPhase::Recovery;
+  } else if (record.phase == ConfigPhase::Pending) {
+    record.phase = ConfigPhase::Testing;
+  } else if (record.phase == ConfigPhase::Confirmed) {
+    record.phase = record.hasConfirmed ? ConfigPhase::Starting : ConfigPhase::Recovery;
+    if (!record.hasConfirmed) record.reason = RecoveryReason::Initial;
+  }
+  if (!writeHardware(record)) { record.phase = ConfigPhase::Recovery; record.reason = RecoveryReason::Storage; }
+  runtime.hardwareRecord = record;
+  runtime.recovery = record.phase == ConfigPhase::Recovery;
+  runtime.recoveryReason = record.reason;
+  runtime.hardwareTrial = record.phase == ConfigPhase::Testing;
+  HardwareConfig effective = runtime.hardwareTrial ? record.candidate : record.good;
+  if (runtime.recovery) { effective.bluetooth = false; effective.forceAp = false; }
+  runtime.controller.configureHardware(effective);
+  runtime.controller.configurationLocked = runtime.recovery || runtime.hardwareTrial;
+}
+bool Storage::stageHardware(Runtime &runtime, const HardwareConfig &config) {
+  if (validateHardware(config, runtime.hardwareHudUart)) return false;
+  auto next = runtime.hardwareRecord;
+  next.candidate = config; next.phase = ConfigPhase::Pending; next.reason = RecoveryReason::None;
+  if (!++next.generation) ++next.generation;
+  if (!writeHardware(next)) return false;
+  runtime.hardwareRecord = next; return true;
+}
+bool Storage::confirmHardware(Runtime &runtime) {
+  if (!runtime.hardwareTrial || runtime.hardwareRecord.phase != ConfigPhase::Testing) return false;
+  auto next = runtime.hardwareRecord;
+  next.good = next.candidate; next.hasConfirmed = true;
+  next.phase = ConfigPhase::Confirmed; next.reason = RecoveryReason::None;
+  if (!writeHardware(next)) return false;
+  runtime.hardwareRecord = next; runtime.hardwareTrial = false;
+  // Stay stopped until the subsequent reboot clears all transport queues.
+  return true;
+}
+bool Storage::enterRecovery(Runtime &runtime, RecoveryReason reason) {
+  auto next = runtime.hardwareRecord;
+  next.phase = ConfigPhase::Recovery; next.reason = reason;
+  // Keep last confirmed settings and the failed candidate for inspection/editing.
+  runtime.recoveryReason = reason;
+  if (!writeHardware(next)) return false;
+  runtime.hardwareRecord = next; return true;
+}
+bool Storage::finishHardwareBoot(Runtime &runtime) {
+  if (runtime.hardwareRecord.phase != ConfigPhase::Starting) return true;
+  auto next = runtime.hardwareRecord; next.phase = ConfigPhase::Confirmed;
+  if (!writeHardware(next)) return false;
+  runtime.hardwareRecord = next; return true;
+}
+bool Storage::probeHardwareStorage(Runtime &runtime) {
+  // Verify the same persistent record using a separate transaction, without
+  // modifying motor/network settings or accepting a trial on elapsed time alone.
+  auto next = runtime.hardwareRecord;
+  ++next.probeCounter;
+  if (!writeHardware(next)) return false;
+  runtime.hardwareRecord = next; return true;
+}
 const char *Storage::calNamespace(const Runtime &runtime) {
   return runtime.controller.model == forkrot::Model::G800DXA ? "g800cal" : "g5500";
 }
 
-void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredentials &credentials) {
+void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredentials &credentials, bool wifiOnly) {
   auto &calibrationState = calibration.state();
   wifiCredentialsReadOk_ = prefs_.begin("g5500", true);
   credentials.wifiSsid = wifiCredentialsReadOk_ ? prefs_.getString("ssid", "") : String("");
@@ -21,7 +108,7 @@ void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredenti
 
   // v1.6.23 format 4: independent P36/P45 + explicit two-point endpoint flags.
   prefs_.end();
-  if (runtime.hud.isHud())
+  if (wifiOnly || runtime.hud.isHud())
     return;
   prefs_.begin(calNamespace(runtime), true);
   const size_t recordSize = prefs_.getBytesLength("azgeom1");
@@ -346,14 +433,14 @@ void Storage::loadForkSettings(Runtime &runtime) {
       prefs_.getUChar("model", 0) == 1 ? forkrot::Model::G800DXA : forkrot::Model::G5500;
   runtime.controller.restoreMode(prefs_.getUChar("mode", 0) == 1 ? forkrot::Mode::Auto
                                                                  : forkrot::Mode::Manual);
-#if DRIVE_INTERFACE == DRIVE_YAESU
+  if (runtime.controller.hardware.drive == DRIVE_YAESU) {
   runtime.controller.speedEnabled = prefs_.getBool("speedon", false);
   runtime.controller.speedPercent =
-      constrain(prefs_.getUInt("speed", 50), DRIVE_SIMULATION ? 1u : 25u, 100u);
+      constrain(prefs_.getUInt("speed", 50), runtime.controller.hardware.simulation ? 1u : 25u, 100u);
   runtime.controller.startSpeedPercent =
-      constrain(prefs_.getUInt("startspd", 25), DRIVE_SIMULATION ? 1u : 25u, 100u);
+      constrain(prefs_.getUInt("startspd", 25), runtime.controller.hardware.simulation ? 1u : 25u, 100u);
   runtime.controller.approachSpeedPercent =
-      constrain(prefs_.getUInt("approachspd", 25), DRIVE_SIMULATION ? 1u : 25u, 100u);
+      constrain(prefs_.getUInt("approachspd", 25), runtime.controller.hardware.simulation ? 1u : 25u, 100u);
   runtime.controller.accelerationMs = constrain(prefs_.getUInt("accelms", 2000), 100u, 10000u);
   runtime.controller.decelerationMs = constrain(prefs_.getUInt("decelms", 1500), 100u, 10000u);
   runtime.controller.slowdownDegrees = constrain(prefs_.getUInt("slowdeg", 10), 1u, 90u);
@@ -365,7 +452,7 @@ void Storage::loadForkSettings(Runtime &runtime) {
     if (std::isfinite(coast) && coast >= 0 && coast <= 90) speed.coastDegrees = coast;
     if (std::isfinite(factor) && factor >= 0.1f && factor <= 10) speed.decelerationFactor = factor;
   }
-#endif
+  }
   const String savedName = prefs_.getString("name", "G5500");
   runtime.protocol.rotorName = (runtime.hud.isHud() ? prefs_.getString("hudname", savedName) : savedName).c_str();
   runtime.loggerSettings.n1mmPort = prefs_.getUShort("nport", 12040);
@@ -380,7 +467,7 @@ void Storage::loadForkSettings(Runtime &runtime) {
   runtime.loggerSettings.encoderInverted = prefs_.getBool("encinv", true);
 #endif
   prefs_.end();
-#if DRIVE_INTERFACE != DRIVE_YAESU || DRIVE_SIMULATION
+  if (runtime.controller.hardware.drive != DRIVE_YAESU || runtime.controller.hardware.simulation) {
   prefs_.begin("forkpwm", true);
   for (unsigned i=0; i<2; ++i) {
     auto &speed = runtime.controller.speeds[i];
@@ -403,7 +490,7 @@ void Storage::loadForkSettings(Runtime &runtime) {
     if (std::isfinite(factor) && factor >= 0.1f && factor <= 10) speed.decelerationFactor = factor;
   }
   prefs_.end();
-#endif
+  }
 }
 
 void Storage::saveForkSettings(const Runtime &runtime) {
@@ -411,7 +498,7 @@ void Storage::saveForkSettings(const Runtime &runtime) {
   if (!runtime.hud.isHud()) {
     prefs_.putUChar("model", runtime.controller.model == forkrot::Model::G800DXA ? 1 : 0);
     prefs_.putUChar("mode", runtime.controller.mode == forkrot::Mode::Auto ? 1 : 0);
-#if DRIVE_INTERFACE == DRIVE_YAESU
+  if (runtime.controller.hardware.drive == DRIVE_YAESU) {
   prefs_.putBool("speedon", runtime.controller.speedEnabled);
   prefs_.putUInt("speed", runtime.controller.speedPercent);
   prefs_.putUInt("startspd", runtime.controller.startSpeedPercent);
@@ -425,7 +512,7 @@ void Storage::saveForkSettings(const Runtime &runtime) {
     prefs_.putFloat((prefix + "coast").c_str(), speed.coastDegrees);
     prefs_.putFloat((prefix + "decelf").c_str(), speed.decelerationFactor);
   }
-#endif
+  }
   prefs_.putString("name", runtime.protocol.rotorName.c_str());
   } else
     prefs_.putString("hudname", runtime.protocol.rotorName.c_str());
@@ -441,7 +528,7 @@ void Storage::saveForkSettings(const Runtime &runtime) {
   prefs_.putBool("encinv", runtime.loggerSettings.encoderInverted);
 #endif
   prefs_.end();
-#if DRIVE_INTERFACE != DRIVE_YAESU || DRIVE_SIMULATION
+  if (runtime.controller.hardware.drive != DRIVE_YAESU || runtime.controller.hardware.simulation) {
   if (runtime.hud.isHud())
     return;
   prefs_.begin("forkpwm", false);
@@ -458,7 +545,7 @@ void Storage::saveForkSettings(const Runtime &runtime) {
     prefs_.putFloat((prefix + "decelf").c_str(), speed.decelerationFactor);
   }
   prefs_.end();
-#endif
+  }
 }
 
 const char *Storage::presetNamespace(const Runtime &runtime) {
@@ -680,7 +767,7 @@ bool Storage::saveHudPeers(const Hud &hud) {
   prefs_.end();
   return ok;
 }
-void Storage::loadHud(Runtime &runtime) {
+void Storage::loadHud(Runtime &runtime, bool peers) {
   auto &hud = runtime.hud;
   const bool opened = prefs_.begin("hudcfg", true);
   if (opened && prefs_.getBytesLength("config")) {
@@ -698,7 +785,7 @@ void Storage::loadHud(Runtime &runtime) {
       hud.config.selected = uint64_t(d.selectedLo) | (uint64_t(d.selectedHi) << 32);
     }
   }
-  const size_t size = opened && hud.isHud() ? prefs_.getBytesLength("peers") : 0;
+  const size_t size = peers && opened && hud.isHud() ? prefs_.getBytesLength("peers") : 0;
   if (size >= 8 && (size - 8) % sizeof(HudDiskPeer) == 0) {
     auto data =
         std::unique_ptr<uint8_t, decltype(&std::free)>(static_cast<uint8_t *>(std::malloc(size)), &std::free);

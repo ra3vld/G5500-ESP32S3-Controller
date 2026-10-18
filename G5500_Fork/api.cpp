@@ -90,11 +90,12 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
   json << ",\"lastTarget\":";
   writeTargetJson(json, controller.lastTarget);
   json << ",\"moving\":" << (controller.moving() ? "true" : "false")
+       << ",\"configurationLocked\":" << (controller.configurationLocked ? "true" : "false")
        << ",\"presetActive\":" << (controller.presetActive ? "true" : "false")
        << ",\"presetSlot\":" << controller.presetSlot << ",\"speedEnabled\":"
-       << (((controller.remote || DRIVE_SIMULATION)
+       << (((controller.remote || controller.hardware.simulation)
                 ? controller.variableSpeed(0)
-                : (DRIVE_INTERFACE != DRIVE_YAESU || controller.speedEnabled))
+                : (controller.hardware.drive != DRIVE_YAESU || controller.speedEnabled))
                ? "true"
                : "false")
        << ",\"speedPercent\":" << controller.speedPercent
@@ -133,17 +134,17 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
                      : DISPLAY_KIND == DISPLAY_ILI9341    ? "ILI9341"
                      : DISPLAY_KIND == DISPLAY_LCD1602    ? "LCD1602"
                                                           : "NONE")
-       << ",\"bluetooth\":" << (BLUETOOTH_ENABLED ? "true" : "false")
-       << ",\"bluetoothBackend\":" << jsonQuoted(board::BLUETOOTH_BACKEND_NAME) << ",\"drive\":"
+       << ",\"bluetooth\":" << (controller.hardware.bluetooth ? "true" : "false")
+       << ",\"bluetoothBackend\":" << jsonQuoted(controller.hardware.backendName()) << ",\"drive\":"
        << jsonQuoted(controller.remote                      ? "HUD"
-                     : DRIVE_SIMULATION                     ? "SIMULATED"
+                     : controller.hardware.simulation                     ? "SIMULATED"
                      : SELECTED_BOARD == BOARD_CROWPANEL_21 ? "NONE"
-                     : DRIVE_INTERFACE == DRIVE_YAESU       ? "YAESU"
-                     : DRIVE_INTERFACE == DRIVE_BTS7960     ? "BTS7960"
+                     : controller.hardware.drive == DRIVE_YAESU       ? "YAESU"
+                     : controller.hardware.drive == DRIVE_BTS7960     ? "BTS7960"
                                                             : "SEPARATE_PWM")
-       << ",\"userButtonGpio\":" << USER_BUTTON_GPIO
-       << ",\"userButtonActiveLow\":" << (USER_BUTTON_ACTIVE_LOW ? "true" : "false")
-       << ",\"userButtonPullup\":" << (USER_BUTTON_PULLUP ? "true" : "false")
+       << ",\"userButtonGpio\":" << int(controller.hardware.buttonGpio)
+       << ",\"userButtonActiveLow\":" << (controller.hardware.buttonLow ? "true" : "false")
+       << ",\"userButtonPullup\":" << (controller.hardware.buttonPullup ? "true" : "false")
        << ",\"pins\":{\"azAdc\":" << board::PIN_AZ_ADC << ",\"elAdc\":" << board::PIN_EL_ADC
        << ",\"azNegative\":" << board::PIN_LEFT << ",\"azPositive\":" << board::PIN_RIGHT
        << ",\"elNegative\":" << board::PIN_DOWN << ",\"elPositive\":" << board::PIN_UP
@@ -324,7 +325,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       if (has(form, "speedEnabled") && alias != enabled) valid = false;
       enabled = alias;
     }
-    if (DRIVE_INTERFACE != DRIVE_YAESU && !enabled) valid = false;
+    if (controller.hardware.drive != DRIVE_YAESU && !enabled) valid = false;
     if (has(form, "elSpeedEnabled")) valid = false; // PWM is part of the compiled interface.
 
     for (unsigned i=0; i<2; ++i) {
@@ -341,7 +342,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
         if (modern || old) field = modern ? prefixed : aliased;
       };
       const unsigned minimum =
-          !DRIVE_SIMULATION && DRIVE_INTERFACE == DRIVE_YAESU && i == 0 ? 25 : 1;
+          !controller.hardware.simulation && controller.hardware.drive == DRIVE_YAESU && i == 0 ? 25 : 1;
       value("speedPercent", speed.speedPercent, minimum, 100);
       value("startSpeedPercent", speed.startSpeedPercent, minimum, 100);
       value("approachSpeedPercent", speed.approachSpeedPercent, minimum, 100);

@@ -171,6 +171,57 @@ static void ring() {
   sample(true, 467, 240, TouchAction::None);
   sample(false, 0, 0, TouchAction::None);
 }
+static void fullscreenSwipe() {
+  using namespace crowpanel;
+  for (bool dualAxis : {false, true}) {
+    for (uint16_t startY : {230, 330}) { // Current angles and target row.
+      TouchLayout l;
+      l.dualAxis = dualAxis;
+      l.current = {100, 200, 280, 60};
+      l.target = {100, 320, 280, 36};
+      TouchGesture g;
+      auto e = g.sample(true, 240, startY, l);
+      assert(e.action == TouchAction::None && !e.release && !e.mask);
+      assert(e.manual == (startY == 230));
+      e = g.sample(true, 252, startY - 12, l);
+      assert(e.action == TouchAction::None && !e.mask); // Still a possible tap.
+      assert(e.manual == (startY == 230));
+      e = g.sample(true, 296, startY - 56, l);
+      assert(e.manual && !e.release && e.gesture && e.action == TouchAction::None);
+      assert(std::abs(e.az - .5f) < .001f);
+      assert(e.el == (dualAxis ? .5f : 0.f));
+      const auto gesture = e.gesture;
+      const uint8_t mask = dualAxis ? 3 : 1;
+      // Redraws may put every other control beneath the finger.
+      l.current = {};
+      l.target = {0, 0, 480, 480};
+      for (auto &arrow : l.arrows) arrow = {0, 0, 480, 480};
+      l.dualAxis = !dualAxis;
+      const auto move = [&](uint16_t x, uint16_t y, float az, float el) {
+        const auto event = g.sample(true, x, y, l);
+        assert(event.manual && !event.release && event.gesture == gesture);
+        assert(event.action == TouchAction::None && g.pressed() == TouchAction::None);
+        assert(event.mask == mask && event.az == az && event.el == (dualAxis ? el : 0.f));
+      };
+      move(479, startY, 1, 0);
+      move(0, startY, -1, 0); // Reverse without lifting.
+      move(240, 0, 0, 1);
+      move(240, 479, 0, -1);
+      move(240, 100, 0, 1); // Mode button.
+      move(240, 50, 0, 1); // HUD device selector.
+      move(479, 0, 1, 1);
+      move(0, 479, -1, -1);
+      move(240, startY, 0, 0); // Stop in the original dead zone, retaining capture.
+      move(479, startY, 1, 0);
+      e = g.sample(false, 0, 0, l);
+      assert(e.manual && e.release && e.gesture == gesture && e.mask == mask);
+      assert(e.action == TouchAction::None); // Never confirms the goal after a swipe.
+      for (auto &arrow : l.arrows) arrow = {};
+      g.sample(true, 240, 330, l);
+      assert(g.sample(false, 0, 0, l).action == TouchAction::Confirm);
+    }
+  }
+}
 struct Node;
 struct WirePacket {
   HudEndpoint from, to;
@@ -231,6 +282,56 @@ void Bus::tick(uint32_t at) {
   for (auto *n : nodes) {
     if (!n->h.isHud()) {
       n->c.tick(at);
+    }
+  }
+}
+static void fullscreenSwipeControl() {
+  using namespace crowpanel;
+  for (bool remote : {false, true}) {
+    Bus bus;
+    Node rotor(bus, 1, false), panel(bus, 2, true);
+    for (auto &speed : rotor.c.speeds) {
+      speed.accelerationMs = speed.decelerationMs = 0; // Isolate capture from ramp timing.
+    }
+    panel.select(rotor);
+    rotor.c.target({100, 80, true, true}, false, 0);
+    for (unsigned t = 100; t <= 800; t += 10) bus.tick(t);
+    assert(panel.h.manualAvailable());
+    auto &input = remote ? panel.c : rotor.c;
+    TouchGesture g;
+    uint32_t now = 800, serial = 0;
+    for (uint16_t startY : {230, 330}) {
+      TouchLayout l;
+      l.dualAxis = true;
+      l.current = {100, 200, 280, 60};
+      l.target = {100, 320, 280, 36};
+      const auto sample = [&](bool down, uint16_t x, uint16_t y) {
+        now += 10;
+        const auto e = g.sample(down, x, y, l);
+        assert(e.action == TouchAction::None);
+        if (e.manual) {
+          assert(input.manualDrive(0, 1, e.gesture, ++serial, e.mask, e.az, e.el, e.release,
+                                   now) == (remote ? Result::Deferred : Result::Ok));
+        }
+        bus.tick(now);
+      };
+      sample(true, 240, startY);
+      const auto hold = [&](uint16_t x, uint16_t y, int az, int el) {
+        for (unsigned i = 0; i < 40; ++i) sample(true, x, y);
+        assert(rotor.c.axes[0].wanted == az && rotor.c.axes[1].wanted == el);
+        assert(rotor.c.axes[0].direction == az && rotor.c.axes[1].direction == el);
+      };
+      hold(479, 0, 1, 1);
+      hold(0, 479, -1, -1);
+      hold(240, 100, 0, 1); // Pass over mode and HUD controls while reversing EL.
+      hold(240, 50, 0, 1);
+      hold(240, startY, 0, 0);
+      hold(479, startY, 1, 0); // Resume after returning to the dead zone.
+      sample(false, 0, 0);
+      assert(!rotor.c.axes[0].wanted && !rotor.c.axes[1].wanted);
+      for (unsigned i = 0; i < 40; ++i) sample(false, 0, 0);
+      assert(!rotor.c.moving() && !rotor.c.axes[0].tracking && !rotor.c.axes[1].tracking);
+      assert(rotor.c.axes[0].target == 100 && rotor.c.axes[1].target == 80);
     }
   }
 }
@@ -366,9 +467,11 @@ static void network() {
 int main() {
   core();
   touch();
+  fullscreenSwipe();
+  fullscreenSwipeControl();
   ring();
   ringTargets();
   network();
   std::cout
-      << "PASS: ring tap/drag local and HUD, dual targets, hold/swipe axes and speed, ownership, lease expiry, coalescing, packet order and legacy compatibility\n";
+      << "PASS: fullscreen current/target swipe capture and reversal locally and via HUD, ring tap/drag, dual targets, hold/swipe axes and speed, ownership, lease expiry, coalescing, packet order and legacy compatibility\n";
 }

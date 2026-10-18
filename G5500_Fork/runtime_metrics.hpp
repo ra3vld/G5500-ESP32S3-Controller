@@ -30,6 +30,8 @@ struct AllocationFailure {
 // Allocation callbacks may run on either core. No logging or allocations
 // here: reporting is deferred to H4 and /api/status in the main loop.
 struct RuntimeMetrics {
+  uint32_t *recoveryWord = nullptr;
+  uint32_t recoveryCookie = 0;
   std::atomic<uint32_t> allocationFailures{0}, largestFailedAllocation{0};
   bool hookReady = false;
   uint32_t loopMaxUs = 0, loopsOver20ms = 0; // main-loop access only
@@ -40,10 +42,15 @@ struct RuntimeMetrics {
   }
 };
 inline RuntimeMetrics runtimeMetrics;
-inline void beginRuntimeMetrics() {
+inline void beginRuntimeMetrics(uint32_t *recoveryWord = nullptr, uint32_t recoveryCookie = 0) {
+  runtimeMetrics.recoveryWord = recoveryWord;
+  runtimeMetrics.recoveryCookie = recoveryCookie;
   runtimeMetrics.hookReady = heap_caps_register_failed_alloc_callback(
       [](size_t size, uint32_t caps, const char *function) {
         auto &m = runtimeMetrics;
+        // Mark the next boot before an allocation failure can escalate to an
+        // abort. No NVS, logging, heap allocation or main-loop progress needed.
+        if (m.recoveryWord) __atomic_store_n(m.recoveryWord, m.recoveryCookie, __ATOMIC_RELAXED);
         m.allocationFailures.fetch_add(1, std::memory_order_relaxed);
         uint32_t previous = m.largestFailedAllocation.load(std::memory_order_relaxed);
         while (size > previous && !m.largestFailedAllocation.compare_exchange_weak(

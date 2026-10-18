@@ -43,7 +43,8 @@ public:
     return fresh ? active_ : TouchAction::None;
   }
 };
-// Geometry is supplied by the actual LVGL layout. A contact keeps its initial role.
+// Geometry is supplied by the actual LVGL layout. A target tap may become a swipe;
+// started gestures keep ownership until release.
 struct TouchLayout {
   TouchRect current{}, target{}, arrows[4]{}; // left, right, up, down
   bool dualAxis = false, enabled = true;
@@ -127,7 +128,7 @@ public:
           }
         }
       }
-      if (role_ == Role::Swipe || role_ == Role::Arrow) {
+      if (role_ == Role::Swipe || role_ == Role::Arrow || role_ == Role::Target) {
         if (!++gesture_) {
           ++gesture_;
         }
@@ -135,6 +136,10 @@ public:
     }
     if (down && (std::abs(int(x) - startX_) > 12 || std::abs(int(y) - startY_) > 12)) {
       cancelled_ = true;
+      // A target tap becomes a captured swipe once it leaves the dead zone.
+      if (role_ == Role::Target && layout.enabled) {
+        role_ = Role::Swipe;
+      }
     }
     if (role_ == Role::Swipe || role_ == Role::Arrow) {
       if (down || down_) {

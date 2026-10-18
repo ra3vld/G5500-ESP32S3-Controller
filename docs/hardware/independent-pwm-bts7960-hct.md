@@ -4,10 +4,7 @@
 
 В этой схеме используются два стандартных H-модуля BTS7960 с VCC=5 В и один внешний 74HCT245 на шесть сигналов. Схема: [SVG](independent-pwm-bts7960-hct.svg), [PNG](independent-pwm-bts7960-hct.png), [PDF](independent-pwm-bts7960-hct.pdf). Альтернативы: [прямое подключение с VCC=3,3 В](independent-pwm-bts7960.md) и [оптический вариант](independent-pwm-bts7960-isolated.md).
 
-```cpp
-#define DRIVE_INTERFACE DRIVE_BTS7960
-#define BTS7960_PWM_INVERTED 0
-```
+**Настройки → Оборудование:** интерфейс **BTS7960 / IBT-2**, выходы **прямое подключение PWM**. Сохраните и подтвердите настройки после перезапуска.
 
 | Сигнал | S2 Mini GPIO | S3 GPIO | U1 A → B |
 |---|---:|---:|---|

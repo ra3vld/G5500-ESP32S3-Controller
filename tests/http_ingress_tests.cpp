@@ -2,6 +2,7 @@
 #include "web_page.hpp"
 #include "web_assets.hpp"
 #include "web_encoding.hpp"
+#include "hardware_form.hpp"
 #include <cassert>
 #include <iostream>
 using namespace forkrot;
@@ -286,6 +287,28 @@ int main() {
   assert(!persistentOtaRequest("POST /api/ota/finish HTTP/1.0\r\n\r\n",37));
   const std::string closeOta="POST /api/ota/finish HTTP/1.1\r\nConnection: close\r\n\r\n";
   assert(!persistentOtaRequest(closeOta,closeOta.size()));
+  testSocket.peerClosed=true; web.handleClient(); // close the prior persistent OTA socket
+  // A fragmented heap that rejects ordinary settings must still accept the
+  // emergency settings POST and transmit its reply without entering the parser.
+  struct RecoveryContext { BoundedWebServer *web; HardwareForm form; bool saved=false; } recovery{&web,{},false};
+  web.setRequestHandler([](void *context,std::string_view raw) {
+    auto &r=*static_cast<RecoveryContext *>(context);
+    const auto at=raw.find("\r\n\r\n");
+    r.saved=at!=raw.npos && parseHardwareForm(raw.substr(at+4),r.form,true);
+    static const char reply[]="{\"ok\":true}";
+    r.web->sendFixed(200,"application/json",reply,sizeof reply-1);
+    return true;
+  },&recovery);
+  const std::string settingsBody="token=123&generation=2&driveInterface=2&simulation=1&bluetoothEnabled=0&bluetoothMode=3&forceApSta=0&buttonGpio=-1&buttonActiveLow=1&buttonPullup=0&pwmInverted=1";
+  connect("POST /api/hardware HTTP/1.1\r\nContent-Length: "+std::to_string(settingsBody.size())+"\r\n\r\n"+settingsBody);
+  fakeHeapFree=3000;fakeHeapBlock=512;
+  web.handleClient();
+  while(testSocket.open){fakeHardware.now+=20;web.handleClient();}
+  assert(recovery.saved && recovery.form.config.drive==2 && recovery.form.config.buttonGpio==-1);
+  assert(testSocket.parsed==0 && testSocket.heapBufferReads==0);
+  assert(testSocket.output.find("{\"ok\":true}")!=std::string::npos);
+  assert(testSocket.output.find("Cache-Control: no-store")!=std::string::npos);
+  std::cout<<"PASS: recovery POST remains writable with free=3000/max=512 while normal settings require larger blocks\n";
   std::cout<<"PASS: complete 35KB page over slow socket with device heap 8172/1524, per-loop control progress, transfer deadlines and recovery\n";
   std::cout<<"PASS: gzip bytes through 1KB queue with repeated ENOMEM/ACKs, paced JSON, encoding negotiation and failure diagnostics\n";
   std::cout<<"PASS: HTTP fragments, complete POST body, low heap, timeouts, socket failures and 10000 requests without NetworkClient RX allocations\n";

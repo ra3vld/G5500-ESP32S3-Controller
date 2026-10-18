@@ -27,13 +27,66 @@
 #endif
 namespace forkrot {
 using namespace board;
+namespace {
+// Unlike initialized RTC data, noinit survives software resets/panics without
+// relying on a successful NVS write. Ignore its undefined power-on contents.
+RTC_NOINIT_ATTR uint32_t recoveryLatch;
+constexpr uint32_t RecoveryCookie = 0x52335648;
+}
+void Application::failConfiguration(RecoveryReason reason) {
+  runtime_.controller.stopNow(-1, millis());
+  hardware_.applyOutputs();
+  runtime_.controller.configurationLocked = true;
+  __atomic_store_n(&recoveryLatch, RecoveryCookie, __ATOMIC_RELAXED);
+  if (recoveryReserve_) { heap_caps_free(recoveryReserve_); recoveryReserve_ = nullptr; }
+  web_server_.abortForRecovery();
+  storage_.enterRecovery(runtime_, reason);
+  delay(100);
+  ESP.restart();
+}
+void Application::serviceConfigurationSafety() {
+  if (runtime_.recovery) return;
+  const auto reason = runtime_.memoryGuard.sample(millis(), heapFreeBytes(), heapMaxBlockBytes(),
+      runtimeMetrics.allocationFailures.load(), runtime_.hardwareTrial);
+  if (reason != RecoveryReason::None) { failConfiguration(reason); return; }
+  if (!runtime_.hardwareTrial && runtime_.memoryGuard.ready(millis()) &&
+      !storage_.finishHardwareBoot(runtime_)) failConfiguration(RecoveryReason::Storage);
+}
+
 void Application::controllerSetup() {
-  beginRuntimeMetrics();
+  beginRuntimeMetrics(&recoveryLatch, RecoveryCookie);
   diagnostics_.readBootReason();
 
-  storage_.loadHud(runtime_);
+  storage_.loadHud(runtime_, false);
+  const auto reset = esp_reset_reason();
+  const bool unexpected = reset == ESP_RST_PANIC || reset == ESP_RST_INT_WDT ||
+      reset == ESP_RST_TASK_WDT || reset == ESP_RST_WDT;
+  storage_.loadHardware(runtime_, unexpected || (reset != ESP_RST_POWERON &&
+      __atomic_load_n(&recoveryLatch, __ATOMIC_RELAXED) == RecoveryCookie));
+  __atomic_store_n(&recoveryLatch, 0u, __ATOMIC_RELAXED);
+  runtime_.hardwareToken = esp_random();
+  if (!runtime_.hardwareToken) runtime_.hardwareToken = 1;
+  if (runtime_.recovery) {
+    runtime_.controller.remote = nullptr;
+    runtime_.hud.config.role = DeviceRole::Controller;
+    runtime_.hud.config.wifi = HudWifi::Host;
+    runtime_.hud.config.uart = false;
+  } else {
+    recoveryReserve_ = heap_caps_malloc(16384, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!recoveryReserve_) { failConfiguration(RecoveryReason::LowMemory); return; }
+  }
+  runtime_.memoryGuard.begin(millis(), runtimeMetrics.allocationFailures.load());
+  if (!runtime_.recovery && runtimeMetrics.allocationFailures.load()) {
+    failConfiguration(RecoveryReason::Allocation); return;
+  }
+  if (!runtime_.recovery) {
+    storage_.loadHud(runtime_, true);
+    if (runtimeMetrics.allocationFailures.load() != runtime_.memoryGuard.failures) {
+      failConfiguration(RecoveryReason::Allocation); return;
+    }
+  }
   network_.beginHud();
-  hardware_.beginDirections();
+  if (!runtime_.recovery) hardware_.beginDirections();
   if (!runtime_.hud.isHud())
     hardware_.allStop();
   hardware_.rgbSet(0, 0, 0);
@@ -41,24 +94,22 @@ void Application::controllerSetup() {
   // UART0 belongs to GS-232. Keep IDF radio diagnostics off that byte stream.
   esp_log_level_set("*", ESP_LOG_NONE);
 #endif
-  network_.beginSerial();
+  if (!network_.beginSerial() && !runtime_.recovery) { failConfiguration(RecoveryReason::Radio); return; }
   diagnostics_.beginNativeUsb();
-  hardware_.beginAdc();
+  if (!runtime_.recovery) hardware_.beginAdc();
 
-  display_.initLocalDisplay();
-  storage_.loadForkSettings(runtime_);
-  loadPrefs();
+  if (!runtime_.recovery) display_.initLocalDisplay();
+  if (runtime_.recovery) storage_.loadPrefs(runtime_, calibration_, network_.credentials(), true);
+  else { storage_.loadForkSettings(runtime_); loadPrefs(); }
   diagnostics_.dbgPrintln(String("[WIFI NVS] load=") +
                          (storage_.wifiCredentialsReadOk() ? "OK" : "namespace unavailable") +
                          ", saved SSID=" + (network_.credentials().wifiSsid.length() ? "present" : "empty"));
-  if (!runtime_.hud.isHud())
+  if (!runtime_.recovery && !runtime_.hud.isHud())
     runtime_.controller.setRange(calibration_.activeAzRange(), calibration_.state().gsAzMode, millis());
-  loadProfilePresets();
-  hardware_.beginInputs();
-  display_.loadTouchCalibration();
-
-  display_.startAfterCalibrationLoad();
-  diagnostics_.initRssiHistory();
+  if (!runtime_.recovery) {
+    loadProfilePresets(); hardware_.beginInputs(); display_.loadTouchCalibration();
+    display_.startAfterCalibrationLoad(); diagnostics_.initRssiHistory();
+  }
 
   diagnostics_.dbgPrintln("");
   diagnostics_.dbgPrintln("######## G5500 CONTROLLER FORK ########");
@@ -68,10 +119,10 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrint(DISPLAY_KIND == DISPLAY_CROWPANEL_21 ? "CROWPANEL_21" : DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE");
   diagnostics_.dbgPrint(" | drive=");
   diagnostics_.dbgPrintln(runtime_.hud.isHud() ? "HUD remote drive"
-                          : DRIVE_SIMULATION ? "SIMULATED 13.4 deg/s"
+                          : runtime_.controller.hardware.simulation ? "SIMULATED 13.4 deg/s"
                           : SELECTED_BOARD == BOARD_CROWPANEL_21 ? "NONE"
-                          : DRIVE_INTERFACE == DRIVE_YAESU   ? "YAESU"
-                          : DRIVE_INTERFACE == DRIVE_BTS7960 ? "BTS7960"
+                          : runtime_.controller.hardware.drive == DRIVE_YAESU   ? "YAESU"
+                          : runtime_.controller.hardware.drive == DRIVE_BTS7960 ? "BTS7960"
                                                              : "SEPARATE_PWM");
 #if SELECTED_BOARD == BOARD_ESP32
   diagnostics_.dbgPrintln("[DIAG] /diaglog: fixed 2048-byte log; UART0 H4: RAM and Wi-Fi status");
@@ -84,8 +135,16 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln(String((int)diagnostics_.bootReasonCode()));
   diagnostics_.dbgPrintln("[V1559] USB debug alive");
   diagnostics_.dbgPrint("Bluetooth backend: ");
-  diagnostics_.dbgPrintln(board::BLUETOOTH_BACKEND_NAME);
-  network_.startWifi();
+  diagnostics_.dbgPrintln(runtime_.controller.hardware.backendName());
+  if (!network_.startWifi()) {
+    if (!runtime_.recovery) failConfiguration(RecoveryReason::Radio);
+    return;
+  }
+  if (runtime_.recovery) return;
+  if (heapFreeBytes() < MemoryGuard::HealthyFree || heapMaxBlockBytes() < MemoryGuard::HealthyBlock ||
+      runtimeMetrics.allocationFailures.load() != runtime_.memoryGuard.failures) {
+    failConfiguration(RecoveryReason::LowMemory); return;
+  }
   network_.setupLoggerUdp();
 
   bool timeOk = diagnostics_.syncClockFromNtp();
@@ -165,6 +224,8 @@ void Application::controllerSetup() {
 }
 void Application::controllerLoop() {
   const uint32_t startedUs = micros();
+  if (runtime_.recovery) { web_server_.service(); delay(5); return; }
+  serviceConfigurationSafety();
   // Once an update starts, keep outputs stopped even after an upload error.
   // Only reboot can resume input processing, so buffered commands cannot replay.
   if (web_server_.otaLocked()) {
@@ -177,7 +238,7 @@ void Application::controllerLoop() {
   network_.serviceHud();
   updatePosition();
   runtime_.controller.tick(millis()); // expire the hour before accepting any external command
-  if (PIN_CONFIRM >= 0 && confirmButton.sample(hardware_.buttonReleased(), millis())) {
+  if (runtime_.controller.hardware.buttonGpio >= 0 && confirmButton.sample(hardware_.buttonReleased(), millis())) {
     runtime_.controller.execute(millis());
   }
   network_.serviceLoggerUdp();

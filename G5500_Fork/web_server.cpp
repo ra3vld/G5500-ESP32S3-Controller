@@ -6,6 +6,7 @@
 #include "web_encoding.hpp"
 #include "tcp_memory.hpp"
 #include "runtime_metrics.hpp"
+#include "hardware_form.hpp"
 #include <esp_timer.h>
 namespace forkrot {
 using namespace board;
@@ -20,6 +21,11 @@ void WebInterface::sendHtml(const char *raw, size_t rawSize, const unsigned char
   }
 }
 void WebInterface::setupWeb() {
+  web_.setRequestHandler([](void *context, std::string_view request) {
+    auto &self = *static_cast<WebInterface *>(context);
+    return self.handleHardwareRequest(request) || (!self.runtime_.recovery && self.handleOtaRequest(request));
+  }, this);
+  if (runtime_.recovery) { web_.begin(); return; }
   ota_.begin([](void *context) {
     auto &self = *static_cast<WebInterface *>(context);
     self.runtime_.controller.stopNow(-1, millis());
@@ -27,9 +33,17 @@ void WebInterface::setupWeb() {
     // Send the HUD STOP before pausing command processing for the update.
     if (self.runtime_.hud.isHud()) self.network_.serviceHud();
   }, this);
-  web_.setRequestHandler([](void *context, std::string_view request) {
-    return static_cast<WebInterface *>(context)->handleOtaRequest(request);
-  }, this);
+
+  web_.on("/api/hardware/probe", HTTP_POST, [this] {
+    uint32_t token = 0, generation = 0;
+    const bool ok = hardwareUnsigned(web_.arg("token").c_str(), token) &&
+        hardwareUnsigned(web_.arg("generation").c_str(), generation) &&
+        token == runtime_.hardwareToken && generation == runtime_.hardwareRecord.generation &&
+        runtime_.hardwareTrial && runtime_.memoryGuard.ready(millis()) &&
+        storage_.probeHardwareStorage(runtime_);
+    runtime_.hardwareProbe = ok;
+    web_.send(ok ? 200 : 409, "application/json", ok ? "{\"ok\":true}" : "{\"error\":\"not_ready\"}");
+  });
   static const char *requestHeaders[] = {"Accept-Encoding"};
   web_.collectHeaders(requestHeaders, 1);
   web_.on("/", HTTP_GET, [this] {
@@ -285,7 +299,7 @@ void WebInterface::setupWeb() {
       return;
     }
     diagnostics_.dbgPrintln("[WIFI NVS] credentials saved and verified; restarting");
-    web_.send(200, "text/plain; charset=utf-8", WIFI_AP_ALWAYS_ON
+    web_.send(200, "text/plain; charset=utf-8", network_.apAlwaysOn()
         ? "Настройки Wi-Fi сохранены. После перезагрузки снова подключитесь к G5500-Rotator или откройте адрес контроллера в домашней сети."
         : "Настройки Wi-Fi сохранены. После перезагрузки откройте адрес контроллера в домашней сети. Если подключение не удалось, появится G5500-Rotator.");
     restart_.request(millis());

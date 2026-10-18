@@ -35,11 +35,13 @@ public:
 private:
   void rgbStart(RgbState s);
   Runtime &runtime_;
-  bool pwmReady = false, pwmFailed = false;
+  bool pwmReady = false, pwmFailed = false, directionsStarted_ = false;
   bool attached_[4] = {};
   PositionFilter filters_[2];
   bool preparePwm(bool enable);
   void outputsOff();
+  uint32_t motorPwmDuty(uint32_t duty) const;
+  int idleOutputLevel(int pin) const;
   RgbState rgbState = RGB_IDLE;
   uint32_t rgbUntilMs = 0, lastHeartbeatMs = 0;
   bool pendingTxFlash = false;

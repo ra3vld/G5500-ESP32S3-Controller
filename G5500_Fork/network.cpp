@@ -210,8 +210,7 @@ void Network::processGs232Command(std::string_view input) {
     return;
   }
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
-#if DRIVE_SIMULATION
-  if (gsReplyPort == GS_REPLY_NATIVE_USB && cmd.startsWith("SIM ")) {
+  if (runtime_.controller.hardware.simulation && gsReplyPort == GS_REPLY_NATIVE_USB && cmd.startsWith("SIM ")) {
     float az = 0, el = 0; char extra;
     const auto result = std::sscanf(cmd.c_str(), "SIM %f %f %c", &az, &el, &extra) == 2
         ? runtime_.controller.target({az, el, true, true}, false, millis()) : Result::Invalid;
@@ -219,7 +218,6 @@ void Network::processGs232Command(std::string_view input) {
     sendReply(String("SIM ") + Controller::resultName(result) + "\r\n");
     return;
   }
-#endif
   if (cmd == "H5") {
     const auto stats = crowpanel::displayStats();
     char reply[384];
@@ -230,7 +228,7 @@ void Network::processGs232Command(std::string_view input) {
                   (unsigned long)millis(), double(runtime_.controller.axes[0].current),
                   double(runtime_.controller.axes[1].current), double(runtime_.controller.axes[0].target),
                   double(runtime_.controller.axes[1].target), int(runtime_.controller.moving()),
-                  int(!runtime_.hud.isHud() && DRIVE_SIMULATION),
+                  int(!runtime_.hud.isHud() && runtime_.controller.hardware.simulation),
                   int(runtime_.loggerSettings.encoderInverted), (unsigned long)stats.vsyncs,
                   (unsigned long)stats.frames, (unsigned long)stats.waitMaxUs, (unsigned long)stats.timeouts,
                   int(stats.failed), (unsigned long)stats.restarts, (unsigned long)stats.restartBufferMask,
@@ -265,7 +263,8 @@ void Network::handlePstRotatorSerial() {
     }
   }
 #endif
-  if (runtime_.hud.config.uart || PIN_UART_RX < 0 || PIN_UART_TX < 0)
+  if (runtime_.hud.config.uart || PIN_UART_RX < 0 || PIN_UART_TX < 0 ||
+      (SELECTED_BOARD == BOARD_CROWPANEL_21 && runtime_.controller.hardware.backend() == BT_HC05))
     return;
   static forkrot::LineBuffer receiver;
   static uint32_t serialEpoch = 0;
@@ -469,29 +468,22 @@ void Network::handleRotctldTcp() {
   }
 }
 
-void Network::startWifi() {
+bool Network::startWifi() {
   WiFi.persistent(false);
-#if BLUETOOTH_BACKEND == BT_ESP32_SPP
-  const esp_err_t initResult = initCompactWifi();
-  compactWifi_ = initResult == ESP_OK;
-  diagnostics_.dbgPrintln(compactWifi_ ? "[WIFI] compact buffers: static RX 2, dynamic RX/TX 4/2, aggregation off"
-                                      : "[WIFI] compact init failed; trying Arduino defaults");
-#elif SELECTED_BOARD == BOARD_ESP32 || SELECTED_BOARD == BOARD_CROWPANEL_21
-  const esp_err_t initResult = initBufferedWifi();
-  bufferedWifi_ = initResult == ESP_OK;
-  diagnostics_.dbgPrintln(bufferedWifi_ ? "[WIFI] buffered profile: static RX 8, dynamic RX/TX 64/64"
-                                      : "[WIFI] buffered init failed; trying Arduino defaults");
-#endif
+  if (runtime_.recovery || (SELECTED_BOARD == BOARD_ESP32 && runtime_.controller.hardware.backend() == BT_ESP32_SPP)) {
+    compactWifi_ = initCompactWifi() == ESP_OK;
+    if (!compactWifi_) return false; // never fall back to a larger buffer profile on OOM
+  } else if (SELECTED_BOARD == BOARD_ESP32 || SELECTED_BOARD == BOARD_CROWPANEL_21) {
+    bufferedWifi_ = initBufferedWifi() == ESP_OK;
+    if (!bufferedWifi_) return false;
+  }
   WiFi.setSleep(false);
   // The policy below owns retries; Arduino's event callback must not launch
   // an independent reconnect after we deliberately return to AP-only mode.
   WiFi.setAutoReconnect(false);
-#if SELECTED_BOARD == BOARD_ESP32 && ESP32_FORCE_AP_STA
-  diagnostics_.dbgPrintln("[WIFI] WARNING: forced AP+STA uses more RAM; may be unstable, especially with SPP");
-#endif
   if (apAlwaysOn())
     restoreApOnlyAfterReconnectFail();
-  if (credentials_.wifiSsid.length() && runtime_.hud.config.wifi != HudWifi::Host) {
+  if (!runtime_.recovery && credentials_.wifiSsid.length() && runtime_.hud.config.wifi != HudWifi::Host) {
     diagnostics_.dbgPrintln(apAlwaysOn() ? "[WIFI] starting STA; AP remains available"
                                          : "[WIFI] starting STA; AP reserved for fallback");
     if (WiFi.mode(apAlwaysOn() ? WIFI_AP_STA : WIFI_STA)) {
@@ -511,6 +503,7 @@ void Network::startWifi() {
   }
   serviceApSubnet();
   wifiFallback_.reset(millis(), connected);
+  if (!runtime_.recovery) {
   if (!hudPortValid(runtime_.hud.config.port, runtime_.loggerSettings.n1mmPort,
                     runtime_.loggerSettings.pstPort, runtime_.loggerSettings.reportPort) ||
       !hudUdp_.begin(runtime_.hud.config.port))
@@ -518,10 +511,12 @@ void Network::startWifi() {
   else if (!hudUdp_.setIpPrecedence(4))
     diagnostics_.dbgPrintln("[HUD] UDP priority unavailable; using default queue");
   tcpServer_.begin();
+  }
   actions_.setupWeb();
   heapAfterWifi_ = heapFreeBytes();
   diagnostics_.dbgPrintln(apAlwaysOn() ? "[WIFI] AP always on; STA retry 30s, attempt 8s"
                                        : "[WIFI] STA preferred; AP fallback, retry 30s, attempt 8s");
+  return runtime_.recovery ? (WiFi.getMode() == WIFI_AP) : true;
 }
 
 void Network::restoreApOnlyAfterReconnectFail() {
@@ -649,13 +644,17 @@ void Network::serviceLoggerUdp() {
     }
   }
 }
-void Network::beginSerial() {
-  if (PIN_UART_RX >= 0 && PIN_UART_TX >= 0)
+bool Network::beginSerial() {
+  if (PIN_UART_RX >= 0 && PIN_UART_TX >= 0 &&
+      !(SELECTED_BOARD == BOARD_CROWPANEL_21 && runtime_.controller.hardware.backend() == BT_HC05))
     Serial0.begin(runtime_.hud.config.uart ? 115200 : 9600, SERIAL_8N1, PIN_UART_RX, PIN_UART_TX);
   heapBeforeBt_ = heapFreeBytes();
-  btReady_ = bluetooth_.begin();
+  const auto backend = runtime_.recovery ? BT_NONE : runtime_.controller.hardware.backend();
+  if (backend == BT_ESP32_SPP && (heapFreeBytes() < 98304 || heapMaxBlockBytes() < 32768)) return false;
+  btReady_ = bluetooth_.begin(backend);
   if (!btReady_) diagnostics_.dbgPrintln("[BT] initialization failed; USB and network remain available");
   heapAfterBt_ = heapFreeBytes();
+  return btReady_;
 }
 
 } // namespace forkrot
@@ -672,7 +671,7 @@ void Network::beginHud() {
     if (!hudUart_)
       runtime_.hud.catalogError = true;
   }
-  if (runtime_.hud.config.uart && (board::PIN_UART_RX < 0 || board::PIN_UART_TX < 0)) {
+  if (runtime_.hud.config.uart && (board::PIN_UART_RX < 0 || board::PIN_UART_TX < 0 || (SELECTED_BOARD == BOARD_CROWPANEL_21 && runtime_.controller.hardware.backend() == BT_HC05))) {
     runtime_.hud.config.uart = false;
     runtime_.hud.catalogError = true;
   }

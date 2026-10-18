@@ -11,39 +11,29 @@ namespace {
 [[maybe_unused]] void preloadLevel(int pin, int level) { gpio_set_level(static_cast<gpio_num_t>(pin), level); }
 }
 
-namespace {
-#if !DRIVE_SIMULATION && SELECTED_BOARD != BOARD_CROWPANEL_21
-uint32_t motorPwmDuty(uint32_t logicalDuty) {
-#if DRIVE_INTERFACE == DRIVE_BTS7960 && BTS7960_PWM_INVERTED
-  return 1023u - logicalDuty;
-#else
-  return logicalDuty;
-#endif
+uint32_t Hardware::motorPwmDuty(uint32_t duty) const {
+  const auto &c = runtime_.controller.hardware;
+  return c.drive == DRIVE_BTS7960 && c.pwmInverted ? 1023u-duty : duty;
 }
-int idleOutputLevel(int pin) {
-#if DRIVE_INTERFACE == DRIVE_BTS7960 && BTS7960_PWM_INVERTED
-  if (pin == PIN_LEFT || pin == PIN_RIGHT || pin == PIN_UP || pin == PIN_DOWN) return HIGH;
-#else
-  (void)pin;
-#endif
-  return LOW;
-}
-#endif
+int Hardware::idleOutputLevel(int pin) const {
+  const auto &c = runtime_.controller.hardware;
+  return c.drive == DRIVE_BTS7960 && c.pwmInverted &&
+      (pin == PIN_LEFT || pin == PIN_RIGHT || pin == PIN_UP || pin == PIN_DOWN) ? HIGH : LOW;
 }
 int Hardware::adcAvgMv(int pin) {
   if (runtime_.hud.isHud())
     return 0;
-#if DRIVE_SIMULATION || SELECTED_BOARD == BOARD_CROWPANEL_21
+  if (runtime_.controller.hardware.simulation || SELECTED_BOARD == BOARD_CROWPANEL_21) {
   (void)pin;
   return 0; // No feedback adapter in this CrowPanel profile.
-#else
+  } else {
   uint32_t s = 0;
   for (int i = 0; i < 25; i++) {
     s += analogReadMilliVolts(pin);
     delayMicroseconds(150);
   }
   return s / 25;
-#endif
+  }
 }
 
 int Hardware::filteredMv(unsigned axis) {
@@ -54,18 +44,18 @@ int Hardware::filteredMv(unsigned axis) {
   return filter.due(now) ? filter.sample(adcAvgMv(axis ? PIN_EL_ADC : PIN_AZ_ADC), now) : filter.value();
 }
 bool Hardware::buttonReleased() const {
-  if (PIN_CONFIRM < 0) return true;
-  return digitalRead(PIN_CONFIRM) == (USER_BUTTON_ACTIVE_LOW ? HIGH : LOW);
+  if (runtime_.controller.hardware.buttonGpio < 0) return true;
+  return digitalRead(runtime_.controller.hardware.buttonGpio) == (runtime_.controller.hardware.buttonLow ? HIGH : LOW);
 }
 void Hardware::adcDiagRead(int pin, int &raw, int &mv) {
   if (runtime_.hud.isHud()) {
     raw = mv = 0;
     return;
   }
-#if DRIVE_SIMULATION || SELECTED_BOARD == BOARD_CROWPANEL_21
+  if (runtime_.controller.hardware.simulation || SELECTED_BOARD == BOARD_CROWPANEL_21) {
   mv = adcAvgMv(pin);
   raw = 0;
-#else
+  } else {
   uint32_t sr = 0, sm = 0;
   for (int i = 0; i < 25; i++) {
     sr += analogRead(pin);
@@ -74,7 +64,7 @@ void Hardware::adcDiagRead(int pin, int &raw, int &mv) {
   }
   raw = (int)(sr / 25);
   mv = (int)(sm / 25);
-#endif
+  }
 }
 
 void Hardware::rgbSet(uint8_t r, uint8_t g, uint8_t b) {
@@ -195,63 +185,42 @@ void Hardware::controlRotator() {
 }
 
 void Hardware::outputsOff() {
-#if !DRIVE_SIMULATION && SELECTED_BOARD != BOARD_CROWPANEL_21
-  if (runtime_.hud.isHud())
-    return;
-#if DRIVE_INTERFACE == DRIVE_BTS7960
-  // Disable both bridges before changing PWM or detaching LEDC.
-  preloadLevel(PIN_SPEED, LOW);
-  preloadLevel(PIN_EL_SPEED, LOW);
-#endif
-  const int pins[] = {PIN_LEFT, PIN_RIGHT, PIN_DOWN, PIN_UP, PIN_SPEED,
-#if DRIVE_INTERFACE != DRIVE_YAESU
-    PIN_EL_SPEED,
-#endif
-  };
-  const int pwm[] = {
-#if DRIVE_INTERFACE == DRIVE_BTS7960
-    PIN_LEFT, PIN_RIGHT, PIN_DOWN, PIN_UP
-#else
-    PIN_SPEED, PIN_EL_SPEED, -1, -1
-#endif
-  };
+  const auto &c = runtime_.controller.hardware;
+  if (!directionsStarted_ || c.simulation || SELECTED_BOARD == BOARD_CROWPANEL_21 || runtime_.hud.isHud()) return;
+  if (c.drive == DRIVE_BTS7960) {
+    preloadLevel(PIN_SPEED, LOW); preloadLevel(PIN_EL_SPEED, LOW);
+  }
+  const int pins[] = {PIN_LEFT, PIN_RIGHT, PIN_DOWN, PIN_UP, PIN_SPEED, c.drive != DRIVE_YAESU ? PIN_EL_SPEED : -1};
+  const int pwm[] = {c.drive == DRIVE_BTS7960 ? PIN_LEFT : PIN_SPEED,
+                    c.drive == DRIVE_BTS7960 ? PIN_RIGHT : PIN_EL_SPEED,
+                    c.drive == DRIVE_BTS7960 ? PIN_DOWN : -1,
+                    c.drive == DRIVE_BTS7960 ? PIN_UP : -1};
   for (unsigned i=0; i<4; ++i) if (attached_[i]) ledcWrite(pwm[i], motorPwmDuty(0));
   for (int pin : pins) if (pin >= 0) preloadLevel(pin, idleOutputLevel(pin));
-#endif
 }
 bool Hardware::preparePwm(bool enable) {
-  if (runtime_.hud.isHud())
-    return false;
-#if DRIVE_SIMULATION || SELECTED_BOARD == BOARD_CROWPANEL_21
-  (void)enable;
-  return false;
-#else
-  const int pins[] = {
-#if DRIVE_INTERFACE == DRIVE_BTS7960
-    PIN_LEFT, PIN_RIGHT, PIN_DOWN, PIN_UP
-#else
-    PIN_SPEED, PIN_EL_SPEED, -1, -1
-#endif
-  };
+  const auto &c = runtime_.controller.hardware;
+  if (runtime_.hud.isHud() || runtime_.controller.configurationLocked || c.simulation || SELECTED_BOARD == BOARD_CROWPANEL_21) return false;
+  const int pins[] = {c.drive == DRIVE_BTS7960 ? PIN_LEFT : PIN_SPEED,
+                      c.drive == DRIVE_BTS7960 ? PIN_RIGHT : PIN_EL_SPEED,
+                      c.drive == DRIVE_BTS7960 ? PIN_DOWN : -1,
+                      c.drive == DRIVE_BTS7960 ? PIN_UP : -1};
   if (pwmFailed) return false;
   if (enable && !pwmReady) {
     outputsOff();
-    const unsigned count = DRIVE_INTERFACE == DRIVE_BTS7960 ? 4 : DRIVE_INTERFACE == DRIVE_SEPARATE_PWM ? 2 : 1;
+    const unsigned count = c.drive == DRIVE_BTS7960 ? 4 : c.drive == DRIVE_SEPARATE_PWM ? 2 : 1;
     for (unsigned i=0; i<count; ++i) {
-      attached_[i] = ledcAttach(pins[i], DRIVE_INTERFACE == DRIVE_YAESU ? 20000 : 1000, 10);
+      attached_[i] = ledcAttach(pins[i], c.drive == DRIVE_YAESU ? 20000 : 1000, 10);
       if (!attached_[i]) {
         outputsOff();
         for (unsigned j=0; j<=i; ++j) {
           if (attached_[j]) ledcDetach(pins[j]);
           attached_[j] = false;
-          preloadLevel(pins[j], idleOutputLevel(pins[j]));
-          pinMode(pins[j], OUTPUT);
+          preloadLevel(pins[j], idleOutputLevel(pins[j])); pinMode(pins[j], OUTPUT);
         }
         pwmFailed = true;
-        runtime_.controller.stop();
-        runtime_.controller.driveFault = true;
-        runtime_.controller.tick(millis());
-        runtime_.controller.fault = "pwm_attach_failed";
+        runtime_.controller.stop(); runtime_.controller.driveFault = true;
+        runtime_.controller.tick(millis()); runtime_.controller.fault = "pwm_attach_failed";
         return false;
       }
       ledcWrite(pins[i], motorPwmDuty(0));
@@ -267,104 +236,76 @@ bool Hardware::preparePwm(bool enable) {
     pwmReady = false;
   }
   return true;
-#endif
 }
 void Hardware::applyOutputs() {
-  if (runtime_.hud.isHud())
-    return;
-#if DRIVE_SIMULATION
-  // Virtual motion never touches physical motor outputs.
-#elif SELECTED_BOARD == BOARD_CROWPANEL_21
-  if (runtime_.controller.moving() || runtime_.controller.axes[0].wanted || runtime_.controller.axes[1].wanted)
-    runtime_.controller.stopNow(-1, millis());
-  runtime_.controller.driveFault = true;
-  runtime_.controller.fault = "crowpanel_no_drive";
-#else
-  const bool enable = DRIVE_INTERFACE != DRIVE_YAESU || runtime_.controller.variableSpeed(0);
-  const bool ready = preparePwm(enable);
-  const int neg[2] = {PIN_LEFT, PIN_DOWN}, pos[2] = {PIN_RIGHT, PIN_UP};
-  const int speed[2] = {PIN_SPEED, PIN_EL_SPEED};
-#if DRIVE_INTERFACE == DRIVE_BTS7960
-  // Drop every stopping bridge before the first PWM update on either axis.
-  for (unsigned i=0; i<2; ++i) {
-    if (!ready || !runtime_.controller.axes[i].direction || runtime_.controller.axes[i].speedOutputPercent <= 0)
-      digitalWrite(speed[i], LOW);
-  }
-#endif
-  for (unsigned i=0; i<2; ++i) {
-    const auto &axis = runtime_.controller.axes[i];
-    const int d = ready ? axis.direction : 0;
-    const uint32_t duty = d ? uint32_t(lroundf(axis.speedOutputPercent*1023.f/100.f)) : 0;
-#if DRIVE_INTERFACE == DRIVE_BTS7960
-    if (!d || !duty) digitalWrite(speed[i], LOW);
-    if (ready) {
-      // Logical LOW means full GPIO duty for an inverting optocoupler.
-      ledcWrite(d > 0 ? neg[i] : pos[i], motorPwmDuty(0));
-      ledcWrite(d > 0 ? pos[i] : neg[i], motorPwmDuty(duty));
+  if (runtime_.controller.configurationLocked) { outputsOff(); return; }
+  if (runtime_.hud.isHud()) return;
+  const auto &c = runtime_.controller.hardware;
+  if (c.simulation) {
+    // Both runtime implementations are compiled; the virtual path never owns motor pins.
+  } else if (SELECTED_BOARD == BOARD_CROWPANEL_21) {
+    if (runtime_.controller.moving() || runtime_.controller.axes[0].wanted || runtime_.controller.axes[1].wanted)
+      runtime_.controller.stopNow(-1, millis());
+    runtime_.controller.driveFault = true; runtime_.controller.fault = "crowpanel_no_drive";
+  } else {
+    const bool ready = preparePwm(c.drive != DRIVE_YAESU || runtime_.controller.variableSpeed(0));
+    const int neg[2] = {PIN_LEFT, PIN_DOWN}, pos[2] = {PIN_RIGHT, PIN_UP}, speed[2] = {PIN_SPEED, PIN_EL_SPEED};
+    if (c.drive == DRIVE_BTS7960) {
+      for (unsigned i=0; i<2; ++i)
+        if (!ready || !runtime_.controller.axes[i].direction || runtime_.controller.axes[i].speedOutputPercent <= 0)
+          digitalWrite(speed[i], LOW);
     }
-    digitalWrite(speed[i], d && duty ? HIGH : LOW);
-#else
-    if (d <= 0) digitalWrite(pos[i], LOW);
-    if (d >= 0) digitalWrite(neg[i], LOW);
-    if (d < 0) digitalWrite(neg[i], HIGH);
-    if (d > 0) digitalWrite(pos[i], HIGH);
-    if (pwmReady && (DRIVE_INTERFACE == DRIVE_SEPARATE_PWM || i == 0)) ledcWrite(speed[i], duty);
-#endif
+    for (unsigned i=0; i<2; ++i) {
+      const auto &axis = runtime_.controller.axes[i];
+      const int d = ready ? axis.direction : 0;
+      const uint32_t duty = d ? uint32_t(lroundf(axis.speedOutputPercent*1023.f/100.f)) : 0;
+      if (c.drive == DRIVE_BTS7960) {
+        if (!d || !duty) digitalWrite(speed[i], LOW);
+        if (ready) {
+          ledcWrite(d > 0 ? neg[i] : pos[i], motorPwmDuty(0));
+          ledcWrite(d > 0 ? pos[i] : neg[i], motorPwmDuty(duty));
+        }
+        digitalWrite(speed[i], d && duty ? HIGH : LOW);
+      } else {
+        if (d <= 0) digitalWrite(pos[i], LOW);
+        if (d >= 0) digitalWrite(neg[i], LOW);
+        if (d < 0) digitalWrite(neg[i], HIGH);
+        if (d > 0) digitalWrite(pos[i], HIGH);
+        if (pwmReady && (c.drive == DRIVE_SEPARATE_PWM || i == 0)) ledcWrite(speed[i], duty);
+      }
+    }
   }
-#endif
-  runtime_.targetAz = runtime_.controller.axes[0].target;
-  runtime_.targetEl = runtime_.controller.axes[1].target;
+  runtime_.targetAz = runtime_.controller.axes[0].target; runtime_.targetEl = runtime_.controller.axes[1].target;
   runtime_.targetValid = runtime_.controller.targetKnown;
-  runtime_.azTrack = runtime_.controller.axes[0].tracking;
-  runtime_.elTrack = runtime_.controller.axes[1].tracking;
+  runtime_.azTrack = runtime_.controller.axes[0].tracking; runtime_.elTrack = runtime_.controller.axes[1].tracking;
 }
 void Hardware::beginDirections() {
-  if (runtime_.hud.isHud()) {
-#if SELECTED_BOARD == BOARD_CROWPANEL_21
-    crowpanel::beginBus();
-#else
-    if (PIN_LED >= 0) {
-      preloadLevel(PIN_LED, LOW);
-      pinMode(PIN_LED, OUTPUT);
-    }
-#endif
-    return;
-  }
+  const auto &c = runtime_.controller.hardware;
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   crowpanel::beginBus();
-#if !DRIVE_SIMULATION
-  runtime_.controller.driveFault = true;
-  runtime_.controller.fault = "crowpanel_no_drive";
-#endif
-#elif DRIVE_SIMULATION
-  if (PIN_LED >= 0) { preloadLevel(PIN_LED, LOW); pinMode(PIN_LED, OUTPUT); }
+  if (!c.simulation && !runtime_.hud.isHud()) {
+    runtime_.controller.driveFault = true; runtime_.controller.fault = "crowpanel_no_drive";
+  }
 #else
-#if DRIVE_INTERFACE == DRIVE_BTS7960
-  preloadLevel(PIN_SPEED, LOW); pinMode(PIN_SPEED, OUTPUT);
-  preloadLevel(PIN_EL_SPEED, LOW); pinMode(PIN_EL_SPEED, OUTPUT);
-#endif
-  const int pins[] = {PIN_LEFT, PIN_RIGHT, PIN_UP, PIN_DOWN, PIN_SPEED, PIN_LED,
-#if DRIVE_INTERFACE != DRIVE_YAESU
-    PIN_EL_SPEED,
-#endif
-  };
+  if (PIN_LED >= 0) { preloadLevel(PIN_LED, LOW); pinMode(PIN_LED, OUTPUT); }
+  if (runtime_.hud.isHud() || c.simulation) return;
+  if (c.drive == DRIVE_BTS7960) {
+    preloadLevel(PIN_SPEED, LOW); pinMode(PIN_SPEED, OUTPUT);
+    preloadLevel(PIN_EL_SPEED, LOW); pinMode(PIN_EL_SPEED, OUTPUT);
+  }
+  const int pins[] = {PIN_LEFT, PIN_RIGHT, PIN_UP, PIN_DOWN, PIN_SPEED, c.drive != DRIVE_YAESU ? PIN_EL_SPEED : -1};
   for (int pin : pins) if (pin >= 0) { preloadLevel(pin, idleOutputLevel(pin)); pinMode(pin, OUTPUT); }
+  directionsStarted_ = true;
 #endif
 }
 void Hardware::beginAdc() {
-  if (runtime_.hud.isHud())
-    return;
-#if !DRIVE_SIMULATION && SELECTED_BOARD != BOARD_CROWPANEL_21
+  if (runtime_.hud.isHud() || runtime_.controller.hardware.simulation || SELECTED_BOARD == BOARD_CROWPANEL_21) return;
   analogReadResolution(12);
-  // Arduino 3.x configures each ADC channel on its first read. Per-pin
-  // attenuation applied before that read is ignored and logs an error.
-  analogRead(PIN_AZ_ADC);
-  analogRead(PIN_EL_ADC);
-  analogSetPinAttenuation(PIN_AZ_ADC, ADC_11db);
-  analogSetPinAttenuation(PIN_EL_ADC, ADC_11db);
-#endif
+  analogRead(PIN_AZ_ADC); analogRead(PIN_EL_ADC);
+  analogSetPinAttenuation(PIN_AZ_ADC, ADC_11db); analogSetPinAttenuation(PIN_EL_ADC, ADC_11db);
 }
 void Hardware::beginInputs() {
-  if (PIN_CONFIRM >= 0) pinMode(PIN_CONFIRM, USER_BUTTON_PULLUP ? INPUT_PULLUP : INPUT);
+  const auto &c = runtime_.controller.hardware;
+  if (c.buttonGpio >= 0) pinMode(c.buttonGpio, c.buttonPullup ? INPUT_PULLUP : INPUT);
 }
 } // namespace forkrot

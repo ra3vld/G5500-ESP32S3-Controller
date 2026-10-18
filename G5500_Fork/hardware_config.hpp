@@ -1,0 +1,116 @@
+// G5500 Fork; GPL-3.0.
+#pragma once
+#include "build_config.hpp"
+#include <array>
+#include <cstdint>
+#include <cstring>
+#include <string_view>
+namespace forkrot {
+struct HardwareConfig {
+  uint8_t drive = DRIVE_INTERFACE;
+  bool simulation = DRIVE_SIMULATION;
+  bool bluetooth = BLUETOOTH_ENABLED;
+  uint8_t bluetoothMode = BLUETOOTH_MODE;
+  bool forceAp = ESP32_FORCE_AP_STA;
+  int8_t buttonGpio = USER_BUTTON_GPIO;
+  bool buttonLow = USER_BUTTON_ACTIVE_LOW, buttonPullup = USER_BUTTON_PULLUP;
+  bool pwmInverted = BTS7960_PWM_INVERTED;
+  uint8_t backend() const {
+    return !bluetooth ? BT_NONE : bluetoothMode == BT_AUTO
+        ? (SELECTED_BOARD == BOARD_ESP32 ? BT_ESP32_SPP : BT_HC05) : bluetoothMode;
+  }
+  const char *backendName() const {
+    return backend() == BT_ESP32_SPP ? "ESP32_SPP" : backend() == BT_HC05 ? "HC05" : "NONE";
+  }
+  bool operator==(const HardwareConfig &b) const {
+    return drive == b.drive && simulation == b.simulation && bluetooth == b.bluetooth &&
+        bluetoothMode == b.bluetoothMode && forceAp == b.forceAp && buttonGpio == b.buttonGpio &&
+        buttonLow == b.buttonLow && buttonPullup == b.buttonPullup && pwmInverted == b.pwmInverted;
+  }
+  bool operator!=(const HardwareConfig &b) const { return !(*this == b); }
+};
+enum class ConfigPhase : uint8_t { Confirmed, Pending, Testing, Recovery, Starting };
+enum class RecoveryReason : uint8_t { None, Unconfirmed, LowMemory, Allocation, Radio, Storage, Invalid, Requested, Initial };
+inline const char *recoveryReasonName(RecoveryReason r) {
+  switch (r) {
+  case RecoveryReason::Unconfirmed: return "unconfirmed";
+  case RecoveryReason::LowMemory: return "low_memory";
+  case RecoveryReason::Allocation: return "allocation_failed";
+  case RecoveryReason::Radio: return "radio_failed";
+  case RecoveryReason::Storage: return "storage_failed";
+  case RecoveryReason::Invalid: return "invalid_config";
+  case RecoveryReason::Requested: return "requested";
+  case RecoveryReason::Initial: return "initial_setup";
+  default: return "none";
+  }
+}
+struct HardwareRecord {
+  HardwareConfig good{}, candidate{};
+  uint32_t generation = 1;
+  uint32_t probeCounter = 0;
+  bool hasConfirmed = false;
+  ConfigPhase phase = ConfigPhase::Confirmed;
+  RecoveryReason reason = RecoveryReason::None;
+};
+// Explicit wire format: no structure padding, compiler ABI or unchecked enums in NVS.
+using HardwareBytes = std::array<uint8_t, 40>;
+inline HardwareBytes encodeHardware(const HardwareRecord &r) {
+  HardwareBytes b{};
+  b[0] = 'H'; b[1] = 'W'; b[2] = 1; b[3] = SELECTED_BOARD; b[4] = DISPLAY_KIND;
+  b[5] = uint8_t(r.phase); b[6] = uint8_t(r.reason); b[7] = r.hasConfirmed;
+  for (unsigned i = 0; i < 4; ++i) b[8+i] = uint8_t(r.generation >> (8*i));
+  auto put = [&](unsigned at, const HardwareConfig &c) {
+    b[at] = c.drive; b[at+1] = c.simulation; b[at+2] = c.bluetooth; b[at+3] = c.bluetoothMode;
+    b[at+4] = c.forceAp; b[at+5] = uint8_t(c.buttonGpio); b[at+6] = c.buttonLow;
+    b[at+7] = c.buttonPullup; b[at+8] = c.pwmInverted;
+  };
+  put(12, r.good); put(21, r.candidate);
+  for (unsigned i=0; i<4; ++i) b[30+i] = uint8_t(r.probeCounter >> (8*i));
+  uint32_t crc = 2166136261u;
+  for (unsigned i = 0; i < 36; ++i) crc = (crc ^ b[i]) * 16777619u;
+  for (unsigned i = 0; i < 4; ++i) b[36+i] = uint8_t(crc >> (8*i));
+  return b;
+}
+inline bool decodeHardware(const HardwareBytes &b, HardwareRecord &r) {
+  if (b[0] != 'H' || b[1] != 'W' || b[2] != 1 || b[3] != SELECTED_BOARD || b[4] != DISPLAY_KIND ||
+      b[5] > uint8_t(ConfigPhase::Starting) || b[6] > uint8_t(RecoveryReason::Initial) || b[7] > 1) return false;
+  HardwareRecord next;
+  next.phase = ConfigPhase(b[5]); next.reason = RecoveryReason(b[6]); next.generation = 0;
+  next.hasConfirmed = b[7];
+  for (unsigned i = 0; i < 4; ++i) next.generation |= uint32_t(b[8+i]) << (8*i);
+  next.probeCounter = 0;
+  for (unsigned i=0; i<4; ++i) next.probeCounter |= uint32_t(b[30+i]) << (8*i);
+  if (!next.generation) return false;
+  auto get = [&](unsigned at, HardwareConfig &c) {
+    for (unsigned i : {1u, 2u, 4u, 6u, 7u, 8u}) if (b[at+i] > 1) return false;
+    c.drive=b[at]; c.simulation=b[at+1]; c.bluetooth=b[at+2]; c.bluetoothMode=b[at+3];
+    c.forceAp=b[at+4]; c.buttonGpio=int8_t(b[at+5]); c.buttonLow=b[at+6];
+    c.buttonPullup=b[at+7]; c.pwmInverted=b[at+8]; return true;
+  };
+  if (!get(12,next.good) || !get(21,next.candidate) || encodeHardware(next) != b) return false;
+  r = next; return true;
+}
+// Hysteresis preserves enough internal byte-addressable RAM for settings POSTs,
+// NVS, TCP and the parser-free recovery page. Values are conservative guardrails,
+// not a claim that every workload above them is physically validated.
+struct MemoryGuard {
+  static constexpr uint32_t HealthyFree = 32768, HealthyBlock = 12288;
+  static constexpr uint32_t CriticalFree = 16384, CriticalBlock = 6144;
+  static constexpr uint32_t TrialMs = 120000, HealthyMs = 10000, LowMs = 2000;
+  uint32_t started = 0, healthyAt = 0, lowAt = 0, failures = 0;
+  bool healthy = false, low = false;
+  void begin(uint32_t now, uint32_t allocFailures) { *this = {}; started=now; failures=allocFailures; }
+  RecoveryReason sample(uint32_t now, uint32_t free, uint32_t block, uint32_t allocFailures, bool trial) {
+    if (allocFailures != failures) return RecoveryReason::Allocation;
+    const bool enough = free >= HealthyFree && block >= HealthyBlock;
+    if (!enough) healthy = false;
+    else if (!healthy) { healthy = true; healthyAt = now; }
+    if (free < CriticalFree || block < CriticalBlock) {
+      if (!low) { low = true; lowAt = now; }
+      if (uint32_t(now-lowAt) >= LowMs) return RecoveryReason::LowMemory;
+    } else low = false;
+    return trial && uint32_t(now-started) >= TrialMs ? RecoveryReason::Unconfirmed : RecoveryReason::None;
+  }
+  bool ready(uint32_t now) const { return healthy && !low && uint32_t(now-healthyAt) >= HealthyMs; }
+};
+} // namespace forkrot

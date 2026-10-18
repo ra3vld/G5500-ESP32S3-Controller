@@ -79,6 +79,15 @@ bool readTouch(uint16_t &x, uint16_t &y, bool *healthy) {
   if (healthy) {
     *healthy = valid;
   }
+#if CROWPANEL_TOUCH_TRACE
+  static bool previousDown = false, previousHealthy = true;
+  const bool down = valid && decodeTouch(data, x, y);
+  if (down != previousDown || valid != previousHealthy) {
+    Serial.printf("[TouchRaw] t=%lu down=%d healthy=%d read=%d data=%02x:%02x:%02x:%02x:%02x xy=%u,%u\n",
+                  (unsigned long)millis(), down, valid, read, data[0], data[1], data[2], data[3], data[4], px, py);
+  }
+  previousDown = down; previousHealthy = valid;
+#endif
   return valid && decodeTouch(data, x, y);
 }
 void beginEncoder() {

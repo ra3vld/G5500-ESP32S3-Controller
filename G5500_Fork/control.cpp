@@ -18,24 +18,23 @@ constexpr uint32_t kMaximumSequenceIntervalMs = 999000;
 
 } // namespace
 
-Controller::Controller() {
-#if DRIVE_SIMULATION
-  feedback(0, 0, true, true);
-#endif
+Controller::Controller() { configureHardware(hardware); }
+void Controller::configureHardware(const HardwareConfig &config) {
+  hardware = config;
+  speeds = {};
   speeds[1].slowdownDegrees = 2;
-#if DRIVE_INTERFACE == DRIVE_YAESU
-  speeds[0] = {50, 25, 25, 2000, 1500, 10};
-#endif
-#if !DRIVE_SIMULATION
-  speeds[0].coastDegrees = AZ_STOP_TOLERANCE_DEG;
-  speeds[1].coastDegrees = EL_STOP_TOLERANCE_DEG;
-#endif
-  for (unsigned i = 0; i < 4; ++i) {
-    presets[i] = {std::to_string(i * 90) + "°", {float(i * 90), 0, true, true}};
-  }
+  speedEnabled = hardware.drive != DRIVE_YAESU;
+  if (hardware.drive == DRIVE_YAESU) speeds[0] = {50, 25, 25, 2000, 1500, 10};
+  if (!hardware.simulation) {
+    speeds[0].coastDegrees = AZ_STOP_TOLERANCE_DEG;
+    speeds[1].coastDegrees = EL_STOP_TOLERANCE_DEG;
+  } else feedback(0, 0, true, true);
+  for (unsigned i=0; i<4; ++i) presets[i] = {std::to_string(i*90)+"°", {float(i*90),0,true,true}};
 }
 Controller::Controller(const Controller &other) : Controller() { *this = other; }
 Controller &Controller::operator=(const Controller &other) {
+  hardware = other.hardware;
+  configurationLocked = other.configurationLocked;
   remote = other.remote;
   for (unsigned i = 0; i < 2; ++i) {
     motionEpoch[i] = other.motionEpoch[i];
@@ -162,6 +161,7 @@ Result Controller::start(Target nextTarget, uint32_t, bool external) {
   return Result::Ok;
 }
 Result Controller::target(Target nextTarget, bool external, uint32_t now, bool followInManual) {
+  if (configurationLocked) return Result::Unavailable;
   if (remote) {
     ControlCommand c;
     c.op = ControlOp::Target;
@@ -194,6 +194,7 @@ Result Controller::target(Target nextTarget, bool external, uint32_t now, bool f
   return result;
 }
 Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now) {
+  if (configurationLocked) return Result::Unavailable;
   if (remote) {
     ControlCommand c;
     c.op = ControlOp::Jog;
@@ -278,6 +279,7 @@ bool Controller::stopOwnedJog(unsigned axis, uint32_t epoch, uint32_t now) {
   return true;
 }
 Result Controller::execute(uint32_t now) {
+  if (configurationLocked) return Result::Unavailable;
   if (remote) {
     ControlCommand c;
     c.op = ControlOp::Execute;
@@ -318,6 +320,7 @@ Target Controller::displayedTarget() const {
   return t;
 }
 Result Controller::executeDisplayed(uint32_t now) {
+  if (configurationLocked) return Result::Unavailable;
   if (remote) {
     if (!remote->manualAvailable()) {
       return pendingValid ? execute(now) : target(displayedTarget(), false, now);
@@ -350,6 +353,7 @@ void Controller::closeManual(ManualSession &s, uint32_t now) {
 Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t gesture,
                                uint32_t serial, uint8_t mask, float az, float el, bool release,
                                uint32_t now) {
+  if (configurationLocked) return Result::Unavailable;
   if (!gesture || !serial || mask > 3 || (!release && model == Model::G800DXA && (mask & 2)) ||
       !std::isfinite(az) || !std::isfinite(el) || std::abs(az) > 1 || std::abs(el) > 1) {
     return Result::Invalid;
@@ -517,9 +521,7 @@ bool Controller::setRange(AzRange range, uint8_t profile, uint32_t now) {
   }
   axes[0].accepted = axes[0].targetKnown = false;
   axes[0].target = azRange.clamp(axes[0].current);
-#if DRIVE_SIMULATION
-  axes[0].current = azRange.clamp(axes[0].current);
-#endif
+  if (hardware.simulation) axes[0].current = azRange.clamp(axes[0].current);
   lastTarget.hasAz = false;
   targetKnown = axes[1].targetKnown;
   return true;
@@ -533,9 +535,7 @@ bool Controller::setElRange(RotationRange next, uint8_t profile, uint32_t now) {
   if (!++rangeRevision) ++rangeRevision;
   axes[1].accepted = axes[1].targetKnown = false;
   axes[1].target = elRange.clamp(axes[1].current);
-#if DRIVE_SIMULATION
-  axes[1].current = elRange.clamp(axes[1].current);
-#endif
+  if (hardware.simulation) axes[1].current = elRange.clamp(axes[1].current);
   lastTarget.hasEl = false;
   targetKnown = axes[0].targetKnown;
   return true;
@@ -563,6 +563,7 @@ Result Controller::savePreset(unsigned slot, const std::string &label, Target ne
   return Result::Ok;
 }
 Result Controller::preset(unsigned slot, uint32_t now) {
+  if (configurationLocked) return Result::Unavailable;
   if (remote) {
     ControlCommand c;
     c.op = ControlOp::Preset;
@@ -587,6 +588,7 @@ Result Controller::preset(unsigned slot, uint32_t now) {
 }
 Result Controller::sequence(const Target *points, size_t count, uint32_t interval, uint32_t now,
                             bool followInManual) {
+  if (configurationLocked) return Result::Unavailable;
   if (remote) {
     if (!count || count > 16)
       return Result::Invalid;
@@ -680,15 +682,12 @@ void Controller::expire(uint32_t now) {
 bool Controller::variableSpeed(unsigned i) const {
   if (remote)
     return i < 2 && remoteVariable[i];
-#if DRIVE_SIMULATION
-  return i == 0 || (i == 1 && model == Model::G5500); // Virtual PWM on every available axis.
-#elif DRIVE_INTERFACE == DRIVE_YAESU
-  return i == 0 && model == Model::G800DXA && speedEnabled;
-#else
+  if (hardware.simulation) return i == 0 || (i == 1 && model == Model::G5500);
+  if (hardware.drive == DRIVE_YAESU) return i == 0 && model == Model::G800DXA && speedEnabled;
   return i == 0 || model == Model::G5500;
-#endif
 }
 void Controller::tick(uint32_t now) {
+  if (configurationLocked) { stopNow(-1, now); return; }
   if (remote)
     return;
   for (auto &s : manualSessions_) {
@@ -700,7 +699,7 @@ void Controller::tick(uint32_t now) {
   const uint32_t elapsed = speedUpdateStarted_ ? uint32_t(now - lastSpeedUpdateAt_) : 0;
   lastSpeedUpdateAt_ = now;
   speedUpdateStarted_ = true;
-#if DRIVE_SIMULATION
+  if (hardware.simulation) {
   // Integrate the previous output over real elapsed time, independent of loop rate.
   // Motor GPIO are disabled; all protocols share these simulated positions.
   for (unsigned i = 0; i < 2; ++i) {
@@ -715,7 +714,7 @@ void Controller::tick(uint32_t now) {
       }
     }
   }
-#endif
+  }
   if (!sequence_.empty() && uint32_t(now - sequenceAdvancedAt_) >= sequenceIntervalMs_) {
     if (++sequenceIndex_ >= sequence_.size()) {
       sequence_.clear();

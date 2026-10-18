@@ -116,6 +116,11 @@ void Display::serviceTouch() {
   serviceKnob();
   const uint32_t now = millis();
   if (uint32_t(now - lastTouch_) < 10) return;
+#if CROWPANEL_TOUCH_TRACE
+  if (uint32_t(now - lastTouch_) >= 80)
+    Serial.printf("[TouchGap] t=%lu gap=%lu down=%d\n", (unsigned long)now,
+                  (unsigned long)(now - lastTouch_), touchButtons_.contactDown());
+#endif
   lastTouch_ = now;
   uint16_t x = 0, y = 0;
   bool touchHealthy = false;
@@ -132,14 +137,34 @@ void Display::serviceTouch() {
       touchSelection_ = runtime_.hud.selectionEpoch;
     }
     auto event = touchButtons_.sample(touch, x, y, layout);
+#if CROWPANEL_TOUCH_TRACE
+    static uint32_t tracedGesture = 0;
+    static bool tracedCancelled = false;
+    if (event.manual && (event.gesture != tracedGesture || event.release)) {
+      Serial.printf("[TouchManual] t=%lu gesture=%lu release=%d mask=%u xy=%u,%u input=%d healthy=%d enabled=%d selection=%d\n",
+                    (unsigned long)now, (unsigned long)event.gesture, event.release, event.mask, x, y,
+                    inputHealthy_, touchHealthy, layout.enabled, selectionChanged);
+      if (event.gesture != tracedGesture) tracedCancelled = false;
+      tracedGesture = event.gesture;
+    }
+#endif
     const auto action = event.action;
     if (event.manual && !selectionChanged) {
       if (runtime_.controller.manualAvailable()) {
         if (!++touchSerial_) {
           ++touchSerial_;
         }
-        runtime_.controller.manualDrive(0, 1, event.gesture, touchSerial_, event.mask, event.az,
-                                        event.el, event.release, now);
+        const auto result = runtime_.controller.manualDrive(0, 1, event.gesture, touchSerial_, event.mask, event.az,
+                                                          event.el, event.release, now);
+#if CROWPANEL_TOUCH_TRACE
+        if (result == Result::Cancelled && !tracedCancelled) {
+          Serial.printf("[TouchCancelled] t=%lu gesture=%lu release=%d xy=%u,%u\n",
+                        (unsigned long)now, (unsigned long)event.gesture, event.release, x, y);
+          tracedCancelled = true;
+        }
+#else
+        (void)result;
+#endif
       } else if (!event.release && hud && runtime_.hud.available()) {
         touchNotice_ = true;
         touchNoticeAt_ = now;
@@ -206,9 +231,9 @@ void Display::updateLocalDisplay() {
     lastUi_ = now; redraw_ = false;
     const auto &controller = runtime_.controller;
     CrowPanelView view;
-#if DRIVE_SIMULATION
+    if (runtime_.controller.hardware.simulation) {
     std::snprintf(view.status, sizeof view.status, "%s", controller.moving() ? "Имитация · вращение" : "Имитация · остановлен");
-#endif
+    }
     if (!inputHealthy_) std::snprintf(view.status, sizeof view.status, "Ошибка кнопки / I2C");
     const unsigned axis = runtime_.hud.isHud() ? hudKnob_.axis() : knob_.axis();
     view.hud = runtime_.hud.isHud();
@@ -310,7 +335,7 @@ void Display::updateLocalDisplay() {
     view.wifiRssi = connected ? int(WiFi.RSSI()) : -127;
     const auto address = connected ? WiFi.localIP() : ap ? WiFi.softAPIP() : IPAddress();
     if (connected || ap) std::snprintf(view.ip, sizeof view.ip, "%s: %u.%u.%u.%u", connected ? "IP" : "AP", address[0], address[1], address[2], address[3]);
-    view.bluetoothEnabled = BLUETOOTH_ENABLED != 0;
+    view.bluetoothEnabled = runtime_.controller.hardware.bluetooth;
     view.bluetoothConnected = view.bluetoothEnabled && network_.bluetoothConnected();
     std::snprintf(view.heap, sizeof view.heap, "Heap: %lu КБ", static_cast<unsigned long>(heapFreeBytes() / 1024));
     ui_.update(view);

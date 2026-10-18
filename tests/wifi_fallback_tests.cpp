@@ -48,8 +48,10 @@ int main() {
   assert(policy.update(128001, true, false, true, true) == WifiAction::StartSta);
   assert(policy.update(136001, true, false, true, true) == WifiAction::StartAp);
   assert(policy.update(136002, true, true, true, true) == WifiAction::None);
-  beginRuntimeMetrics(); assert(runtimeMetrics.hookReady && fakeAllocFailureHook);
+  uint32_t recoveryWord = 0;
+  beginRuntimeMetrics(&recoveryWord, 0x52335648u); assert(runtimeMetrics.hookReady && fakeAllocFailureHook);
   fakeAllocFailureHook(2308, 3, "heap_caps_malloc");
+  assert(__atomic_load_n(&recoveryWord, __ATOMIC_RELAXED) == 0x52335648u);
   assert(runtimeMetrics.failures[1].ready() && !runtimeMetrics.failures[0].ready());
   assert(runtimeMetrics.failures[1].size == 2308 && runtimeMetrics.failures[1].caps == 3);
   assert(runtimeMetrics.failures[1].freeBytes == fakeHeapFree);
@@ -60,6 +62,7 @@ int main() {
     assert(runtimeMetrics.failures[1].size == 2308 && runtimeMetrics.failures[1].caps == 3);
   }
   radio.join();
+  assert(__atomic_load_n(&recoveryWord, __ATOMIC_RELAXED) == 0x52335648u);
   assert(runtimeMetrics.allocationFailures == 20001 && runtimeMetrics.largestFailedAllocation == 4096);
   assert(runtimeMetrics.failures[0].ready() && runtimeMetrics.failures[0].size == 64);
   std::cout << "PASS: immediate STA recovery, fallback/always-on AP, retry/deadline/wrap, bounded AP stop retry, immutable OOM samples across threads\n";

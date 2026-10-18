@@ -347,7 +347,7 @@ void Display::updateDashboard() {
   }
 
   bool bt = network_.bluetoothConnected();
-  String btText = BLUETOOTH_ENABLED ? (bt ? "ON" : "OFF") : "N/A";
+  String btText = runtime_.controller.hardware.bluetooth ? (bt ? "ON" : "OFF") : "N/A";
   if (btText != dashLastBt) {
     tft.fillRect(271, 183, 40, 20, TFT_BG);
     tftText(272, 186, 2, bt ? TFT_OK : TFT_MUTED, TFT_BG, btText);

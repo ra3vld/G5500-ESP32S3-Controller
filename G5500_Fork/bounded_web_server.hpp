@@ -169,6 +169,22 @@ public:
   void sendBuffer(int code, const char *type, const char *data, size_t size) {
     sendPage(code, type, data, size); // caller-owned status buffer stays valid across loop iterations
   }
+  // Recovery must not depend on String header allocation or the normal parser.
+  // Payload is flash or the existing status buffer, valid across service calls.
+  void sendFixed(int code, const char *type, const char *data, size_t size) {
+    char header[256];
+    const int count = std::snprintf(header, sizeof header,
+        "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %u\r\n"
+        "Cache-Control: no-store\r\nConnection: close\r\n\r\n",
+        code, code == 200 ? "OK" : "Error", type, unsigned(size));
+    keepAliveResponse_ = persistentCandidate_ = false;
+    if (count <= 0 || size_t(count) >= sizeof header ||
+        _currentClientWrite(header, size_t(count)) != size_t(count)) return;
+    page_ = data; pageSize_ = size; pageSent_ = 0;
+    htmlTransfer_ = std::strncmp(type,"text/html",9) == 0;
+    pageStartedMs_ = pageProgressMs_ = millis(); pageAttemptMs_ = pageStartedMs_-20;
+    pageRetryErrno_ = 0;
+  }
 protected:
   size_t _currentClientWrite(const char *data, size_t size) override {
     if (!size || failed_) return 0;

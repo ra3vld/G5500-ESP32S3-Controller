@@ -42,7 +42,7 @@ for bt in (0, 1):
     compile_case(crow + [f'BLUETOOTH_ENABLED={bt}', 'CONFIG_IDF_TARGET_ESP32S3=1'], True)
 for flag in ('DRIVE_INTERFACE=1', 'DRIVE_INTERFACE=2', 'CONFIG_IDF_TARGET_ESP32=1', 'CONFIG_IDF_TARGET_ESP32S2=1'):
     compile_case(crow + [flag], False)
-compile_case(['BOARD_PROFILE=5', 'DISPLAY_KIND=3'], False)
+compile_case(['BOARD_PROFILE=5', 'DISPLAY_KIND=3'], True)
 compile_case(['BOARD_PROFILE=5', 'USER_BUTTON_GPIO=-1'], False)
 for display, drive in itertools.product(range(3), range(3)):
     compile_case(['BOARD_PROFILE=4', f'DISPLAY_KIND={display}', f'DRIVE_INTERFACE={drive}', 'BLUETOOTH_ENABLED=1', 'BLUETOOTH_MODE=BT_HC05'], True)

@@ -14,12 +14,12 @@ void Application::updatePosition() {
     runtime_.elTrack = c.axes[1].tracking;
     return;
   }
-#if DRIVE_SIMULATION
+  if (runtime_.controller.hardware.simulation) {
   runtime_.controller.tick(millis());
   runtime_.currentAz = runtime_.controller.axes[0].current;
   runtime_.currentEl = runtime_.controller.model == Model::G5500 ? runtime_.controller.axes[1].current : 0.f;
   runtime_.controller.feedback(runtime_.currentAz, runtime_.currentEl, true, true);
-#else
+  } else {
   auto &calibrationState = calibration_.state();
   // factory-calibrated ESP32-S3 millivolts -> selected mechanical calibration -> angle.
   // Each axis uses the calibration of its active range profile.
@@ -41,7 +41,7 @@ void Application::updatePosition() {
       calibrationState.calibrationMode == CAL_MULTI_POINT ? calibration_.activeElMultiValid()
                                                           : calibration_.activeElLinearValid());
 #endif
-#endif
+  }
 }
 
 bool Application::saveCal() {

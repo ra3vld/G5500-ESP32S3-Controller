@@ -452,7 +452,7 @@ void HudState::capture(const Controller &c, const Protocol &p, uint32_t now) {
   remaining = c.remaining(now);
   sequenceIndex = uint8_t(c.sequenceIndex());
   sequenceCount = uint8_t(c.sequenceCount());
-  drive = DRIVE_SIMULATION ? 3 : SELECTED_BOARD == BOARD_CROWPANEL_21 ? 4 : DRIVE_INTERFACE;
+  drive = c.hardware.simulation ? 3 : SELECTED_BOARD == BOARD_CROWPANEL_21 ? 4 : c.hardware.drive;
   board = SELECTED_BOARD;
   std::snprintf(name, sizeof name, "%s", p.rotorName.c_str());
   std::snprintf(fault, sizeof fault, "%s", c.fault.c_str());
@@ -1355,6 +1355,11 @@ void Hud::service(uint32_t at) {
   if (manual.used) {
     if (!manual.command.release &&
         (uint32_t(now - client_->manualInputAt) >= 100 || manual.selection != selectionEpoch)) {
+#if CROWPANEL_TOUCH_TRACE
+      printf("[TouchLease] t=%lu gap=%lu gesture=%lu selection=%d\n", (unsigned long)now,
+             (unsigned long)(now - client_->manualInputAt), (unsigned long)manual.command.gesture,
+             manual.selection != selectionEpoch);
+#endif
       releaseManual();
     }
     if (uint32_t(now - manual.started) >= 1000 && manual.command.release) {

@@ -281,9 +281,9 @@
 <text x="65" y="1530" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">ADC_11db: 5 В → 2,04 В; при 5,5 В и допусках 1% ≤2,275 В. D1/D2: BAT54S. Калибровать по мВ.</text>
 <rect x="1380" y="1290" width="975" height="305" fill="#f6f8fc" stroke="#aebed2" stroke-width="2"/>
 <text x="1400" y="1305" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">Кнопка и периферия</text>
-<text x="1400" y="1348" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="bold" fill="#245fbe">USER_BUTTON_GPIO → кнопка → GND</text>
+<text x="1400" y="1348" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="bold" fill="#245fbe">GPIO кнопки → кнопка → GND</text>
 <text x="1400" y="1388" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#172b46">По умолчанию GPIO0, active LOW, INPUT_PULLUP.</text>
-<text x="1400" y="1423" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Другой GPIO - в build_config.hpp; -1 отключает кнопку.</text>
+<text x="1400" y="1423" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">GPIO задаётся в веб-настройках; -1 отключает кнопку.</text>
 <text x="1400" y="1464" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">TFT: MOSI10/SCK11/MISO2, CS12/DC13/RST14;</text>
 <text x="1400" y="1498" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">touch: CS8/IRQ9. LCD: RS8/E9, D4...D7=10...13.</text>
 <text x="1400" y="1532" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">LCD RW=GND; 5 В LCD - через отдельный TTL-буфер.</text>

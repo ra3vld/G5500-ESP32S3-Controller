@@ -7,6 +7,12 @@ namespace forkrot {
 // buffers and settings belong to their respective services, not this object.
 struct Runtime {
   Controller controller;
+  HardwareRecord hardwareRecord;
+  MemoryGuard memoryGuard;
+  bool recovery = false, hardwareTrial = false, hardwareProbe = false;
+  bool hardwareHudUart = false;
+  uint32_t hardwareToken = 0;
+  RecoveryReason recoveryReason = RecoveryReason::None;
   Protocol protocol{controller};
   Settings loggerSettings;
   Hud hud{controller, protocol};

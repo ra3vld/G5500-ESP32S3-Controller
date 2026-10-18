@@ -16,9 +16,9 @@
 
 ```cpp
 #define BOARD_PROFILE BOARD_S2_MINI // либо BOARD_S3
-#define DRIVE_INTERFACE DRIVE_BTS7960
-#define BTS7960_PWM_INVERTED 0
 ```
+
+В вебе откройте **Настройки → Оборудование**, выберите **BTS7960 / IBT-2** и **прямое подключение PWM**. Сохраните и подтвердите конфигурацию после перезапуска.
 
 | Вход модуля | S2 Mini GPIO | S3 GPIO |
 |---|---:|---:|

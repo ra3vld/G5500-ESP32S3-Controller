@@ -24,15 +24,15 @@ public:
           Diagnostics &diagnostics)
       : runtime_(runtime), actions_(actions), calibration_(calibration), hardware_(hardware),
         diagnostics_(diagnostics) {}
-  void beginSerial();
+  bool beginSerial();
   void beginHud();
   void serviceHud();
   bool sendHud(const HudEndpoint &, const uint8_t *, size_t) override;
   void selectionChanged() override { resetHudInputs(); }
   bool hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned report) const;
   bool apAlwaysOn() const {
-    return runtime_.hud.config.wifi == HudWifi::Host ||
-           (runtime_.hud.config.wifi == HudWifi::Existing && board::WIFI_AP_ALWAYS_ON);
+    return runtime_.recovery || runtime_.hud.config.wifi == HudWifi::Host ||
+           (runtime_.hud.config.wifi == HudWifi::Existing && (SELECTED_BOARD != BOARD_ESP32 || runtime_.controller.hardware.forceAp));
   }
 
   WifiCredentials &credentials() {
@@ -51,7 +51,7 @@ public:
   void handleBluetoothSerial();
   void serviceHeapDiagnostics();
   void handleRotctldTcp();
-  void startWifi();
+  bool startWifi();
   void serviceWifiReconnect();
   void setupLoggerUdp();
   void serviceLoggerUdp();

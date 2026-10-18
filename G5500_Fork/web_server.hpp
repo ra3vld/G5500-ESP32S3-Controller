@@ -44,15 +44,22 @@ public:
     if (web_.writeFailed() && web_.diagnostics().writeFailures == 1)
       diagnostics_.dbgPrintln("[HTTP] response failed or send deadline expired; client closed");
     network_.setHttpDiagnostics(web_.diagnostics());
-    if (restart_.consume(millis())) ESP.restart();
-    if (ota_.readyToRestart()) ESP.restart();
+    if (restart_.consume(millis()) || ota_.readyToRestart()) {
+      // An intentional restart is distinct from a failed startup. A trial
+      // remains Testing until explicit confirmation; normal settings changes
+      // must not leave a false interrupted-boot marker behind.
+      if (storage_.finishHardwareBoot(runtime_)) ESP.restart();
+    }
   }
   bool otaLocked() const { return ota_.locked(); }
+  void abortForRecovery() { ota_.cancel(); }
   void setupWeb();
   void serviceLiveCommands() { live_.commands(millis()); }
   void publishLive() { live_.publish(millis()); }
 
 private:
+  bool handleHardwareRequest(std::string_view request);
+  void writeHardwareStatus();
   bool handleOtaRequest(std::string_view request);
   void sendHtml(const char *raw, size_t rawSize, const unsigned char *gzip, size_t gzipSize);
   void sendJson(const JsonWriter &j) {

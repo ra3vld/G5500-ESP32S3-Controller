@@ -44,6 +44,9 @@ public:
   }
 
 private:
+  void failConfiguration(RecoveryReason reason);
+  void serviceConfigurationSafety();
+  void *recoveryReserve_ = nullptr;
   Runtime runtime_;
   Calibration calibration_{runtime_.controller};
   Storage storage_;

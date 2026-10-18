@@ -135,9 +135,9 @@ text(65,1530,'ADC_11db: 5 В → 2,04 В; при 5,5 В и допусках 1% �
 # User button and optional devices.
 box(1380,1290,975,305)
 text(1400,1305,'Кнопка и периферия',26,bold=True)
-text(1400,1348,'USER_BUTTON_GPIO → кнопка → GND',23,BLUE,True)
+text(1400,1348,'GPIO кнопки → кнопка → GND',23,BLUE,True)
 text(1400,1388,'По умолчанию GPIO0, active LOW, INPUT_PULLUP.',21)
-text(1400,1423,'Другой GPIO - в build_config.hpp; -1 отключает кнопку.',20)
+text(1400,1423,'GPIO задаётся в веб-настройках; -1 отключает кнопку.',20)
 text(1400,1464,'TFT: MOSI10/SCK11/MISO2, CS12/DC13/RST14;',20)
 text(1400,1498,'touch: CS8/IRQ9. LCD: RS8/E9, D4...D7=10...13.',20)
 text(1400,1532,'LCD RW=GND; 5 В LCD - через отдельный TTL-буфер.',20,GRAY)

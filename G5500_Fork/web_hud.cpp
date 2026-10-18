@@ -53,7 +53,8 @@ void WebInterface::setupHudWeb() {
       web_.send(400, "application/json", "{\"ok\":false,\"result\":\"invalid_or_port_conflict\"}");
       return;
     }
-    if (uart == "1" && (board::PIN_UART_RX < 0 || board::PIN_UART_TX < 0)) {
+    if (uart == "1" && (board::PIN_UART_RX < 0 || board::PIN_UART_TX < 0 ||
+        (SELECTED_BOARD == BOARD_CROWPANEL_21 && runtime_.controller.hardware.backend() == BT_HC05))) {
       web_.send(400, "application/json", "{\"ok\":false,\"result\":\"uart_in_use_by_hc05\"}");
       return;
     }

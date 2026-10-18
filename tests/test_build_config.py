@@ -28,14 +28,14 @@ class BuildConfigTests(unittest.TestCase):
         shutil.copy2(ROOT / 'platformio.ini', self.root / 'platformio.ini')
 
     def edit(self, **settings):
-        path = self.source / 'build_config.hpp'
-        text = path.read_text()
         for name, value in settings.items():
+            path = self.source / ('build_config.hpp' if name in {'BOARD_PROFILE', 'DISPLAY_KIND'} else 'runtime_defaults.hpp')
+            text = path.read_text()
             # Realistic formatting: indentation, spaces after #, aligned values.
             text, count = re.subn(r'^#define\s+' + name + r'\s+[^\n]+',
                                  '  # define ' + name + '    ' + str(value), text, flags=re.M)
             self.assertEqual(count, 1, name)
-        path.write_text(text)
+            path.write_text(text)
 
     def compile(self, expected, flags=(), success=True):
         assertions = '\n'.join(f'static_assert({name} == {value}, "{name}");'
@@ -136,7 +136,7 @@ class BuildConfigTests(unittest.TestCase):
                                  '--target', 's2-mini'], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         sketch = self.root / 'build/arduino-s2-mini/G5500_Fork'
-        for name in ['build_config.hpp', 'build_config_options.hpp', 'build_config_checks.hpp']:
+        for name in ['build_config.hpp', 'build_config_options.hpp', 'build_config_checks.hpp', 'runtime_defaults.hpp', 'hardware_config.hpp']:
             self.assertEqual((sketch / name).read_bytes(), (self.source / name).read_bytes())
         self.assertEqual((sketch / 'partitions.csv').read_bytes(), (self.source / 'partitions_s2.csv').read_bytes())
 

@@ -10,16 +10,16 @@
 
 ```cpp
 #define BOARD_PROFILE BOARD_S2_MINI // либо BOARD_S3
-#define DRIVE_INTERFACE DRIVE_BTS7960
-#define BTS7960_PWM_INVERTED 1
 ```
+
+В вебе откройте **Настройки → Оборудование**, выберите **BTS7960 / IBT-2** и **инвертирующие оптроны RPWM / LPWM**. Сохраните и подтвердите конфигурацию после перезапуска.
 
 Опция инвертирует **только RPWM/LPWM**, не ENABLE и не направления контроллера. Для 10 бит физическая команда GPIO равна `1023 - logicalDuty`: логические 0% моста требуют 100% GPIO; логические 100% моста - 0% GPIO. В прямом варианте опция равна 0.
 
-При загрузке и после снятия LEDC GPIO PWM удерживаются HIGH, что включает LED оптрона и даёт LOW на входе модуля. Пример сборки PlatformIO:
+При загрузке с подтверждённым режимом инверсии и после снятия LEDC GPIO PWM удерживаются HIGH, что включает LED оптрона и даёт LOW на входе модуля. Пример сборки PlatformIO:
 
 ```sh
-python3 tools/build_platformio.py --env esp32s2_mini --drive bts7960 --pwm-inverted 1 --display none
+python3 tools/build_platformio.py --env esp32s2_mini --display none
 ```
 
 При STOP/ошибке прошивка сначала опускает оба ENABLE, затем меняет PWM. Каждый отказ инициализации LEDC блокирует движение; инверсия учитывается также при снятии уже подключённых каналов.

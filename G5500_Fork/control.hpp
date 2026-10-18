@@ -1,6 +1,7 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
 #include "build_config.hpp"
+#include "hardware_config.hpp"
 #include "az_range.hpp"
 #include <algorithm>
 #include <array>
@@ -94,6 +95,9 @@ struct Preset {
 };
 class Controller {
 public:
+  HardwareConfig hardware;
+  bool configurationLocked = false;
+  void configureHardware(const HardwareConfig &config);
   CommandSink *remote = nullptr; // Non-owning. A mirror must never run tick()/feedback().
   uint32_t motionEpoch[2] = {};
   uint32_t snapshotAt = 0, remoteRemaining = 0;

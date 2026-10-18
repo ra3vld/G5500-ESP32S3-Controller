@@ -12,10 +12,16 @@ namespace forkrot {
 enum class WifiSaveResult { Ok, InvalidSsid, InvalidPassword, OpenFailed, WriteFailed, VerifyFailed };
 class Storage {
 public:
-  void loadHud(Runtime &runtime);
+  void loadHardware(Runtime &runtime, bool forceRecovery = false);
+  bool stageHardware(Runtime &runtime, const HardwareConfig &config);
+  bool confirmHardware(Runtime &runtime);
+  bool enterRecovery(Runtime &runtime, RecoveryReason reason);
+  bool finishHardwareBoot(Runtime &runtime);
+  bool probeHardwareStorage(Runtime &runtime);
+  void loadHud(Runtime &runtime, bool peers = true);
   bool saveHudConfig(const HudConfig &config);
   bool saveHudPeers(const Hud &hud);
-  void loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredentials &credentials);
+  void loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredentials &credentials, bool wifiOnly = false);
   bool saveCal(const Runtime &runtime, Calibration &calibration);
   WifiSaveResult saveWifi(const String &s, const String &p);
   bool wifiCredentialsReadOk() const { return wifiCredentialsReadOk_; }
@@ -35,6 +41,7 @@ public:
   void persistRssiYear(const RssiHistory &history);
 
 private:
+  bool writeHardware(const HardwareRecord &record);
   const char *calNamespace(const Runtime &runtime);
   const char *presetNamespace(const Runtime &runtime);
   static constexpr uint8_t RESET_HISTORY_MAX = 20;

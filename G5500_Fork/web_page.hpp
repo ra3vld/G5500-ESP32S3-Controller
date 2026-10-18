@@ -216,7 +216,9 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <div class="field"><label for="gs232ManualFollow">GS-232 · UART, Bluetooth, TCP</label><select aria-describedby="gs232ManualFollow-help" id="gs232ManualFollow" name="gs232ManualFollow"><option value="false">С подтверждением</option><option value="true">Автоследование</option></select><p class="field-help" id="gs232ManualFollow-help">В ручном режиме цели GS-232 ожидают подтверждения либо выполняются сразу при выборе автоследования. Настройка действует только на этот протокол.</p></div>
 <div class="field"><label for="rotctldManualFollow">rotctld / Hamlib</label><select aria-describedby="rotctldManualFollow-help" id="rotctldManualFollow" name="rotctldManualFollow"><option value="false">С подтверждением</option><option value="true">Автоследование</option></select><p class="field-help" id="rotctldManualFollow-help">В ручном режиме цели rotctld ожидают подтверждения либо выполняются сразу при выборе автоследования. Настройка действует на команды положения Hamlib по всем доступным подключениям.</p></div>
 </div><p class="hint">Автоследование сразу выполняет новые числовые цели выбранного протокола, сохраняя ручной режим. «С подтверждением» оставляет цель для запуска кнопкой. В автоматическом режиме цели всех протоколов выполняются сразу. Направления и STOP выполняются сразу в обоих режимах; при активной предустановке внешние команды движения отклоняются.</p></div>
+<p class="hint hide" id="hardwareTrialNotice">Движение заблокировано до подтверждения оборудования. <a href="/hardware">Открыть настройки оборудования</a></p>
 <div class="hint" id="buildInfo"></div>
+<div class="settings-group" id="hardwareSettings"><h3>Оборудование</h3><p class="hint">Привод, имитация, Bluetooth, точка доступа и кнопка настраиваются с проверкой после перезапуска.</p><a class="btn" href="/hardware">Настроить оборудование</a> <a href="/recovery">Восстановление доступа</a></div>
 <div class="hide" id="encoderSettings"><label class="check-field"><input checked="" id="encoderInverted" aria-describedby="encoderInverted-help" name="encoderInverted" type="checkbox"/> Инверсия энкодера</label><p class="field-help" id="encoderInverted-help">Меняет направление изменения цели при вращении энкодера. На направление вращения двигателя не влияет.</p></div>
 <div class="settings-group" id="coastSettings"><h3>Выбег и остановка</h3><div class="row">
 <div class="field"><label for="coastDegrees">Угол выбега AZ, °</label><input aria-describedby="coastDegrees-help" id="coastDegrees" max="90" min="0" name="coastDegrees" required="" step="0.1" type="number" value="5"/><p class="field-help" id="coastDegrees-help">На сколько градусов раньше цели отключать AZ для остановки по инерции. 0 — отключение на цели; максимум для короткого хода — 10% диапазона.</p></div>
@@ -605,7 +607,7 @@ async function forkPost(path,body){
   }
   const missingCalibration=path==='/api/target'?['az','el'].filter((axis,i)=>body[axis]!==undefined&&window._forkState?.axes?.[i]?.calibrated===false).map(axis=>axis.toUpperCase()):[];
   const calibrationMessage='Сначала выполните калибровку'+(missingCalibration.length?' '+missingCalibration.join(' и '):'');
-  const messages={deferred:'Ожидаем подтверждение',timeout:'Нет подтверждения — проверьте состояние поворотки',unavailable:'Нет связи с повороткой',busy:'Поворотка занята, повторите команду',cancelled:'Команда отменена',storage_full:'Не хватает памяти для сохранения',hud_port_conflict:'Порт HUD совпадает с портом логгера',controller_settings_only:'Эти настройки доступны на контроллере поворотки',restart:'Сохранено. Устройство перезагружается',searching:'Поиск устройств…',invalid_or_port_conflict:'Проверьте настройки и порты',uart_in_use_by_hc05:'UART занят HC-05: нужна сборка без Bluetooth',not_calibrated:calibrationMessage,invalid:'Проверьте значения',ignored:'Сейчас выполняется предустановка',pending:'Цель ожидает подтверждения',ok:'Готово'};
+  const messages={deferred:'Ожидаем подтверждение',timeout:'Нет подтверждения — проверьте состояние поворотки',unavailable:'Нет связи с повороткой',busy:'Поворотка занята, повторите команду',cancelled:'Команда отменена',storage_full:'Не хватает памяти для сохранения',hud_port_conflict:'Порт HUD совпадает с портом логгера',controller_settings_only:'Эти настройки доступны на контроллере поворотки',restart:'Сохранено. Устройство перезагружается',searching:'Поиск устройств…',invalid_or_port_conflict:'Проверьте настройки и порты',uart_in_use_by_hc05:'UART занят HC-05: выключите Bluetooth в настройках оборудования',not_calibrated:calibrationMessage,invalid:'Проверьте значения',ignored:'Сейчас выполняется предустановка',pending:'Цель ожидает подтверждения',ok:'Готово'};
   document.getElementById('forkMessage').textContent=(messages[j.result]||'Ошибка')+(path!=='/api/hud/select'&&name&&selection!==window._forkState?.hudSelectionEpoch?' · команда для '+name:'');
   const ok=r.status<400&&!!j.ok;
   notice?.finish(ok,ok&&j.result==='ok'?success:(messages[j.result]||'Не удалось выполнить действие'));
@@ -661,6 +663,7 @@ function updateFork(j){
  const btBackend=j.build?.bluetoothBackend||(j.build?.bluetooth===false?'NONE':'HC05');
  const btName=btBackend==='ESP32_SPP'?'Встроенный Bluetooth SPP':btBackend==='HC05'?'HC-05':'Bluetooth отключён';
  const nativeBt=btBackend==='ESP32_SPP';
+ document.getElementById('hardwareTrialNotice').classList.toggle('hide',!j.configurationLocked);
  setText(document.getElementById('buildInfo'),j.build?`${j.build.board} · ${j.build.drive} · ${j.build.display} · ${btName}`:'');
  setText(document.getElementById('btlabel'),nativeBt?'Канал SPP':btName);
  setText(document.getElementById('bttransport'),btBackend==='ESP32_SPP'?'G5500-Rotator · SPP / виртуальный COM':btBackend==='HC05'?'HC-05 UART: 9600 baud':'');
@@ -866,7 +869,7 @@ panel2.classList.toggle('hide',j.calMode!=='2');panelm.classList.toggle('hide',j
 setText(ip,j.ip);setText(document.getElementById('apip'),j.apIp||'-');setText(mode,j.wifiMode);
 setText(rssi,(j.rssi===null?'-':j.rssi+' dBm'));
 setText(sig,j.signal||'-');
-setText(btstate,j.build?.bluetooth===false?'Отключён в сборке':j.btConnected?'CONNECTED':'DISCONNECTED');
+setText(btstate,j.build?.bluetooth===false?'Выключен в настройках':j.btConnected?'CONNECTED':'DISCONNECTED');
 btstate.style.color=j.btConnected?'#24d18d':'#e5a94f';
 if(document.activeElement!==ssid && !ssid.dataset.dirty) ssid.value=j.ssid||'';
 updateHud(j);
