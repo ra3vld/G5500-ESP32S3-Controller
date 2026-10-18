@@ -263,7 +263,9 @@ int main() {
   // An entire OTA upload reuses a single socket, including binary bodies.
   web.setRequestHandler([](void *context,std::string_view) {
     static constexpr char ok[] = "{\"ok\":true}";
-    static_cast<BoundedWebServer *>(context)->sendBuffer(200,"application/json",ok,sizeof ok-1);
+    auto &server=*static_cast<BoundedWebServer *>(context);
+    server.holdTransferConnection();
+    server.sendBuffer(200,"application/json",ok,sizeof ok-1);
     return true;
   },&web);
   connect(prefix+chunk);web.handleClient();assert(testSocket.open && !testSocket.parsed);
@@ -273,6 +275,14 @@ int main() {
     testSocket.input+=prefix+chunk;web.handleClient();assert(testSocket.open && !testSocket.parsed);
   }
   assert(web.acceptedRequests()==otaAccepted && web.diagnostics().requests==otaRequests+1000);
+  // Another browser poll must not close the socket between upload blocks.
+  testSocket.pending=true;web.handleClient();assert(testSocket.open);
+  testSocket.pending=false;fakeHardware.now+=9999;web.handleClient();assert(testSocket.open);
+  ++fakeHardware.now;web.handleClient();assert(!testSocket.open && !testSocket.reset);
+  // The longer response budget applies only after motion is locked for OTA.
+  connect(prefix+chunk);testSocket.blockWrites=true;
+  const auto transferStarted=fakeHardware.now;web.handleClient();
+  assert(web.writeFailed() && fakeHardware.now-transferStarted==100);
   assert(!persistentOtaRequest("POST /api/ota/finish HTTP/1.0\r\n\r\n",37));
   const std::string closeOta="POST /api/ota/finish HTTP/1.1\r\nConnection: close\r\n\r\n";
   assert(!persistentOtaRequest(closeOta,closeOta.size()));

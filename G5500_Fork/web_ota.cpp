@@ -39,6 +39,8 @@ bool WebInterface::handleOtaRequest(std::string_view request) {
     std::snprintf(statusBuffer_, sizeof statusBuffer_, "{\"error\":\"%s\"}", error);
     web_.sendBuffer(409, "application/json", statusBuffer_, std::strlen(statusBuffer_));
   } else {
+    if (ota_.locked() && (path == "/api/ota/start" || path == "/api/ota/write" || path == "/api/ota/finish"))
+      web_.holdTransferConnection();
     static constexpr char ok[] = "{\"ok\":true}";
     web_.sendBuffer(200, "application/json", ok, sizeof ok - 1);
   }

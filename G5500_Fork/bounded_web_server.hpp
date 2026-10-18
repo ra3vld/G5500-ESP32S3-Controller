@@ -27,6 +27,8 @@ public:
   void setRequestHandler(RequestHandler handler, void *context) { requestHandler_ = handler; requestContext_ = context; }
   std::string_view argumentName(size_t i) const { return {_currentArgs[i].key.c_str(), _currentArgs[i].key.length()}; }
   std::string_view argumentValue(size_t i) const { return {_currentArgs[i].value.c_str(), _currentArgs[i].value.length()}; }
+  // Set only after OTA has stopped motion and accepted the upload.
+  void holdTransferConnection() { transferConnection_ = true; }
   uint32_t readFailures() const { return diagnostics_.readFailures; }
   uint32_t rejectedRequests() const { return diagnostics_.rejected; }
   uint32_t acceptedRequests() const { return diagnostics_.accepted; }
@@ -77,7 +79,8 @@ public:
       if (idlePersistent_ && count < 0) {
         // Keep one polling connection, but do not make another browser/control
         // request wait behind it. Never block the rotator loop while idle.
-        if (_server.hasClient() || uint32_t(millis() - _statusChange) >= 1500) releaseClient();
+        if ((!transferConnection_ && _server.hasClient()) ||
+            uint32_t(millis() - _statusChange) >= (transferConnection_ ? 10000u : 1500u)) releaseClient();
         return;
       }
       if (count > 0) {
@@ -88,7 +91,7 @@ public:
       const auto state = inspectRequest({requestBuffer_, requestUsed_}, requestCapacity_, &requestSize);
       if (state == RequestState::Invalid || state == RequestState::TooLarge) { reject(); return; }
       if (state == RequestState::Incomplete) {
-        if (uint32_t(millis() - _statusChange) >= 1000) reject();
+        if (uint32_t(millis() - _statusChange) >= (transferConnection_ ? 10000u : 1000u)) reject();
         return; // wait across loop iterations, never inside the stock parser
       }
       // Leave headroom for request strings and handlers. The parser reads the
@@ -172,7 +175,7 @@ protected:
     if (!started_) { started_ = true; startedMs_ = millis(); }
     const int socket = client().fd();
     int writeError = 0;
-    const auto sent = writeWithinBudget(data, size, startedMs_, 5,
+    const auto sent = writeWithinBudget(data, size, startedMs_, transferConnection_ ? 100 : 5,
         [socket, &writeError](const char *part, size_t count) {
           const int result = ::send(socket, part, count, MSG_DONTWAIT);
           if (result >= 0) return result;
@@ -255,6 +258,7 @@ private:
     clearArguments();
     page_ = nullptr;
     persistentCandidate_ = keepAliveResponse_ = idlePersistent_ = false;
+    transferConnection_ = false;
     _currentClient.stop();
     _currentClient = NetworkClient();
     _currentStatus = HC_NONE;
@@ -330,6 +334,7 @@ private:
   int pageRetryErrno_ = 0;
   bool persistentCandidate_ = false, keepAliveResponse_ = false, idlePersistent_ = false;
   bool htmlTransfer_ = false;
+  bool transferConnection_ = false;
   StopHandler stopHandler_ = nullptr;
   void *stopContext_ = nullptr;
   RequestHandler requestHandler_ = nullptr;
