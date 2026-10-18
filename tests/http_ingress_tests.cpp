@@ -242,6 +242,40 @@ int main() {
   connect(polling+polling);testSocket.handler=[&] { web.sendBuffer(200,"application/json","{}",2); };
   web.handleClient();assert(!testSocket.open && testSocket.parsed==1);
   assert(testSocket.output.find("Connection: close\r\n")!=std::string::npos);
+  // Binary OTA chunks stay bounded and bypass the form parser. No complete
+  // chunk, duplicate length or larger body can slip through a partial envelope.
+  std::string chunk(2048,'\0'); chunk[0]=char(0xe9); chunk[100]='&';
+  const std::string prefix="POST /api/ota/write?offset=0 HTTP/1.1\r\nContent-Type: application/octet-stream\r\nContent-Length: 2048\r\n\r\n";
+  connect(prefix+chunk); web.handleClient(); assert(testSocket.reset && !testSocket.parsed);
+  unsigned chunks=0;
+  web.setRequestHandler([](void *context,std::string_view raw) {
+    assert(raw.substr(raw.find("\r\n\r\n")+4).size()==2048);
+    ++*static_cast<unsigned *>(context); return true;
+  },&chunks);
+  connect(prefix+chunk.substr(0,512)); web.handleClient(); assert(chunks==0 && !testSocket.reset);
+  testSocket.input=prefix+chunk; web.handleClient(); assert(chunks==1 && !testSocket.parsed);
+  connect("POST /api/settings HTTP/1.1\r\nContent-Length: 2048\r\n\r\n"+chunk);
+  web.handleClient(); assert(testSocket.reset && chunks==1);
+  connect("POST /api/ota/write?offset=0 HTTP/1.1\r\nContent-Length: 2049\r\n\r\n"+chunk+"a");
+  web.handleClient(); assert(testSocket.reset && chunks==1);
+  connect("POST /api/ota/write?offset=0 HTTP/1.1\r\nContent-Length: 2048\r\nContent-Length: 1\r\n\r\n"+chunk);
+  web.handleClient(); assert(testSocket.reset && chunks==1);
+  // An entire OTA upload reuses a single socket, including binary bodies.
+  web.setRequestHandler([](void *context,std::string_view) {
+    static constexpr char ok[] = "{\"ok\":true}";
+    static_cast<BoundedWebServer *>(context)->sendBuffer(200,"application/json",ok,sizeof ok-1);
+    return true;
+  },&web);
+  connect(prefix+chunk);web.handleClient();assert(testSocket.open && !testSocket.parsed);
+  const auto otaAccepted=web.acceptedRequests(),otaRequests=web.diagnostics().requests;
+  assert(testSocket.output.find("Connection: keep-alive\r\n")!=std::string::npos);
+  for(unsigned i=0;i<1000;++i) {
+    testSocket.input+=prefix+chunk;web.handleClient();assert(testSocket.open && !testSocket.parsed);
+  }
+  assert(web.acceptedRequests()==otaAccepted && web.diagnostics().requests==otaRequests+1000);
+  assert(!persistentOtaRequest("POST /api/ota/finish HTTP/1.0\r\n\r\n",37));
+  const std::string closeOta="POST /api/ota/finish HTTP/1.1\r\nConnection: close\r\n\r\n";
+  assert(!persistentOtaRequest(closeOta,closeOta.size()));
   std::cout<<"PASS: complete 35KB page over slow socket with device heap 8172/1524, per-loop control progress, transfer deadlines and recovery\n";
   std::cout<<"PASS: gzip bytes through 1KB queue with repeated ENOMEM/ACKs, paced JSON, encoding negotiation and failure diagnostics\n";
   std::cout<<"PASS: HTTP fragments, complete POST body, low heap, timeouts, socket failures and 10000 requests without NetworkClient RX allocations\n";

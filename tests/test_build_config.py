@@ -162,6 +162,29 @@ class BuildConfigTests(unittest.TestCase):
             self.assertEqual((sketch / name).read_bytes(), (self.source / name).read_bytes())
         self.assertEqual((sketch / 'partitions.csv').read_bytes(), (self.source / 'partitions_s3.csv').read_bytes())
 
+    def test_esp32_ota_partitions_and_arduino_copy(self):
+        for name, flash in [('partitions_s2.csv', 4 << 20), ('partitions_esp32_8mb.csv', 8 << 20)]:
+            previous = 0
+            slots = []
+            for line in (self.source / name).read_text().splitlines():
+                if not line.strip() or line.startswith('#'):
+                    continue
+                fields = [s.strip() for s in line.split(',')]
+                offset, size = int(fields[3], 0), int(fields[4], 0)
+                self.assertGreaterEqual(offset, previous)
+                self.assertLessEqual(offset + size, flash)
+                previous = offset + size
+                if fields[1] == 'app':
+                    self.assertEqual(offset % 65536, 0)
+                    slots.append(size)
+            self.assertEqual(len(slots), 2)
+            self.assertEqual(slots[0], slots[1])
+        result = subprocess.run([sys.executable, str(self.root / 'tools/prepare_sketch.py'),
+                                 '--target', 'esp32-8mb'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sketch = self.root / 'build/arduino-esp32-8mb/G5500_Fork'
+        self.assertEqual((sketch / 'partitions.csv').read_bytes(), (self.source / 'partitions_esp32_8mb.csv').read_bytes())
+
 
 if __name__ == '__main__':
     unittest.main()

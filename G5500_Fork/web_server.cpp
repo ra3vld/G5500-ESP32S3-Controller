@@ -20,6 +20,16 @@ void WebInterface::sendHtml(const char *raw, size_t rawSize, const unsigned char
   }
 }
 void WebInterface::setupWeb() {
+  ota_.begin([](void *context) {
+    auto &self = *static_cast<WebInterface *>(context);
+    self.runtime_.controller.stopNow(-1, millis());
+    self.hardware_.applyOutputs();
+    // Send the HUD STOP before pausing command processing for the update.
+    if (self.runtime_.hud.isHud()) self.network_.serviceHud();
+  }, this);
+  web_.setRequestHandler([](void *context, std::string_view request) {
+    return static_cast<WebInterface *>(context)->handleOtaRequest(request);
+  }, this);
   static const char *requestHeaders[] = {"Accept-Encoding"};
   web_.collectHeaders(requestHeaders, 1);
   web_.on("/", HTTP_GET, [this] {

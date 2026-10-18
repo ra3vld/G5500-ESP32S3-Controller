@@ -14,12 +14,11 @@ inline bool headerEquals(std::string_view text, std::string_view name) {
   }
   return true;
 }
-// Only the frequent, read-only status response uses persistent HTTP. Other
-// routes keep their existing close-after-response behavior. No pipelining.
-inline bool persistentStatusRequest(std::string_view request, size_t completeSize) {
+// Status polling and OTA chunks reuse a connection. No pipelining.
+inline bool requestKeepsConnection(std::string_view request, size_t completeSize) {
   if (request.size() != completeSize) return false;
   const auto end = request.find("\r\n");
-  if (end == request.npos || request.substr(0, end) != "GET /api/status HTTP/1.1") return false;
+  if (end == request.npos) return false;
   size_t pos = end + 2;
   while (pos < request.size()) {
     const auto next = request.find("\r\n", pos);
@@ -42,6 +41,18 @@ inline bool persistentStatusRequest(std::string_view request, size_t completeSiz
     pos = next + 2;
   }
   return true;
+}
+inline bool persistentStatusRequest(std::string_view request, size_t completeSize) {
+  const auto end = request.find("\r\n");
+  return request.substr(0, end) == "GET /api/status HTTP/1.1" && requestKeepsConnection(request, completeSize);
+}
+inline bool persistentOtaRequest(std::string_view request, size_t completeSize) {
+  const auto end = request.find("\r\n");
+  const auto line = request.substr(0, end);
+  const bool route = line == "GET /api/ota HTTP/1.1" ||
+      (line.size() > 23 && line.substr(0, 14) == "POST /api/ota/" &&
+       line.substr(line.size() - 9) == " HTTP/1.1");
+  return route && requestKeepsConnection(request, completeSize);
 }
 inline constexpr size_t HTTP_MAX_ARGUMENTS = 32;
 inline bool boundedForm(std::string_view text, size_t &arguments) {
@@ -175,8 +186,11 @@ inline RequestState inspectRequest(std::string_view bytes, size_t capacity, size
   }
   if (headerSize > capacity || bodySize > capacity - headerSize) return RequestState::TooLarge;
   if (bytes.size() < headerSize + bodySize) return RequestState::Incomplete;
-  if (bodySize && (requestLine.substr(0, methodEnd) != "POST" ||
+  const bool otaChunk = requestLine.substr(0, methodEnd) == "POST" &&
+                        url.substr(0, 22) == "/api/ota/write?offset=";
+  if (bodySize && !otaChunk && (requestLine.substr(0, methodEnd) != "POST" ||
       !boundedForm(bytes.substr(headerSize, bodySize), arguments))) return RequestState::TooLarge;
+  if (otaChunk && bodySize > 2048) return RequestState::TooLarge;
   if (completeSize) *completeSize = headerSize + bodySize;
   return RequestState::Ready;
 }

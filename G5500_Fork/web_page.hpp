@@ -325,7 +325,14 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <div class="hide" id="btmacrow">Bluetooth MAC: <b class="mono" id="btmac">-</b></div></div><div class="hint hide" id="bthelp">Этот MAC нужен в Look4Sat. Подключение видно и без передачи команд; сопряжение в Android само по себе не означает активное соединение.</div>
 <section class="settings-group"><h3>Домашняя сеть Wi-Fi</h3><div class="row"><div class="field"><label for="ssid">Имя сети (SSID)</label><input autocomplete="off" aria-describedby="ssid-help" id="ssid"/><p class="field-help" id="ssid-help">Точное имя сети Wi-Fi, к которой подключится устройство после сохранения и перезагрузки.</p></div><div class="field"><label for="pass">Пароль сети</label><input autocomplete="new-password" aria-describedby="pass-help" id="pass" type="password"/><p class="field-help" id="pass-help">Пароль выбранной сети Wi-Fi. Для открытой сети оставьте пустым. Сохранённый пароль не отображается в этом поле.</p></div></div>
 <div class="form-actions"><button class="btn good" id="wifiSaveButton" onclick="wifi()">Сохранить Wi-Fi</button><span class="hint">Устройство перезагрузится.</span></div><div aria-live="polite" class="inline-message" id="wifiMessage" role="status"></div></section>
-<section class="settings-group"><h3>Точка доступа устройства</h3><div class="field"><label for="appass">Пароль точки доступа</label><input autocomplete="new-password" aria-describedby="appass-help" id="appass" maxlength="63" minlength="8" placeholder="Пустое поле — открытая сеть" type="password"/><p class="field-help" id="appass-help">Пароль собственной точки доступа устройства: 8–63 символа. Пустое поле отключает защиту паролем. Изменение применяется после перезагрузки.</p></div><p class="hint">От 8 до 63 символов. Оставьте поле пустым, чтобы открыть сеть без пароля.</p><div class="form-actions"><button class="btn good" id="apSaveButton" onclick="saveAp()">Сохранить точку доступа</button><span class="hint">Устройство перезагрузится.</span></div></section></div></details></section><section class="card settings-section" id="signalSettings"><details class="settings-details" ontoggle="if(this.open)loadRssi()"><summary><h2>Уровень сигнала<span class="section-caption">История подключения к домашнему Wi-Fi</span></h2></summary><div class="settings-content">
+<section class="settings-group"><h3>Точка доступа устройства</h3><div class="field"><label for="appass">Пароль точки доступа</label><input autocomplete="new-password" aria-describedby="appass-help" id="appass" maxlength="63" minlength="8" placeholder="Пустое поле — открытая сеть" type="password"/><p class="field-help" id="appass-help">Пароль собственной точки доступа устройства: 8–63 символа. Пустое поле отключает защиту паролем. Изменение применяется после перезагрузки.</p></div><p class="hint">От 8 до 63 символов. Оставьте поле пустым, чтобы открыть сеть без пароля.</p><div class="form-actions"><button class="btn good" id="apSaveButton" onclick="saveAp()">Сохранить точку доступа</button><span class="hint">Устройство перезагрузится.</span></div></section></div></details></section><section class="card settings-section" id="otaSettings"><details class="settings-details" ontoggle="if(this.open)loadOta()"><summary><h2>Обновление прошивки<span class="section-caption">OTA через браузер или Arduino IDE</span></h2></summary><div class="settings-content">
+<p id="otaCapacity" role="status">Откройте раздел, чтобы проверить доступность OTA.</p><div class="kv"><div>Flash: <b id="otaFlash">—</b></div><div>Текущая прошивка: <b id="otaImage">—</b></div><div>Раздел OTA: <b id="otaSlot">—</b></div></div>
+<p class="field-help">Выберите файл приложения .bin для той же платы и подключения. Настройки и калибровки сохраняются. Во время обновления движение будет остановлено; не отключайте питание.</p>
+<form id="otaForm" onsubmit="uploadOta(event)"><div class="field"><label for="otaFile">Файл прошивки</label><input id="otaFile" type="file" accept=".bin,application/octet-stream" onchange="validateOtaFile()" disabled/><p id="otaFileHelp" class="field-help">Нужен firmware.bin из PlatformIO или файл приложения из Arduino IDE.</p></div>
+<div class="form-actions"><button id="otaUpload" class="btn good" type="submit" disabled>Обновить прошивку</button><button id="otaCancel" class="btn" type="button" onclick="cancelOta()" hidden>Отменить</button><button id="otaReboot" class="btn" type="button" onclick="rebootOta()" hidden>Перезагрузить устройство</button></div></form>
+<progress id="otaProgress" max="100" value="0" hidden style="width:100%" aria-label="Загрузка прошивки"></progress><p id="otaMessage" role="status" aria-live="polite"></p>
+<section class="settings-group"><h3>ArduinoOTA</h3><p class="field-help">Включите сетевой порт на 10 минут, затем выберите его в Arduino IDE. Пароль меняется при каждом включении порта.</p><div class="form-actions"><button id="otaArduino" class="btn" onclick="armArduinoOta()" disabled>Включить ArduinoOTA на 10 минут</button></div><p id="otaArduinoInfo" class="field-help"></p></section>
+</div></details></section><section class="card settings-section" id="signalSettings"><details class="settings-details" ontoggle="if(this.open)loadRssi()"><summary><h2>Уровень сигнала<span class="section-caption">История подключения к домашнему Wi-Fi</span></h2></summary><div class="settings-content">
 <div class="period-options" aria-describedby="signalPeriodHelp"><button class="btn rbtn active" data-r="hour">Час</button><button class="btn rbtn" data-r="day">Сутки</button><button class="btn rbtn" data-r="week">Неделя</button><button class="btn rbtn" data-r="month">Месяц</button><button class="btn rbtn" data-r="year">Год</button></div>
 <p class="field-help" id="signalPeriodHelp">Выберите период истории Wi-Fi. Чем ближе значение dBm к нулю, тем сильнее сигнал; пробелы на графике означают отсутствие измерений.</p><canvas height="260" id="rchart" width="900"></canvas>
 <div class="kv"><div>Мин.: <b id="rmin">-</b></div><div>Макс.: <b id="rmax">-</b></div><div>Среднее: <b id="ravg">-</b></div><div>Измерений: <b id="rcount">0</b></div></div></div></details></section></section>
@@ -417,6 +424,80 @@ function selectTab(name,updateHash=true){
  if(opening)loadRssi();
  if(updateHash)(settings?document.querySelector('.wrap'):window).scrollTo({top:0,behavior:'instant'});
 }
+
+let otaState=null,otaBusy=false,otaCancelled=false,otaTimer;
+const otaBytes=n=>Number.isFinite(n)?n.toLocaleString('ru-RU')+' байт ('+(n/1048576).toFixed(2)+' МиБ)':'—';
+const otaErrors={image_size:'Файл не помещается в раздел OTA.',wrong_chip:'Файл предназначен для другого чипа или не является прошивкой ESP32.',invalid_image:'Прошивка не прошла проверку целостности.',begin_failed:'Не удалось начать запись: проверьте свободную RAM и разметку flash.',write_failed:'Ошибка записи во flash.',incomplete_image:'Файл передан не полностью.',upload_timeout:'Загрузка прервана: данные не поступали 30 секунд.',cancelled:'Обновление отменено.',wrong_offset:'Нарушен порядок передачи файла.',ota_token:'Устройство перезагрузилось. Обновите состояние OTA.',update_locked:'Управление заблокировано до перезагрузки.',connect_failed:'ESP32 не смог подключиться к отправителю ArduinoOTA.',arduino_failed:'Ошибка передачи ArduinoOTA.',firmware_only:'Можно обновлять только приложение.',no_update:'Нет активной загрузки.'};
+function otaMessage(text){setText(document.getElementById('otaMessage'),text);}
+function validateOtaFile(){
+ const file=document.getElementById('otaFile').files[0],state=otaState;
+ const valid=state?.available&&!state.locked&&file&&file.size>=32&&file.size<=state.slotBytes&&/\.bin$/i.test(file.name);
+ document.getElementById('otaUpload').disabled=otaBusy||!valid;
+ let help=file?(!valid?'Выберите файл приложения .bin для этой платы.':file.name+' · '+otaBytes(file.size)):'Нужен firmware.bin из PlatformIO или файл приложения из Arduino IDE.';
+ if(file&&file.size>state?.slotBytes){
+  const minimum=131072+2*Math.ceil(file.size/65536)*65536;let flash=1048576;while(flash<minimum)flash*=2;
+  help='Файл слишком большой. Максимум: '+otaBytes(state.slotBytes)+'. '+(state.flashBytes<minimum?'Для этой прошивки нужен другой модуль ESP32 с flash не менее '+flash/1048576+' МиБ (минимум '+otaBytes(minimum)+').':'Для этого файла нужна разметка с двумя разделами не менее '+otaBytes(file.size)+', установленная через USB.');
+ }
+ setText(document.getElementById('otaFileHelp'),help);
+ return !!valid;
+}
+async function loadOta(){
+ clearTimeout(otaTimer);if(otaBusy)return;
+ try{
+  const r=await settingsRequest('/api/ota');if(!r.ok)throw new Error('Не удалось проверить OTA.');const s=r.json();otaState=s;
+  for(const [id,key] of [['otaFlash','flashBytes'],['otaImage','imageBytes'],['otaSlot','slotBytes']])setText(document.getElementById(id),otaBytes(s[key]));
+  let text='OTA доступно. Максимальный размер файла: '+otaBytes(s.slotBytes)+'.';
+  if(!s.available){
+   if(s.reason==='flash_too_small')text='OTA недоступно: недостаточно flash-памяти. Нужен другой модуль ESP32 с flash не менее '+(s.recommendedFlashBytes/1048576)+' МиБ. Для текущей прошивки требуется минимум '+otaBytes(s.minimumFlashBytes)+' и два раздела приложения. PSRAM не заменяет flash.';
+   else if(s.reason==='partition_layout'||s.reason==='slot_too_small')text='OTA недоступно: '+(s.reason==='slot_too_small'?'раздел OTA меньше текущей прошивки.':'в разметке нет двух подходящих разделов OTA и служебного раздела.')+' Установите разметку с двумя разделами приложения через USB. Требуется не менее '+otaBytes(s.minimumFlashBytes)+' flash; каждый раздел — не менее '+otaBytes(s.imageBytes)+'.';
+   else text='Не удалось определить объём flash и размер прошивки. OTA недоступно.';
+  }
+  setText(document.getElementById('otaCapacity'),text);
+  document.getElementById('otaFile').disabled=!s.available||s.locked;
+  document.getElementById('otaArduino').disabled=!s.available||s.locked;
+  document.getElementById('otaReboot').hidden=!s.locked||s.complete;
+  if(s.locked)otaMessage(s.complete?'Прошивка проверена. Устройство перезагружается.':(otaErrors[s.error]||'Обновление начато.')+' Управление остановлено до перезагрузки.');
+  setText(document.getElementById('otaArduinoInfo'),s.arduinoEnabled?'Сетевой порт: '+s.hostname+'.local:3232 · пароль: '+s.password:'Сетевой порт ArduinoOTA выключен.');
+  validateOtaFile();
+ }catch(e){setText(document.getElementById('otaCapacity'),'Не удалось проверить OTA. Повторите после восстановления связи.');}
+ if(document.querySelector('#otaSettings details').open)otaTimer=setTimeout(loadOta,5000);
+}
+async function otaPost(path,body){
+ const r=await settingsRequest(path,{method:'POST',headers:{'X-OTA-Token':otaState.token,'Content-Type':'application/octet-stream'},...(body?{body}:{})});
+ const j=r.json();if(!r.ok||!j.ok)throw new Error(otaErrors[j.error]||j.error||'Ошибка OTA.');return j;
+}
+async function uploadOta(event){
+ event.preventDefault();if(!validateOtaFile())return;
+ const file=document.getElementById('otaFile').files[0];
+ otaBusy=true;otaCancelled=false;clearTimeout(otaTimer);
+ document.getElementById('otaUpload').disabled=true;document.getElementById('otaFile').disabled=true;document.getElementById('otaArduino').disabled=true;
+ const progress=document.getElementById('otaProgress');progress.hidden=false;progress.value=0;
+ document.getElementById('otaCancel').hidden=false;document.getElementById('otaCancel').disabled=false;document.getElementById('otaReboot').hidden=true;
+ let started=false;
+ try{
+  const header=new Uint8Array(await file.slice(0,24).arrayBuffer());
+  if(header[0]!==0xe9||(header[12]|header[13]<<8)!==otaState.chipId)throw new Error(otaErrors.wrong_chip);
+  otaMessage('Остановка привода и подготовка обновления…');await otaPost('/api/ota/start?size='+file.size);started=true;
+  for(let offset=0;offset<file.size;offset+=otaState.chunkBytes){
+   if(otaCancelled)throw new Error('Обновление отменено.');
+   const chunk=file.slice(offset,offset+otaState.chunkBytes);await otaPost('/api/ota/write?offset='+offset,chunk);
+   progress.value=Math.floor((offset+chunk.size)/file.size*100);otaMessage('Передано '+progress.value+'%. Управление остановлено.');
+  }
+  if(otaCancelled)throw new Error('Обновление отменено.');
+  otaMessage('Проверка прошивки…');await otaPost('/api/ota/finish');otaMessage('Прошивка проверена. Устройство перезагружается. После подключения обновите страницу.');
+ }catch(e){
+  if(started)try{await otaPost('/api/ota/cancel');}catch(_){}
+  otaMessage((e.name==='AbortError'?'Устройство не ответило за 12 секунд.':e instanceof TypeError?'Связь с устройством прервана.':e.message||'Ошибка обновления.')+(started?' Управление остановлено до перезагрузки.':''));document.getElementById('otaReboot').hidden=!started;
+ }finally{
+  otaBusy=false;document.getElementById('otaCancel').hidden=true;
+  // Preserve the completion/error message; refresh controls after reconnect.
+  otaTimer=setTimeout(loadOta,5000);
+ }
+}
+function cancelOta(){otaCancelled=true;document.getElementById('otaCancel').disabled=true;}
+async function rebootOta(){try{await otaPost('/api/ota/reboot');otaMessage('Устройство перезагружается. После подключения обновите страницу.');document.getElementById('otaReboot').hidden=true;}catch(e){otaMessage(e.message);}}
+async function armArduinoOta(){try{await otaPost('/api/ota/arduino');await loadOta();}catch(e){otaMessage(e.message);}}
+
 function compactStatus(j){
  const wifi=document.getElementById('statusWifi'),bt=document.getElementById('statusBt');
  const wifiModes={'Wi-Fi Client':'Подключён','AP + Wi-Fi Client':'Подключён + AP','Access Point':'Точка доступа','Disconnected':'Нет подключения'};

@@ -165,6 +165,15 @@ void Application::controllerSetup() {
 }
 void Application::controllerLoop() {
   const uint32_t startedUs = micros();
+  // Once an update starts, keep outputs stopped even after an upload error.
+  // Only reboot can resume input processing, so buffered commands cannot replay.
+  if (web_server_.otaLocked()) {
+    web_server_.service();
+    network_.serviceWifiReconnect();
+    hardware_.updateRgb();
+    delay(5);
+    return;
+  }
   network_.serviceHud();
   updatePosition();
   runtime_.controller.tick(millis()); // expire the hour before accepting any external command
@@ -183,6 +192,7 @@ void Application::controllerLoop() {
   web_server_.publishLive();
   network_.serviceHeapDiagnostics();
   web_server_.service();
+  if (web_server_.otaLocked()) return;
   network_.serviceWifiReconnect();
   diagnostics_.serviceRssiHistory();
   if (runtime_.hud.settingsDirty) {

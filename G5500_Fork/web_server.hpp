@@ -9,6 +9,7 @@
 #include "storage.hpp"
 #include "device_actions.hpp"
 #include "live_server.hpp"
+#include "ota.hpp"
 namespace forkrot {
 class WebInterface {
 public:
@@ -38,17 +39,21 @@ public:
     web_.setLowMemoryPaths(lowMemoryPaths, sizeof lowMemoryPaths / sizeof *lowMemoryPaths);
   }
   void service() {
+    ota_.service();
     web_.handleClient();
     if (web_.writeFailed() && web_.diagnostics().writeFailures == 1)
       diagnostics_.dbgPrintln("[HTTP] response failed or send deadline expired; client closed");
     network_.setHttpDiagnostics(web_.diagnostics());
     if (restart_.consume(millis())) ESP.restart();
+    if (ota_.readyToRestart()) ESP.restart();
   }
+  bool otaLocked() const { return ota_.locked(); }
   void setupWeb();
   void serviceLiveCommands() { live_.commands(millis()); }
   void publishLive() { live_.publish(millis()); }
 
 private:
+  bool handleOtaRequest(std::string_view request);
   void sendHtml(const char *raw, size_t rawSize, const unsigned char *gzip, size_t gzipSize);
   void sendJson(const JsonWriter &j) {
     if (!j.good()) { web_.send(503, "application/json", "{\"error\":\"response_too_large\"}"); return; }
@@ -84,6 +89,7 @@ private:
   LiveServer live_{runtime_};
   BoundedWebServer web_{80};
   RestartDelay restart_;
+  Ota ota_;
   char statusBuffer_[STATUS_JSON_CAPACITY];
 };
 } // namespace forkrot

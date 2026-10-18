@@ -14,7 +14,7 @@ const request=async(route,body,status=200)=>{const r=await fetch(base+route,body
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base+'/#settings');await page.waitForFunction(()=>window._forkState?.elProfile==='standard'&&live.ready);
   assert(await page.locator('#settingsPanel').isVisible());
-  assert.deepEqual(await page.locator('#settingsPanel > [id]').evaluateAll(nodes=>nodes.map(n=>n.id)),['rotorSettings','calibrationSettings','presetSettings','hudPanel','networkSettings','signalSettings']);
+  assert.deepEqual(await page.locator('#settingsPanel > [id]').evaluateAll(nodes=>nodes.map(n=>n.id)),['rotorSettings','calibrationSettings','presetSettings','hudPanel','networkSettings','otaSettings','signalSettings']);
   await page.locator('#caltoggle').click();
   for(const [button,panel] of [['modem','panelm'],['mode2','panel2'],['modem','panelm']]) {
    await page.locator('#'+button).click();

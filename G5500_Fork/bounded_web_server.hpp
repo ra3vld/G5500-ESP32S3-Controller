@@ -23,6 +23,8 @@ public:
   };
   using StopHandler = StopResult (*)(void *, const StopRequest &);
   void setStopHandler(StopHandler handler, void *context) { stopHandler_ = handler; stopContext_ = context; }
+  using RequestHandler = bool (*)(void *, std::string_view);
+  void setRequestHandler(RequestHandler handler, void *context) { requestHandler_ = handler; requestContext_ = context; }
   std::string_view argumentName(size_t i) const { return {_currentArgs[i].key.c_str(), _currentArgs[i].key.length()}; }
   std::string_view argumentValue(size_t i) const { return {_currentArgs[i].value.c_str(), _currentArgs[i].value.length()}; }
   uint32_t readFailures() const { return diagnostics_.readFailures; }
@@ -120,6 +122,21 @@ public:
         releaseClient();
         return;
       }
+      if (requestHandler_) {
+        persistentCandidate_ = persistentOtaRequest({requestBuffer_, requestUsed_}, requestSize);
+        keepAliveResponse_ = false;
+        _contentLength = CONTENT_LENGTH_NOT_SET;
+        _responseCode = 0;
+        _clearResponseHeaders();
+        if (requestHandler_(requestContext_, {requestBuffer_, requestSize})) {
+          ++diagnostics_.requests;
+          if (page_) servicePage();
+          else finishResponse();
+          return;
+        }
+      }
+      // A binary OTA chunk must never reach WebServer's form parser.
+      if (std::string_view(requestBuffer_, requestSize).substr(0, 27) == "POST /api/ota/write?offset=") { reject(); return; }
       if (!requestFitsMemory(requestSize)) { reject(); return; }
       persistentCandidate_ = persistentStatusRequest({requestBuffer_, requestUsed_}, requestSize);
       keepAliveResponse_ = false;
@@ -315,6 +332,8 @@ private:
   bool htmlTransfer_ = false;
   StopHandler stopHandler_ = nullptr;
   void *stopContext_ = nullptr;
+  RequestHandler requestHandler_ = nullptr;
+  void *requestContext_ = nullptr;
   HttpDiagnostics diagnostics_;
 };
 } // namespace forkrot

@@ -79,4 +79,4 @@ python3 tools/build_platformio.py --env esp32_4mb --bluetooth 1 --bluetooth-mode
 
 В Arduino IDE откройте `G5500_Fork/G5500_Fork.ino`, выберите ESP32 Dev Module, Flash 4 MB, DIO 40 MHz, PSRAM Disabled, Core Debug Level None и Partition Scheme **Huge APP (3MB No OTA/1MB SPIFFS)**. `BOARD_PROFILE=BOARD_AUTO` можно оставить.
 
-В исходной папке таблица разделов выбирается через меню IDE. В копии, подготовленной `prepare_sketch.py`, файл `partitions.csv` имеет приоритет над меню. PlatformIO и CLI используют `partitions_esp32.csv` с одним разделом приложения 3 MB; веб-OTA отсутствует. Полная инструкция — в [build.md](build.md).
+В исходной папке таблица разделов выбирается через меню IDE. В копии, подготовленной `prepare_sketch.py`, файл `partitions.csv` имеет приоритет над меню. PlatformIO и CLI используют `partitions_esp32.csv` с одним разделом приложения 3 MB; OTA с этой разметкой недоступно. Для [OTA](ota.md) выбирайте `esp32_4mb_ota` или `esp32_8mb_ota` по физической памяти и размеру прошивки. Полная инструкция — в [build.md](build.md).
