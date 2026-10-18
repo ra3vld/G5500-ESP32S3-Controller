@@ -115,6 +115,7 @@ public:
   Result lastResult() const override { return lastResult_; }
   float intendedTarget(unsigned axis, float fallback) const override;
   Result submit(const ControlCommand &) override;
+  Result submitAt(const ControlCommand &, uint32_t at) override;
   bool manualAvailable() const override {
     const auto *p = active();
     return available() && p && p->manual;

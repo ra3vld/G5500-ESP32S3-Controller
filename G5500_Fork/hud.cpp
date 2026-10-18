@@ -650,6 +650,11 @@ float Hud::intendedTarget(unsigned axis, float fallback) const {
       latest = &j;
   return latest ? (axis ? latest->command.target.el : latest->command.target.az) : fallback;
 }
+Result Hud::submitAt(const ControlCommand &c, uint32_t at) {
+  // A physical sample can arrive after a slow frame, before service() advances its clock.
+  now = at;
+  return submit(c);
+}
 Result Hud::submit(const ControlCommand &c) {
   lastRequest_ = nextSerial();
   auto *p = active();

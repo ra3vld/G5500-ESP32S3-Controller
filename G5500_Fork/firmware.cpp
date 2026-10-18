@@ -235,6 +235,8 @@ void Application::controllerLoop() {
     delay(5);
     return;
   }
+  // Refresh held input after rendering before HUD checks its local input lease.
+  display_.serviceTouch();
   network_.serviceHud();
   updatePosition();
   runtime_.controller.tick(millis()); // expire the hour before accepting any external command

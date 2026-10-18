@@ -65,6 +65,7 @@ class CommandSink {
 public:
   virtual ~CommandSink() = default;
   virtual Result submit(const ControlCommand &) = 0;
+  virtual Result submitAt(const ControlCommand &command, uint32_t) { return submit(command); }
   virtual bool available() const = 0;
   virtual uint32_t requestId() const = 0;
   virtual uint32_t selectionGeneration() const { return 0; }

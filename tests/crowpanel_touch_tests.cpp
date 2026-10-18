@@ -222,6 +222,39 @@ static void fullscreenSwipe() {
     }
   }
 }
+static void idleTouchFrames() {
+  using namespace crowpanel;
+  // Recorded idle CST8xx frame: coordinates/event are unused when no finger is present.
+  const uint8_t idle[5] = {0, 0xff, 0xff, 0xff, 0xff};
+  assert(touchFrameHealthy(idle));
+  uint16_t x = 240, y = 230;
+  assert(!decodeTouch(idle, x, y));
+  TouchLayout layout;
+  layout.dualAxis = true;
+  layout.current = {100, 200, 280, 60};
+  TouchGesture g;
+  layout.enabled = touchFrameHealthy(idle);
+  g.sample(false, x, y, layout);
+  layout.enabled = true;
+  auto event = g.sample(true, 240, 230, layout);
+  assert(event.manual && !event.release); // The first contact after idle is usable.
+  event = g.sample(true, 340, 130, layout);
+  assert(event.manual && event.az == 1 && event.el == 1);
+  layout.enabled = touchFrameHealthy(idle);
+  event = g.sample(false, x, y, layout);
+  assert(event.manual && event.release && event.mask == 3);
+  layout.enabled = true;
+  assert(g.sample(true, 240, 230, layout).manual); // No extra tap is needed to rearm.
+  const uint8_t multiple[5] = {2, 0, 240, 0, 230};
+  const uint8_t invalid[5] = {1, 0xc0, 240, 0, 230};
+  const uint8_t outside[5] = {1, 1, 224, 0, 230};
+  assert(!touchFrameHealthy(multiple) && !touchFrameHealthy(invalid) && !touchFrameHealthy(outside));
+  layout.enabled = touchFrameHealthy(invalid);
+  assert(g.sample(true, 340, 130, layout).release); // Active invalid input still stops.
+  layout.enabled = touchFrameHealthy(idle);
+  g.sample(false, x, y, layout);
+  assert(g.sample(true, 240, 230, layout).manual);
+}
 struct Node;
 struct WirePacket {
   HudEndpoint from, to;
@@ -283,6 +316,43 @@ void Bus::tick(uint32_t at) {
     if (!n->h.isHud()) {
       n->c.tick(at);
     }
+  }
+}
+static void inputAfterRenderPause() {
+  // A fresh physical sample must precede HUD expiry after a slow display frame.
+  for (unsigned mask : {1u, 2u, 3u}) {
+    Bus bus;
+    Node rotor(bus, 1, false), panel(bus, 2, true);
+    panel.select(rotor);
+    for (unsigned t = 100; t <= 800; t += 10) bus.tick(t);
+    assert(panel.h.manualAvailable());
+    uint32_t now = 810, serial = 0;
+    const auto sample = [&](uint32_t gesture, float direction, bool release = false) {
+      return panel.c.manualDrive(0, 1, gesture, ++serial, mask,
+                                mask & 1 ? direction : 0, mask & 2 ? direction : 0,
+                                release, now);
+    };
+    assert(sample(1, 1) == Result::Deferred);
+    bus.tick(now);
+    for (unsigned pause : {102u, 140u, 102u}) {
+      now += pause; // HUD's previous service time is stale; the finger is freshly read now.
+      assert(sample(1, -1) == Result::Deferred);
+      bus.tick(now);
+      for (unsigned axis = 0; axis < 2; ++axis)
+        if (mask & (1u << axis)) assert(rotor.c.axes[axis].wanted == -1);
+    }
+    now += 10;
+    assert(sample(1, 0, true) == Result::Deferred);
+    bus.tick(now);
+    assert(!rotor.c.moving());
+    now += 10;
+    assert(sample(2, 1) == Result::Deferred);
+    bus.tick(now);
+    now += 100;
+    bus.tick(now); // No physical sample: the unchanged 100 ms guard must still stop.
+    assert(!rotor.c.moving());
+    now += 10;
+    assert(sample(2, 1) == Result::Cancelled); // An expired gesture cannot replay.
   }
 }
 static void fullscreenSwipeControl() {
@@ -468,6 +538,8 @@ int main() {
   core();
   touch();
   fullscreenSwipe();
+  idleTouchFrames();
+  inputAfterRenderPause();
   fullscreenSwipeControl();
   ring();
   ringTargets();

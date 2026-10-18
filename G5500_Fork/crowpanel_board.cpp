@@ -71,11 +71,11 @@ bool readButton(bool &down) {
 bool readTouch(uint16_t &x, uint16_t &y, bool *healthy) {
   uint8_t data[5]{};
   const bool read = touchReady && readRegister(0x15, 0x02, data, sizeof data);
-  const unsigned fingers = data[0] & 0x0f;
+#if CROWPANEL_TOUCH_TRACE
   const unsigned px = ((data[1] & 0x0f) << 8) | data[2];
   const unsigned py = ((data[3] & 0x0f) << 8) | data[4];
-  const bool valid =
-      read && fingers <= 1 && (data[1] >> 6) != 3 && (!fingers || (px < 480 && py < 480));
+#endif
+  const bool valid = read && touchFrameHealthy(data);
   if (healthy) {
     *healthy = valid;
   }

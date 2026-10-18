@@ -366,7 +366,7 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
     c.manual[0] = az;
     c.manual[1] = el;
     c.release = release;
-    return remote->submit(c);
+    return remote->submitAt(c, now);
   }
   ManualSession *s = nullptr, *free = nullptr;
   for (auto &candidate : manualSessions_) {

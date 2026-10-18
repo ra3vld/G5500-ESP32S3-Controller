@@ -190,6 +190,14 @@ public:
 };
 // CST8xx registers 0x02..0x06: finger count, event/XH, XL, YH, YL.
 // Native panel coordinates, matching Elecrow Board21.h (no UI-specific offset).
+inline bool touchFrameHealthy(const uint8_t (&data)[5]) {
+  const unsigned fingers = data[0] & 0x0f;
+  // An idle frame has no coordinates/event; CST8xx may leave those bytes at 0xff.
+  if (!fingers) return true;
+  const unsigned px = ((data[1] & 0x0f) << 8) | data[2];
+  const unsigned py = ((data[3] & 0x0f) << 8) | data[4];
+  return fingers == 1 && (data[1] >> 6) != 3 && px < 480 && py < 480;
+}
 inline bool decodeTouch(const uint8_t (&data)[5], uint16_t &x, uint16_t &y) {
   if ((data[0] & 0x0f) != 1 || (data[1] >> 6) == 1 ||
       (data[1] >> 6) == 3)
