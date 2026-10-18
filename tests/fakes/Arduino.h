@@ -50,14 +50,14 @@ template <typename T> T constrain(T value, T minimum, T maximum) {
   return std::max(minimum, std::min(value, maximum));
 }
 
-inline constexpr int LOW = 0, HIGH = 1, OUTPUT = 1, INPUT = 0, INPUT_PULLUP = 2, ADC_11db = 3;
+inline constexpr int LOW = 0, HIGH = 1, OUTPUT = 1, INPUT = 0, INPUT_PULLUP = 2, ADC_11db = 3, OUTPUT_OPEN_DRAIN = 0x13;
 struct GpioEvent { std::string operation; int pin; uint32_t value; };
 struct FakeHardware {
   uint32_t now = 0;
   bool attachSucceeds = true;
   int failAttachAt = -1;
   unsigned attachCalls = 0, readsMv = 0, readsRaw = 0;
-  std::map<int, int> levels, millivolts;
+  std::map<int, int> levels, millivolts, inputOverrides;
   std::map<int, bool> gpioOwned;
   std::vector<GpioEvent> events;
 };
@@ -69,7 +69,10 @@ inline void digitalWrite(int pin, int level) {
     fakeHardware.events.push_back({"write", pin, uint32_t(level)});
   } else fakeHardware.events.push_back({"write_unowned", pin, uint32_t(level)});
 }
-inline int digitalRead(int pin) { return fakeHardware.levels[pin]; }
+inline int digitalRead(int pin) {
+  const auto forced = fakeHardware.inputOverrides.find(pin);
+  return forced == fakeHardware.inputOverrides.end() ? fakeHardware.levels[pin] : forced->second;
+}
 inline void pinMode(int pin, int mode) { fakeHardware.gpioOwned[pin]=true; fakeHardware.events.push_back({"mode", pin, uint32_t(mode)}); }
 inline int analogReadMilliVolts(int pin) { ++fakeHardware.readsMv; return fakeHardware.millivolts[pin]; }
 inline int analogRead(int pin) { ++fakeHardware.readsRaw; return fakeHardware.millivolts[pin]; }

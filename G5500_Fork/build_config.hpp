@@ -18,6 +18,13 @@
 #define BOARD_PROFILE BOARD_AUTO
 #endif
 
+// Только переделанная CrowPanel: GPIO6/P48 — ADC вместо подсветки,
+// RX/TX — привод AZ; GPIO0/BOOT — инверсный PWM Yaesu / разрешение BTS7960.
+// Обычная CrowPanel должна оставаться с 0. Инструкция: docs/crowpanel-az.md.
+#ifndef CROWPANEL_LOCAL_DRIVE
+#define CROWPANEL_LOCAL_DRIVE 0
+#endif
+
 // 2. ДИСПЛЕЙ, BLUETOOTH И WI-FI
 // DISPLAY_NONE    — без дисплея.
 // DISPLAY_ILI9341 — TFT ILI9341 + сенсор XPT2046.

@@ -86,6 +86,13 @@ done
 CROW_FLAGS="-DBOARD_PROFILE=5 -DDISPLAY_KIND=3 -DUSER_BUTTON_GPIO=-1 -DBLUETOOTH_ENABLED=0"
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 $CROW_FLAGS -DCROWPANEL_SIMULATION=0 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp tests/crowpanel_hardware_tests.cpp -o build/crowpanel_hardware_tests
 ./build/crowpanel_hardware_tests
+for mode in yaesu bts inverted; do
+  flags="-DCROWPANEL_LOCAL_DRIVE=1 -DDRIVE_INTERFACE=0"
+  if [ "$mode" = bts ]; then flags="-DCROWPANEL_LOCAL_DRIVE=1 -DDRIVE_INTERFACE=2"; fi
+  if [ "$mode" = inverted ]; then flags="-DCROWPANEL_LOCAL_DRIVE=1 -DDRIVE_INTERFACE=2 -DBTS7960_PWM_INVERTED=1"; fi
+  ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 $CROW_FLAGS $flags -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/crowpanel_drive_tests.cpp -o build/crowpanel_drive_$mode
+  ./build/crowpanel_drive_$mode
+done
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=1 -Wall -Wextra -Werror -O2 $CROW_FLAGS -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/crowpanel_simulation_tests.cpp -o build/crowpanel_simulation_tests
 ./build/crowpanel_simulation_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 $CROW_FLAGS -I G5500_Fork $CORE_SOURCES tests/build_metadata_tests.cpp -o build/crowpanel_metadata_tests

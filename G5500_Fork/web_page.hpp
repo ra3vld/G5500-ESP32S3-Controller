@@ -710,6 +710,7 @@ async function targetAction(){
 function updateFork(j){
  const first=!window._forkState;window._forkState=j;
  const g800=j.model==='G800DXA';
+ document.getElementById('forkSettings-model').options[0].disabled=!!j.build?.singleAxis;
  setText(document.getElementById('modelTitle'),j.deviceRole==='hud'?'HUD / '+(j.build?.board||'ESP32'):'YAESU '+(g800?'G-800DXA':'G-5500')+' / '+(j.build?.board||'ESP32'));
  document.getElementById('followMode').value=j.controlMode;
  setText(document.getElementById('hourLeft'),j.controlMode==='auto_1h'?'Осталось '+Math.ceil(j.remainingMs/60000)+' мин':'');
@@ -750,7 +751,7 @@ function updateFork(j){
  document.querySelector('#presetEditor [name=az]').min=j.azStart??0;document.querySelector('#presetEditor [name=az]').max=j.azMax??(j.azMode===36?360:450);
  if(first)fillPreset();
  renderMotionStatus(j);
- const faults={calibration_storage_invalid:'Ошибка сохранённой калибровки: откройте настройки AZ',calibration_save_failed:'Не удалось сохранить калибровку',target_not_calibrated:'Сначала выполните калибровку',continuous_motion_timeout:'Превышено время непрерывного вращения',udp_bind_failed:'Не удалось открыть UDP-порт',pwm_attach_failed:'Не удалось включить регулировку скорости'};if(j.fault){const axis=j.axes?.find(a=>a.motionFault);setText(document.getElementById('forkMessage'),axis?motionFaultText(axis.motionFault):faults[j.fault]||'Ошибка управления');}
+ const faults={calibration_storage_invalid:'Ошибка сохранённой калибровки: откройте настройки AZ',calibration_save_failed:'Не удалось сохранить калибровку',target_not_calibrated:'Сначала выполните калибровку',continuous_motion_timeout:'Превышено время непрерывного вращения',udp_bind_failed:'Не удалось открыть UDP-порт',pwm_attach_failed:'Не удалось включить регулировку скорости',crowpanel_drive_failed:'Ошибка выходов привода CrowPanel'};if(j.fault){const axis=j.axes?.find(a=>a.motionFault);setText(document.getElementById('forkMessage'),axis?motionFaultText(axis.motionFault):faults[j.fault]||'Ошибка управления');}
 }
 
 async function q(u){try{if((live.ready||window._forkState?.deviceRole==='hud')&&(u.startsWith('/api/move?')||u.startsWith('/api/target?'))){const url=new URL(u,location.origin);await forkPost(url.pathname,Object.fromEntries(url.searchParams));return ''}return await (await fetch(u,{cache:'no-store'})).text()}catch(e){return''}}

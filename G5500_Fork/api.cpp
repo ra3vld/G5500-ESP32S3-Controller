@@ -146,10 +146,11 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"bluetoothBackend\":" << jsonQuoted(controller.hardware.backendName()) << ",\"drive\":"
        << jsonQuoted(controller.remote                      ? "HUD"
                      : controller.hardware.simulation                     ? "SIMULATED"
-                     : SELECTED_BOARD == BOARD_CROWPANEL_21 ? "NONE"
+                     : SELECTED_BOARD == BOARD_CROWPANEL_21 && !CROWPANEL_LOCAL_DRIVE ? "NONE"
                      : controller.hardware.drive == DRIVE_YAESU       ? "YAESU"
                      : controller.hardware.drive == DRIVE_BTS7960     ? "BTS7960"
                                                             : "SEPARATE_PWM")
+       << ",\"singleAxis\":" << (CROWPANEL_LOCAL_DRIVE && !controller.remote && !controller.hardware.simulation ? "true" : "false")
        << ",\"userButtonGpio\":" << int(controller.hardware.buttonGpio)
        << ",\"userButtonActiveLow\":" << (controller.hardware.buttonLow ? "true" : "false")
        << ",\"userButtonPullup\":" << (controller.hardware.buttonPullup ? "true" : "false")
@@ -300,6 +301,9 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       auto m = get(form, "model");
       valid = (m == "G5500" || m == "G800DXA") && valid;
       model = m == "G800DXA" ? Model::G800DXA : Model::G5500;
+#if CROWPANEL_LOCAL_DRIVE
+      if (!controller.remote && !controller.hardware.simulation && model != Model::G800DXA) valid = false;
+#endif
     }
     if (has(form, "rotorName")) {
       name = get(form, "rotorName");

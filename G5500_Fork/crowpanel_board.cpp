@@ -105,8 +105,10 @@ int encoderDelta() {
   return value;
 }
 esp_lcd_panel_handle_t beginPanel() {
-  pinMode(board::PIN_BACKLIGHT, OUTPUT);
-  digitalWrite(board::PIN_BACKLIGHT, LOW);
+  if (board::PIN_BACKLIGHT >= 0) {
+    pinMode(board::PIN_BACKLIGHT, OUTPUT);
+    digitalWrite(board::PIN_BACKLIGHT, LOW);
+  }
   if (!psramFound() || !beginBus() || !portBit(3, true)) return nullptr;
   delay(50);
   if (!portBit(4, false)) return nullptr;

@@ -116,15 +116,18 @@ static_assert(validOutputs(), "Input-only GPIO assigned to an output");
 static_assert(validPins(), "Unavailable/reserved GPIO in active board configuration");
 static_assert(uniquePins(), "Conflicting active peripheral GPIOs");
 static_assert(PIN_CONFIRM == -1 || (gpio(PIN_CONFIRM) && (!USER_BUTTON_PULLUP || pullup(PIN_CONFIRM))), "Invalid user button GPIO/pullup");
+#if CROWPANEL_LOCAL_DRIVE
+static_assert(adc(PIN_AZ_ADC) && output(PIN_LEFT) && output(PIN_RIGHT) && output(PIN_SPEED), "CrowPanel local AZ requires ADC1 and three native outputs");
+#endif
 #if SELECTED_BOARD != BOARD_CROWPANEL_21
 static_assert(adc(PIN_AZ_ADC) && adc(PIN_EL_ADC), "Feedback must use ADC1 GPIO");
 static_assert(output(PIN_LEFT) && output(PIN_RIGHT) && output(PIN_UP) && output(PIN_DOWN) && output(PIN_SPEED) && output(PIN_UART_TX), "Invalid output GPIO");
 #endif
-#if DRIVE_INTERFACE != DRIVE_YAESU
+#if DRIVE_INTERFACE != DRIVE_YAESU && !CROWPANEL_LOCAL_DRIVE
 static_assert(output(PIN_EL_SPEED), "Independent drive requires two speed/enable outputs");
 #endif
 #if defined(SOC_LEDC_CHANNEL_NUM)
-static_assert(SOC_LEDC_CHANNEL_NUM >= (DRIVE_INTERFACE == DRIVE_BTS7960 ? 4 : DRIVE_INTERFACE == DRIVE_SEPARATE_PWM ? 2 : 1), "Insufficient LEDC channels");
+static_assert(SOC_LEDC_CHANNEL_NUM >= (CROWPANEL_LOCAL_DRIVE ? 2 : DRIVE_INTERFACE == DRIVE_BTS7960 ? 4 : DRIVE_INTERFACE == DRIVE_SEPARATE_PWM ? 2 : 1), "Insufficient LEDC channels");
 #endif
 // Runtime ownership validation uses the same physical board/display map. Motor
 // and Bluetooth selections no longer remove code or make unsafe pins available.
@@ -132,11 +135,14 @@ inline const char *validateHardware(const HardwareConfig &c, bool hudUart = fals
   if (c.drive > DRIVE_BTS7960 || c.bluetoothMode < BT_HC05 || c.bluetoothMode > BT_AUTO ||
       (c.pwmInverted && c.drive != DRIVE_BTS7960)) return "invalid_hardware";
   if (c.backend() == BT_ESP32_SPP && SELECTED_BOARD != BOARD_ESP32) return "spp_not_supported";
-  if (SELECTED_BOARD == BOARD_CROWPANEL_21 && (c.drive != DRIVE_YAESU || c.buttonGpio != -1))
+  if (SELECTED_BOARD == BOARD_CROWPANEL_21 && (c.buttonGpio != -1 ||
+      (CROWPANEL_LOCAL_DRIVE ? c.drive == DRIVE_SEPARATE_PWM : c.drive != DRIVE_YAESU)))
     return "crowpanel_hardware_fixed";
-  if (c.drive != DRIVE_YAESU && !output(PIN_EL_SPEED)) return "drive_not_supported";
+  if (CROWPANEL_LOCAL_DRIVE && c.bluetooth) return "crowpanel_uart_is_drive";
+  if (CROWPANEL_LOCAL_DRIVE && hudUart) return "crowpanel_uart_is_drive";
+  if (!CROWPANEL_LOCAL_DRIVE && c.drive != DRIVE_YAESU && !output(PIN_EL_SPEED)) return "drive_not_supported";
 #if defined(SOC_LEDC_CHANNEL_NUM)
-  if (SOC_LEDC_CHANNEL_NUM < (c.drive == DRIVE_BTS7960 ? 4 : c.drive == DRIVE_SEPARATE_PWM ? 2 : 1))
+  if (SOC_LEDC_CHANNEL_NUM < (CROWPANEL_LOCAL_DRIVE ? 2 : c.drive == DRIVE_BTS7960 ? 4 : c.drive == DRIVE_SEPARATE_PWM ? 2 : 1))
     return "drive_not_supported";
 #endif
   if (c.buttonGpio < -1 || (c.buttonGpio >= 0 && (!gpio(c.buttonGpio) ||
@@ -149,7 +155,7 @@ inline const char *validateHardware(const HardwareConfig &c, bool hudUart = fals
     for (unsigned i=0; i<count; ++i) if (pins[i] == pin) return false;
     pins[count++] = pin; return true;
   };
-  if (!c.simulation && SELECTED_BOARD != BOARD_CROWPANEL_21) {
+  if (!c.simulation && (SELECTED_BOARD != BOARD_CROWPANEL_21 || CROWPANEL_LOCAL_DRIVE)) {
     for (int pin : {PIN_AZ_ADC, PIN_EL_ADC, PIN_LEFT, PIN_RIGHT, PIN_DOWN, PIN_UP, PIN_SPEED})
       if (!add(pin)) return "gpio_conflict";
     if (c.drive != DRIVE_YAESU && !add(PIN_EL_SPEED)) return "gpio_conflict";

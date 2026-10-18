@@ -33,7 +33,7 @@ void Application::updatePosition() {
   }
   for (unsigned i=0; i<2; ++i) runtime_.controller.feedbackAt(
       i, i ? runtime_.currentEl : runtime_.currentAz,
-#if SELECTED_BOARD == BOARD_CROWPANEL_21
+#if SELECTED_BOARD == BOARD_CROWPANEL_21 && !CROWPANEL_LOCAL_DRIVE
       false,
 #else
       calibrationState.calibrationMode == CAL_MULTI_POINT

@@ -42,6 +42,13 @@ status.build.display='CROWPANEL_21';status.build.drive='SIMULATED';status.encode
   await page.getByRole('button',{name:'Сохранить настройки',exact:true}).click();
   await page.waitForFunction(()=>window._forkState.encoderInverted===true);
   assert.equal(requests.at(-1).get('encoderInverted'),'true');
+  status.model='G800DXA';status.build.singleAxis=true;status.build.drive='BTS7960';
+  await open();
+  assert.equal(await page.locator('[name=model] option[value="G5500"]').evaluate(e=>e.disabled),true);
+  assert.equal(await page.locator('[name=model]').inputValue(),'G800DXA');
+  status.build.singleAxis=false;status.build.drive='SIMULATED';
+  await open();
+  assert.equal(await page.locator('[name=model] option[value="G5500"]').evaluate(e=>e.disabled),false);
   status.build.display='NONE';status.build.drive='YAESU';delete status.encoderInverted;
   await open();assert.equal(await box.isVisible(),false);
   const count=requests.length;

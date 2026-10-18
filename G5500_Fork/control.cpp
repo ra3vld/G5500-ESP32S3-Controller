@@ -22,6 +22,9 @@ Controller::Controller() { configureHardware(hardware); }
 void Controller::configureHardware(const HardwareConfig &config) {
   prepareMotionPlanner();
   hardware = config;
+#if CROWPANEL_LOCAL_DRIVE
+  if (!hardware.simulation && !remote) { model = Model::G800DXA; axes[1] = {}; }
+#endif
   speeds = {};
   motionSettings = {};
   motion_ = {};
@@ -508,6 +511,9 @@ void Controller::restoreMode(Mode savedMode) {
 void Controller::setModel(Model nextModel) {
   if (remote)
     return;
+#if CROWPANEL_LOCAL_DRIVE
+  if (!hardware.simulation && nextModel != Model::G800DXA) return;
+#endif
   stop();
   model = nextModel;
   if (model == Model::G800DXA) {

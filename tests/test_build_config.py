@@ -166,6 +166,27 @@ class BuildConfigTests(unittest.TestCase):
             self.assertEqual((sketch / name).read_bytes(), (self.source / name).read_bytes())
         self.assertEqual((sketch / 'partitions.csv').read_bytes(), (self.source / 'partitions_s3.csv').read_bytes())
 
+    def test_crowpanel_local_az_profile(self):
+        flags = ['BOARD_PROFILE=5', 'DISPLAY_KIND=3', 'CROWPANEL_LOCAL_DRIVE=1',
+                 'USER_BUTTON_GPIO=-1', 'BLUETOOTH_ENABLED=0', 'DRIVE_SIMULATION=0']
+        for drive in (0, 2):
+            self.compile({'forkrot::board::PIN_AZ_ADC': 6,
+                          'forkrot::board::PIN_BACKLIGHT': -1,
+                          'forkrot::board::PIN_SPEED': 0,
+                          'forkrot::board::PIN_LEFT': 44,
+                          'forkrot::board::PIN_RIGHT': 43,
+                          'forkrot::board::PIN_UART_RX': -1,
+                          'forkrot::board::PIN_UART_TX': -1}, flags + [f'DRIVE_INTERFACE={drive}'])
+        result = subprocess.run([sys.executable, str(self.root / 'tools/build_platformio.py'),
+                                 '--env', 'crowpanel_21_az', '--drive', 'bts7960', '--dry-run'],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        config = configparser.ConfigParser(interpolation=None)
+        config.read(self.root / 'build/platformio-config/crowpanel_21_az.ini')
+        self.assertIn('-DCROWPANEL_LOCAL_DRIVE=1', config['env:selected']['build_flags'])
+        self.assertIn('-DDRIVE_INTERFACE=2', config['env:selected']['build_flags'])
+        self.assertIn('lvgl', config['env:selected']['lib_deps'])
+
     def test_esp32_ota_partitions_and_arduino_copy(self):
         for name, flash in [('partitions_s2.csv', 4 << 20), ('partitions_esp32_8mb.csv', 8 << 20)]:
             previous = 0

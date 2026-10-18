@@ -46,7 +46,7 @@ void Display::flushFrame(lv_display_t *display, const lv_area_t *area, uint8_t *
       crowpanel_rgb_frame_status(self.panel_, &self.flushGeneration_, &presented) == ESP_OK;
   if (!self.flushPending_) {
     displayFailed = true;
-    digitalWrite(board::PIN_BACKLIGHT, LOW);
+    if (board::PIN_BACKLIGHT >= 0) digitalWrite(board::PIN_BACKLIGHT, LOW);
     lv_display_flush_ready(display);
   }
 }
@@ -88,7 +88,7 @@ void Display::initLocalDisplay() {
   ui_.create();
   ui_.update(CrowPanelView{});
   lv_refr_now(display_);
-  if (!displayFailed) digitalWrite(board::PIN_BACKLIGHT, HIGH);
+  if (!displayFailed && board::PIN_BACKLIGHT >= 0) digitalWrite(board::PIN_BACKLIGHT, HIGH);
   diagnostics_.dbgPrintln(displayFailed ? "[CrowPanel] VSYNC timeout; display disabled" :
       "[CrowPanel] ST7701 480x480; 8MHz double framebuffer, 20-line SRAM bounce; encoder ready");
 }
@@ -213,13 +213,13 @@ void Display::updateLocalDisplay() {
   if (flushPending_) {
     uint32_t submitted = 0, presented = 0;
     if (crowpanel_rgb_frame_status(panel_, &submitted, &presented) != ESP_OK) {
-      displayFailed = true; digitalWrite(board::PIN_BACKLIGHT, LOW);
+      displayFailed = true; if (board::PIN_BACKLIGHT >= 0) digitalWrite(board::PIN_BACKLIGHT, LOW);
       flushPending_ = false; lv_display_flush_ready(display_); return;
     }
     const uint32_t elapsed = micros() - flushStarted_;
     if (int32_t(presented - flushGeneration_) < 0) {
       if (elapsed < 150000) return; // Network/input keep running; no LVGL while DMA owns buffer.
-      ++syncTimeouts; displayFailed = true; digitalWrite(board::PIN_BACKLIGHT, LOW);
+      ++syncTimeouts; displayFailed = true; if (board::PIN_BACKLIGHT >= 0) digitalWrite(board::PIN_BACKLIGHT, LOW);
     } else ++frames;
     waitMaxUs = std::max(waitMaxUs, elapsed);
     flushPending_ = false;
@@ -233,6 +233,8 @@ void Display::updateLocalDisplay() {
     CrowPanelView view;
     if (runtime_.controller.hardware.simulation) {
     std::snprintf(view.status, sizeof view.status, "%s", controller.moving() ? "Имитация · вращение" : "Имитация · остановлен");
+    } else if (CROWPANEL_LOCAL_DRIVE) {
+      std::snprintf(view.status, sizeof view.status, "%s", controller.moving() ? "Вращение" : "Остановлен");
     }
     if (!inputHealthy_) std::snprintf(view.status, sizeof view.status, "Ошибка кнопки / I2C");
     const unsigned axis = runtime_.hud.isHud() ? hudKnob_.axis() : knob_.axis();

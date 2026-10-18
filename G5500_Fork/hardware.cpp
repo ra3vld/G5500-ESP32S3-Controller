@@ -23,7 +23,7 @@ int Hardware::idleOutputLevel(int pin) const {
 int Hardware::adcAvgMv(int pin) {
   if (runtime_.hud.isHud())
     return 0;
-  if (runtime_.controller.hardware.simulation || SELECTED_BOARD == BOARD_CROWPANEL_21) {
+  if (runtime_.controller.hardware.simulation || (SELECTED_BOARD == BOARD_CROWPANEL_21 && !CROWPANEL_LOCAL_DRIVE) || !board::adc(pin)) {
   (void)pin;
   return 0; // No feedback adapter in this CrowPanel profile.
   } else {
@@ -52,7 +52,7 @@ void Hardware::adcDiagRead(int pin, int &raw, int &mv) {
     raw = mv = 0;
     return;
   }
-  if (runtime_.controller.hardware.simulation || SELECTED_BOARD == BOARD_CROWPANEL_21) {
+  if (runtime_.controller.hardware.simulation || (SELECTED_BOARD == BOARD_CROWPANEL_21 && !CROWPANEL_LOCAL_DRIVE) || !board::adc(pin)) {
   mv = adcAvgMv(pin);
   raw = 0;
   } else {
@@ -186,6 +186,10 @@ void Hardware::controlRotator() {
 
 void Hardware::outputsOff() {
   const auto &c = runtime_.controller.hardware;
+#if CROWPANEL_LOCAL_DRIVE
+  if (directionsStarted_ && !c.simulation && !runtime_.hud.isHud() && !crowpanelDrive_.stop()) crowpanelFault();
+  return;
+#endif
   if (!directionsStarted_ || c.simulation || SELECTED_BOARD == BOARD_CROWPANEL_21 || runtime_.hud.isHud()) return;
   if (c.drive == DRIVE_BTS7960) {
     preloadLevel(PIN_SPEED, LOW); preloadLevel(PIN_EL_SPEED, LOW);
@@ -243,7 +247,19 @@ void Hardware::applyOutputs() {
   const auto &c = runtime_.controller.hardware;
   if (c.simulation) {
     // Both runtime implementations are compiled; the virtual path never owns motor pins.
-  } else if (SELECTED_BOARD == BOARD_CROWPANEL_21) {
+  }
+#if CROWPANEL_LOCAL_DRIVE
+  else {
+    auto &controller = runtime_.controller;
+    if (controller.model != Model::G800DXA || !directionsStarted_) {
+      if (directionsStarted_) crowpanelDrive_.stop();
+      crowpanelFault();
+    } else if (!crowpanelDrive_.apply(controller.driveFault ? 0 : controller.axes[0].direction,
+          uint32_t(std::clamp(lroundf(controller.axes[0].speedOutputPercent*1023.f/100.f), 0l, 1023l)),
+          controller.variableSpeed(0))) crowpanelFault();
+  }
+#else
+  else if (SELECTED_BOARD == BOARD_CROWPANEL_21) {
     if (runtime_.controller.moving() || runtime_.controller.axes[0].wanted || runtime_.controller.axes[1].wanted)
       runtime_.controller.stopNow(-1, millis());
     runtime_.controller.driveFault = true; runtime_.controller.fault = "crowpanel_no_drive";
@@ -275,6 +291,7 @@ void Hardware::applyOutputs() {
       }
     }
   }
+#endif
   runtime_.targetAz = runtime_.controller.axes[0].target; runtime_.targetEl = runtime_.controller.axes[1].target;
   runtime_.targetValid = runtime_.controller.targetKnown;
   runtime_.azTrack = runtime_.controller.axes[0].tracking; runtime_.elTrack = runtime_.controller.axes[1].tracking;
@@ -283,9 +300,16 @@ void Hardware::beginDirections() {
   const auto &c = runtime_.controller.hardware;
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   crowpanel::beginBus();
+#if CROWPANEL_LOCAL_DRIVE
+  if (!c.simulation && !runtime_.hud.isHud()) {
+    directionsStarted_ = true;
+    if (!crowpanelDrive_.begin(c)) crowpanelFault();
+  }
+#else
   if (!c.simulation && !runtime_.hud.isHud()) {
     runtime_.controller.driveFault = true; runtime_.controller.fault = "crowpanel_no_drive";
   }
+#endif
 #else
   if (PIN_LED >= 0) { preloadLevel(PIN_LED, LOW); pinMode(PIN_LED, OUTPUT); }
   if (runtime_.hud.isHud() || c.simulation) return;
@@ -299,11 +323,20 @@ void Hardware::beginDirections() {
 #endif
 }
 void Hardware::beginAdc() {
-  if (runtime_.hud.isHud() || runtime_.controller.hardware.simulation || SELECTED_BOARD == BOARD_CROWPANEL_21) return;
+  if (runtime_.hud.isHud() || runtime_.controller.hardware.simulation || (SELECTED_BOARD == BOARD_CROWPANEL_21 && !CROWPANEL_LOCAL_DRIVE)) return;
   analogReadResolution(12);
-  analogRead(PIN_AZ_ADC); analogRead(PIN_EL_ADC);
-  analogSetPinAttenuation(PIN_AZ_ADC, ADC_11db); analogSetPinAttenuation(PIN_EL_ADC, ADC_11db);
+  analogSetPinAttenuation(PIN_AZ_ADC, ADC_11db); analogRead(PIN_AZ_ADC);
+  if (board::adc(PIN_EL_ADC)) { analogSetPinAttenuation(PIN_EL_ADC, ADC_11db); analogRead(PIN_EL_ADC); }
 }
+#if CROWPANEL_LOCAL_DRIVE
+void Hardware::crowpanelFault() {
+  auto &controller = runtime_.controller;
+  if (!controller.driveFault || controller.moving() || controller.axes[0].wanted || controller.axes[1].wanted)
+    controller.stopNow(-1, millis());
+  controller.driveFault = true;
+  controller.fault = "crowpanel_drive_failed";
+}
+#endif
 void Hardware::beginInputs() {
   const auto &c = runtime_.controller.hardware;
   if (c.buttonGpio >= 0) pinMode(c.buttonGpio, c.buttonPullup ? INPUT_PULLUP : INPUT);

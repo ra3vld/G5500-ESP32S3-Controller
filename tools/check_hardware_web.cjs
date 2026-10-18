@@ -54,6 +54,12 @@ const config={driveInterface:0,simulation:0,bluetoothEnabled:0,bluetoothMode:3,f
    assert.equal(await page.locator('[name=buttonGpio]').inputValue(),'-1');
    assert.equal(await page.locator('[name=bluetoothMode] option[value="2"]').evaluate(el=>el.disabled),true);
    assert.equal(await page.locator('[name=driveInterface] option[value="2"]').evaluate(el=>el.disabled),true);
+   state={...state,crowpanelLocalDrive:true,separateDrive:false,btsDrive:true,configured:{...state.configured,bluetoothEnabled:1}};
+   await page.evaluate(()=>refresh());
+   assert.equal(await page.locator('[name=driveInterface] option[value="1"]').evaluate(el=>el.disabled),true);
+   assert.equal(await page.locator('[name=driveInterface] option[value="2"]').evaluate(el=>el.disabled),false);
+   assert.equal(await page.locator('[name=bluetoothEnabled]').isDisabled(),true);
+   assert.equal(await page.locator('[name=bluetoothEnabled]').inputValue(),'0');
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
    assert.deepEqual(errors,[]);
    if(process.env.HARDWARE_SCREENSHOT_DIR){fs.mkdirSync(process.env.HARDWARE_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:path.join(process.env.HARDWARE_SCREENSHOT_DIR,mobile?'hardware-mobile.png':'hardware-desktop.png'),fullPage:true});}

@@ -31,6 +31,9 @@ void WebInterface::writeHardwareStatus() {
     << ",\"sppSupported\":" << (SELECTED_BOARD == BOARD_ESP32 ? "true" : "false")
     << ",\"classicEsp32\":" << (SELECTED_BOARD == BOARD_ESP32 ? "true" : "false")
     << ",\"crowpanel\":" << (SELECTED_BOARD == BOARD_CROWPANEL_21 ? "true" : "false")
+    << ",\"crowpanelLocalDrive\":" << (CROWPANEL_LOCAL_DRIVE ? "true" : "false")
+    << ",\"separateDrive\":" << (SELECTED_BOARD != BOARD_CROWPANEL_21 && board::output(board::PIN_EL_SPEED) ? "true" : "false")
+    << ",\"btsDrive\":" << (CROWPANEL_LOCAL_DRIVE || (SELECTED_BOARD != BOARD_CROWPANEL_21 && board::output(board::PIN_EL_SPEED)) ? "true" : "false")
     << ",\"independentDrive\":" << (SELECTED_BOARD != BOARD_CROWPANEL_21 && board::output(board::PIN_EL_SPEED) ? "true" : "false")
     << ",\"configured\":"; config(configured);
   j << ",\"effective\":"; config(runtime_.controller.hardware);

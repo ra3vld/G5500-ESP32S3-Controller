@@ -467,6 +467,9 @@ void Storage::loadForkSettings(Runtime &runtime) {
   prefs_.begin("forkcfg", true);
   runtime.controller.model =
       prefs_.getUChar("model", 0) == 1 ? forkrot::Model::G800DXA : forkrot::Model::G5500;
+#if CROWPANEL_LOCAL_DRIVE
+  if (!runtime.hud.isHud() && !runtime.controller.hardware.simulation) runtime.controller.model = Model::G800DXA;
+#endif
   runtime.controller.restoreMode(prefs_.getUChar("mode", 0) == 1 ? forkrot::Mode::Auto
                                                                  : forkrot::Mode::Manual);
   if (runtime.controller.hardware.drive == DRIVE_YAESU) {

@@ -48,11 +48,23 @@ static_assert(BOARD_PROFILE >= BOARD_AUTO && BOARD_PROFILE <= BOARD_CROWPANEL_21
 #error "Unknown display or drive interface"
 #endif
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
-#if DISPLAY_KIND != DISPLAY_CROWPANEL_21 || DRIVE_INTERFACE != DRIVE_YAESU || USER_BUTTON_GPIO != -1
-#error "CrowPanel requires its RGB display, DRIVE_YAESU placeholder and PCF8574 button (USER_BUTTON_GPIO=-1)"
+#if DISPLAY_KIND != DISPLAY_CROWPANEL_21 || USER_BUTTON_GPIO != -1
+#error "CrowPanel requires its RGB display and PCF8574 button (USER_BUTTON_GPIO=-1)"
+#endif
+#if (!CROWPANEL_LOCAL_DRIVE && DRIVE_INTERFACE != DRIVE_YAESU) || DRIVE_INTERFACE == DRIVE_SEPARATE_PWM
+#error "CrowPanel local AZ supports only YAESU/BTS7960; unmodified board requires YAESU placeholder"
 #endif
 #elif DISPLAY_KIND == DISPLAY_CROWPANEL_21
 #error "CrowPanel options require BOARD_CROWPANEL_21"
+#endif
+#if CROWPANEL_LOCAL_DRIVE != 0 && CROWPANEL_LOCAL_DRIVE != 1
+#error "CROWPANEL_LOCAL_DRIVE must be 0 or 1"
+#endif
+#if CROWPANEL_LOCAL_DRIVE && (SELECTED_BOARD != BOARD_CROWPANEL_21 || BLUETOOTH_ENABLED)
+#error "CrowPanel local AZ requires BOARD_CROWPANEL_21 and Bluetooth disabled (UART owns motor pins)"
+#endif
+#if CROWPANEL_LOCAL_DRIVE && defined(ARDUINO) && (!ARDUINO_USB_MODE || !ARDUINO_USB_CDC_ON_BOOT)
+#error "CrowPanel local AZ requires native USB diagnostics; UART0 owns motor pins"
 #endif
 #if BTS7960_PWM_INVERTED != 0 && BTS7960_PWM_INVERTED != 1
 #error "BTS7960_PWM_INVERTED must be 0 or 1"

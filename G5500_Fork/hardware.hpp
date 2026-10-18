@@ -4,6 +4,7 @@
 #include "board.hpp"
 #include "position_filter.hpp"
 #include "runtime.hpp"
+#include "crowpanel_drive.hpp"
 namespace forkrot {
 
 enum RgbState : uint8_t { RGB_IDLE, RGB_RX, RGB_TX, RGB_HEARTBEAT };
@@ -39,6 +40,10 @@ private:
   bool pwmReady = false, pwmFailed = false, directionsStarted_ = false;
   bool attached_[4] = {};
   PositionFilter filters_[2];
+#if CROWPANEL_LOCAL_DRIVE
+  CrowPanelDrive crowpanelDrive_;
+  void crowpanelFault();
+#endif
   bool preparePwm(bool enable);
   void outputsOff();
   uint32_t motorPwmDuty(uint32_t duty) const;

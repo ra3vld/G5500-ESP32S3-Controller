@@ -17,7 +17,7 @@
 
 NONE не требует экранных библиотек. LCD требует только LiquidCrystal; TFT не требует LiquidCrystal. Для Bluetooth дополнительные библиотеки не нужны: на ESP32 доступны встроенный SPP и внешний HC-05, на S2/S3 — HC-05. Выберите транспорт после сборки в веб-настройках оборудования; Bluetooth по умолчанию выключен.
 
-CrowPanel 2.1 (DHE03921D): `pio run -e crowpanel_21` или `./tools/build_arduino.sh crowpanel`. Это отдельный профиль экрана/энкодера/сети без привода; конфигурация, библиотека LVGL и ограничения описаны в [crowpanel-21.md](crowpanel-21.md).
+CrowPanel 2.1 (DHE03921D): `pio run -e crowpanel_21` или `./tools/build_arduino.sh crowpanel`. Для переделанной платы с локальным AZ используйте `pio run -e crowpanel_21_az` по [инструкции подключения](crowpanel-az.md). Обычный `crowpanel_21` — профиль экрана/энкодера/сети без привода; конфигурация, библиотека LVGL и ограничения описаны в [crowpanel-21.md](crowpanel-21.md).
 
 ## Arduino IDE 2.x
 
@@ -66,7 +66,7 @@ python3 tools/build_platformio.py --env esp32s2_mini --display lcd
 python3 tools/build_platformio.py --env esp32s2_mini --display none
 ```
 
-Выберите окружение своей платы: `esp32_4mb`, `esp32s3_n16r8`, `esp32s2_mini` или `esp32s2_4mb` для прежней проводки S2. Для ESP32, S3 и S2 Mini доступны варианты `_tft` и `_lcd`. Профиль CrowPanel — `crowpanel_21`. Суффикс `_headless` у S2/S3 выбирает сборку без дисплея.
+Выберите окружение своей платы: `esp32_4mb`, `esp32s3_n16r8`, `esp32s2_mini` или `esp32s2_4mb` для прежней проводки S2. Для ESP32, S3 и S2 Mini доступны варианты `_tft` и `_lcd`. Профиль обычной CrowPanel — `crowpanel_21`, переделанной платы с локальным AZ — `crowpanel_21_az`. Суффикс `_headless` у S2/S3 выбирает сборку без дисплея.
 
 ```sh
 pio run -e esp32s3_n16r8_tft -j4
