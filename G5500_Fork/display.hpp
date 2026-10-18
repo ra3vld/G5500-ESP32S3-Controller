@@ -44,8 +44,7 @@ private:
   void updateDashboard();
   void drawCalHeader(const String &title);
   void drawCalHome();
-  void drawCalAz();
-  void drawCalEl();
+  void drawCalAxis(bool az);
   void drawTouchCalibration();
   void startTouchCalibration();
   bool readTouchRawAverage(int &rx, int &ry);

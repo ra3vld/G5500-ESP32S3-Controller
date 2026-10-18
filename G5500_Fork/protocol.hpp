@@ -8,6 +8,9 @@ struct Packet {
   bool matched = false;
   std::string reply;
 };
+struct ManualFollowSettings {
+  bool n1mm = false, pst = false, gs232 = false, rotctld = false;
+};
 class Protocol {
   Controller &controller_;
   float pstBaseAzimuth_ = 0;
@@ -19,6 +22,7 @@ class Protocol {
 
 public:
   std::string rotorName = "G5500";
+  ManualFollowSettings manualFollow;
   explicit Protocol(Controller &c) : controller_(c) {}
   std::string positionReport(float mechanicalAz) const;
   Packet datagram(std::string_view input, uint32_t now);

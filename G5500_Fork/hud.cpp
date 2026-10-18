@@ -160,7 +160,8 @@ Target target(Reader &r) {
 }
 void command(Writer &w, const ControlCommand &c) {
   w.u8(uint8_t(c.op));
-  w.u8(c.external);
+  // Legacy 0/1 keep their meaning. Older peers reject the new follow flag.
+  w.u8(uint8_t(c.external) | uint8_t(c.followInManual) << 1);
   switch (c.op) {
   case ControlOp::Target:
     target(w, c.target);
@@ -200,9 +201,10 @@ void command(Writer &w, const ControlCommand &c) {
 }
 bool command(Reader &r, ControlCommand &c) {
   c.op = ControlOp(r.u8());
-  auto external = r.u8();
-  c.external = external;
-  if (external > 1)
+  auto flags = r.u8();
+  c.external = flags & 1;
+  c.followInManual = flags & 2;
+  if (flags > 3 || (c.followInManual && c.op != ControlOp::Target && c.op != ControlOp::Sequence))
     return false;
   switch (c.op) {
   case ControlOp::Target:
@@ -869,7 +871,7 @@ Result Hud::execute(const ControlCommand &c, uint64_t source, uint64_t session, 
   Result r = Result::Invalid;
   switch (c.op) {
   case ControlOp::Target:
-    r = controller_.target(c.target, c.external, now);
+    r = controller_.target(c.target, c.external, now, c.followInManual);
     break;
   case ControlOp::Jog:
     r = controller_.jog(unsigned(c.axis), c.direction, c.external, now);
@@ -918,7 +920,7 @@ Result Hud::execute(const ControlCommand &c, uint64_t source, uint64_t session, 
       presetsDirty = true;
     break;
   case ControlOp::Sequence:
-    r = controller_.sequence(c.points.data(), c.count, c.interval, now);
+    r = controller_.sequence(c.points.data(), c.count, c.interval, now, c.followInManual);
     break;
   }
   controller_.tick(now);
@@ -1434,7 +1436,10 @@ bool Hud::writePeers(JsonWriter &j, size_t offset, size_t limit, bool discovered
       j << p->state.axes[1].current;
     else
       j << "null";
-    j << ",\"moving\":" << ((p->state.axes[0].direction || p->state.axes[1].direction) ? "true" : "false")
+    j << ",\"azCalibrated\":" << (p->received && p->state.axes[0].calibrated ? "true" : "false")
+      << ",\"elCalibrated\":" << (p->received && p->state.axes[1].calibrated ? "true" : "false")
+      << ",\"hasEl\":" << (p->state.model == Model::G5500 ? "true" : "false")
+      << ",\"moving\":" << ((p->state.axes[0].direction || p->state.axes[1].direction) ? "true" : "false")
       << '}';
   }
   j << "]}";

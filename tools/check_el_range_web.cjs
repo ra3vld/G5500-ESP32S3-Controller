@@ -27,7 +27,7 @@ const request=async(route,body,status=200)=>{const r=await fetch(base+route,body
   await form.locator('[type=submit]').click();await page.waitForFunction(()=>window._forkState?.elStart===-30);
   assert.equal(await page.locator('#tel').getAttribute('min'),'-30');assert.equal(await page.locator('#tel').getAttribute('max'),'210');
   assert.equal(await page.locator('#presetEditor [name=el]').getAttribute('min'),'-30');
-  assert(!await page.locator('#legacyElPoints').isVisible());assert(await page.locator('#customElPoints').isVisible());
+  assert.equal(await page.locator('#elPointList > div').count(),2);assert(await page.locator('#customElPoints').isVisible());
   const rev=(await request('/api/status')).elRangeRevision;
   await request('/api/elrange',{profile:'custom',start:-30,span:240});assert.equal((await request('/api/status')).elRangeRevision,rev);
   for(const bad of [{start:'NaN',span:180},{start:-3600.1,span:180},{start:0,span:0},{start:0,span:3600.1},{start:.01,span:180},{start:0,span:1.0001}])await request('/api/elrange',{profile:'custom',...bad},400);
@@ -51,7 +51,7 @@ const request=async(route,body,status=200)=>{const r=await fetch(base+route,body
   await request('/api/elrange',{profile:'custom',start:20,span:240});
   assert.equal((await request('/api/elcal')).points.find(p=>p.angle===65.5).mv,mv);
   await page.waitForFunction(()=>window._forkState?.elStart===20);
-  assert.equal(await page.locator('#b2_elo').innerText(),'O2 · EL 20°');assert.equal(await page.locator('#b2_elf').innerText(),'F2 · EL 260°');
+  assert((await page.locator('#b2_elo').locator('../..').innerText()).includes('Начало · 20°'));assert((await page.locator('#b2_elf').locator('../..').innerText()).includes('Конец · 260°'));
   await request('/api/target',{el:100,rangeRevision:rev},409);await request('/api/move',{d:'S',rangeRevision:rev});
   await request('/api/elrange',{profile:'custom',start:-10,span:90});
   const points=(await request('/api/elcal')).points;assert.deepEqual(points.map(p=>p.angle),[-10,80]);assert(points.every(p=>p.mv===-1));

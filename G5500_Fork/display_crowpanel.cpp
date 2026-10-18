@@ -254,14 +254,18 @@ void Display::updateLocalDisplay() {
         for (unsigned i = 0; i < 3; ++i)
           if (rows[i]) {
             const auto *r = rows[i];
-            if (r->received)
+            if (r->received) {
+              char az[16] = "NC", el[16] = "NC";
+              if (r->state.axes[0].calibrated) std::snprintf(az, sizeof az, "%.0f", double(r->state.axes[0].current));
+              if (r->state.axes[1].calibrated) std::snprintf(el, sizeof el, "%.0f", double(r->state.axes[1].current));
               std::snprintf(
-                  view.hudRows[i], sizeof view.hudRows[i], "%s\n%.0f / %.0f · %s · %lus", r->label,
-                  double(r->state.axes[0].current), double(r->state.axes[1].current),
+                  view.hudRows[i], sizeof view.hudRows[i], "%s\n%s%s%s · %s · %lus", r->label,
+                  az, r->state.model == Model::G5500 ? " / " : "", r->state.model == Model::G5500 ? el : "",
                   r->fresh(runtime_.hud.now)
                       ? ((r->state.axes[0].direction || r->state.axes[1].direction) ? "Ход" : "Стоп")
                       : "Нет связи",
                   static_cast<unsigned long>((runtime_.hud.now - r->receivedAt) / 1000));
+            }
             else
               std::snprintf(view.hudRows[i], sizeof view.hudRows[i], "%s\nНет связи", r->label);
           }
@@ -273,17 +277,17 @@ void Display::updateLocalDisplay() {
     view.maximum = controller.range(axis).end;
     view.sourceId = view.hud ? runtime_.hud.config.selected : 0;
     view.autoMode = controller.mode != Mode::Manual; view.autoHour = controller.mode == Mode::AutoHour;
-    view.feedback = (runtime_.hud.isHud() ? runtime_.hud.available() : bool(DRIVE_SIMULATION)) &&
-                    controller.axes[axis].calibrated;
+    const bool online = !view.hud || runtime_.hud.available();
+    view.feedback = online && controller.axes[axis].calibrated;
+    view.uncalibrated = online && !controller.axes[axis].calibrated;
     view.current = controller.axes[axis].current;
     view.direction = controller.axes[axis].direction;
     view.pending = controller.pendingValid && (axis ? controller.pending.hasEl : controller.pending.hasAz);
     view.targetValid = view.pending || controller.axes[axis].targetKnown;
     view.target = view.pending ? (axis ? controller.pending.el : controller.pending.az) : controller.axes[axis].target;
     const unsigned other = 1 - axis;
-    view.secondaryFeedback = view.dualAxis &&
-                             (view.hud ? runtime_.hud.available() : bool(DRIVE_SIMULATION)) &&
-                             controller.axes[other].calibrated;
+    view.secondaryFeedback = view.dualAxis && online && controller.axes[other].calibrated;
+    view.secondaryUncalibrated = view.dualAxis && online && !controller.axes[other].calibrated;
     view.secondaryCurrent = controller.axes[other].current;
     view.secondaryPending = view.dualAxis && controller.pendingValid &&
                             (other ? controller.pending.hasEl : controller.pending.hasAz);

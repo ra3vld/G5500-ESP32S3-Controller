@@ -315,13 +315,14 @@ void CrowPanelUi::update(const CrowPanelView &v) {
   if (v.feedback) {
     std::snprintf(value, sizeof value, "%.0f°", double(v.current));
   } else {
-    std::snprintf(value, sizeof value, "—");
+    std::snprintf(value, sizeof value, "%s", v.uncalibrated ? "NC" : "—");
   }
   set(angle_, value);
   if (v.secondaryFeedback) {
     std::snprintf(value, sizeof value, v.elevation ? "%.0f° / " : " / %.0f°", double(v.secondaryCurrent));
   } else {
-    std::snprintf(value, sizeof value, "%s", v.elevation ? "— / " : " / —");
+    std::snprintf(value, sizeof value, v.elevation ? "%s / " : " / %s",
+                  v.secondaryUncalibrated ? "NC" : "—");
   }
   set(secondaryAngle_, v.dualAxis ? value : "");
   if (v.targetValid) {

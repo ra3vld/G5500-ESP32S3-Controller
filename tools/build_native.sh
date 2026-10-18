@@ -25,6 +25,8 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_F
 ./build/protocol_memory_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork G5500_Fork/control.cpp G5500_Fork/protocol.cpp tests/protocol_shortest_tests.cpp -o build/protocol_shortest_tests
 ./build/protocol_shortest_tests
+${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp tests/manual_protocol_tests.cpp -o build/manual_protocol_tests
+./build/manual_protocol_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -pthread -I tests/http_fakes -I G5500_Fork tests/wifi_fallback_tests.cpp -o build/wifi_fallback_tests
 ./build/wifi_fallback_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/diagnostic_stream_tests.cpp -o build/diagnostic_stream_tests
@@ -91,6 +93,8 @@ done
 
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/hud_tests.cpp -o build/hud_tests
 ./build/hud_tests
+${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/hud_position_json_tests.cpp -o build/hud_position_json_tests
+./build/hud_position_json_tests
 for drive in 0 1 2; do
   ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -DDRIVE_INTERFACE=$drive -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/hud_adapter_tests.cpp -o build/hud_adapter_tests_$drive
   ./build/hud_adapter_tests_$drive

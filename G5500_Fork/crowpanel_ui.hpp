@@ -10,6 +10,7 @@ struct CrowPanelView {
   char hudName[49]{}, hudAddress[32] = "hud:—", hudRows[3][128]{};
   bool dualAxis = false;
   bool elevation = false, feedback = false, targetValid = false;
+  bool uncalibrated = false, secondaryUncalibrated = false;
   bool pending = false, moving = false, autoMode = false, autoHour = false;
   int direction = 0;
   float current = 0, target = 0, minimum = 0, maximum = 450;

@@ -224,7 +224,7 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
     }
     value =
         nearest(value + offset, controller_.axes[0].current, controller_.azRange, bidirectional);
-    packet.result = controller_.target({value, 0, true, false}, true, now);
+    packet.result = controller_.target({value, 0, true, false}, true, now, manualFollow.n1mm);
     return packet;
   }
   if (root.name != "PST") {
@@ -316,8 +316,8 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
       return packet;
     }
     // UR5EQF's Park button uses preset 1 as the configurable parking position.
-    // It remains an external numerical target: manual confirmation and preset priority apply.
-    packet.result = controller_.target(controller_.presets[0].target, true, now);
+    // Parking follows the PST manual-mode policy and retains external preset priority.
+    packet.result = controller_.target(controller_.presets[0].target, true, now, manualFollow.pst);
     return packet;
   }
   // Preset priority also prevents ignored packets altering cached LP/base state.
@@ -344,9 +344,9 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
   longPath_ = lp;
   if (az || (changed && pstBaseValid_)) {
     const float value = resolved;
-    packet.result = controller_.target({value, elevation, true, el != nullptr}, true, now);
+    packet.result = controller_.target({value, elevation, true, el != nullptr}, true, now, manualFollow.pst);
   } else if (el) {
-    packet.result = controller_.target({0, elevation, false, true}, true, now);
+    packet.result = controller_.target({0, elevation, false, true}, true, now, manualFollow.pst);
   } else {
     packet.result = Result::Ok;
   }
@@ -428,7 +428,8 @@ Packet Protocol::line(std::string_view input, uint32_t now, bool tcp) {
     if (v.size() != 3 || !number(v[1], az) || !number(v[2], el)) {
       packet.result = Result::Invalid;
     } else {
-      packet.result = controller_.target({lineAzimuth(az, controller_), el, true, true}, true, now);
+      packet.result = controller_.target({lineAzimuth(az, controller_), el, true, true}, true, now,
+                                          manualFollow.rotctld);
     }
   } else if (u[0] == 'M' || u[0] == 'W') {
     bool hasEl = u[0] == 'W';
@@ -446,7 +447,8 @@ Packet Protocol::line(std::string_view input, uint32_t now, bool tcp) {
     if (packet.result == Result::Ok) {
       if (nums.size() == (hasEl ? 2u : 1u)) {
         packet.result = controller_.target(
-            {lineAzimuth(nums[0], controller_), hasEl ? nums[1] : 0, true, hasEl}, true, now);
+            {lineAzimuth(nums[0], controller_), hasEl ? nums[1] : 0, true, hasEl}, true, now,
+            manualFollow.gs232);
       } else if (nums.size() >= (hasEl ? 3u : 2u) && (!hasEl || (nums.size() - 1) % 2 == 0) &&
                  nums[0] >= 1 && nums[0] <= 999 && std::floor(nums[0]) == nums[0]) {
         FixedVector<Target, 16> points;
@@ -468,14 +470,15 @@ Packet Protocol::line(std::string_view input, uint32_t now, bool tcp) {
           loadedSequenceStarted_ = false;
           loadedStopEpoch_ = controller_.stopEpoch;
           loadedIntervalMs_ = uint32_t(nums[0]) * 1000;
-          packet.result = controller_.target(points[0], true, now);
+          packet.result = controller_.target(points[0], true, now, manualFollow.gs232);
         }
       } else {
         packet.result = Result::Invalid;
       }
     }
   } else if (u == "T") {
-    packet.result = controller_.sequence(loadedSequence_.data(), loadedSequence_.size(), loadedIntervalMs_, now);
+    packet.result = controller_.sequence(loadedSequence_.data(), loadedSequence_.size(), loadedIntervalMs_, now,
+                                          manualFollow.gs232);
     if (packet.result == Result::Ok || packet.result == Result::Pending || packet.result == Result::Deferred)
       loadedSequenceStarted_ = true;
   } else if (u == "N") {

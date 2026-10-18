@@ -47,6 +47,7 @@ struct ControlCommand {
   ControlOp op = ControlOp::Stop;
   Target target{};
   bool external = false;
+  bool followInManual = false;
   int axis = -1, direction = 0;
   unsigned slot = 0;
   Mode mode = Mode::Manual;
@@ -144,7 +145,7 @@ public:
   std::string fault;
   Controller();
   void feedback(float az, float el, bool azCal, bool elCal);
-  Result target(Target t, bool external, uint32_t now);
+  Result target(Target t, bool external, uint32_t now, bool followInManual = false);
   Result jog(unsigned axis, int direction, bool external, uint32_t now);
   void stop(int axis = -1);
   void stopNow(int axis, uint32_t now);
@@ -165,9 +166,11 @@ public:
   bool setElRange(RotationRange range, uint8_t profile, uint32_t now = 0);
   Result preset(unsigned slot, uint32_t now);
   Result savePreset(unsigned slot, const std::string &label, Target t);
-  Result sequence(const Target *points, size_t count, uint32_t interval, uint32_t now);
-  Result sequence(const std::vector<Target> &points, uint32_t interval, uint32_t now) {
-    return sequence(points.data(), points.size(), interval, now);
+  Result sequence(const Target *points, size_t count, uint32_t interval, uint32_t now,
+                  bool followInManual = false);
+  Result sequence(const std::vector<Target> &points, uint32_t interval, uint32_t now,
+                  bool followInManual = false) {
+    return sequence(points.data(), points.size(), interval, now, followInManual);
   }
   void cancelSequence();
   void tick(uint32_t now);

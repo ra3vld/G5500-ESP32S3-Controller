@@ -161,12 +161,13 @@ Result Controller::start(Target nextTarget, uint32_t, bool external) {
   }
   return Result::Ok;
 }
-Result Controller::target(Target nextTarget, bool external, uint32_t now) {
+Result Controller::target(Target nextTarget, bool external, uint32_t now, bool followInManual) {
   if (remote) {
     ControlCommand c;
     c.op = ControlOp::Target;
     c.target = nextTarget;
     c.external = external;
+    c.followInManual = followInManual;
     return remote->submit(c);
   }
   expire(now);
@@ -177,7 +178,7 @@ Result Controller::target(Target nextTarget, bool external, uint32_t now) {
     return Result::Ignored;
   }
   cancelSequence();
-  if (external && mode == Mode::Manual) {
+  if (external && mode == Mode::Manual && !followInManual) {
     pending = nextTarget;
     pendingValid = true;
     return Result::Pending;
@@ -584,12 +585,14 @@ Result Controller::preset(unsigned slot, uint32_t now) {
   }
   return result;
 }
-Result Controller::sequence(const Target *points, size_t count, uint32_t interval, uint32_t now) {
+Result Controller::sequence(const Target *points, size_t count, uint32_t interval, uint32_t now,
+                            bool followInManual) {
   if (remote) {
     if (!count || count > 16)
       return Result::Invalid;
     ControlCommand c;
     c.op = ControlOp::Sequence;
+    c.followInManual = followInManual;
     c.count = uint8_t(count);
     c.interval = interval;
     std::copy_n(points, count, c.points.begin());
@@ -610,7 +613,7 @@ Result Controller::sequence(const Target *points, size_t count, uint32_t interva
   }
   cancelSequence();
   sequenceIntervalMs_ = interval;
-  if (mode == Mode::Manual) {
+  if (mode == Mode::Manual && !followInManual) {
     pendingSequence_.assign(points, count);
     pending = points[0];
     pendingValid = true;

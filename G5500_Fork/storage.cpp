@@ -372,6 +372,10 @@ void Storage::loadForkSettings(Runtime &runtime) {
   runtime.loggerSettings.pstPort = prefs_.getUShort("pport", 1234);
   runtime.loggerSettings.reportPort = prefs_.getUShort("rport", 13010);
   runtime.loggerSettings.reportHost = prefs_.getString("rhost", "").c_str();
+  runtime.protocol.manualFollow.n1mm = prefs_.getBool("nmanual", false);
+  runtime.protocol.manualFollow.pst = prefs_.getBool("pmanual", false);
+  runtime.protocol.manualFollow.gs232 = prefs_.getBool("gmanual", false);
+  runtime.protocol.manualFollow.rotctld = prefs_.getBool("rmanual", false);
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   runtime.loggerSettings.encoderInverted = prefs_.getBool("encinv", true);
 #endif
@@ -429,6 +433,10 @@ void Storage::saveForkSettings(const Runtime &runtime) {
   prefs_.putUShort("pport", runtime.loggerSettings.pstPort);
   prefs_.putUShort("rport", runtime.loggerSettings.reportPort);
   prefs_.putString("rhost", runtime.loggerSettings.reportHost.c_str());
+  prefs_.putBool("nmanual", runtime.protocol.manualFollow.n1mm);
+  prefs_.putBool("pmanual", runtime.protocol.manualFollow.pst);
+  prefs_.putBool("gmanual", runtime.protocol.manualFollow.gs232);
+  prefs_.putBool("rmanual", runtime.protocol.manualFollow.rotctld);
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   prefs_.putBool("encinv", runtime.loggerSettings.encoderInverted);
 #endif

@@ -206,9 +206,32 @@ int main(){
         calibration.state().calibrationMode=form["m"]=="multi"?CAL_MULTI_POINT:CAL_GS232_2POINT;
         response.body="{\"ok\":true}";
       } else if(path=="/api/cal2") {
-        if(form["p"]=="o"||form["p"]=="f")calibration.captureAzEndpoint(form["p"]=="f",int(100+(az-c.minimum)*2700/c.azRange.span()));
-        response.body="{\"ok\":true}";
-      } else if (path == "/api/cal") response.body = "{\"ok\":true}";
+        const auto point = form["p"];
+        if (point == "o" || point == "f") {
+          calibration.captureAzEndpoint(point == "f", int(100+(az-c.minimum)*2700/c.azRange.span()));
+        } else if ((point == "o2" || point == "f2") && c.model == Model::G5500) {
+          calibration.captureElEndpoint(point == "f2", int(100+(el-c.elRange.start)*2700/c.elRange.span()));
+        } else response.status = 400;
+        response.body=response.status == 200 ? "{\"ok\":true}" : "{\"ok\":false}";
+      } else if (path == "/api/cal") {
+        const auto point = form["p"];
+        auto &cal = calibration.state();
+        bool captured = false;
+        if (cal.gsAzMode != AZ_CUSTOM) {
+          const unsigned count = cal.gsAzMode == AZ_P36 ? AZ36_CAL_N : AZ45_CAL_N;
+          int *values = cal.gsAzMode == AZ_P36 ? cal.az36CalMv : cal.az45CalMv;
+          for (unsigned i = 0; i < count; ++i) if (point == "az" + std::to_string(i * 90)) {
+            values[i] = int(100+(az-c.minimum)*2700/c.azRange.span()); captured = true;
+          }
+        }
+        if (c.model == Model::G5500 && cal.elProfile == EL_STANDARD) {
+          for (unsigned i = 0; i < EL_CAL_N; ++i) if (point == "el" + std::to_string(i * 45)) {
+            cal.elCalMv[i] = int(100+(el-c.elRange.start)*2700/c.elRange.span()); captured = true;
+          }
+        }
+        calibration.refreshMultiCalValidity();
+        response={captured?200:400,captured?"{\"ok\":true}":"{\"ok\":false}"};
+      }
       else
         response = api(c, p, cfg, path, form, now);
       if (old != c.model) {
@@ -238,9 +261,16 @@ int main(){
         << ",\"calibrated\":true,\"selectedCalOk\":true,\"calMode\":" << jsonQuote(calibration.state().calibrationMode==CAL_MULTI_POINT?"multi":"2") << ",\"ip\":\"SIMULATOR\",\"wifiMode\":"
            "\"Виртуальное оборудование\",\"ssid\":\"\",\"rssi\":null,\"btConnected\":false,\"motion\":"
         << jsonQuote(c.moving() ? "MOVING" : "STOP") << ",\"uptimeSeconds\":" << now / 1000;
-    for (auto key : {"az2p0", "az2pf", "el2p0", "el2pf", "azp0", "azp90", "azp180", "azp270", "azp360",
-                     "azp450", "elp0", "elp45", "elp90", "elp135", "elp180"})
-      extra << ",\"" << key << "\":0";
+    extra << ",\"az2p0\":" << (calibration.activeAzOSet() ? calibration.activeAz2Zero() : -1)
+          << ",\"az2pf\":" << (calibration.activeAzFSet() ? calibration.activeAz2Full() : -1)
+          << ",\"el2p0\":" << (calibration.activeElOSet() ? calibration.activeEl2Zero() : -1)
+          << ",\"el2pf\":" << (calibration.activeElFSet() ? calibration.activeEl2Full() : -1);
+    const auto &cal = calibration.state();
+    const bool p36 = cal.gsAzMode == AZ_P36;
+    for (unsigned i = 0; i < (p36 ? AZ36_CAL_N : AZ45_CAL_N); ++i)
+      extra << ",\"azp" << i * 90 << "\":" << (p36 ? cal.az36CalMv[i] : cal.az45CalMv[i]);
+    for (unsigned i = 0; i < EL_CAL_N; ++i)
+      extra << ",\"elp" << i * 45 << "\":" << cal.elCalMv[i];
     char hudJson[1536];
     JsonWriter hj(hudJson, sizeof hudJson);
     hud.writeStatus(hj);

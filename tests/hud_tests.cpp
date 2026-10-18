@@ -568,6 +568,47 @@ int main() {
     knob.sample(true, false, 0, 700); taps.tick(710);
     assert(motor.controller.axes[0].tracking);
   }
+  // Per-protocol manual following belongs to the receiving HUD and travels with
+  // its command. The selected controller stays manual and enforces preset priority.
+  for (bool follow : {false, true}) {
+    Bus policies;
+    Node motor(policies, 1, 0x0100007f), panel(policies, 10, 0x0a00007f, true);
+    panel.save(motor); assert(panel.hud.select(1)); policies.tick(100);
+    Settings local;
+    const std::string enabled = follow ? "true" : "false";
+    assert(api(panel.controller, panel.protocol, local, "/api/settings",
+               {{"n1mmManualFollow", enabled}, {"pstManualFollow", enabled},
+                {"gs232ManualFollow", enabled}, {"rotctldManualFollow", enabled}}, 100).status == 200);
+    const auto before = stateJson(panel.controller, panel.protocol, local, 100);
+    assert(api(panel.controller, panel.protocol, local, "/api/settings",
+               {{"n1mmManualFollow", "false"}, {"pstManualFollow", "bad"}}, 100).status == 400);
+    assert(stateJson(panel.controller, panel.protocol, local, 100) == before);
+    uint32_t at = 110;
+    // Distinct targets must pass the existing repeated-target noise filter.
+    for (const char *text : {"<N1MMRotor><rotor>*</rotor><goazi>100</goazi></N1MMRotor>",
+                            "<PST><AZIMUTH>130</AZIMUTH></PST>", "M160", "P 190 45"}) {
+      assert((text[0] == '<' ? panel.protocol.datagram(text, at) : panel.protocol.line(text, at, true))
+                 .result == Result::Deferred);
+      const auto id = panel.hud.requestId(); policies.tick(at += 10);
+      assert(panel.hud.result(id).result == (follow ? Result::Ok : Result::Pending));
+      assert(motor.controller.mode == Mode::Manual && motor.controller.pendingValid == !follow);
+      assert(motor.controller.moving() == follow);
+      panel.controller.stopNow(-1, at); policies.tick(at += 10);
+    }
+    assert(panel.protocol.line("M1 90 180", at).result == Result::Deferred);
+    policies.tick(at += 10);
+    assert(panel.protocol.line("T", at).result == Result::Deferred);
+    const auto id = panel.hud.requestId(); policies.tick(at += 10);
+    assert(panel.hud.result(id).result == (follow ? Result::Ok : Result::Pending));
+    if (follow) { policies.tick(at += 1000); assert(motor.controller.axes[0].target == 180); }
+    assert(motor.controller.mode == Mode::Manual);
+    motor.controller.stopNow(-1, at);
+    assert(motor.controller.preset(1, at) == Result::Ok);
+    policies.tick(at += 10);
+    assert(panel.protocol.line("M100", at).result == Result::Deferred);
+    const auto ignored = panel.hud.requestId(); policies.tick(at += 10);
+    assert(panel.hud.result(ignored).result == Result::Ignored && motor.controller.presetActive);
+  }
   // Removing records, including the selected head, preserves the rest of the catalogue.
   assert(c.hud.remove(100)&&c.hud.config.selected==0&&c.hud.count()==79);
   for(unsigned id=101;id<180;++id)assert(c.hud.remove(id));

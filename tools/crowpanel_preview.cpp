@@ -577,5 +577,33 @@ int main(int argc, char **argv) {
   ui.update(view);settle(d);checkFullRedraw(d,argv[1]);
   assert(findLabel("-30.0°..210.0°"));
   std::snprintf(path,sizeof path,"%s/custom-elevation.ppm",argv[1]);save(path);
+  for (const auto *font : {&crowpanel_font_22, &crowpanel_font_28, &crowpanel_font_36,
+                           &crowpanel_font_80, &crowpanel_font_112}) {
+    for (const char letter : {'N', 'C'}) {
+      lv_font_glyph_dsc_t glyph{};
+      assert(font->get_glyph_dsc(font, &glyph, letter, 0) && glyph.box_w > 0);
+    }
+  }
+  for (bool dual : {false, true}) for (bool elevation : {false, true}) for (bool pending : {false, true}) {
+    if (!dual && elevation) continue;
+    view = forkrot::CrowPanelView{};
+    view.dualAxis = dual; view.elevation = elevation;
+    view.uncalibrated = view.secondaryUncalibrated = true;
+    view.targetValid = pending; view.pending = pending; view.target = 123;
+    ui.update(view); settle(d); checkFullRedraw(d, argv[1]);
+    assert(findLabel("NC") && !findLabel("NC°"));
+    if (dual) assert(findLabel(elevation ? "NC / " : " / NC"));
+    const auto &layout = ui.touchLayout();
+    assert(!overlaps(layout.current, layout.target));
+    for (const auto &arrow : layout.arrows) assert(!overlaps(arrow, layout.current));
+    std::snprintf(path, sizeof path, "%s/nc-%s-%s-%s.ppm", argv[1], dual ? "dual" : "single",
+                  elevation ? "el" : "az", pending ? "pending" : "normal"); save(path);
+    // No connection remains a dash. Calibration restored at the same angle repaints the number.
+    view.uncalibrated = view.secondaryUncalibrated = false;
+    ui.update(view); settle(d); assert(!findLabel("NC") && findLabel("—"));
+    view.feedback = view.secondaryFeedback = true;
+    ui.update(view); settle(d); assert(findLabel("0°"));
+  }
+  std::puts("PASS: NC glyphs, independent axes, offline dash, calibration restored, targets unchanged and layout");
   std::puts("PASS: LVGL marker animation/wrap/reset, independent current/target limit tails, confirmation hit/restoration, Wi-Fi, arrows, markers and idle redraw");
 }

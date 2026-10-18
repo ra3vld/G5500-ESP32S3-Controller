@@ -109,6 +109,10 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"fault\":" << jsonQuoted(controller.fault)
        << ",\"rotorName\":" << jsonQuoted(protocol.rotorName)
        << ",\"n1mmPort\":" << settings.n1mmPort << ",\"pstPort\":" << settings.pstPort
+       << ",\"n1mmManualFollow\":" << (protocol.manualFollow.n1mm ? "true" : "false")
+       << ",\"pstManualFollow\":" << (protocol.manualFollow.pst ? "true" : "false")
+       << ",\"gs232ManualFollow\":" << (protocol.manualFollow.gs232 ? "true" : "false")
+       << ",\"rotctldManualFollow\":" << (protocol.manualFollow.rotctld ? "true" : "false")
        << ",\"reportPort\":" << settings.reportPort
        << ",\"reportHost\":" << jsonQuoted(settings.reportHost) << ",\"n1mmReport\":\""
        << jsonEscaped(protocol.rotorName) << '@'
@@ -200,6 +204,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
   if (controller.remote && path == "/api/settings") {
     auto next = settings;
     auto name = protocol.rotorName;
+    auto follow = protocol.manualFollow;
     for (const auto &entry : form) {
       const auto key = entry.first, value = entry.second;
       bool ok = false;
@@ -219,12 +224,21 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
         ok = value.empty() || ip(value);
       } else if (key == "encoderInverted")
         ok = boolean(value, next.encoderInverted);
+      else if (key == "n1mmManualFollow")
+        ok = boolean(value, follow.n1mm);
+      else if (key == "pstManualFollow")
+        ok = boolean(value, follow.pst);
+      else if (key == "gs232ManualFollow")
+        ok = boolean(value, follow.gs232);
+      else if (key == "rotctldManualFollow")
+        ok = boolean(value, follow.rotctld);
       if (!ok)
         return {400, "{\"ok\":false,\"result\":\"controller_settings_only\"}"};
     }
     if(next.n1mmPort==next.pstPort)return {400,"{\"ok\":false,\"result\":\"invalid\"}"};
     settings = next;
     protocol.rotorName = name;
+    protocol.manualFollow = follow;
     return {200, "{\"ok\":true,\"result\":\"ok\"}"};
   }
   if (path == "/api/mode") {
@@ -254,6 +268,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
   } else if (path == "/api/settings") {
     auto next = settings;
     auto name = protocol.rotorName;
+    auto follow = protocol.manualFollow;
     auto model = controller.model;
     bool enabled = controller.speedEnabled;
     auto speeds = controller.speeds;
@@ -284,6 +299,12 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     }
     if (has(form, "reportPort")) {
       valid = integer(get(form, "reportPort"), next.reportPort, 1, 65535) && valid;
+    }
+    for (auto entry : {std::pair<const char *, bool *>{"n1mmManualFollow", &follow.n1mm},
+                       {"pstManualFollow", &follow.pst}, {"gs232ManualFollow", &follow.gs232},
+                       {"rotctldManualFollow", &follow.rotctld}}) {
+      if (has(form, entry.first))
+        valid = boolean(get(form, entry.first), *entry.second) && valid;
     }
     if (has(form, "reportHost")) {
       next.reportHost = get(form, "reportHost");
@@ -350,6 +371,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       }
       settings = next;
       protocol.rotorName = name;
+      protocol.manualFollow = follow;
       controller.speedEnabled = enabled;
       controller.speeds = speeds;
       result = Result::Ok;
