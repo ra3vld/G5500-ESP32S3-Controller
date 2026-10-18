@@ -64,6 +64,13 @@ public:
   }
   void confirmPending(uint32_t now) {
     sync();
+    if (!menu && controller_.hasDriveError()) {
+      resume_ = click_ = false;
+      pauseRequest_ = 0;
+      long_ = true;
+      recordResult(controller_.resetMotion(-1, now), now);
+      return;
+    }
     if (menu || controller_.mode != Mode::Manual || !controller_.pendingValid ||
         !(axis_ ? controller_.pending.hasEl : controller_.pending.hasAz)) return;
     resume_ = click_ = false;
@@ -169,6 +176,12 @@ public:
       if (down_) {
         downAt_ = now;
         long_ = false;
+        if (!menu && hud_.available() && controller_.hasDriveError()) {
+          resume_ = click_ = false;
+          pauseRequest_ = 0;
+          long_ = true;
+          recordResult(controller_.resetMotion(-1, now), now);
+        }
       } else if (!long_) {
         if (menu) {
           choose(highlighted);

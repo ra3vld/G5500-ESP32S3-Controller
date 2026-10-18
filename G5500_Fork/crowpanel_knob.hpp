@@ -41,6 +41,7 @@ public:
   unsigned axis() const { return axis_; }
   void confirmPending(uint32_t now) {
     synchronize(inverted_);
+    if (controller_.hasDriveError()) { confirm(now); return; }
     if (controller_.mode != Mode::Manual || !controller_.pendingValid ||
         !(axis_ ? controller_.pending.hasEl : controller_.pending.hasAz)) return;
     canResume_ = click_ = false;
@@ -68,6 +69,12 @@ public:
     long_ = true; // A held knob must not confirm a target after a touch toggle.
   }
   void confirm(uint32_t now) {
+    if (controller_.hasDriveError()) {
+      canResume_ = click_ = false;
+      long_ = true;
+      lastResult = controller_.resetMotion(-1, now);
+      return;
+    }
     if (active()) {
       // Only a knob stop pauses a tracked target; touch/fault/mode STOP cancels it.
       const Target interrupted{controller_.axes[0].target, controller_.axes[1].target,
@@ -106,7 +113,7 @@ public:
       down_ = raw_;
       if (down_) {
         downAt_ = now; long_ = false;
-        handledOnPress_ = active();
+        handledOnPress_ = active() || controller_.hasDriveError();
         if (handledOnPress_) { click_ = false; confirm(now); }
       } else {
         released = true;

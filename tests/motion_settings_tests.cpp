@@ -44,6 +44,22 @@ int main(){
   MotionSettings legacy;legacy.ready=false;MotionSettings migrated;
   assert(decodeMotionSettings(encodeMotionSettings(legacy),migrated)&&migrated.ready);
   // Failed verified write is reported and a damaged record cannot enable motion.
+  {
+    Runtime tuning;auto &tc=tuning.controller;
+    tc.hardware.drive=DRIVE_SEPARATE_PWM;tc.hardware.simulation=false;
+    tc.feedbackAt(0,90,true,0);tc.feedbackAt(1,90,true,0);
+    tc.speeds[0].speedPercent=30;tc.speeds[0].coastDegrees=1;
+    tc.motionSettings[0].movementDegrees=.1f;tc.motionSettings[0].kickEnabled=true;
+    const auto savedMotion=tc.motionSettings[0];const auto savedSpeed=tc.speeds[0];
+    assert(tc.startAutoTune(0,RegulatorMode::Simple,60,50,0)==Result::Ok);
+    for(unsigned at=20;at<=700;at+=20){tc.feedbackAt(0,90,true,at);tc.feedbackAt(1,90,true,at);tc.tick(at);}
+    assert(tc.autoTune.active() && tc.speeds[0].speedPercent!=savedSpeed.speedPercent);
+    assert(storage.saveForkSettings(tuning));
+    Runtime loaded;loaded.controller.hardware=tc.hardware;storage.loadForkSettings(loaded);
+    assert(loaded.controller.motionSettings[0]==savedMotion && loaded.controller.speeds[0]==savedSpeed);
+    assert(!loaded.controller.autoTune.active() && !loaded.controller.moving());
+    tc.cancelAutoTune(700);
+  }
   Preferences::failedBytesKey="r200"; c.motionSettings[0].velocity=2;assert(!storage.saveForkSettings(runtime));Preferences::failedBytesKey.clear();
   auto &record=std::get<Preferences::Bytes>(Preferences::database["forkmotion"]["r200"]);record.back()^=1;
   storage.loadForkSettings(restored);assert(!restored.controller.motionSettings[0].ready&&!restored.controller.motionSettings[0].holdEnabled);

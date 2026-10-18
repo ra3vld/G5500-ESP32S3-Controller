@@ -20,6 +20,8 @@ constexpr uint32_t kMaximumSequenceIntervalMs = 999000;
 
 Controller::Controller() { configureHardware(hardware); }
 void Controller::configureHardware(const HardwareConfig &config) {
+  if (autoTune.active()) finishAutoTune(AutoTunePhase::Cancelled,"hardware_changed",lastSpeedUpdateAt_);
+  autoTune.phase = AutoTunePhase::Idle;
   prepareMotionPlanner();
   hardware = config;
 #if CROWPANEL_LOCAL_DRIVE
@@ -76,6 +78,7 @@ Controller &Controller::operator=(const Controller &other) {
   speeds = other.speeds;
   motionSettings = other.motionSettings;
   motion_ = other.motion_;
+  autoTune = other.autoTune;
   driveFault = other.driveFault;
   stopEpoch = other.stopEpoch;
   fault = other.fault;
@@ -131,7 +134,8 @@ bool Controller::valid(Target candidate) const {
           (elRange.contains(candidate.el) &&
            (model == Model::G5500 || candidate.el == 0)));
 }
-Result Controller::start(Target nextTarget, uint32_t, bool) {
+Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
+  if (autoTune.active() && !autoTune.internal) return Result::Busy;
   if (driveFault) return Result::Invalid;
   if (!valid(nextTarget)) {
     return Result::Invalid;
@@ -141,11 +145,13 @@ Result Controller::start(Target nextTarget, uint32_t, bool) {
     return Result::NotCalibrated;
   }
   for (unsigned i=0; i<2; ++i) if ((i ? nextTarget.hasEl && model == Model::G5500 : nextTarget.hasAz) &&
-      (axes[i].motionError != MotionError::None || (variableSpeed(i) && !motionSettings[i].ready))) return Result::Unavailable;
+      ( (axes[i].motionError != MotionError::None && !(retryStall && axes[i].motionError == MotionError::Stalled)) ||
+        (variableSpeed(i) && !motionSettings[i].ready))) return Result::Unavailable;
   bool accepted = false;
   targetKnown = true;
   for (unsigned i = 0; i < 2; ++i) {
     if ((i == 0 ? nextTarget.hasAz : nextTarget.hasEl) && (i == 0 || model == Model::G5500)) {
+      if (retryStall) recoverStall(i, now);
       Axis &axis = axes[i];
       const float value = i ? nextTarget.el : nextTarget.az;
       const bool unchanged = axis.accepted && value == axis.target && (axis.tracking || axis.holdArmed);
@@ -176,6 +182,7 @@ Result Controller::start(Target nextTarget, uint32_t, bool) {
   return Result::Ok;
 }
 Result Controller::target(Target nextTarget, bool external, uint32_t now, bool followInManual) {
+  if (autoTune.active() && !autoTune.internal) return Result::Busy;
   if (configurationLocked) return Result::Unavailable;
   if (remote) {
     ControlCommand c;
@@ -204,13 +211,14 @@ Result Controller::target(Target nextTarget, bool external, uint32_t now, bool f
     presetActive = false;
     presetSlot = -1;
   }
-  auto result = start(nextTarget, now, external);
+  auto result = start(nextTarget, now);
   if (result == Result::Ok) {
     pendingValid = false;
   }
   return result;
 }
 Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now) {
+  if (autoTune.active() && !autoTune.internal && direction) return Result::Busy;
   if (configurationLocked) return Result::Unavailable;
   if (remote) {
     ControlCommand c;
@@ -237,8 +245,10 @@ Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now
     presetSlot = -1;
   }
   if (driveFault) return Result::Invalid;
-  if (axes[axis].motionError != MotionError::None || (variableSpeed(axis) && !motionSettings[axis].ready)) return Result::Unavailable;
+  if ((axes[axis].motionError != MotionError::None && axes[axis].motionError != MotionError::Stalled) ||
+      (variableSpeed(axis) && !motionSettings[axis].ready)) return Result::Unavailable;
   if (variableSpeed(axis) && motionSettings[axis].mode == RegulatorMode::Cascade && !axes[axis].calibrated) return Result::NotCalibrated;
+  recoverStall(axis, now);
   if (axes[axis].tracking || axes[axis].holdArmed) {
     // Taking over a running position command changes intent, not the current
     // velocity/acceleration boundary state or the load compensation integral.
@@ -264,6 +274,8 @@ void Controller::stop(int axis) {
   if (axis < -1 || axis > 1) {
     return;
   }
+  if (autoTune.active() && !autoTune.internal)
+    finishAutoTune(AutoTunePhase::Cancelled,"stopped",lastSpeedUpdateAt_);
   ++stopEpoch;
   cancelSequence();
   pendingValid = false;
@@ -305,6 +317,7 @@ bool Controller::stopOwnedJog(unsigned axis, uint32_t epoch, uint32_t now) {
   return true;
 }
 Result Controller::execute(uint32_t now) {
+  if (autoTune.active() && !autoTune.internal) return Result::Busy;
   if (configurationLocked) return Result::Unavailable;
   if (remote) {
     ControlCommand c;
@@ -347,6 +360,8 @@ Target Controller::displayedTarget() const {
 }
 Result Controller::executeDisplayed(uint32_t now) {
   if (configurationLocked) return Result::Unavailable;
+  // An acknowledgement consumes this gesture; it must never also start a goal.
+  if (hasDriveError()) return resetMotion(-1, now);
   if (remote) {
     if (!remote->manualAvailable()) {
       return pendingValid ? execute(now) : target(displayedTarget(), false, now);
@@ -379,6 +394,7 @@ void Controller::closeManual(ManualSession &s, uint32_t now) {
 Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t gesture,
                                uint32_t serial, uint8_t mask, float az, float el, bool release,
                                uint32_t now) {
+  if (autoTune.active() && !autoTune.internal && !release) return Result::Busy;
   if (configurationLocked) return Result::Unavailable;
   if (!gesture || !serial || mask > 3 || (!release && model == Model::G800DXA && (mask & 2)) ||
       !std::isfinite(az) || !std::isfinite(el) || std::abs(az) > 1 || std::abs(el) > 1) {
@@ -450,7 +466,9 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
   }
   const float values[] = {az, el};
   for(unsigned i=0;i<2;++i) if((mask&(1u<<i)) && values[i]!=0 && !(s->blocked&(1u<<i))) {
-    if(axes[i].motionError!=MotionError::None || (variableSpeed(i) && !motionSettings[i].ready)) { closeManual(*s,now);return Result::Unavailable; }
+    const bool retryStall = !(s->claimed & (1u<<i)) && s->epoch[i] == motionEpoch[i];
+    if((axes[i].motionError!=MotionError::None && !(retryStall && axes[i].motionError==MotionError::Stalled)) ||
+       (variableSpeed(i) && !motionSettings[i].ready)) { closeManual(*s,now);return Result::Unavailable; }
     if(variableSpeed(i) && motionSettings[i].mode==RegulatorMode::Cascade && !axes[i].calibrated) { closeManual(*s,now);return Result::NotCalibrated; }
   }
   for (unsigned i = 0; i < 2; ++i) {
@@ -481,6 +499,7 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
   return Result::Ok;
 }
 Result Controller::setMode(Mode nextMode, uint32_t now) {
+  if (autoTune.active()) finishAutoTune(AutoTunePhase::Cancelled,"mode_changed",now);
   if (remote) {
     ControlCommand c;
     c.op = ControlOp::Mode;
@@ -598,6 +617,7 @@ Result Controller::savePreset(unsigned slot, const std::string &label, Target ne
   return Result::Ok;
 }
 Result Controller::preset(unsigned slot, uint32_t now) {
+  if (autoTune.active() && !autoTune.internal) return Result::Busy;
   if (configurationLocked) return Result::Unavailable;
   if (remote) {
     ControlCommand c;
@@ -623,6 +643,7 @@ Result Controller::preset(unsigned slot, uint32_t now) {
 }
 Result Controller::sequence(const Target *points, size_t count, uint32_t interval, uint32_t now,
                             bool followInManual) {
+  if (autoTune.active() && !autoTune.internal) return Result::Busy;
   if (configurationLocked) return Result::Unavailable;
   if (remote) {
     if (!count || count > 16)
@@ -756,7 +777,7 @@ void Controller::tick(uint32_t now) {
     if (++sequenceIndex_ >= sequence_.size()) {
       sequence_.clear();
     } else {
-      auto result = start(sequence_[sequenceIndex_], now);
+      auto result = start(sequence_[sequenceIndex_], now, false);
       if (result != Result::Ok) {
         sequence_.clear();
         fault = "sequence_calibration";
@@ -811,6 +832,7 @@ void Controller::tick(uint32_t now) {
     presetActive = false;
     presetSlot = -1;
   }
+  tickAutoTune(now);
 }
 
 bool number(std::string_view text, float &result) {

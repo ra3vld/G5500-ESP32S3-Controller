@@ -7,6 +7,7 @@
 #include "heap_metrics.hpp"
 #include "storage.hpp"
 #include "crowpanel_rgb_driver.h"
+#include "drive_fault_text.hpp"
 #include <algorithm>
 #include <cstring>
 namespace forkrot {
@@ -233,7 +234,7 @@ void Display::updateLocalDisplay() {
     CrowPanelView view;
     if (runtime_.controller.hardware.simulation) {
     std::snprintf(view.status, sizeof view.status, "%s", controller.moving() ? "Имитация · вращение" : "Имитация · остановлен");
-    } else if (CROWPANEL_LOCAL_DRIVE) {
+    } else if (CROWPANEL_LOCAL_DRIVE || runtime_.hud.isHud()) {
       std::snprintf(view.status, sizeof view.status, "%s", controller.moving() ? "Вращение" : "Остановлен");
     }
     if (!inputHealthy_) std::snprintf(view.status, sizeof view.status, "Ошибка кнопки / I2C");
@@ -289,7 +290,9 @@ void Display::updateLocalDisplay() {
                   view.hudRows[i], sizeof view.hudRows[i], "%s\n%s%s%s · %s · %lus", r->label,
                   az, r->state.model == Model::G5500 ? " / " : "", r->state.model == Model::G5500 ? el : "",
                   r->fresh(runtime_.hud.now)
-                      ? ((r->state.axes[0].direction || r->state.axes[1].direction) ? "Ход" : "Стоп")
+                      ? ((r->state.fault[0] || r->state.axes[0].motionError != MotionError::None ||
+                          r->state.axes[1].motionError != MotionError::None) ? "Ошибка" :
+                         (r->state.axes[0].direction || r->state.axes[1].direction) ? "Ход" : "Стоп")
                       : "Нет связи",
                   static_cast<unsigned long>((runtime_.hud.now - r->receivedAt) / 1000));
             }
@@ -329,6 +332,21 @@ void Display::updateLocalDisplay() {
       std::snprintf(view.status, sizeof view.status, "Обновите прошивку контроллера");
     } else {
       touchNotice_ = false;
+    }
+    if (online) {
+      view.statusFault = writeDriveFault(view.status, sizeof view.status,
+          controller.axes[0].motionError,
+          view.dualAxis ? controller.axes[1].motionError : MotionError::None,
+          controller.fault.c_str(),
+          !controller.variableSpeed(0) || controller.motionSettings[0].ready,
+          !view.dualAxis || !controller.variableSpeed(1) || controller.motionSettings[1].ready);
+    }
+    if (!inputHealthy_) {
+      if (view.statusFault) {
+        const size_t used = std::strlen(view.status);
+        std::snprintf(view.status + used, sizeof view.status - used, "; ошибка кнопки / I2C");
+      } else std::snprintf(view.status, sizeof view.status, "Ошибка кнопки / I2C");
+      view.statusFault = true;
     }
     const bool connected = WiFi.status() == WL_CONNECTED;
     const bool ap = (WiFi.getMode() & WIFI_AP) != 0;

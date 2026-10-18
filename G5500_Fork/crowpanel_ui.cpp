@@ -413,7 +413,7 @@ void CrowPanelUi::update(const CrowPanelView &v) {
   touchLayout_.enabled = !v.hudSelector;
   touchLayout_.current = {uint16_t(currentLeft), uint16_t(currentY), uint16_t(currentWidth),
                           uint16_t(currentHeight)};
-  touchLayout_.target = (v.targetValid || v.secondaryTargetValid)
+  touchLayout_.target = (v.targetValid || v.secondaryTargetValid || v.statusFault)
                             ? crowpanel::TouchRect{uint16_t(goalLeft - 4), uint16_t(goalTop),
                                                    uint16_t(goalRight - goalLeft + 8),
                                                    uint16_t(goalBottom - goalTop + 4)}
@@ -445,6 +445,9 @@ void CrowPanelUi::update(const CrowPanelView &v) {
   lv_obj_set_y(wifi_, v.dualAxis && confirmation ? 451 : 435);
   lv_obj_set_y(wifiSlash_, v.dualAxis && confirmation ? 449 : 433);
   lv_obj_set_y(wifiAp_, v.dualAxis && confirmation ? 458 : 442);
+  const auto statusMode = v.statusFault ? LV_LABEL_LONG_SCROLL_CIRCULAR : LV_LABEL_LONG_CLIP;
+  if (lv_label_get_long_mode(status_) != statusMode) lv_label_set_long_mode(status_, statusMode);
+  color(status_, v.statusFault ? 0xff6b6b : 0xf0b85c);
   set(status_, v.status);
   color(wifi_, v.wifiConnected ? wifiWarning : wifiDisconnected);
   lv_obj_set_hidden(wifi_, v.wifiConnected && v.wifiRssi > weakWifiRssi);

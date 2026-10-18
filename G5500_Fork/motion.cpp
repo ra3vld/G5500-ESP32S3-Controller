@@ -143,6 +143,8 @@ void Controller::cancelMotion(unsigned i) {
 }
 void Controller::resetFeedback(int axis,uint32_t now) {
   if(remote || axis < -1 || axis > 1) return;
+  if (autoTune.active()) finishAutoTune(AutoTunePhase::Cancelled,"calibration_changed",now);
+  if (autoTune.phase == AutoTunePhase::Complete) { autoTune.phase=AutoTunePhase::Cancelled; autoTune.reason="calibration_changed"; }
   stopNow(axis,now);
   for(unsigned i=0;i<2;++i) if(axis<0 || unsigned(axis)==i) {
     motion_[i].feedback={};axes[i].measuredVelocity=0;
@@ -182,7 +184,13 @@ bool Controller::configureMotion(unsigned i, const MotionSettings &settings, uin
   return true;
 }
 Result Controller::resetMotion(int axis, uint32_t now) {
-  if (remote || configurationLocked || axis < -1 || axis > 1) return Result::Unavailable;
+  if (configurationLocked || axis < -1 || axis > 1) return Result::Unavailable;
+  if (remote) {
+    ControlCommand c;
+    c.op = ControlOp::ResetMotion;
+    c.axis = axis;
+    return remote->submitAt(c, now);
+  }
   for (unsigned i=0; i<2; ++i) if (axis < 0 || unsigned(axis) == i) {
     stopNow(int(i), now); axes[i].motionError = MotionError::None; cancelMotion(i);
   }
@@ -193,7 +201,23 @@ Result Controller::resetMotion(int axis, uint32_t now) {
   }
   return Result::Ok;
 }
+// Only a newly accepted movement request may retry a progress timeout.
+// Kick timeout and sensing/planner faults still require an explicit reset.
+void Controller::recoverStall(unsigned i, uint32_t now) {
+  if (axes[i].motionError != MotionError::Stalled) return;
+  // motionFault already stopped this axis. Do not call STOP again here: it
+  // would erase a newly queued manual target/sequence and disturb other intent.
+  (void)now;
+  axes[i].motionError = MotionError::None;
+  cancelMotion(i);
+  if (!driveFault && (fault.rfind("az_",0)==0 || fault.rfind("el_",0)==0)) {
+    if (axes[0].motionError!=MotionError::None) fault=std::string("az_")+motionErrorName(axes[0].motionError);
+    else if (axes[1].motionError!=MotionError::None) fault=std::string("el_")+motionErrorName(axes[1].motionError);
+    else fault.clear();
+  }
+}
 void Controller::motionFault(unsigned i, MotionError error, uint32_t now) {
+  if (autoTune.active()) finishAutoTune(AutoTunePhase::Failed,motionErrorName(error),now);
   stopNow(int(i), now); axes[i].motionError = error; axes[i].motionPhase = MotionPhase::Fault;
   fault = std::string(i ? "el_" : "az_") + motionErrorName(error);
 }
@@ -351,6 +375,306 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
     if (!r.progressValid || std::abs(axis.current-r.progressPosition) >= std::min(.1f,m.movementDegrees)) {
       r.progressAt=now; r.progressPosition=axis.current; r.progressValid=true;
     } else if (uint32_t(now-r.progressAt) >= m.stallMs) { motionFault(i,MotionError::Stalled,now); }
+  }
+}
+const char *Controller::autoTunePhaseName(AutoTunePhase phase) {
+  static constexpr const char *names[]={"idle","quiet","start","low","high","coast","reposition","validate","complete","cancelled","failed"};
+  return names[unsigned(phase)];
+}
+Result Controller::startAutoTune(unsigned i, RegulatorMode mode, float travel, float limit, uint32_t now) {
+  if (remote || configurationLocked || i>1 || (i==1 && model!=Model::G5500) || !variableSpeed(i)) return Result::Unavailable;
+  if (autoTune.active() || moving() || axes[0].tracking || axes[1].tracking || axes[0].holdArmed || axes[1].holdArmed ||
+      mode != motionSettings[i].mode || this->mode!=Mode::Manual || pendingValid || presetActive || sequenceCount()) return Result::Busy;
+  const auto &m=motionSettings[i];const auto &f=motion_[i].feedback;
+  if (!axes[i].calibrated) return Result::NotCalibrated;
+  if (driveFault || !fault.empty() || axes[0].motionError!=MotionError::None || axes[1].motionError!=MotionError::None ||
+      !m.ready || !m.valid() || !f.timed || !f.valid || uint32_t(now-f.at)>m.feedbackTimeoutMs) return Result::Unavailable;
+  if (!std::isfinite(travel) || !std::isfinite(limit) || travel<10 || travel>90 ||
+      limit<10 || limit>m.outputLimitPercent || limit>100 || travel<6*m.movementDegrees) return Result::Invalid;
+  const float margin=std::max(2.f,speeds[i].coastDegrees);
+  if (axes[i].current-travel < range(i).start+margin || axes[i].current+travel > range(i).end-margin) return Result::Invalid;
+  const uint32_t id=autoTune.id+1;
+  stopNow(-1,now);
+  autoTune={};auto &t=autoTune;
+  t.id=id?id:1;t.axis=int(i);t.mode=mode;t.origin=axes[i].current;t.otherPosition=axes[1-i].current;
+  t.lower=t.origin-travel;t.upper=t.origin+travel;t.limit=limit;t.revision=rangeRevision;t.startedAt=now;
+  t.originalSpeed=t.proposedSpeed=speeds[i];t.originalMotion=t.proposedMotion=m;
+  // Identification uses the regular simple controller, not raw GPIO writes.
+  // All sensor, progress, range and reversal protections stay in tickMotion().
+  auto probe=m;probe.mode=RegulatorMode::Simple;probe.kickEnabled=false;probe.holdEnabled=false;probe.outputLimitPercent=limit;
+  motionSettings[i]=probe;speeds[i].accelerationMs=100;speeds[i].decelerationMs=100;speeds[i].decelerationFactor=1;
+  t.noiseLow=t.noiseHigh=axes[i].current;t.sampledAt=f.at;
+  t.lastPosition=axes[i].current;t.positionAt=f.at;
+  autoTunePhase(AutoTunePhase::Quiet,now);
+  return Result::Ok;
+}
+void Controller::autoTunePhase(AutoTunePhase phase,uint32_t now) {
+  auto &t=autoTune;t.phase=phase;t.phaseAt=now;t.phasePosition=axes[unsigned(t.axis)].current;
+  t.sampleCount=t.sampleNext=0;t.velocityIntegral=0;t.previousVelocity=0;t.settled=false;t.plateauReady=false;
+}
+void Controller::autoTuneLevel(float level) {
+  auto &t=autoTune;t.level=std::clamp(std::ceil(level),1.f,std::floor(t.limit));
+  speeds[unsigned(t.axis)].speedPercent=unsigned(t.level);
+  speeds[unsigned(t.axis)].approachSpeedPercent=speeds[unsigned(t.axis)].speedPercent;
+}
+bool Controller::autoTuneProbe(AutoTunePhase phase,int direction,float level,uint32_t now) {
+  auto &t=autoTune;const unsigned i=unsigned(t.axis);
+  t.internal=true;stopNow(int(i),now);t.direction=direction;
+  auto probe=t.originalMotion;probe.mode=RegulatorMode::Simple;probe.holdEnabled=false;probe.outputLimitPercent=t.limit;
+  probe.kickEnabled=phase!=AutoTunePhase::Start;
+  const auto &measured=t.measurements[direction>0?0:1];
+  probe.kickPercent=std::min(t.limit,std::max(t.searchLevel,measured.startOutput)*1.1f);
+  // A probe never extends the saved startup or stall protection deadline.
+  probe.kickMs=std::min({2800u,t.originalMotion.stallMs,t.originalMotion.kickEnabled?t.originalMotion.kickMs:2800u});
+  motionSettings[i]=probe;speeds[i].accelerationMs=100;speeds[i].decelerationMs=100;speeds[i].decelerationFactor=1;
+  autoTuneLevel(level);autoTunePhase(phase,now);
+  const auto result=jog(i,direction,false,now);t.internal=false;
+  if(result!=Result::Ok)finishAutoTune(AutoTunePhase::Failed,"start_rejected",now);
+  return result==Result::Ok;
+}
+void Controller::autoTuneCoast(AutoTunePhase next,int direction,float level,bool relocate,uint32_t now) {
+  auto &t=autoTune;t.nextPhase=next;t.nextDirection=direction;t.nextLevel=level;t.relocate=relocate;
+  t.internal=true;stopNow(t.axis,now);t.internal=false;autoTunePhase(AutoTunePhase::Coast,now);
+}
+void Controller::finishAutoTune(AutoTunePhase phase,const char *reason,uint32_t now) {
+  auto &t=autoTune;if(!t.active())return;
+  t.phase=phase;t.reason=reason;t.internal=true;
+  stopNow(-1,now);
+  const unsigned i=unsigned(t.axis);speeds[i]=t.originalSpeed;motionSettings[i]=t.originalMotion;
+  axes[i].targetKnown=false;axes[i].accepted=false;
+  targetKnown=false;lastTarget={0,0,false,false};
+  t.internal=false;
+}
+Result Controller::cancelAutoTune(uint32_t now) {
+  if(remote)return Result::Unavailable;
+  if(autoTune.active())finishAutoTune(AutoTunePhase::Cancelled,"cancelled",now);
+  return Result::Ok;
+}
+Result Controller::applyAutoTune(uint32_t id,uint32_t now) {
+  auto &t=autoTune;
+  if(remote || configurationLocked || t.phase!=AutoTunePhase::Complete || !id || id!=t.id) return Result::Unavailable;
+  const unsigned i=unsigned(t.axis);
+  if(moving() || axes[0].tracking || axes[1].tracking || axes[0].holdArmed || axes[1].holdArmed || driveFault ||
+      !fault.empty() || axes[0].motionError!=MotionError::None || axes[1].motionError!=MotionError::None) return Result::Busy;
+  if(rangeRevision!=t.revision || !(speeds[i]==t.originalSpeed) || motionSettings[i]!=t.originalMotion || !axes[i].calibrated)
+    return Result::Invalid;
+  stopNow(-1,now);speeds[i]=t.proposedSpeed;motionSettings[i]=t.proposedMotion;
+  t.phase=AutoTunePhase::Idle;t.reason="applied";
+  return Result::Ok;
+}
+bool Controller::proposeAutoTune(uint32_t now) {
+  auto &t=autoTune;auto &m=t.proposedMotion;auto &s=t.proposedSpeed;
+  const auto &a=t.measurements[0],&b=t.measurements[1];
+  const float speed=std::min(a.lowVelocity,b.lowVelocity);
+  if(speed<=t.threshold || a.highVelocity<=a.lowVelocity*1.05f || b.highVelocity<=b.lowVelocity*1.05f) return false;
+  const float gain=std::max((a.highVelocity-a.lowVelocity)/(a.highOutput-a.lowOutput),
+                            (b.highVelocity-b.lowVelocity)/(b.highOutput-b.lowOutput));
+  if(!std::isfinite(gain) || gain<=0)return false;
+  const float delay=std::max(.02f,float(m.velocityWindowMs)/2000);
+  const float tau=std::clamp(std::max(a.responseSeconds,b.responseSeconds),.05f,5.f);
+  const float lambda=std::max(.5f,2*(tau+delay));
+  m.mode=t.mode;m.ready=true;m.holdEnabled=false;m.kickEnabled=true;m.outputLimitPercent=t.limit;
+  m.kickPercent=std::min(t.limit,1.1f*std::max(a.startOutput,b.startOutput));
+  m.kickMs=std::clamp(unsigned(1.5f*std::max(a.startMs,b.startMs)+200),200u,10000u);
+  m.kickReleaseMs=std::clamp(unsigned(1000*delay),20u,200u);
+  m.stoppedVelocity=std::clamp(t.threshold,.001f,10.f);
+  m.movementDegrees=std::max(m.movementDegrees,6*(t.noiseHigh-t.noiseLow));
+  s.speedPercent=unsigned(std::ceil(std::max(a.lowOutput,b.lowOutput)));
+  s.approachSpeedPercent=s.speedPercent; // Never propose an untested lower sustaining output.
+  s.accelerationMs=std::clamp(unsigned(2000*(tau+delay)),100u,10000u);s.decelerationMs=s.accelerationMs;s.decelerationFactor=1;
+  s.coastDegrees=std::min(range(unsigned(t.axis)).span()/10,std::max(a.coastDegrees,b.coastDegrees));
+  s.slowdownDegrees=unsigned(std::clamp(std::ceil(speed*s.decelerationMs/1000+s.coastDegrees),1.f,90.f));
+  if(t.mode==RegulatorMode::Cascade) {
+    // Conservative SIMC PI for the measured first-order speed response.
+    // https://skoge.folk.ntnu.no/publications/2003/tuningPID/README.html
+    // Kp=tau/(gain*(lambda+delay)); Ti=min(tau,4*(lambda+delay)).
+    m.velocityKp=tau/(gain*(lambda+delay));m.velocityKi=m.velocityKp/std::min(tau,4*(lambda+delay));m.velocityKd=0;
+    m.feedforward=std::max(a.lowOutput/a.lowVelocity,b.lowOutput/b.lowVelocity);
+    m.positionKp=1/(4*lambda);m.positionKi=m.positionKd=0;
+    m.velocity=std::min(m.velocity,.7f*speed);
+    // The step model identifies moving friction. At a lower requested speed,
+    // feedforward alone may fall below it. Build the missing output within the
+    // existing progress deadline instead of waiting until stall protection trips.
+    const float recovery=std::max(.1f,float(m.stallMs)/2000);
+    m.velocityKi=std::max(m.velocityKi,std::max(a.lowOutput,b.lowOutput)/(m.velocity*recovery));
+    // A position band finer than the measured coast would keep the cascade
+    // reversing forever. Expose the attainable band in the proposed settings.
+    m.positionTolerance=std::max({m.positionTolerance,m.movementDegrees,std::max(a.coastDegrees,b.coastDegrees)});
+    m.holdResumeDegrees=std::max(m.holdResumeDegrees,1.5f*m.positionTolerance);
+    m.acceleration=std::min(m.acceleration,m.velocity/lambda);
+    m.deceleration=std::min(m.deceleration,m.velocity/lambda);
+    m.jerk=std::min(m.jerk,m.acceleration/lambda);
+  }
+  if(!m.valid() || m.movementDegrees>10)return false;
+  // Validate the candidate through normal position control before offering Apply.
+  const unsigned i=unsigned(t.axis);t.internal=true;stopNow(int(i),now);
+  speeds[i]=s;motionSettings[i]=m;
+  t.validationTarget=t.origin;
+  if(std::abs(axes[i].current-t.validationTarget)<std::max(5.f,3*tolerance(i)))
+    t.validationTarget=t.origin+(axes[i].current>t.origin?-1:1)*std::min(10.f,(t.upper-t.lower)/8);
+  t.direction=t.validationTarget>=axes[i].current?1:-1;
+  autoTunePhase(AutoTunePhase::Validate,now);
+  Target target{t.validationTarget,t.validationTarget,i==0,i==1};
+  const auto result=start(target,now,false);t.internal=false;
+  return result==Result::Ok;
+}
+void Controller::tickAutoTune(uint32_t now) {
+  auto &t=autoTune;if(!t.active())return;
+  if(t.ticked && uint32_t(now-t.tickAt)<20)return;
+  const float dt=t.ticked?float(uint32_t(now-t.tickAt))/1000:.02f;t.ticked=true;t.tickAt=now;
+  if(dt>.25f) {finishAutoTune(AutoTunePhase::Failed,"control_timing",now);return;}
+  const unsigned i=unsigned(t.axis);const auto &f=motion_[i].feedback;auto &a=axes[i];
+  if(configurationLocked || driveFault || rangeRevision!=t.revision || !a.calibrated || !f.valid ||
+      !f.timed || uint32_t(now-f.at)>t.originalMotion.feedbackTimeoutMs) {
+    finishAutoTune(AutoTunePhase::Failed,"feedback_or_configuration",now);return;
+  }
+  if(uint32_t(now-t.startedAt)>120000) {finishAutoTune(AutoTunePhase::Failed,"timeout",now);return;}
+  if(std::abs(axes[1-i].current-t.otherPosition)>std::max(2.f,t.originalMotion.movementDegrees) || axes[1-i].direction) {
+    finishAutoTune(AutoTunePhase::Failed,"other_axis_moved",now);return;
+  }
+  const float velocity=t.direction*a.measuredVelocity;
+  if(f.at!=t.positionAt) {
+    t.sampleVelocity=(a.current-t.lastPosition)*1000/uint32_t(f.at-t.positionAt);
+    t.lastPosition=a.current;t.positionAt=f.at;
+  }
+  const float coast=std::max({t.stoppingDistance,t.measurements[0].coastDegrees,t.measurements[1].coastDegrees});
+  // The filtered velocity lags during kick. Include fresh position differences
+  // and estimator latency in the stopping reserve, never just steady speed.
+  const float speed=std::max(std::abs(a.measuredVelocity),std::abs(t.sampleVelocity));
+  const float guard=std::max(2.f,std::max(t.originalSpeed.coastDegrees,1.2f*coast)+
+      t.originalMotion.movementDegrees+speed*(.15f+float(t.originalMotion.velocityWindowMs)/2000));
+  if(a.current<t.lower || a.current>t.upper) {finishAutoTune(AutoTunePhase::Failed,"travel_limit",now);return;}
+  const bool nearEdge=a.direction && ((a.direction>0 && a.current>t.upper-guard)||
+                                      (a.direction<0 && a.current<t.lower+guard));
+  if(nearEdge) {
+    if(t.phase==AutoTunePhase::Start || t.phase==AutoTunePhase::Low || t.phase==AutoTunePhase::High) {
+      if(++t.relocations>3) {finishAutoTune(AutoTunePhase::Failed,"insufficient_travel",now);return;}
+      autoTuneCoast(t.phase,t.direction,t.level,true,now);return;
+    }
+    if(t.phase==AutoTunePhase::Reposition) {
+      t.internal=true;stopNow(int(i),now);t.internal=false;return;
+    }
+    if(t.phase!=AutoTunePhase::Coast) {finishAutoTune(AutoTunePhase::Failed,"travel_limit",now);return;}
+  }
+  if(t.phase==AutoTunePhase::Quiet) {
+    if(f.at!=t.sampledAt){t.sampledAt=f.at;t.noiseLow=std::min(t.noiseLow,a.current);t.noiseHigh=std::max(t.noiseHigh,a.current);t.noiseVelocity=std::max(t.noiseVelocity,std::abs(a.measuredVelocity));}
+    if(uint32_t(now-t.phaseAt)<600)return;
+    t.threshold=std::max({.2f,t.originalMotion.stoppedVelocity,3*t.noiseVelocity});
+    if(t.noiseHigh-t.noiseLow>t.originalMotion.movementDegrees/2 || t.threshold>10) {finishAutoTune(AutoTunePhase::Failed,"feedback_noise",now);return;}
+    t.searchLevel=t.originalMotion.kickEnabled?std::min(t.limit,t.originalMotion.kickPercent):5.f;
+    autoTuneProbe(AutoTunePhase::Start,1,t.searchLevel,now);return;
+  }
+  auto &measurement=t.measurements[t.direction>0?0:1];
+  if(t.phase==AutoTunePhase::Start) {
+    const uint32_t elapsed=uint32_t(now-t.phaseAt);
+    if((a.current-t.phasePosition)*t.direction>=t.originalMotion.movementDegrees && velocity>t.threshold) {
+      measurement.startOutput=std::max(1.f,a.speedOutputPercent);measurement.startMs=elapsed;t.relocations=0;
+      // Begin below the old work level, rather than assuming it is slow enough
+      // for identification. Raise it only if this drive cannot sustain motion.
+      const float low=std::min({t.limit-2,float(t.originalSpeed.speedPercent),std::max(5.f,std::min(15.f,measurement.startOutput/2))});
+      autoTuneLevel(low);measurement.lowOutput=t.level;autoTunePhase(AutoTunePhase::Low,now);return;
+    }
+    const uint32_t maximum=std::min({2800u,t.originalMotion.stallMs,
+        t.originalMotion.kickEnabled?t.originalMotion.kickMs:2800u});
+    if(elapsed>=maximum) {finishAutoTune(AutoTunePhase::Failed,"no_start",now);return;}
+    const uint32_t hold=t.originalMotion.kickEnabled?maximum/2:0;
+    const uint32_t rampMs=std::max<uint32_t>(100u,std::min<uint32_t>(1500u,(maximum-hold)*3/5));
+    const float ramp=elapsed>hold?std::min(1.f,float(elapsed-hold)/rampMs):0.f;
+    autoTuneLevel(t.searchLevel+(t.limit-t.searchLevel)*ramp);return;
+  }
+  if(t.phase==AutoTunePhase::Low || t.phase==AutoTunePhase::High) {
+    // Kick, reversal dead-time and output ramp are not samples of the plateau.
+    if(a.motionPhase!=MotionPhase::Run || motion_[i].releasing || std::abs(a.speedOutputPercent-t.level)>.1f) return;
+    if(!t.plateauReady) {
+      autoTunePhase(t.phase,now);t.plateauReady=true;t.sampledAt=f.at;
+      t.previousVelocity=velocity;
+    }
+    t.velocityIntegral+=.5f*(t.previousVelocity+velocity)*dt;t.previousVelocity=velocity;
+    const uint32_t elapsed=uint32_t(now-t.phaseAt);
+    if(f.at!=t.sampledAt) {t.sampledAt=f.at;t.positions[t.sampleNext]=a.current;t.sampleTimes[t.sampleNext]=f.at;t.sampleNext=(t.sampleNext+1)%t.positions.size();t.sampleCount=std::min(unsigned(t.positions.size()),t.sampleCount+1);}
+    if(t.phase==AutoTunePhase::Low && elapsed>std::max(400u,2*t.originalMotion.velocityWindowMs) && velocity<t.threshold) {
+      if(t.level+1>t.limit-2) {finishAutoTune(AutoTunePhase::Failed,"no_sustained_motion",now);return;}
+      const float level=t.level+1;measurement.lowOutput=level;t.relocations=0;
+      autoTuneCoast(AutoTunePhase::Low,t.direction,level,false,now);return;
+    }
+    if(elapsed<std::max(200u,t.originalMotion.velocityWindowMs) || t.sampleCount<8)return;
+    // Fit the fresh position samples directly. The control velocity estimator
+    // adds a second delay, which previously consumed most of a short stroke.
+    const unsigned first=t.sampleCount==t.positions.size()?t.sampleNext:0;
+    const auto index=[&](unsigned n){return (first+n)%t.positions.size();};
+    const auto seconds=[&](unsigned n){return float(uint32_t(t.sampleTimes[index(n)]-t.sampleTimes[first]))/1000;};
+    float sx=0,sy=0,sxx=0,sxy=0;
+    for(unsigned n=0;n<t.sampleCount;++n) {
+      const float x=seconds(n),y=t.direction*(t.positions[index(n)]-t.positions[first]);
+      sx+=x;sy+=y;sxx+=x*x;sxy+=x*y;
+    }
+    const float denominator=t.sampleCount*sxx-sx*sx;
+    if(denominator<=0)return;
+    const float mean=(t.sampleCount*sxy-sx*sy)/denominator;
+    const unsigned half=t.sampleCount/2;
+    const auto slope=[&](unsigned from,unsigned to) {
+      return t.direction*(t.positions[index(to)]-t.positions[index(from)])/(seconds(to)-seconds(from));
+    };
+    const float trend=std::abs(slope(0,half-1)-slope(t.sampleCount-half,t.sampleCount-1));
+    const float span=seconds(t.sampleCount-1);
+    const float noise=std::max(t.noiseHigh-t.noiseLow,.1f*t.originalMotion.movementDegrees);
+    if(mean<=t.threshold || trend>std::max({.08f*mean,.25f*t.threshold,2*noise/span})) {
+      if(elapsed>2500)finishAutoTune(AutoTunePhase::Failed,"unstable_response",now);
+      return;
+    }
+    t.relocations=0;
+    if(t.phase==AutoTunePhase::Low) {
+      measurement.lowVelocity=mean;autoTuneLevel(measurement.lowOutput+1);measurement.highOutput=t.level;
+      autoTunePhase(AutoTunePhase::High,now);t.previousVelocity=mean;return;
+    }
+    measurement.highVelocity=mean;
+    const float delta=mean-measurement.lowVelocity;
+    if(delta<=.05f*measurement.lowVelocity) {
+      if(t.level+1<=t.limit) {autoTuneLevel(t.level+1);measurement.highOutput=t.level;autoTunePhase(AutoTunePhase::High,now);return;}
+      finishAutoTune(AutoTunePhase::Failed,"insufficient_response",now);return;
+    }
+    measurement.responseSeconds=std::clamp((mean*(float(elapsed)/1000)-t.direction*(a.current-t.phasePosition))/delta,.02f,5.f);
+    autoTuneCoast(t.direction>0?AutoTunePhase::Start:AutoTunePhase::Validate,-1,t.searchLevel,false,now);return;
+  }
+  if(t.phase==AutoTunePhase::Coast || t.phase==AutoTunePhase::Reposition || t.phase==AutoTunePhase::Validate) {
+    if(std::abs(a.measuredVelocity)<=t.threshold && !a.direction && !a.tracking) {
+      if(!t.settled){t.settled=true;t.settledAt=now;}
+    } else t.settled=false;
+    if(uint32_t(now-t.phaseAt)>(t.phase==AutoTunePhase::Coast?5000u:60000u)) {finishAutoTune(AutoTunePhase::Failed,"settle_timeout",now);return;}
+    if(!t.settled || uint32_t(now-t.settledAt)<std::max(300u,t.originalMotion.settleMs))return;
+    if(t.phase==AutoTunePhase::Validate) {
+      t.validationError=a.current-t.validationTarget;
+      if(std::abs(t.validationError)>std::max(2*t.originalMotion.movementDegrees,t.proposedMotion.mode==RegulatorMode::Cascade?
+          t.proposedMotion.positionTolerance+t.originalMotion.movementDegrees:2*t.originalMotion.positionTolerance)) {
+        finishAutoTune(AutoTunePhase::Failed,"validation_error",now);return;
+      }
+      finishAutoTune(AutoTunePhase::Complete,"",now);return;
+    }
+    if(t.phase==AutoTunePhase::Reposition) {
+      autoTuneProbe(t.nextPhase,t.nextDirection,t.nextLevel,now);return;
+    }
+    const float stoppedDistance=std::max(0.f,t.direction*(a.current-t.phasePosition));
+    t.stoppingDistance=std::max(t.stoppingDistance,stoppedDistance);
+    // A cutoff during a startup search is a safety reserve, not the coast of
+    // the working output that will be proposed to the user.
+    if(!t.relocate && (t.nextPhase==AutoTunePhase::Start || t.nextPhase==AutoTunePhase::Validate))
+      measurement.coastDegrees=stoppedDistance;
+    if(t.relocate) {
+      const float reserve=std::max({2.f,1.5f*t.originalSpeed.coastDegrees,1.2f*std::max({t.stoppingDistance,t.measurements[0].coastDegrees,t.measurements[1].coastDegrees})});
+      if(2*reserve>=(t.upper-t.lower)*.75f) {finishAutoTune(AutoTunePhase::Failed,"insufficient_travel",now);return;}
+      t.internal=true;stopNow(int(i),now);
+      auto m=t.originalMotion;m.mode=RegulatorMode::Simple;m.holdEnabled=false;m.outputLimitPercent=t.limit;
+      m.kickEnabled=true;m.kickPercent=std::min(t.limit,1.1f*std::max({t.searchLevel,t.measurements[0].startOutput,t.measurements[1].startOutput,t.level}));
+      m.kickMs=std::min({2800u,t.originalMotion.stallMs,t.originalMotion.kickEnabled?t.originalMotion.kickMs:2800u});
+      motionSettings[i]=m;speeds[i]=t.originalSpeed;speeds[i].speedPercent=std::min(unsigned(t.limit),speeds[i].speedPercent);
+      speeds[i].approachSpeedPercent=std::min(speeds[i].approachSpeedPercent,speeds[i].speedPercent);
+      const float goal=t.nextDirection>0?t.lower+reserve:t.upper-reserve;
+      autoTunePhase(AutoTunePhase::Reposition,now);
+      const auto result=start({goal,goal,i==0,i==1},now,false);t.internal=false;
+      if(result!=Result::Ok)finishAutoTune(AutoTunePhase::Failed,"start_rejected",now);
+    } else if(t.nextPhase==AutoTunePhase::Validate) {
+      if(!proposeAutoTune(now))finishAutoTune(AutoTunePhase::Failed,"model_invalid",now);
+    } else autoTuneProbe(t.nextPhase,t.nextDirection,t.nextLevel,now);
   }
 }
 } // namespace forkrot

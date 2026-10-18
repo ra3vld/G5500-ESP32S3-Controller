@@ -172,6 +172,7 @@ void command(Writer &w, const ControlCommand &c) {
     break;
   case ControlOp::Stop:
   case ControlOp::ReleaseJog:
+  case ControlOp::ResetMotion:
     w.u8(uint8_t(c.axis + 1));
     break;
   case ControlOp::Mode:
@@ -218,6 +219,7 @@ bool command(Reader &r, ControlCommand &c) {
     break;
   case ControlOp::Stop:
   case ControlOp::ReleaseJog:
+  case ControlOp::ResetMotion:
     c.axis = int(r.u8()) - 1;
     if (c.axis < -1 || c.axis > 1)
       return false;
@@ -942,6 +944,9 @@ Result Hud::execute(const ControlCommand &c, uint64_t source, uint64_t session, 
     break;
   case ControlOp::ExecuteDisplayed:
     r = controller_.executeDisplayed(now);
+    break;
+  case ControlOp::ResetMotion:
+    r = controller_.resetMotion(c.axis, now);
     break;
   case ControlOp::ManualDrive:
     break; // Uses its own coalesced, leased stream.

@@ -151,4 +151,38 @@ static void feedbackSafety() {
   for(unsigned stamp=20;stamp<=2000;stamp+=20){c.feedbackAt(0,10,false,stamp);c.tick(stamp);}
   CHECK(c.axes[0].direction&&c.axes[0].motionError==MotionError::None);
 }
-int main() { try { records();kickAndStream();cascadeHold();profilesAndNoise();feedbackSafety();std::cout<<"PASS motion: "<<checks<<" checks; Controller bytes="<<sizeof(Controller)<<"\n"; } catch(const std::exception &e) { std::cerr<<e.what()<<'\n';return 1; } }
+static void stallRetry() {
+  const auto stalled=[](unsigned axis=0) {
+    auto c=ready(); CHECK(c.jog(axis,1,false,0)==Result::Ok);c.tick(0);
+    for(unsigned now=20;now<=3200;now+=20) { c.feedbackAt(0,10,true,now);c.feedbackAt(1,30,true,now);c.tick(now); }
+    CHECK(c.axes[axis].motionError==MotionError::Stalled);CHECK(!c.axes[axis].direction);return c;
+  };
+  auto c=stalled(); CHECK(c.target({90,0,true,false},false,3220)==Result::Ok);
+  CHECK(c.axes[0].motionError==MotionError::None&&c.fault.empty());c.tick(3220);CHECK(c.axes[0].direction);
+  c=ready();c.target({90,0,true,false},false,0);c.tick(0);
+  for(unsigned now=20;now<=3200;now+=20){c.feedbackAt(0,10,true,now);c.feedbackAt(1,30,true,now);c.tick(now);}
+  CHECK(c.axes[0].motionError==MotionError::Stalled);CHECK(c.target({90,0,true,false},false,3220)==Result::Ok);
+  CHECK(c.axes[0].motionError==MotionError::None&&c.axes[0].tracking);
+  c=stalled(); CHECK(c.target({90,0,true,false},true,3220)==Result::Ok);CHECK(c.axes[0].motionError==MotionError::None);
+  c=stalled(); CHECK(c.jog(0,-1,false,3220)==Result::Ok);CHECK(c.axes[0].motionError==MotionError::None);
+  c=stalled(1);CHECK(c.target({90,0,true,false},false,3220)==Result::Ok);CHECK(c.axes[1].motionError==MotionError::Stalled);
+  c=stalled();c.axes[1].motionError=MotionError::KickTimeout;
+  CHECK(c.target({90,90,true,true},false,3220)==Result::Unavailable);CHECK(c.axes[0].motionError==MotionError::Stalled);
+  c=stalled();CHECK(c.target({9999,0,true,false},false,3220)==Result::Invalid);CHECK(c.axes[0].motionError==MotionError::Stalled);
+  c=stalled();c.setMode(Mode::Manual,3220);CHECK(c.target({90,0,true,false},true,3240)==Result::Pending);
+  CHECK(c.axes[0].motionError==MotionError::Stalled);CHECK(c.execute(3260)==Result::Ok);CHECK(c.axes[0].motionError==MotionError::None);
+  c=stalled();c.setMode(Mode::Manual,3220);const Target points[]={{90,0,true,false},{180,0,true,false}};
+  CHECK(c.sequence(points,2,1000,3240)==Result::Pending);CHECK(c.execute(3260)==Result::Ok);
+  c.feedbackAt(0,11,true,4260);c.tick(4260);CHECK(c.axes[0].target==180);
+  for(auto error:{MotionError::KickTimeout,MotionError::FeedbackStale,MotionError::FeedbackInvalid,MotionError::Planner}) {
+    c=ready();c.axes[0].motionError=error;CHECK(c.target({90,0,true,false},false,0)==Result::Unavailable);
+    CHECK(c.jog(0,1,false,0)==Result::Unavailable);CHECK(c.axes[0].motionError==error);
+  }
+  c=ready();CHECK(c.manualDrive(1,1,1,1,1,1,0,false,0)==Result::Ok);c.tick(0);
+  for(unsigned now=20;now<=3020;now+=20) { c.feedbackAt(0,10,true,now);c.feedbackAt(1,30,true,now);c.manualDrive(1,1,1,now/20+1,1,1,0,false,now);c.tick(now); }
+  CHECK(c.axes[0].motionError==MotionError::Stalled);
+  CHECK(c.manualDrive(1,1,1,1,1,1,0,false,3040)==Result::Cancelled);CHECK(c.axes[0].motionError==MotionError::Stalled);
+  CHECK(c.manualDrive(1,1,1,200,1,1,0,false,3060)!=Result::Ok);CHECK(c.axes[0].motionError==MotionError::Stalled);
+  CHECK(c.manualDrive(1,1,2,201,1,1,0,false,3080)==Result::Ok);CHECK(c.axes[0].motionError==MotionError::None);
+}
+int main() { try { records();stallRetry();kickAndStream();cascadeHold();profilesAndNoise();feedbackSafety();std::cout<<"PASS motion: "<<checks<<" checks; Controller bytes="<<sizeof(Controller)<<"\n"; } catch(const std::exception &e) { std::cerr<<e.what()<<'\n';return 1; } }

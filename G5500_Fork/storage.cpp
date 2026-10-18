@@ -1,6 +1,7 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "storage.hpp"
 #include "calibration_record.hpp"
+#include "motion_json.hpp"
 #include "board.hpp"
 #include <time.h>
 #include <cstdlib>
@@ -559,20 +560,21 @@ void Storage::loadMotionSettings(Runtime &runtime) {
 }
 
 bool Storage::saveForkSettings(const Runtime &runtime) {
+  const auto &savedAz=reportedSpeed(runtime.controller,0);
   prefs_.begin("forkcfg", false);
   if (!runtime.hud.isHud()) {
     prefs_.putUChar("model", runtime.controller.model == forkrot::Model::G800DXA ? 1 : 0);
     prefs_.putUChar("mode", runtime.controller.mode == forkrot::Mode::Auto ? 1 : 0);
   if (runtime.controller.hardware.drive == DRIVE_YAESU) {
   prefs_.putBool("speedon", runtime.controller.speedEnabled);
-  prefs_.putUInt("speed", runtime.controller.speedPercent);
-  prefs_.putUInt("startspd", runtime.controller.startSpeedPercent);
-  prefs_.putUInt("approachspd", runtime.controller.approachSpeedPercent);
-  prefs_.putUInt("accelms", runtime.controller.accelerationMs);
-  prefs_.putUInt("decelms", runtime.controller.decelerationMs);
-  prefs_.putUInt("slowdeg", runtime.controller.slowdownDegrees);
+  prefs_.putUInt("speed", savedAz.speedPercent);
+  prefs_.putUInt("startspd", savedAz.startSpeedPercent);
+  prefs_.putUInt("approachspd", savedAz.approachSpeedPercent);
+  prefs_.putUInt("accelms", savedAz.accelerationMs);
+  prefs_.putUInt("decelms", savedAz.decelerationMs);
+  prefs_.putUInt("slowdeg", savedAz.slowdownDegrees);
   for (unsigned i = 0; i < 2; ++i) {
-    const auto &speed = runtime.controller.speeds[i];
+    const auto &speed = reportedSpeed(runtime.controller,i);
     const String prefix = i ? "el" : "az";
     prefs_.putFloat((prefix + "coast").c_str(), speed.coastDegrees);
     prefs_.putFloat((prefix + "decelf").c_str(), speed.decelerationFactor);
@@ -599,7 +601,7 @@ bool Storage::saveForkSettings(const Runtime &runtime) {
     return true;
   prefs_.begin("forkpwm", false);
   for (unsigned i=0; i<2; ++i) {
-    const auto &speed = runtime.controller.speeds[i];
+    const auto &speed = reportedSpeed(runtime.controller,i);
     const String prefix = i ? "el" : "az";
     prefs_.putUInt((prefix + "work").c_str(), speed.speedPercent);
     prefs_.putUInt((prefix + "start").c_str(), speed.startSpeedPercent);
@@ -619,7 +621,7 @@ bool Storage::saveForkSettings(const Runtime &runtime) {
   for(unsigned i=0;i<2;++i) {
     char key[12]; std::snprintf(key,sizeof key,"%c%u%u%u",runtime.controller.hardware.simulation?'s':'r',
         unsigned(runtime.controller.hardware.drive),unsigned(runtime.controller.model),i);
-    const auto record=encodeDrive(runtime.controller.motionSettings[i],runtime.controller.speeds[i]);
+    const auto record=encodeDrive(reportedMotion(runtime.controller,i),reportedSpeed(runtime.controller,i));
     prefs_.putBytes(key,record.data(),record.size()); DriveRecord check{};
     valid=prefs_.getBytesLength(key)==record.size() && prefs_.getBytes(key,check.data(),check.size())==check.size() && check==record && valid;
   }

@@ -12,6 +12,8 @@ MOTION_SOURCES="G5500_Fork/motion.cpp build/motion/libruckig.a"
 CORE_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp"
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/motion_tests.cpp -o build/motion_tests
 ./build/motion_tests
+${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/autotune_tests.cpp -o build/autotune_tests
+./build/autotune_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/motion_settings_tests.cpp -o build/motion_settings_tests
 ./build/motion_settings_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/hardware_runtime_tests.cpp -o build/hardware_runtime_tests
@@ -79,6 +81,10 @@ done
 
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork G5500_Fork/control.cpp $MOTION_SOURCES tests/crowpanel_tests.cpp -o build/crowpanel_tests
 ./build/crowpanel_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/drive_fault_text_tests.cpp -o build/drive_fault_text_tests
+./build/drive_fault_text_tests
+${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/motion_reset_input_tests.cpp -o build/motion_reset_input_tests
+./build/motion_reset_input_tests
 for drive in 0 1 2; do
   ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -DDRIVE_INTERFACE=$drive -I G5500_Fork G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/hud.cpp tests/crowpanel_touch_tests.cpp -o build/crowpanel_touch_tests_$drive
   ./build/crowpanel_touch_tests_$drive

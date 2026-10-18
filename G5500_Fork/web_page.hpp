@@ -15,6 +15,7 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 .wrap{max-width:980px;margin:auto;padding:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}h1{font-size:26px;margin:8px 0 10px}
 .page-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 20px;margin:8px 0 16px}.page-header h1{flex:1 1 350px;min-width:0;margin:0;line-height:1.3;overflow-wrap:anywhere}
 .connection-status{display:inline-flex;align-items:center;gap:8px;max-width:100%;padding:9px 12px;border:1px solid #3b5365;border-radius:999px;background:#101c27;font-size:13px;line-height:1.4;color:#c9d8e3}.connection-status::before{content:'';flex:none;width:8px;height:8px;border-radius:50%;background:currentColor}.connection-status[data-state=online]{color:#62dfa9;border-color:#316b56}.connection-status[data-state=offline]{color:#ff9690;border-color:#814b4b}.connection-status[data-state=unselected]{color:#efc07a;border-color:#78603d}
+.drive-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.motion-fault{color:#ff9690;white-space:pre-line;overflow-wrap:anywhere}
 .page-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 20px;margin-top:24px;padding:16px 0 4px;border-top:1px solid #294153;color:var(--m);font-size:13px;line-height:1.6}.footer-links{display:flex;flex-wrap:wrap;gap:4px 20px}.page-footer a{display:inline-flex;align-items:center;min-height:44px;color:#acd3e8;text-underline-offset:3px}.page-footer a:hover{color:#fff}.page-footer a:focus-visible{outline:2px solid var(--a);outline-offset:3px}
 
 .nav{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px;padding:8px;background:#0b1720;border:1px solid #294153;border-radius:12px;position:sticky;top:0;z-index:20}
@@ -178,7 +179,7 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 </div>
 
 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-<div><div class="label">Движение</div><div id="motion" style="font-size:23px;font-weight:700">STOP</div></div>
+<div><div class="label">Состояние привода</div><div class="drive-status"><div id="motion" role="status" aria-live="polite" style="font-size:23px;font-weight:700">STOP</div><button id="resetDriveError" class="btn hide" type="button" onclick="resetMotion('all')">Сбросить ошибку</button></div></div>
 <div><span class="status"><span id="caldot" class="dot"></span><span id="caltxt">Calibration</span></span></div></div>
 <div class="target-controls"><div class="label">Задать угол</div><div class="row" style="margin-top:8px">
 <div class="field"><label id="tazlbl">AZ 0..450°</label><input id="taz" type="number" step="0.1" min="0" max="450"></div>
@@ -221,12 +222,11 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <div class="hint" id="buildInfo"></div>
 <div class="settings-group" id="hardwareSettings"><h3>Оборудование</h3><p class="hint">Привод, имитация, Bluetooth, точка доступа и кнопка настраиваются с проверкой после перезапуска.</p><a class="btn" href="/hardware">Настроить оборудование</a> <a href="/recovery">Восстановление доступа</a></div>
 <div class="hide" id="encoderSettings"><label class="check-field"><input checked="" id="encoderInverted" aria-describedby="encoderInverted-help" name="encoderInverted" type="checkbox"/> Инверсия энкодера</label><p class="field-help" id="encoderInverted-help">Меняет направление изменения цели при вращении энкодера. На направление вращения двигателя не влияет.</p></div>
-<div class="settings-group" id="coastSettings"><h3>Выбег и остановка</h3><div class="row">
-<div class="field"><label for="coastDegrees">Угол выбега AZ, °</label><input aria-describedby="coastDegrees-help" id="coastDegrees" max="90" min="0" name="coastDegrees" required="" step="0.1" type="number" value="5"/><p class="field-help" id="coastDegrees-help">На сколько градусов раньше цели отключать AZ для остановки по инерции. 0 — отключение на цели; максимум для короткого хода — 10% диапазона.</p></div>
-<div class="field el-setting"><label for="elCoastDegrees">Угол выбега EL, °</label><input aria-describedby="elCoastDegrees-help" id="elCoastDegrees" max="90" min="0" name="elCoastDegrees" required="" step="0.1" type="number" value="5"/><p class="field-help" id="elCoastDegrees-help">На сколько градусов раньше цели отключать EL для остановки по инерции. 0 — отключение на цели; максимум для короткого хода — 10% диапазона.</p></div>
-</div><p class="hint">После отключения привода обратной коррекции положения нет.</p></div>
 <div class="settings-group" id="speedSettings"><h3>Скорость и плавность движения</h3><label class="check-field" id="analogSpeedToggle"><input id="speedEnabled" aria-describedby="speedEnabled-help" name="speedEnabled" type="checkbox"/> Управлять скоростью через внешний модуль 0–5 В</label><p class="field-help" id="speedEnabled-help">Включите только при подключённом модуле регулировки скорости 0–5 В. Изменение этого режима останавливает привод.</p>
 <h4>Азимут · AZ</h4><div class="row">
+
+<div class="field"><label for="coastDegrees">Угол выбега AZ, °</label><input aria-describedby="coastDegrees-help" id="coastDegrees" max="90" min="0" name="coastDegrees" required="" step="0.1" type="number" value="5"/><p class="field-help" id="coastDegrees-help">На сколько градусов раньше цели отключать AZ для остановки по инерции. 0 — отключение на цели; максимум для короткого хода — 10% диапазона.</p></div>
+<div class="field el-setting"><label for="elCoastDegrees">Угол выбега EL, °</label><input aria-describedby="elCoastDegrees-help" id="elCoastDegrees" max="90" min="0" name="elCoastDegrees" required="" step="0.1" type="number" value="5"/><p class="field-help" id="elCoastDegrees-help">На сколько градусов раньше цели отключать EL для остановки по инерции. 0 — отключение на цели; максимум для короткого хода — 10% диапазона.</p></div>
 <div class="field"><label for="forkSettings-speedPercent">Рабочая скорость, %</label><input aria-describedby="forkSettings-speedPercent-help" id="forkSettings-speedPercent" max="100" min="1" name="speedPercent" required="" step="1" type="number" value="50"/><p class="field-help" id="forkSettings-speedPercent-help">Рабочий уровень выхода AZ, а не измеренная скорость вращения. Уменьшайте его для более медленного хода.</p></div>
 <div class="field hide"><label for="forkSettings-startSpeedPercent">Скорость старта, %</label><input aria-describedby="forkSettings-startSpeedPercent-help" id="forkSettings-startSpeedPercent" max="100" min="1" name="startSpeedPercent" required="" step="1" type="number" value="25"/><p class="field-help" id="forkSettings-startSpeedPercent-help">Начальный выход AZ при запуске. Должен обеспечивать уверенный старт; не превышает рабочую скорость.</p></div>
 <div class="field"><label for="forkSettings-approachSpeedPercent">Скорость у цели, %</label><input aria-describedby="forkSettings-approachSpeedPercent-help" id="forkSettings-approachSpeedPercent" max="100" min="1" name="approachSpeedPercent" required="" step="1" type="number" value="25"/><p class="field-help" id="forkSettings-approachSpeedPercent-help">Минимальный выход AZ перед остановкой у цели. Не превышает рабочую скорость; подберите для плавного подхода.</p></div>
@@ -594,7 +594,7 @@ async function forkPost(path,body){
  if(success&&!notice)return false;
  try{
   const selection=body.selection??window._forkState?.hudSelectionEpoch,name=window._forkState?.hudName;
-  if(window._forkState?.deviceRole==='hud'&&['/api/target','/api/move','/api/mode','/api/execute','/api/preset','/api/preset/run'].includes(path))body={...body,selection};
+  if(window._forkState?.deviceRole==='hud'&&['/api/target','/api/move','/api/mode','/api/execute','/api/preset','/api/preset/run','/api/motion/reset'].includes(path))body={...body,selection};
   if(livePaths.has(path)&&window._forkState?.azRangeRevision!==undefined)body={...body,rangeRevision:window._forkState.azRangeRevision};
   const fastStop=path==='/api/move'&&['S','A','E'].includes(body.d);
   const usingLive=live.ready&&livePaths.has(path);
@@ -642,6 +642,9 @@ function initMotionForms(){
    const key=axis+'Motion'+name,field=document.createElement('div');field.className='field';field.dataset.motionGroup=group;
    field.innerHTML=`<label for="${key}">${label}</label><input id="${key}" name="${key}" type="number" min="${min}" max="${max}" step="${step}" required aria-describedby="${key}Help"><p class="field-help" id="${key}Help">${help}</p>`;f.querySelector('.motion-fields').append(field);
   }
+  const tuner=document.createElement('div');tuner.className='settings-group';tuner.dataset.motionGroup='variable';
+  tuner.innerHTML=`<h3>Автотюн</h3><p class="hint">Пробные движения в обе стороны и проверочное наведение. Сначала выберите ручной режим и освободите ход вокруг текущей позиции. STOP отменяет процедуру. Предложенные параметры сохраняются только кнопкой «Применить»; удержание остаётся выключенным.</p><div class="row"><div class="field"><label for="${axis}TuneTravel">Допустимый ход в каждую сторону, °</label><input id="${axis}TuneTravel" type="number" min="10" max="90" step="1" value="60"><p class="field-help">Весь выбранный ход должен находиться внутри откалиброванного диапазона с запасом до упоров.</p></div><div class="field"><label for="${axis}TuneLimit">Предел пробного выхода, %</label><input id="${axis}TuneLimit" type="number" min="10" max="100" step="1" value="50"><p class="field-help">Не выше сохранённого максимального выхода оси.</p></div></div><p id="${axis}TuneStatus" role="status" aria-live="polite">Готов к запуску</p><div id="${axis}TuneResult" class="hint"></div><div class="form-actions"><button class="btn" type="button" id="${axis}TuneStart" onclick="autoTuneAction('start','${axis}')">Запустить автотюн</button><button class="btn" type="button" id="${axis}TuneCancel" onclick="autoTuneAction('cancel','${axis}')" disabled>Отменить</button><button class="btn good" type="button" id="${axis}TuneApply" onclick="autoTuneAction('apply','${axis}')" disabled>Применить результат</button></div>`;
+  tuner.addEventListener('input',e=>e.stopPropagation());f.append(tuner);
   f.addEventListener('input',()=>{f.dataset.dirty='1';motionVisibility(f)});f.onsubmit=saveMotion;root.append(f);motionVisibility(f);
  }
 }
@@ -669,7 +672,62 @@ async function saveMotion(e){
  if(body[axis+'RegulatorMode']==='simple')body[axis+'MotionHoldEnabled']='false';
  if(await forkPost('/api/settings',body)){delete f.dataset.dirty;await loadMotionSettings()}
 }
-async function resetMotion(axis){await forkPost('/api/motion/reset',{axis})}
+async function resetMotion(axis){
+ const button=document.getElementById('resetDriveError');if(button.disabled)return;
+ button.disabled=true;try{await forkPost('/api/motion/reset',{axis})}finally{button.disabled=false}
+}
+let autoTuneRequest=false,autoTuneResultKey='',autoTuneDetails=null;
+async function autoTuneAction(action,axis){
+ if(autoTuneRequest)return;
+ const f=document.getElementById(axis+'MotionForm'),body={action};
+ if(action==='start'){
+  if(f.dataset.dirty){settingsFeedback('Сначала сохраните параметры оси.');return}
+  const j=window._forkState||{},i=axis==='az'?0:1,travel=Number(document.getElementById(axis+'TuneTravel').value),limit=Number(document.getElementById(axis+'TuneLimit').value);
+  const margin=Math.max(2,Number(f.elements[axis==='az'?'coastDegrees':'elCoastDegrees'].value)),position=j.axes?.[i]?.current;
+  let problem=j.controlMode!=='manual'?'Выберите ручной режим.':j.moving||j.pendingValid||j.axes?.some(a=>a.tracking||a.holdArmed)?'Остановите движение и снимите ожидающую цель.':!j.axes?.[i]?.calibrated?'Сначала выполните калибровку оси.':j.fault||j.axes?.some(a=>a.motionFault)?'Сначала устраните и сбросьте ошибку привода.':
+   limit>Number(f.elements[axis+'MotionOutputLimitPercent'].value)?'Пробный выход превышает сохранённый максимум.':travel<6*Number(f.elements[axis+'MotionMovementDegrees'].value)?'Ход должен быть не меньше шести порогов подтверждения движения.':
+   position-travel<Number(j[axis+'Start'])+margin||position+travel>Number(j[axis==='az'?'azMax':'elMax'])-margin?'Недостаточно места: уменьшите пробный ход или переместите ось ближе к середине диапазона.':'';
+  if(problem){setText(document.getElementById(axis+'TuneStatus'),problem);settingsFeedback(problem);return}
+  for(const suffix of ['TuneTravel','TuneLimit'])if(!document.getElementById(axis+suffix).reportValidity())return;
+  body.axis=axis;body.mode=f.elements[axis+'RegulatorMode'].value;
+  body.id=window._forkState?.autotune?.id||0;
+  body.travel=document.getElementById(axis+'TuneTravel').value;body.outputLimit=document.getElementById(axis+'TuneLimit').value;
+  body.rangeRevision=window._forkState?.azRangeRevision;
+ }
+ if(action==='apply')body.id=window._forkState?.autotune?.id;
+ autoTuneRequest=true;renderAutoTune(window._forkState||{});
+ try{if(await forkPost('/api/motion/autotune',body)){autoTuneResultKey='';autoTuneDetails=null;await loadMotionSettings();await upd(true)}}
+ finally{autoTuneRequest=false;renderAutoTune(window._forkState||{})}
+}
+function renderAutoTune(j){
+ if(j.deviceRole==='hud')return;
+ const t=j.autotune||{phase:'idle',active:false,axis:-1};
+ if(autoTuneDetails&&autoTuneDetails.id!==t.id)autoTuneDetails=null;
+ const phases={idle:t.reason==='applied'?'Результат сохранён':'Готов к запуску',quiet:'Оценка шума датчика',start:'Поиск уровня страгивания',low:'Проверка рабочего выхода',high:'Измерение отклика',coast:'Измерение выбега',reposition:'Подготовка следующего пробного хода',validate:'Проверочное наведение',complete:'Готово. Проверьте и примените результат',cancelled:'Автотюн отменён',failed:'Автотюн остановлен'};
+ const reasons={stopped:'STOP',cancelled:'по команде пользователя',mode_changed:'изменён режим',hardware_changed:'изменено оборудование',calibration_changed:'изменена калибровка',feedback_or_configuration:'нет достоверных свежих измерений или изменён диапазон',timeout:'превышено время процедуры',other_axis_moved:'изменилась неподвижная ось',travel_limit:'выход за безопасную границу пробного участка',insufficient_travel:'привод не успевает безопасно завершить измерение на этом участке; увеличьте разрешённый ход',feedback_noise:'слишком шумный датчик',no_start:'не удалось тронуться в пределах заданного выхода',start_rejected:'команда движения отклонена',no_sustained_motion:'нет устойчивого рабочего выхода',unstable_response:'неустойчивая измеренная скорость',insufficient_response:'слишком мал отклик на изменение выхода',settle_timeout:'не удалось подтвердить остановку или достижение',validation_error:'слишком большая ошибка проверочного наведения',model_invalid:'не удалось получить допустимые параметры'};
+ reasons.control_timing='слишком большая задержка расчёта';reasons.motion_storage_failed='не удалось сохранить параметры';
+ for(const [i,axis] of ['az','el'].entries()){
+  const own=t.axis===i,status=document.getElementById(axis+'TuneStatus');
+  setText(status,own?(phases[t.phase]||t.phase)+(t.active?' · '+(t.direction>0?'вперёд':'назад')+' · '+Number(t.output).toFixed(0)+'%':'')+(t.reason&&t.reason!=='applied'?' · '+(reasons[t.reason]||motionFaultText(t.reason)):''):'Готов к запуску');
+  document.getElementById(axis+'TuneStart').disabled=autoTuneRequest||t.active;
+  document.getElementById(axis+'TuneCancel').disabled=autoTuneRequest||!t.active||!own;
+  document.getElementById(axis+'TuneApply').disabled=autoTuneRequest||t.phase!=='complete'||!own||autoTuneDetails?.id!==t.id;
+  document.querySelector('#'+axis+'MotionForm button[type=submit]').disabled=!!t.active;
+  const result=document.getElementById(axis+'TuneResult');
+  if(!own||t.phase!=='complete')setText(result,'');
+  else if(autoTuneDetails){const r=autoTuneDetails.result;result.style.whiteSpace='pre-line';setText(result,r?autoTuneSummary(t,r):'')}
+ }
+ if(t.phase==='complete'&&autoTuneResultKey!==String(t.id)){
+  autoTuneResultKey=String(t.id);
+  fetch('/api/motion/autotune',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error();return r.json()}).then(details=>{if(details.id!==window._forkState?.autotune?.id||details.phase!=='complete'||window._forkState?.autotune?.phase!=='complete')return;autoTuneDetails=details;renderAutoTune(window._forkState)}).catch(()=>{autoTuneResultKey='';settingsFeedback('Не удалось прочитать результат автотюна.')});
+ }
+}
+function autoTuneSummary(t,r){
+ const n=value=>Number(value).toPrecision(4);
+ const selected=t.mode==='simple'?`Рабочий выход / подход: ${r.speedPercent} / ${r.approachSpeedPercent}%\nВыбег: ${n(r.coastDegrees)}°; замедление за ${r.slowdownDegrees}°\nРазгон / торможение: ${r.accelerationMs} / ${r.decelerationMs} мс; коэффициент торможения ${r.decelerationFactor}`:
+  `Положение P / I / D: ${n(r.PositionKp)} / ${n(r.PositionKi)} / ${n(r.PositionKd)}\nСкорость P / I / D: ${n(r.VelocityKp)} / ${n(r.VelocityKi)} / ${n(r.VelocityKd)}\nСкорость: ${n(r.Velocity)} °/с; ускорение / торможение: ${n(r.Acceleration)} / ${n(r.Deceleration)} °/с²\nРывок: ${n(r.Jerk)} °/с³; упреждение: ${n(r.Feedforward)} % на °/с\nДопуск позиции: ${n(r.PositionTolerance)}°; гистерезис удержания: ${n(r.HoldResumeDegrees)}°`;
+ return selected+`\nМаксимальный выход: ${n(r.OutputLimitPercent)}%; пуск: ${n(r.KickPercent)}%, до ${r.KickMs} мс; снятие ${r.KickReleaseMs} мс\nПодтверждение движения: ${n(r.MovementDegrees)}°; порог остановки: ${n(r.StoppedVelocity)} °/с\nОшибка проверочного наведения: ${Number(t.validationError).toFixed(2)}°. Удержание выключено.`;
+}
 function renderMotionStatus(j){
  const hud=j.deviceRole==='hud';document.getElementById('motionSettings').classList.toggle('hide',hud||j.build?.drive==='NONE');
  const phases={idle:'Остановлен',kick:'Страгивание',run:'Движение',braking:'Торможение',holding:'Удержание',fault:'Ошибка'};
@@ -682,6 +740,28 @@ function renderMotionStatus(j){
  }
 }
 function motionFaultText(code){return ({kick_start_timeout:'привод не тронулся',feedback_stale:'нет свежих показаний датчика',feedback_invalid:'неверные показания датчика',stalled:'движение прекратилось',planner_error:'ошибка профиля движения'})[code]||code}
+function driveFaultMessages(j){
+ if(j.deviceRole==='hud'&&!j.hudOnline)return [];
+ const messages=[],codes=new Set();
+ for(const [i,name] of ['AZ','EL'].entries()){
+  if(i===1&&j.model==='G800DXA')continue;
+  const a=j.axes?.[i];if(!a)continue;
+  if(a.motionFault){messages.push(name+': '+motionFaultText(a.motionFault));codes.add(name.toLowerCase()+'_'+a.motionFault)}
+  else if(a.motionReady===false)messages.push(name+': неверные сохранённые параметры движения');
+  else if(a.motionPhase==='fault')messages.push(name+': ошибка привода');
+ }
+ if(j.fault&&!codes.has(j.fault)){
+  const axis=/^(az|el)_(.+)$/.exec(j.fault);
+  const faults={calibration_storage_invalid:'ошибка сохранённой калибровки',calibration_save_failed:'не удалось сохранить калибровку',target_not_calibrated:'сначала выполните калибровку',sequence_calibration:'потеря калибровки в последовательности',continuous_motion_timeout:'превышено время непрерывного вращения',udp_bind_failed:'не удалось открыть UDP-порт',pwm_attach_failed:'не удалось включить регулировку скорости',motion_storage_failed:'не удалось сохранить параметры движения',crowpanel_no_drive:'привод не подключён',crowpanel_drive_failed:'ошибка выходов привода CrowPanel',hud_offline:'нет связи с повороткой'};
+  messages.push(axis?axis[1].toUpperCase()+': '+motionFaultText(axis[2]):faults[j.fault]||j.fault);
+ }
+ return messages;
+}
+function renderDriveStatus(j){
+ const errors=driveFaultMessages(j),motion=document.getElementById('motion'),reset=document.getElementById('resetDriveError');
+ setText(motion,errors.length?'Ошибка: '+errors.join('\n'):j.motion);motion.classList.toggle('motion-fault',!!errors.length);motion.title=errors.join('\n');
+ reset.classList.toggle('hide',!errors.length);
+}
 initMotionForms();
 
 function buttonTarget(j){return j.pendingValid?j.pending:j.lastTarget}
@@ -722,7 +802,6 @@ function updateFork(j){
  const elNodes=[document.getElementById('el').closest('.card'),document.getElementById('tel').closest('.field'),...document.querySelectorAll('.el-setting,.movebtn[data-dir="U"],.movebtn[data-dir="D"]')];
  [...elNodes,...document.querySelectorAll('.el-help')].forEach(n=>{if(n)n.classList.toggle('hide',g800)});
  const independent=['SEPARATE_PWM','BTS7960','SIMULATED'].includes(j.build?.drive);
- document.getElementById('coastSettings').classList.add('hide');
  document.getElementById('speedSettings').classList.toggle('hide',j.build?.drive!=='YAESU'||!g800);
  document.getElementById('analogSpeedToggle').classList.toggle('hide',independent);
  document.getElementById('speedEnabled-help').classList.toggle('hide',independent);
@@ -751,7 +830,7 @@ function updateFork(j){
  document.querySelector('#presetEditor [name=az]').min=j.azStart??0;document.querySelector('#presetEditor [name=az]').max=j.azMax??(j.azMode===36?360:450);
  if(first)fillPreset();
  renderMotionStatus(j);
- const faults={calibration_storage_invalid:'Ошибка сохранённой калибровки: откройте настройки AZ',calibration_save_failed:'Не удалось сохранить калибровку',target_not_calibrated:'Сначала выполните калибровку',continuous_motion_timeout:'Превышено время непрерывного вращения',udp_bind_failed:'Не удалось открыть UDP-порт',pwm_attach_failed:'Не удалось включить регулировку скорости',crowpanel_drive_failed:'Ошибка выходов привода CrowPanel'};if(j.fault){const axis=j.axes?.find(a=>a.motionFault);setText(document.getElementById('forkMessage'),axis?motionFaultText(axis.motionFault):faults[j.fault]||'Ошибка управления');}
+ renderAutoTune(j);
 }
 
 async function q(u){try{if((live.ready||window._forkState?.deviceRole==='hud')&&(u.startsWith('/api/move?')||u.startsWith('/api/target?'))){const url=new URL(u,location.origin);await forkPost(url.pathname,Object.fromEntries(url.searchParams));return ''}return await (await fetch(u,{cache:'no-store'})).text()}catch(e){return''}}
@@ -920,7 +999,7 @@ setText(azt,j.targetValid?Number(j.targetAz).toFixed(1):'---');
 setText(elt,j.targetValid?Number(j.targetEl).toFixed(1):'---');
 for(const axis of ['az','el'])document.querySelectorAll('[data-cal-position='+axis+']').forEach(n=>{const value=currentPosition(j,axis);setText(n,value);n.nextElementSibling.hidden=!Number.isFinite(Number(value));n.title=value==='NC'?'NC — not calibrated: ось не откалибрована':'';});
 const azmn=j.azStart??0,azmx=j.azMax??(j.azMode===36?360:450);azbar.style.width=currentPosition(j,'az')==='NC'?'0%':pct(j.az-azmn,azmx-azmn);setText(azminlabel,azmn+'°');setText(azmaxlabel,azmx+'°');taz.min=azmn;taz.max=azmx;setText(tazlbl,'AZ '+azmn+'…'+azmx+'°');const elmn=j.elStart??0,elmx=j.elMax??180;elbar.style.width=currentPosition(j,'el')==='NC'?'0%':pct(j.el-elmn,elmx-elmn);setText(elminlabel,elmn+'°');setText(elmaxlabel,elmx+'°');tel.min=elmn;tel.max=elmx;setText(tellbl,'EL '+elmn+'…'+elmx+'°');
-setText(motion,j.motion);
+renderDriveStatus(j);
 window._azMode=j.azMode??45;const rangeName=j.azMode===0?'Произвольный':'P'+j.azMode;
 const selok=!!j.selectedCalOk;
 setText(caltxt,(j.calMode==='multi'?'MULTI-POINT':'GS-232 2-POINT')+' · '+rangeName+(selok?' OK':' NOT CALIBRATED'));
@@ -1054,7 +1133,6 @@ function updateHud(j){
  const f=document.getElementById('hudConfig');if(!f.dataset.dirty&&!f.contains(document.activeElement)){f.elements.role.value=j.deviceRole||'controller';f.elements.wifi.value=['existing','host','client'][j.hudWifi||0];f.elements.uart.value=j.hudUart?'1':'0';f.elements.port.value=j.hudPort||4534;}
  document.getElementById('caltoggle').closest('.card').classList.toggle('hide',hud);
  document.getElementById('speedSettings').classList.toggle('hide',hud||document.getElementById('speedSettings').classList.contains('hide'));
- document.getElementById('coastSettings').classList.toggle('hide',hud);
  for(const name of ['model'])document.querySelector('#forkSettings [name="'+name+'"]').closest('.field').classList.toggle('hide',hud);
  document.querySelector('a[href="/adc"]').classList.toggle('hide',hud);
  for(const b of document.querySelectorAll('.movebtn,#presetButtons button'))if(hud&&!j.hudOnline)b.disabled=true;else if(b.classList.contains('movebtn'))b.disabled=false;

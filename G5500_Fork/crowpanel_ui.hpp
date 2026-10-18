@@ -22,7 +22,8 @@ struct CrowPanelView {
   int wifiRssi = -127;
   bool bluetoothEnabled = false, bluetoothConnected = false;
   char ip[40] = "IP: —", heap[48] = "Heap: —";
-  char status[80] = "Привод не подключён";
+  bool statusFault = false;
+  char status[384] = "Привод не подключён";
 };
 class CrowPanelUi {
   lv_obj_t *hudName_ = nullptr, *hudAddress_ = nullptr, *hudList_ = nullptr, *hudRows_[3]{};

@@ -95,6 +95,7 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
   writeTargetJson(json, controller.pending);
   json << ",\"lastTarget\":";
   writeTargetJson(json, controller.lastTarget);
+  json << ",\"autotune\":";writeAutoTune(json,controller);
   json << ",\"moving\":" << (controller.moving() ? "true" : "false")
        << ",\"configurationLocked\":" << (controller.configurationLocked ? "true" : "false")
        << ",\"presetActive\":" << (controller.presetActive ? "true" : "false")
@@ -104,14 +105,14 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
                 : (controller.hardware.drive != DRIVE_YAESU || controller.speedEnabled))
                ? "true"
                : "false")
-       << ",\"speedPercent\":" << controller.speedPercent
-       << ",\"startSpeedPercent\":" << controller.startSpeedPercent
-       << ",\"approachSpeedPercent\":" << controller.approachSpeedPercent
-       << ",\"accelerationMs\":" << controller.accelerationMs
-       << ",\"decelerationMs\":" << controller.decelerationMs
-       << ",\"slowdownDegrees\":" << controller.slowdownDegrees
-       << ",\"coastDegrees\":" << controller.speeds[0].coastDegrees
-       << ",\"decelerationFactor\":" << controller.speeds[0].decelerationFactor
+       << ",\"speedPercent\":" << reportedSpeed(controller,0).speedPercent
+       << ",\"startSpeedPercent\":" << reportedSpeed(controller,0).startSpeedPercent
+       << ",\"approachSpeedPercent\":" << reportedSpeed(controller,0).approachSpeedPercent
+       << ",\"accelerationMs\":" << reportedSpeed(controller,0).accelerationMs
+       << ",\"decelerationMs\":" << reportedSpeed(controller,0).decelerationMs
+       << ",\"slowdownDegrees\":" << reportedSpeed(controller,0).slowdownDegrees
+       << ",\"coastDegrees\":" << reportedSpeed(controller,0).coastDegrees
+       << ",\"decelerationFactor\":" << reportedSpeed(controller,0).decelerationFactor
        << ",\"speedOutputPercent\":" << controller.axes[0].speedOutputPercent
        << ",\"fault\":" << jsonQuoted(controller.fault)
        << ",\"rotorName\":" << jsonQuoted(protocol.rotorName)
@@ -173,7 +174,7 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
   }
   json << ']';
   for (unsigned i=0; i<2; ++i) {
-    const auto &speed = controller.speeds[i];
+    const auto &speed = reportedSpeed(controller,i);
     const char *prefix = i ? "el" : "az";
     json << ",\"" << prefix << "SpeedPercent\":" << speed.speedPercent;
     json << ",\"" << prefix << "StartSpeedPercent\":" << speed.startSpeedPercent;
@@ -200,6 +201,8 @@ std::string stateJson(const Controller &controller, const Protocol &protocol,
 Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
                  std::string_view path, FormView form, uint32_t now) {
   Result result = Result::Invalid;
+  if(controller.autoTune.active() && path=="/api/settings")
+    return {503,"{\"ok\":false,\"result\":\"busy\"}"};
   if (has(form, "rangeRevision") && !(path == "/api/move" && (get(form, "d") == "S" || get(form, "d") == "A" || get(form, "d") == "E"))) {
     uint32_t revision;
     if (!requestGeneration(get(form, "rangeRevision"), revision) || revision != controller.rangeRevision)
@@ -433,6 +436,20 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       }
       controller.speeds = speeds;
       result = Result::Ok;
+    }
+  } else if (path == "/api/motion/autotune") {
+    if(controller.remote)return {409,"{\"ok\":false,\"result\":\"controller_settings_only\"}"};
+    const auto action=get(form,"action");
+    if(action=="cancel")result=controller.cancelAutoTune(now);
+    else if(action=="apply") {
+      uint32_t id;
+      if(requestGeneration(get(form,"id"),id)) result=controller.applyAutoTune(id,now);
+    } else if(action=="start") {
+      const auto axis=get(form,"axis"),mode=get(form,"mode");float travel,limit;uint32_t previous;
+      if((axis=="az" || axis=="el") && (mode=="simple" || mode=="cascade") &&
+          requestGeneration(get(form,"id"),previous) && previous==controller.autoTune.id &&
+          number(get(form,"travel"),travel) && number(get(form,"outputLimit"),limit))
+        result=controller.startAutoTune(axis=="az"?0:1,mode=="simple"?RegulatorMode::Simple:RegulatorMode::Cascade,travel,limit,now);
     }
   } else if (path == "/api/motion/reset") {
     const auto axis=get(form,"axis");

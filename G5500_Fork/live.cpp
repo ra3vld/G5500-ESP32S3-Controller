@@ -61,6 +61,7 @@ uint32_t liveControlFingerprint(const Controller &c,const Hud &h) {
   for(const auto &a:c.axes)j<<','<<a.target<<','<<a.direction<<','<<a.wanted<<','<<a.tracking<<','<<a.completed<<','<<a.calibrated;
   for(unsigned i=0;i<2;++i) j<<','<<unsigned(c.motionSettings[i].mode)<<','<<c.motionSettings[i].ready
     <<','<<unsigned(c.axes[i].motionPhase)<<','<<unsigned(c.axes[i].motionError)<<','<<c.axes[i].holdArmed;
+  j<<','<<unsigned(c.autoTune.phase)<<','<<c.autoTune.id<<','<<c.autoTune.direction<<','<<c.autoTune.level;
   return hudCrc(reinterpret_cast<const uint8_t *>(j.data()),j.size());
 }
 bool writeLiveState(JsonWriter &j,const Controller &c,const Hud &h,uint32_t now) {
@@ -93,6 +94,7 @@ bool writeLiveState(JsonWriter &j,const Controller &c,const Hud &h,uint32_t now)
     writeAxisMotion(j,c,i); j << '}';
   }
   j << "],\"azSpeedOutputPercent\":" << c.axes[0].speedOutputPercent << ",\"elSpeedOutputPercent\":" << c.axes[1].speedOutputPercent;
+  j << ",\"autotune\":";writeAutoTune(j,c);
   h.writeStatus(j, true); j << '}'; return j.good();
 }
 }

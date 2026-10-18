@@ -457,8 +457,12 @@ void WebInterface::setupForkWeb() {
     JsonWriter j(statusBuffer_,sizeof statusBuffer_);
     writeMotionConfiguration(j,runtime_.controller); sendJson(j);
   });
+  web_.on("/api/motion/autotune", HTTP_GET, [this] {
+    if(runtime_.hud.isHud()) { web_.send(409,"application/json","{\"ok\":false,\"result\":\"controller_settings_only\"}"); return; }
+    JsonWriter j(statusBuffer_,sizeof statusBuffer_);writeAutoTune(j,runtime_.controller,true);sendJson(j);
+  });
   for (const char *route :
-       {"/api/mode", "/api/execute", "/api/preset", "/api/preset/run", "/api/settings", "/api/motion/reset"}) {
+       {"/api/mode", "/api/execute", "/api/preset", "/api/preset/run", "/api/settings", "/api/motion/reset", "/api/motion/autotune"}) {
     String path = route;
     web_.on(path, HTTP_POST, [this, path] {
       auto oldModel = runtime_.controller.model;
@@ -478,9 +482,12 @@ void WebInterface::setupForkWeb() {
           // profile. Combined model + PID changes are rejected by the API.
           if(path == "/api/settings") response = callApi(path.c_str());
         }
-        if (path == "/api/mode" || path == "/api/settings") {
+        if (path == "/api/mode" || path == "/api/settings" || (path=="/api/motion/autotune" && web_.arg("action")=="apply")) {
           actions_.saveForkSettings();
-          if(runtime_.controller.fault=="motion_storage_failed") response={503,"{\"ok\":false,\"result\":\"motion_storage_failed\"}"};
+          if(runtime_.controller.fault=="motion_storage_failed") {
+            if(path=="/api/motion/autotune") {runtime_.controller.autoTune.phase=AutoTunePhase::Failed;runtime_.controller.autoTune.reason="motion_storage_failed";}
+            response={503,"{\"ok\":false,\"result\":\"motion_storage_failed\"}"};
+          }
         }
         if (path == "/api/preset") {
           actions_.saveProfilePresets();

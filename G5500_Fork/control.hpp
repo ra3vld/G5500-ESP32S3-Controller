@@ -43,7 +43,8 @@ enum class ControlOp : uint8_t {
   ReleaseJog,
   ToggleMode,
   ExecuteDisplayed,
-  ManualDrive
+  ManualDrive,
+  ResetMotion
 };
 struct ControlCommand {
   ControlOp op = ControlOp::Stop;
@@ -101,6 +102,36 @@ struct Axis {
   MotionError motionError = MotionError::None;
   bool holdArmed = false;
 };
+enum class AutoTunePhase : uint8_t { Idle, Quiet, Start, Low, High, Coast, Reposition, Validate, Complete, Cancelled, Failed };
+struct AutoTuneMeasurement {
+  float startOutput = 0, lowOutput = 0, highOutput = 0, lowVelocity = 0, highVelocity = 0;
+  float responseSeconds = 0, coastDegrees = 0;
+  uint32_t startMs = 0;
+};
+struct AutoTuneState {
+  AutoTunePhase phase = AutoTunePhase::Idle;
+  RegulatorMode mode = RegulatorMode::Simple;
+  int axis = -1, direction = 1;
+  AutoTunePhase nextPhase = AutoTunePhase::Start;
+  int nextDirection = 1;
+  unsigned relocations = 0;
+  uint32_t id = 0, startedAt = 0, phaseAt = 0, tickAt = 0, sampledAt = 0, revision = 0, settledAt = 0;
+  const char *reason = "";
+  float origin = 0, otherPosition = 0, lower = 0, upper = 0, limit = 0, level = 0;
+  float phasePosition = 0, noiseLow = 0, noiseHigh = 0, noiseVelocity = 0, threshold = 0;
+  float velocityIntegral = 0, previousVelocity = 0, validationError = 0, validationTarget = 0;
+  float nextLevel = 0, searchLevel = 0;
+  float lastPosition = 0, sampleVelocity = 0, stoppingDistance = 0;
+  uint32_t positionAt = 0;
+  std::array<float, 16> positions{};
+  std::array<uint32_t, 16> sampleTimes{};
+  unsigned sampleCount = 0, sampleNext = 0;
+  bool internal = false, ticked = false, settled = false, relocate = false, plateauReady = false;
+  SpeedSettings originalSpeed{}, proposedSpeed{};
+  MotionSettings originalMotion{}, proposedMotion{};
+  std::array<AutoTuneMeasurement, 2> measurements{};
+  bool active() const { return phase >= AutoTunePhase::Quiet && phase <= AutoTunePhase::Validate; }
+};
 struct Preset {
   std::string label;
   Target target;
@@ -139,6 +170,11 @@ public:
   bool speedEnabled = DRIVE_INTERFACE != DRIVE_YAESU;
   std::array<SpeedSettings, 2> speeds{};
   std::array<MotionSettings, 2> motionSettings{};
+  AutoTuneState autoTune{};
+  Result startAutoTune(unsigned axis, RegulatorMode mode, float travel, float outputLimit, uint32_t now);
+  Result cancelAutoTune(uint32_t now);
+  Result applyAutoTune(uint32_t id, uint32_t now);
+  static const char *autoTunePhaseName(AutoTunePhase);
   unsigned &speedPercent = speeds[0].speedPercent;
   unsigned &startSpeedPercent = speeds[0].startSpeedPercent;
   unsigned &approachSpeedPercent = speeds[0].approachSpeedPercent;
@@ -162,6 +198,10 @@ public:
   Controller &operator=(const Controller &other);
   uint32_t stopEpoch = 0;
   std::string fault;
+  bool hasDriveError() const {
+    return driveFault || !fault.empty() || axes[0].motionError != MotionError::None ||
+           (model == Model::G5500 && axes[1].motionError != MotionError::None);
+  }
   Controller();
   void feedback(float az, float el, bool azCal, bool elCal);
   void feedbackAt(unsigned axis, float position, bool calibrated, uint32_t sampledAt);
@@ -219,10 +259,18 @@ private:
   std::array<MotionRuntime, 2> motion_{};
   void cancelMotion(unsigned axis);
   void motionFault(unsigned axis, MotionError, uint32_t now);
+  void recoverStall(unsigned axis, uint32_t now);
   void tickMotion(unsigned axis, uint32_t now);
+  void tickAutoTune(uint32_t now);
+  void finishAutoTune(AutoTunePhase, const char *reason, uint32_t now);
+  void autoTunePhase(AutoTunePhase, uint32_t now);
+  void autoTuneLevel(float level);
+  bool autoTuneProbe(AutoTunePhase, int direction, float level, uint32_t now);
+  void autoTuneCoast(AutoTunePhase next, int direction, float level, bool relocate, uint32_t now);
+  bool proposeAutoTune(uint32_t now);
   FixedVector<Target, 16> sequence_, pendingSequence_;
   size_t sequenceIndex_ = 0;
-  Result start(Target t, uint32_t now, bool external = false);
+  Result start(Target t, uint32_t now, bool retryStall = true);
   void output(unsigned axis, int dir, uint32_t now);
   void expire(uint32_t now);
 };
