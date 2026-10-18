@@ -152,10 +152,11 @@ static bool editPoint(CustomAxisCalibration &c, const char *op, float angle, int
   unsigned i=0;
   while (i<c.count && c.degrees[i] < distance - .001f) ++i;
   const bool exists = i<c.count && std::abs(c.degrees[i] - distance) < .001f;
-  if (std::strcmp(op, "add") == 0) {
-    if (exists || c.count == AZ_CUSTOM_CAL_N) return false;
+  const bool addCapture = std::strcmp(op, "add_capture") == 0;
+  if (std::strcmp(op, "add") == 0 || addCapture) {
+    if (exists || c.count == AZ_CUSTOM_CAL_N || (addCapture && mv < 0)) return false;
     for (unsigned j=c.count; j>i; --j) { c.degrees[j]=c.degrees[j-1]; c.millivolts[j]=c.millivolts[j-1]; }
-    c.degrees[i]=distance; c.millivolts[i]=-1; ++c.count;
+    c.degrees[i]=distance; c.millivolts[i]=addCapture?mv:-1; ++c.count;
   } else if (std::strcmp(op, "capture") == 0) {
     if (!exists || mv<0) return false;
     c.millivolts[i]=mv;

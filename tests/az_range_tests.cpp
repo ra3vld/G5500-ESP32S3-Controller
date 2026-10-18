@@ -104,7 +104,16 @@ int main() {
     assert(cal.configureAz(AZ_CUSTOM,50,450));assert(cal.activeAzMultiValid());
     assert(cal.configureAz(AZ_CUSTOM,300,90));assert(!cal.activeAzLinearValid()&&!cal.activeAzMultiValid());
     assert(s.custom.count==2);
-    assert(cal.editAzPoint("add",330));assert(!cal.editAzPoint("add",330));
+    assert(!cal.editAzPoint("add_capture",330));assert(s.custom.count==2);
+    assert(cal.editAzPoint("add_capture",330,1450));assert(s.custom.millivolts[1]==1450);
+    const auto captured=calibrationRecord(s);
+    assert(!cal.editAzPoint("add_capture",330,2100));
+    assert(!cal.editAzPoint("add_capture",300,100));assert(!cal.editAzPoint("add_capture",390,2800));
+    assert(!cal.editAzPoint("add_capture",400,100));assert(!cal.editAzPoint("add_capture",330.01f,100));
+    assert(calibrationRecord(s)==captured);
+    CalibrationState capturedState;assert(readCalibrationRecord(captured,capturedState));
+    assert(capturedState.custom.count==3 && capturedState.custom.degrees[1]==30 && capturedState.custom.millivolts[1]==1450);
+    assert(!cal.editAzPoint("add",330));
     assert(!cal.editAzPoint("delete",300));assert(!cal.editAzPoint("delete",390));
     assert(!cal.editAzPoint("add",400));assert(!cal.editAzPoint("add",330.01f));
     assert(cal.editAzPoint("capture",300,reverse?2800:100));
@@ -114,7 +123,10 @@ int main() {
     near(cal.mapAz(reverse?2125:775),315);near(cal.mapAz(reverse?775:2125),360);
     assert(cal.editAzPoint("capture",330,0));assert(!cal.activeAzMultiValid());
     assert(cal.editAzPoint("delete",330));assert(cal.activeAzMultiValid());
-    for(int i=1;i<=14;++i)assert(cal.editAzPoint("add",300+i));
+    assert(cal.editAzPoint("add_capture",301,0));assert(s.custom.millivolts[1]==0);
+    for(int i=2;i<=14;++i)assert(cal.editAzPoint("add",300+i));
+    assert(s.custom.millivolts[2]==-1); // Legacy add still creates an uncaptured point.
+    assert(!cal.editAzPoint("add_capture",320,1000));
     assert(!cal.editAzPoint("add",320));assert(s.custom.count==16);
     const auto record=calibrationRecord(s);CalibrationState restored;
     assert(readCalibrationRecord(record,restored));assert(restored.custom.count==16);

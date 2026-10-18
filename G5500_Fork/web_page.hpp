@@ -124,7 +124,9 @@ body.settings-view .nav{position:static}
 #settingsPanel .point-actions{display:flex;flex-wrap:wrap;gap:8px}
 #settingsPanel .point-actions .btn{flex:1 1 120px}
 #settingsPanel .point-actions .btn+ .btn{flex:1 1 76px}
-#settingsPanel .inline-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-top:16px}
+#settingsPanel .inline-form{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:8px 12px;align-items:stretch;margin-top:16px}
+#settingsPanel .inline-form>label{grid-column:1/-1;font-size:14px;line-height:1.45;color:#c9d8e3}
+#settingsPanel .inline-form>.field-help{grid-column:1/-1}
 #settingsPanel .inline-message:empty{display:none}
 #settingsPanel .inline-message{font-size:13px;line-height:1.5;margin-top:12px;color:#b8daca;overflow-wrap:anywhere}
 #settingsPanel .device-list{gap:12px}
@@ -141,7 +143,7 @@ body.settings-view .nav{position:static}
 #settingsPanel canvas{margin-top:16px}
 body.settings-view>.action-feedback{position:static;transform:none;left:auto;bottom:auto;flex:none;align-self:center;width:calc(100% - 24px);margin:0 12px max(12px,env(safe-area-inset-bottom));max-width:956px;box-shadow:none;font-size:14px}
 @media(max-width:760px){#settingsPanel .range-editors,#settingsPanel .calibration-grid{grid-template-columns:minmax(0,1fr)}}
-@media(max-width:600px){.settings-details>summary{padding:16px;gap:16px}.settings-details>summary h2{font-size:17px}.settings-content{padding:16px}#settingsPanel .row,#settingsPanel .device-fields{grid-template-columns:minmax(0,1fr);gap:16px}#settingsPanel .settings-pane{padding:12px}#settingsPanel .form-actions>.btn{width:100%}#settingsPanel .form-actions{gap:10px}#settingsPanel .range-form .row{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel .profile-options{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel #azmc{grid-column:1/-1}#settingsPanel .inline-form{grid-template-columns:minmax(0,1fr)}#settingsPanel .inline-form>.btn{width:100%}#settingsPanel .device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.settings-details>summary{padding:16px;gap:16px}.settings-details>summary h2{font-size:17px}.settings-content{padding:16px}#settingsPanel .row,#settingsPanel .device-fields{grid-template-columns:minmax(0,1fr);gap:16px}#settingsPanel .settings-pane{padding:12px}#settingsPanel .form-actions>.btn{width:100%}#settingsPanel .form-actions{gap:10px}#settingsPanel .range-form .row{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel .profile-options{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel #azmc{grid-column:1/-1}#settingsPanel .device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 </style></head><body><div class="wrap">
 <header class="page-header">
@@ -283,11 +285,11 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <div class="calibration-grid hide" id="panelm">
 <section class="settings-pane"><div class="calhead"><h3>Азимут · AZ</h3><div class="callive"><span data-cal-position="az">--.-</span><span>°</span></div></div>
 <p class="hint" id="azCalProgress" role="status"></p><div class="point-list" id="azPointList"></div>
-<div class="hide" id="customAzPoints"><form class="inline-form" onsubmit="addAzPoint(event)"><div class="field"><label for="azPointAngle">Угол новой точки, °</label><input aria-describedby="azPointAngle-help" id="azPointAngle" required="" step="0.1" type="number"/><p class="field-help" id="azPointAngle-help">Непрерывный угол внутри диапазона AZ, с шагом 0,1°. После добавления установите антенну в эту точку и запомните положение.</p></div><button class="btn" type="submit">Добавить</button></form></div>
+<div class="hide" id="customAzPoints"><form class="inline-form" onsubmit="addAzPoint(event)"><label for="azPointAngle">Угол новой точки, °</label><input aria-describedby="azPointAngle-help" id="azPointAngle" required="" step="0.1" type="number"/><button class="btn" type="submit">Добавить и запомнить</button><p class="field-help" id="azPointAngle-help">Установите антенну на нужный угол AZ и остановите её. Введите этот угол с шагом 0,1°: кнопка добавит точку и сразу запомнит текущее показание ADC.</p></form></div>
 <div class="form-actions"><button class="btn calreset" onclick="resetCal('az','multi')">Сбросить AZ</button></div></section>
 <section class="settings-pane el-setting"><div class="calhead"><h3>Элевация · EL</h3><div class="callive"><span data-cal-position="el">--.-</span><span>°</span></div></div>
 <p class="hint" id="elCalProgress" role="status"></p><div class="point-list" id="elPointList"></div>
-<div class="hide" id="customElPoints"><form class="inline-form" onsubmit="addElPoint(event)"><div class="field"><label for="elPointAngle">Угол новой точки, °</label><input aria-describedby="elPointAngle-help" id="elPointAngle" required="" step="0.1" type="number"/><p class="field-help" id="elPointAngle-help">Непрерывный угол внутри диапазона EL, с шагом 0,1°. После добавления установите антенну в эту точку и запомните положение.</p></div><button class="btn" type="submit">Добавить</button></form></div>
+<div class="hide" id="customElPoints"><form class="inline-form" onsubmit="addElPoint(event)"><label for="elPointAngle">Угол новой точки, °</label><input aria-describedby="elPointAngle-help" id="elPointAngle" required="" step="0.1" type="number"/><button class="btn" type="submit">Добавить и запомнить</button><p class="field-help" id="elPointAngle-help">Установите антенну на нужный угол EL и остановите её. Введите этот угол с шагом 0,1°: кнопка добавит точку и сразу запомнит текущее показание ADC.</p></form></div>
 <div class="form-actions"><button class="btn calreset" onclick="resetCal('el','multi')">Сбросить EL</button></div></section>
 </div>
 </div></details></section><section class="card settings-section" id="presetSettings"><details class="settings-details"><summary><h2>Предустановки<span class="section-caption">Четыре сохранённых положения</span></h2></summary><div class="settings-content"><form id="presetEditor" onsubmit="savePreset(event)">
@@ -773,7 +775,7 @@ async function axisCalibrationPost(axis,path,body,notice=null){
  const message=document.getElementById(axis+'RangeMessage');
  try{const r=await settingsRequest(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});const j=r.json();
  if(!r.ok||j.ok===false){const error=j.error==='invalid_point'?'Проверьте угол: точка должна быть внутри диапазона, без повторов; максимум 16 точек.':j.error==='invalid_range'?'Проверьте начало и полный ход.':'Не удалось сохранить настройки '+label;setText(message,error);notice.finish(false,error);return false;}
- const text=body.op?(body.op==='capture'?'Положение '+label+' '+body.angle+'° запомнено':body.op==='add'?'Точка '+label+' '+body.angle+'° добавлена':'Точка '+label+' '+body.angle+'° удалена'):'Диапазон '+label+' сохранён';
+ const text=body.op?(body.op==='add_capture'?'Точка '+label+' '+body.angle+'° добавлена, текущее показание ADC запомнено':body.op==='capture'?'Положение '+label+' '+body.angle+'° запомнено':body.op==='add'?'Точка '+label+' '+body.angle+'° добавлена':'Точка '+label+' '+body.angle+'° удалена'):'Диапазон '+label+' сохранён';
  delete document.getElementById(axis+'RangeForm').dataset.dirty;setText(message,text);notice.finish(true,text);
  await upd(true);await (axis==='az'?loadAzCalibration():loadElCalibration());return true;
  }catch(e){const error='Подтверждение не получено. Проверьте связь и настройки '+label+' перед повтором.';setText(message,error);notice.finish(false,error);return false;}
@@ -787,14 +789,14 @@ async function useCustomAxisRange(axis){
  }catch(e){notice.finish(false,'Не удалось прочитать диапазон. Проверьте связь с устройством.');return false;}
 }
 async function useCustomRange(){return useCustomAxisRange('az')}
-async function addAzPoint(e){e.preventDefault();if(await azPost('/api/azcal',{op:'add',angle:azPointAngle.value}))azPointAngle.value=''}
+async function addAzPoint(e){e.preventDefault();if(await azPost('/api/azcal',{op:'add_capture',angle:azPointAngle.value}))azPointAngle.value=''}
 function elEndPreview(){const f=document.getElementById('elRangeForm');elRangeEnd.textContent=(Number(f.elements.start.value)+Number(f.elements.span.value)).toFixed(1)+'°'}
 document.getElementById('elRangeForm').addEventListener('input',e=>{e.currentTarget.dataset.dirty='1';elEndPreview()});
 async function loadElCalibration(){return loadAxisCalibration('el')}
 async function elPost(path,body){return axisCalibrationPost('el',path,body)}
 async function saveElRange(e){e.preventDefault();const f=e.target;await elPost('/api/elrange',{profile:'custom',start:f.elements.start.value,span:f.elements.span.value})}
 async function useCustomElRange(){return useCustomAxisRange('el')}
-async function addElPoint(e){e.preventDefault();if(await elPost('/api/elcal',{op:'add',angle:elPointAngle.value}))elPointAngle.value=''}
+async function addElPoint(e){e.preventDefault();if(await elPost('/api/elcal',{op:'add_capture',angle:elPointAngle.value}))elPointAngle.value=''}
 async function wifi(){
  const message=document.getElementById('wifiMessage');
  const network=document.getElementById('ssid').value,password=document.getElementById('pass').value;
