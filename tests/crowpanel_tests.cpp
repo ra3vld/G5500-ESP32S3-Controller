@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "crowpanel_knob.hpp"
 #include "quadrature.hpp"
 #include "crowpanel_touch.hpp"
@@ -70,7 +71,7 @@ int main() {
   assert(crowpanel::limitOpacity(NAN) == 0);
   assert(crowpanel::shortestBearingDelta(359, 1) == 2);
   assert(crowpanel::shortestBearingDelta(1, 359) == -2);
-  Controller c;
+  Controller c = forkrot::testController();
   c.feedback(100, 20, true, true);
   CrowPanelKnob knob(c);
   uint32_t now = 50;
@@ -143,7 +144,7 @@ int main() {
   held.sample(true, true, 30, 100);
   held.sample(true, true, 30, 2000);
   assert(!c.axes[0].tracking && !held.modeChanged);
-  Controller inverted;
+  Controller inverted = forkrot::testController();
   inverted.feedback(100, 20, true, true);
   CrowPanelKnob reverse(inverted);
   reverse.sample(true, false, 1, 100); // Inversion enabled by default.
@@ -161,7 +162,7 @@ int main() {
   reverse.sample(true, true, 0, 290, false);
   assert(!inverted.moving() && inverted.axes[0].target == 200);
   // After arrival, a press executes the pending external target in manual mode.
-  Controller arrived;
+  Controller arrived = forkrot::testController();
   arrived.feedback(100, 20, true, true);
   CrowPanelKnob completed(arrived);
   completed.sample(true, false, -1, 100);
@@ -173,7 +174,7 @@ int main() {
   completed.sample(true, false, 0, 730);
   assert(arrived.axes[0].target == 200 && arrived.axes[0].tracking && !arrived.pendingValid);
   // Pause both unfinished axes, resume on a single click, keep double/long gestures safe.
-  Controller paused;
+  Controller paused = forkrot::testController();
   paused.feedback(10, 20, true, true);
   CrowPanelKnob pauseKnob(paused);
   uint32_t at = 100;
@@ -203,7 +204,7 @@ int main() {
   pausePress(); pauseRelease(); pauseSample(false, 351); assert(!paused.moving());
   // A quick click immediately after a detent may produce only one pressed sample.
   // STOP must win over accumulated rotation; bounce/release must not resume it.
-  Controller quick;
+  Controller quick = forkrot::testController();
   quick.feedback(100, 20, true, true);
   CrowPanelKnob quickKnob(quick);
   quickKnob.sample(true, false, -1, 100);
@@ -225,7 +226,7 @@ int main() {
   quickKnob.sample(true, false, 0, 911);
   quick.tick(911);
   assert(quick.moving() && quick.axes[0].target == 120);
-  Controller tapped;
+  Controller tapped = forkrot::testController();
   tapped.feedback(400, 20, true, true);
   CrowPanelKnob touchKnob(tapped);
   touchKnob.setBearing(90, 100);
@@ -242,7 +243,7 @@ int main() {
   touchKnob.setBearing(270, 140);
   assert(touchKnob.lastResult == Result::Invalid && tapped.axes[1].target == 90);
   // A queued knob click must not stop the newly tapped target.
-  Controller clickThenTap;
+  Controller clickThenTap = forkrot::testController();
   clickThenTap.feedback(20, 30, true, true);
   CrowPanelKnob pendingClick(clickThenTap);
   pendingClick.sample(true, false, 0, 100);

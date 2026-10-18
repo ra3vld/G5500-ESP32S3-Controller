@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "storage.hpp"
 #include "hardware.hpp"
 #include <cassert>
@@ -11,7 +12,7 @@ bool beginBus() { return true; }
 int main() {
   Preferences::database.clear();
   Storage storage;
-  Runtime normal;
+  MotionTestRuntime normal;
   normal.protocol.rotorName="Original";
   normal.controller.model = Model::G800DXA;
   normal.controller.speeds[0].speedPercent = 65;
@@ -25,7 +26,7 @@ int main() {
   config.uart = true;
   config.selected = 123;
   assert(storage.saveHudConfig(config));
-  Runtime hud;
+  MotionTestRuntime hud;
   storage.loadHud(hud);
   assert(hud.hud.isHud() && hud.controller.remote && hud.hud.config.uart && hud.hud.config.selected == 123);
   storage.loadForkSettings(hud);assert(hud.protocol.rotorName=="Original");
@@ -70,7 +71,7 @@ int main() {
 #endif
   assert(Preferences::database["fork800"] == originalPresets);
   assert(Preferences::database["forkcfg"].at("name") == originalSettings.at("name"));
-  Runtime reboot;
+  MotionTestRuntime reboot;
   storage.loadHud(reboot);
   storage.loadForkSettings(reboot);
   assert(reboot.protocol.rotorName == "HUD-N1MM");
@@ -78,7 +79,7 @@ int main() {
   for (unsigned i = 0; i < 80; ++i)
     assert(hud.hud.add(100 + i, {0x0100007f + i, uint16_t(4534 + i), false}, "Station"));
   assert(storage.saveHudPeers(hud.hud));
-  Runtime restored;
+  MotionTestRuntime restored;
   storage.loadHud(restored);
   assert(restored.hud.count() == 80);
   auto *p = restored.hud.peers();
@@ -97,11 +98,11 @@ int main() {
   // Bad role/config storage cannot accidentally enable motor pins.
   auto &bytes = std::get<Preferences::Bytes>(Preferences::database["hudcfg"]["config"]);
   bytes[0] ^= 1;
-  Runtime corrupt;
+  MotionTestRuntime corrupt;
   storage.loadHud(corrupt);
   assert(corrupt.hud.isHud() && corrupt.hud.catalogError && corrupt.controller.remote);
   Preferences::database.clear();
-  Runtime defaults;
+  MotionTestRuntime defaults;
   storage.loadHud(defaults);
   assert(!defaults.hud.isHud() && !defaults.controller.remote);
   std::cout << "HUD adapters: no GPIO/PWM/ADC, calibration/preset preservation, 80-entry NVS roundtrip and "

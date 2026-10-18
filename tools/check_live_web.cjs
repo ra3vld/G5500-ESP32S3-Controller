@@ -29,7 +29,7 @@ const root=process.env.ROTOR_URL;
   const routes=['hud','controller','logger','encoder'];
   const rows=[],samples=Number(process.env.LIVE_SAMPLES||200);
   for(let i=0;i<samples;i++){
-   // External logger targets inside the normal 5-degree dead band are intentionally coalesced.
+   // Each external absolute coordinate is accepted independently of stop tolerance.
    const source=routes[i%4],target=100+((i*17)%160);
    let onTarget;const targetReady=source==='encoder'?new Promise(resolve=>{onTarget=resolve}):Promise.resolve(target);
    await new Promise(resolve=>setTimeout(resolve,30+(i*37)%80));

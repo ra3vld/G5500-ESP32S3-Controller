@@ -1,10 +1,11 @@
+#include "motion_fixture.hpp"
 #include "hud.hpp"
 #include <cassert>
 #include <iostream>
 #include <string>
 using namespace forkrot;
 int main() {
-  Controller controller;
+  Controller controller = forkrot::testController();
   Protocol protocol(controller);
   Hud hud(controller, protocol);
   hud.config.role = DeviceRole::Hud;

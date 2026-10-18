@@ -13,9 +13,9 @@ const request=async(route,body)=>{const r=await fetch(base+route,{method:'POST',
   const page=await browser.newPage({viewport:{width:1100,height:950}}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base+'/#settings');await page.waitForFunction(()=>window._forkState&&live.ready);
-  const ids=['rotorSettings','calibrationSettings','presetSettings','hudPanel','networkSettings','otaSettings','signalSettings'];
+  const ids=['rotorSettings','motionSettings','calibrationSettings','presetSettings','hudPanel','networkSettings','otaSettings','signalSettings'];
   assert.deepEqual(await page.locator('#settingsPanel > .settings-section').evaluateAll(nodes=>nodes.map(n=>n.id)),ids);
-  assert.equal(await page.locator('#settingsPanel details').count(),7,'Every section has one consistent disclosure level');
+  assert.equal(await page.locator('#settingsPanel details').count(),8,'Every section has one consistent disclosure level');
   for(const id of ids){
    const section=page.locator('#'+id),summary=section.locator(':scope > details > summary');
    assert.equal(await summary.locator('h2').count(),1);assert.equal(await summary.locator('.section-caption').count(),1);
@@ -79,6 +79,6 @@ const request=async(route,body)=>{const r=await fetch(base+route,{method:'POST',
   await retina.goto(base+'/#settings');await retina.locator('#signalSettings summary').click();
   await retina.waitForFunction(()=>{const c=document.getElementById('rchart');return devicePixelRatio===2&&c.clientWidth>0&&c.width===c.clientWidth*2;});
   await retina.locator('#rchart').screenshot({path:path.join(out,'signal-retina.png')});await retina.close();
-  console.log('PASS: seven consistent disclosures, keyboard toggles, preserved forms, no button/text overlap, no clipped controls, reserved feedback area, readable responsive RSSI chart at DPR 1/2, 320/390/600/760/1100px and G800 EL hiding');
+  console.log('PASS: eight consistent disclosures, keyboard toggles, preserved forms, no button/text overlap, no clipped controls, reserved feedback area, readable responsive RSSI chart at DPR 1/2, 320/390/600/760/1100px and G800 EL hiding');
  }finally{await browser.close();await request('/api/settings',{model:'G5500'});await request('/api/elrange',{profile:'standard'});}
 })().catch(e=>{console.error(e);process.exit(1)});

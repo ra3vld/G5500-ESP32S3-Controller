@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "api.hpp"
 #include "storage.hpp"
 #include <cassert>
@@ -8,7 +9,7 @@ using namespace forkrot;
 
 static bool close(float a, float b) { return std::abs(a - b) < 0.001f; }
 static Controller ready() {
-  Controller c;
+  Controller c = forkrot::testController();
   c.model = Model::G800DXA;
   c.speedEnabled = true;
   c.feedback(20, 30, true, true);
@@ -55,30 +56,21 @@ static void cutoff() {
   assert(close(c.tolerance(0), 1));
 }
 static void ramp() {
-  for (float factor : {0.5f, 1.f, 2.f}) {
-    auto c = ready();
-    c.speeds[0].decelerationFactor = factor;
-    c.jog(0, 1, false, 0);
-    c.tick(0);
-    c.tick(1000);
-    assert(close(c.axes[0].speedOutputPercent, 100)); // Acceleration is independent.
-    c.target({90, 0, true, false}, false, 1000);
-    c.feedback(84, 0, true, false);
-    c.tick(1100);
-    assert(close(c.axes[0].speedOutputPercent, 100 - factor * 10));
-    c.stopNow(-1, 1100);
-    assert(!c.moving() && c.axes[0].speedOutputPercent == 0);
-
-    c = ready();
-    c.speeds[0].decelerationFactor = factor;
-    c.jog(0, 1, false, 0); c.tick(0); c.tick(1000);
-    c.jog(0, -1, false, 1000); c.tick(1100);
-    assert(c.axes[0].direction == 1 && close(c.axes[0].speedOutputPercent, 100 - factor * 10));
-    const uint32_t stoppedAt = 1000 + uint32_t(1000 / factor);
-    c.tick(stoppedAt);
-    assert(c.axes[0].direction == 0 && c.axes[0].speedOutputPercent == 0);
-    c.tick(stoppedAt + 299); assert(c.axes[0].direction == 0);
-    c.tick(stoppedAt + 300); assert(c.axes[0].direction == -1);
+  unsigned previousStop=10000;
+  for(float factor:{.5f,1.f,2.f}) {
+    auto c=ready();c.speeds[0].decelerationFactor=factor;c.jog(0,1,false,0);
+    for(unsigned at=0;at<=1100;at+=20)c.tick(at);
+    assert(close(c.axes[0].speedOutputPercent,100));
+    c.target({90,0,true,false},false,1100);c.feedback(84,0,true,false);
+    c.tick(1200);assert(c.axes[0].speedOutputPercent<100&&c.axes[0].speedOutputPercent>10);
+    c.stopNow(-1,1200);assert(!c.moving()&&c.axes[0].speedOutputPercent==0);
+    c=ready();c.speeds[0].decelerationFactor=factor;c.jog(0,1,false,0);
+    for(unsigned at=0;at<=1100;at+=20)c.tick(at);
+    c.jog(0,-1,false,1100);unsigned stoppedAt=0;
+    for(unsigned at=1120;at<6000;at+=20){c.tick(at);if(!c.axes[0].direction){stoppedAt=at;break;}}
+    assert(stoppedAt&&stoppedAt<previousStop);previousStop=stoppedAt;
+    assert(c.axes[0].speedOutputPercent==0);c.tick(stoppedAt+299);assert(!c.axes[0].direction);
+    c.tick(stoppedAt+320);assert(c.axes[0].direction==-1);
   }
 }
 static void settings() {
@@ -105,13 +97,13 @@ static void settings() {
 }
 static void persistence() {
   Preferences::database.clear();
-  Storage storage; Runtime saved;
+  Storage storage; MotionTestRuntime saved;
   saved.controller.speeds[0].coastDegrees = 2.5f;
   saved.controller.speeds[0].decelerationFactor = .5f;
   saved.controller.speeds[1].coastDegrees = 1.2f;
   saved.controller.speeds[1].decelerationFactor = 2;
   storage.saveForkSettings(saved);
-  Runtime loaded; storage.loadForkSettings(loaded);
+  MotionTestRuntime loaded; storage.loadForkSettings(loaded);
   for (unsigned i=0;i<2;++i) {
     assert(close(saved.controller.speeds[i].coastDegrees, loaded.controller.speeds[i].coastDegrees));
     assert(close(saved.controller.speeds[i].decelerationFactor, loaded.controller.speeds[i].decelerationFactor));
@@ -124,8 +116,10 @@ static void persistence() {
 #endif
   Preferences::database[space]["azcoast"] = std::numeric_limits<float>::quiet_NaN();
   Preferences::database[space]["azdecelf"] = -1.f;
-  Runtime corrupted; storage.loadForkSettings(corrupted);
-  Controller defaults;
+  // Without a new verified record, legacy invalid floats fall back safely.
+  Preferences::database.erase("forkmotion");
+  MotionTestRuntime corrupted; storage.loadForkSettings(corrupted);
+  Controller defaults = forkrot::testController();
   assert(corrupted.controller.speeds[0].coastDegrees == defaults.speeds[0].coastDegrees);
   assert(corrupted.controller.speeds[0].decelerationFactor == 1);
 }

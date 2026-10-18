@@ -147,7 +147,9 @@ class NetworkTests(unittest.TestCase):
         self.post('/api/move',d='R' if state['az']<225 else 'L')
         self.post('/api/sim/step',ms=250)
         ramp=self.get('/api/status')['speedOutputPercent']
-        self.assertGreater(ramp,25);self.assertLess(ramp,75)
+        # The S-ramp starts continuously at zero; legacy startSpeedPercent is
+        # retained for compatibility, while kick-start is configured separately.
+        self.assertGreater(ramp,0);self.assertLess(ramp,25)
         self.post('/api/sim/step',ms=2000)
         self.assertEqual(self.get('/api/status')['speedOutputPercent'],75)
         self.post('/api/move',d='S')

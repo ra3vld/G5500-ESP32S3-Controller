@@ -1,4 +1,5 @@
 #include "api.hpp"
+#include "motion_json.hpp"
 #include "calibration.hpp"
 #include "live.hpp"
 #include "input.hpp"
@@ -31,6 +32,7 @@ public:
 };
 int main(){
   Controller c;
+  for(auto &m:c.motionSettings)m.ready=true;
   Protocol p(c);
   Calibration calibration(c);
   calibration.state().az45OSet=calibration.state().az45FSet=calibration.state().az45LinearValid=true;
@@ -41,6 +43,8 @@ int main(){
   SimHudTransport link;
   hud.setTransport(&link);
   std::array<std::array<Preset, 4>, 2> profiles{{c.presets, c.presets}};
+  std::array<std::array<MotionSettings,2>,2> motionProfiles{{c.motionSettings,c.motionSettings}};
+  std::array<std::array<SpeedSettings,2>,2> speedProfiles{{c.speeds,c.speeds}};
   for (auto &preset : profiles[1])
     preset.target.hasEl = false;
   c.feedback(0, 0, true, true);
@@ -103,8 +107,8 @@ int main(){
           else if (c.axes[1].direction < 0)
             el = std::max(el, c.axes[1].target);
         }
-        c.feedback(az, el, true, true);
         now += slice;
+        c.feedbackAt(0,az,true,now);c.feedbackAt(1,el,true,now);
         c.tick(now);
         ms -= slice;
       }
@@ -133,8 +137,11 @@ int main(){
       auto old = c.model;
       auto oldIndex = old == Model::G5500 ? 0 : 1;
       profiles[oldIndex] = c.presets;
+      motionProfiles[oldIndex]=c.motionSettings;speedProfiles[oldIndex]=c.speeds;
       calProfiles[oldIndex] = calibration.state();
-      if (path == "/api/hud/peers" && !form.count("id")) {
+      if(path=="/api/motion") {
+        char data[4096];JsonWriter j(data,sizeof data);writeMotionConfiguration(j,c);response.body=j.data();
+      } else if (path == "/api/hud/peers" && !form.count("id")) {
         char data[4096];
         JsonWriter j(data, sizeof data);
         hud.writePeers(j, form.count("offset") ? std::stoul(form["offset"]) : 0, 8,
@@ -236,6 +243,8 @@ int main(){
         response = api(c, p, cfg, path, form, now);
       if (old != c.model) {
         const unsigned index=c.model==Model::G5500?0:1;
+        c.motionSettings=motionProfiles[index];c.speeds=speedProfiles[index];
+        if(path=="/api/settings") response=api(c,p,cfg,path,form,now);
         c.presets = profiles[index];calibration.state()=calProfiles[index];
         c.setRange(calibration.activeAzRange(),calibration.state().gsAzMode,now);az=c.azRange.clamp(az);
         c.setElRange(calibration.activeElRange(),calibration.state().elProfile,now);el=c.elRange.clamp(el);

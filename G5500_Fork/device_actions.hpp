@@ -17,6 +17,7 @@ public:
   virtual bool configureElRange(uint8_t profile, float start, float span) = 0;
   virtual bool editElPoint(const char *operation, float angle) = 0;
   virtual void loadPrefs() = 0;
+  virtual void loadMotionSettings() = 0;
   virtual void loadProfilePresets() = 0;
   virtual void saveProfilePresets() = 0;
   virtual void saveForkSettings() = 0;

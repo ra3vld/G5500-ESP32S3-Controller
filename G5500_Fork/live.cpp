@@ -1,4 +1,5 @@
 #include "live.hpp"
+#include "motion_json.hpp"
 #include <cstring>
 #include <cstdio>
 namespace forkrot {
@@ -54,10 +55,12 @@ Response executeLive(const LiveRequest &r, Controller &c, Protocol &p, Settings 
   return result;
 }
 uint32_t liveControlFingerprint(const Controller &c,const Hud &h) {
-  char data[512];JsonWriter j(data,sizeof data);
+  char data[768];JsonWriter j(data,sizeof data);
   j << c.rangeRevision << ',' << c.minimum << ',' << c.maximum << ',' << unsigned(c.mode) << ',' << c.stopEpoch << ',' << c.pendingValid << ',' << c.pending.az << ',' << c.pending.el
     << ',' << c.presetSlot << ',' << c.presetActive << ',' << c.targetKnown << ',' << h.selectionEpoch << ',' << h.available() << ',' << c.fault;
   for(const auto &a:c.axes)j<<','<<a.target<<','<<a.direction<<','<<a.wanted<<','<<a.tracking<<','<<a.completed<<','<<a.calibrated;
+  for(unsigned i=0;i<2;++i) j<<','<<unsigned(c.motionSettings[i].mode)<<','<<c.motionSettings[i].ready
+    <<','<<unsigned(c.axes[i].motionPhase)<<','<<unsigned(c.axes[i].motionError)<<','<<c.axes[i].holdArmed;
   return hudCrc(reinterpret_cast<const uint8_t *>(j.data()),j.size());
 }
 bool writeLiveState(JsonWriter &j,const Controller &c,const Hud &h,uint32_t now) {
@@ -86,7 +89,8 @@ bool writeLiveState(JsonWriter &j,const Controller &c,const Hud &h,uint32_t now)
     j << "{\"current\":" << a.current << ",\"target\":" << a.target << ",\"direction\":" << a.direction
       << ",\"tracking\":" << boolean(a.tracking) << ",\"completed\":" << boolean(a.completed)
       << ",\"calibrated\":" << boolean(a.calibrated) << ",\"speedOutputPercent\":" << a.speedOutputPercent
-      << ",\"speedEnabled\":" << boolean(c.variableSpeed(i)) << ",\"stopToleranceDegrees\":" << c.effectiveTolerance(i) << '}';
+      << ",\"speedEnabled\":" << boolean(c.variableSpeed(i)) << ",\"stopToleranceDegrees\":" << c.effectiveTolerance(i);
+    writeAxisMotion(j,c,i); j << '}';
   }
   j << "],\"azSpeedOutputPercent\":" << c.axes[0].speedOutputPercent << ",\"elSpeedOutputPercent\":" << c.axes[1].speedOutputPercent;
   h.writeStatus(j, true); j << '}'; return j.good();

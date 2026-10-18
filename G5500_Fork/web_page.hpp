@@ -227,23 +227,23 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 </div><p class="hint">После отключения привода обратной коррекции положения нет.</p></div>
 <div class="settings-group" id="speedSettings"><h3>Скорость и плавность движения</h3><label class="check-field" id="analogSpeedToggle"><input id="speedEnabled" aria-describedby="speedEnabled-help" name="speedEnabled" type="checkbox"/> Управлять скоростью через внешний модуль 0–5 В</label><p class="field-help" id="speedEnabled-help">Включите только при подключённом модуле регулировки скорости 0–5 В. Изменение этого режима останавливает привод.</p>
 <h4>Азимут · AZ</h4><div class="row">
-<div class="field"><label for="forkSettings-speedPercent">Рабочая скорость, %</label><input aria-describedby="forkSettings-speedPercent-help" id="forkSettings-speedPercent" max="100" min="25" name="speedPercent" required="" step="1" type="number" value="50"/><p class="field-help" id="forkSettings-speedPercent-help">Рабочий уровень выхода AZ, а не измеренная скорость вращения. Уменьшайте его для более медленного хода.</p></div>
-<div class="field"><label for="forkSettings-startSpeedPercent">Скорость старта, %</label><input aria-describedby="forkSettings-startSpeedPercent-help" id="forkSettings-startSpeedPercent" max="100" min="25" name="startSpeedPercent" required="" step="1" type="number" value="25"/><p class="field-help" id="forkSettings-startSpeedPercent-help">Начальный выход AZ при запуске. Должен обеспечивать уверенный старт; не превышает рабочую скорость.</p></div>
-<div class="field"><label for="forkSettings-approachSpeedPercent">Скорость у цели, %</label><input aria-describedby="forkSettings-approachSpeedPercent-help" id="forkSettings-approachSpeedPercent" max="100" min="25" name="approachSpeedPercent" required="" step="1" type="number" value="25"/><p class="field-help" id="forkSettings-approachSpeedPercent-help">Минимальный выход AZ перед остановкой у цели. Не превышает рабочую скорость; подберите для плавного подхода.</p></div>
+<div class="field"><label for="forkSettings-speedPercent">Рабочая скорость, %</label><input aria-describedby="forkSettings-speedPercent-help" id="forkSettings-speedPercent" max="100" min="1" name="speedPercent" required="" step="1" type="number" value="50"/><p class="field-help" id="forkSettings-speedPercent-help">Рабочий уровень выхода AZ, а не измеренная скорость вращения. Уменьшайте его для более медленного хода.</p></div>
+<div class="field hide"><label for="forkSettings-startSpeedPercent">Скорость старта, %</label><input aria-describedby="forkSettings-startSpeedPercent-help" id="forkSettings-startSpeedPercent" max="100" min="1" name="startSpeedPercent" required="" step="1" type="number" value="25"/><p class="field-help" id="forkSettings-startSpeedPercent-help">Начальный выход AZ при запуске. Должен обеспечивать уверенный старт; не превышает рабочую скорость.</p></div>
+<div class="field"><label for="forkSettings-approachSpeedPercent">Скорость у цели, %</label><input aria-describedby="forkSettings-approachSpeedPercent-help" id="forkSettings-approachSpeedPercent" max="100" min="1" name="approachSpeedPercent" required="" step="1" type="number" value="25"/><p class="field-help" id="forkSettings-approachSpeedPercent-help">Минимальный выход AZ перед остановкой у цели. Не превышает рабочую скорость; подберите для плавного подхода.</p></div>
 <div class="field"><label for="forkSettings-accelerationMs">Время разгона 0–100% рабочей скорости, мс</label><input aria-describedby="forkSettings-accelerationMs-help" id="forkSettings-accelerationMs" max="10000" min="100" name="accelerationMs" required="" step="1" type="number" value="2000"/><p class="field-help" id="forkSettings-accelerationMs-help">Задаёт темп нарастания выхода AZ от 0 до рабочей скорости. Большее время — более плавный разгон.</p></div>
 <div class="field"><label for="forkSettings-decelerationMs">Время торможения 100–0% рабочей скорости, мс</label><input aria-describedby="forkSettings-decelerationMs-help" id="forkSettings-decelerationMs" max="10000" min="100" name="decelerationMs" required="" step="1" type="number" value="1500"/><p class="field-help" id="forkSettings-decelerationMs-help">Задаёт темп снижения выхода AZ от рабочей скорости до 0. Большее время — более плавное торможение; учитывается коэффициент ниже.</p></div>
 <div class="field"><label for="forkSettings-slowdownDegrees">Начинать замедление за, °</label><input aria-describedby="forkSettings-slowdownDegrees-help" id="forkSettings-slowdownDegrees" max="90" min="1" name="slowdownDegrees" required="" step="1" type="number" value="10"/><p class="field-help" id="forkSettings-slowdownDegrees-help">Расстояние до зоны отключения AZ, с которого начинается снижение скорости. Увеличьте, если привод не успевает замедлиться.</p></div>
 <div class="field"><label for="decelerationFactor">Коэффициент торможения AZ</label><input aria-describedby="decelerationFactor-help" id="decelerationFactor" max="10" min="0.1" name="decelerationFactor" required="" step="0.1" type="number" value="1"/><p class="field-help" id="decelerationFactor-help">Множитель темпа снижения выхода AZ: 1 — обычный, 2 — вдвое быстрее, 0,5 — вдвое медленнее. STOP отключает выход сразу.</p></div>
 </div><div class="hint">Выход AZ: <b id="speedOutput">0%</b></div><div id="elSpeedSettings"><h4>Элевация · EL</h4><div class="row">
 <div class="field"><label for="forkSettings-elSpeedPercent">Рабочая скорость, %</label><input aria-describedby="forkSettings-elSpeedPercent-help" id="forkSettings-elSpeedPercent" max="100" min="1" name="elSpeedPercent" required="" step="1" type="number" value="100"/><p class="field-help" id="forkSettings-elSpeedPercent-help">Рабочий уровень выхода EL, а не измеренная скорость вращения. Уменьшайте его для более медленного хода.</p></div>
-<div class="field"><label for="forkSettings-elStartSpeedPercent">Скорость старта, %</label><input aria-describedby="forkSettings-elStartSpeedPercent-help" id="forkSettings-elStartSpeedPercent" max="100" min="1" name="elStartSpeedPercent" required="" step="1" type="number" value="18"/><p class="field-help" id="forkSettings-elStartSpeedPercent-help">Начальный выход EL при запуске. Должен обеспечивать уверенный старт; не превышает рабочую скорость.</p></div>
+<div class="field hide"><label for="forkSettings-elStartSpeedPercent">Скорость старта, %</label><input aria-describedby="forkSettings-elStartSpeedPercent-help" id="forkSettings-elStartSpeedPercent" max="100" min="1" name="elStartSpeedPercent" required="" step="1" type="number" value="18"/><p class="field-help" id="forkSettings-elStartSpeedPercent-help">Начальный выход EL при запуске. Должен обеспечивать уверенный старт; не превышает рабочую скорость.</p></div>
 <div class="field"><label for="forkSettings-elApproachSpeedPercent">Скорость у цели, %</label><input aria-describedby="forkSettings-elApproachSpeedPercent-help" id="forkSettings-elApproachSpeedPercent" max="100" min="1" name="elApproachSpeedPercent" required="" step="1" type="number" value="18"/><p class="field-help" id="forkSettings-elApproachSpeedPercent-help">Минимальный выход EL перед остановкой у цели. Не превышает рабочую скорость; подберите для плавного подхода.</p></div>
 <div class="field"><label for="forkSettings-elAccelerationMs">Время разгона 0–100% рабочей скорости, мс</label><input aria-describedby="forkSettings-elAccelerationMs-help" id="forkSettings-elAccelerationMs" max="10000" min="100" name="elAccelerationMs" required="" step="1" type="number" value="1800"/><p class="field-help" id="forkSettings-elAccelerationMs-help">Задаёт темп нарастания выхода EL от 0 до рабочей скорости. Большее время — более плавный разгон.</p></div>
 <div class="field"><label for="forkSettings-elDecelerationMs">Время торможения 100–0% рабочей скорости, мс</label><input aria-describedby="forkSettings-elDecelerationMs-help" id="forkSettings-elDecelerationMs" max="10000" min="100" name="elDecelerationMs" required="" step="1" type="number" value="1200"/><p class="field-help" id="forkSettings-elDecelerationMs-help">Задаёт темп снижения выхода EL от рабочей скорости до 0. Большее время — более плавное торможение; учитывается коэффициент ниже.</p></div>
 <div class="field"><label for="forkSettings-elSlowdownDegrees">Начинать замедление за, °</label><input aria-describedby="forkSettings-elSlowdownDegrees-help" id="forkSettings-elSlowdownDegrees" max="90" min="1" name="elSlowdownDegrees" required="" step="1" type="number" value="2"/><p class="field-help" id="forkSettings-elSlowdownDegrees-help">Расстояние до зоны отключения EL, с которого начинается снижение скорости. Увеличьте, если привод не успевает замедлиться.</p></div>
 <div class="field"><label for="elDecelerationFactor">Коэффициент торможения EL</label><input aria-describedby="elDecelerationFactor-help" id="elDecelerationFactor" max="10" min="0.1" name="elDecelerationFactor" required="" step="0.1" type="number" value="1"/><p class="field-help" id="elDecelerationFactor-help">Множитель темпа снижения выхода EL: 1 — обычный, 2 — вдвое быстрее, 0,5 — вдвое медленнее. STOP отключает выход сразу.</p></div>
 </div><div class="hint">Выход EL: <b id="elSpeedOutput">0%</b></div></div><p class="hint">Реверс: торможение и пауза 300 мс перед сменой направления. STOP выключает привод сразу.</p></div>
-<div class="form-actions"><button class="btn good" type="submit">Сохранить настройки</button></div></form></div></details></section><section class="card settings-section" id="calibrationSettings"><details class="settings-details" ontoggle="if(this.open){loadAzCalibration();loadElCalibration();}"><summary id="caltoggle"><h2>Диапазоны и калибровка<span class="section-caption">Упоры и измерения датчиков AZ / EL</span></h2></summary><div class="settings-content" id="calbody">
+<div class="form-actions"><button class="btn good" type="submit">Сохранить настройки</button></div></form></div></details></section><section class="card settings-section" id="motionSettings"><details class="settings-details" ontoggle="if(this.open)loadMotionSettings()"><summary><h2>Регуляторы движения<span class="section-caption">S-профиль, страгивание и удержание AZ / EL</span></h2></summary><div class="settings-content"><p class="hint">Простой регулятор задаёт выход в процентах и отключает привод по ручному выбегу. Каскад регулирует положение и скорость в °/с; удержание доступно только в нём. Изменение настроек останавливает ось.</p><div id="motionForms"></div></div></details></section><section class="card settings-section" id="calibrationSettings"><details class="settings-details" ontoggle="if(this.open){loadAzCalibration();loadElCalibration();}"><summary id="caltoggle"><h2>Диапазоны и калибровка<span class="section-caption">Упоры и измерения датчиков AZ / EL</span></h2></summary><div class="settings-content" id="calbody">
 <h3>1. Выберите диапазоны</h3><div class="range-editors"><section class="range-editor settings-pane"><h3>Азимут · AZ</h3>
 <div class="seg profile-options">
 <button class="btn" id="azm36" aria-describedby="azProfileHelp" onclick="setAzMode(36)">P36 · 360°</button>
@@ -559,6 +559,7 @@ function connectLive(port){
    connection.state={...httpState,...message.state};updateConnection();
    if(changed)setTimeout(()=>upd(true),0);
   }else if(message.type==='result'&&message.boot===live.boot){
+   if(message.cancelledFrom&&message.cancelledThrough){for(const [id,p] of live.pending)if(id>=message.cancelledFrom&&id<=message.cancelledThrough){clearTimeout(p.timer);live.pending.delete(id);p.resolve({status:409,json:async()=>message.result})}return;}
    const pending=live.pending.get(message.id);if(!pending)return;
    if(message.result.result==='deferred'){document.getElementById('forkMessage').textContent='Ожидаем подтверждение поворотки…';return;}
    clearTimeout(pending.timer);live.pending.delete(message.id);
@@ -607,8 +608,9 @@ async function forkPost(path,body){
     if(j.result==='deferred')j={ok:false,result:'timeout'};
   }
   const missingCalibration=path==='/api/target'?['az','el'].filter((axis,i)=>body[axis]!==undefined&&window._forkState?.axes?.[i]?.calibrated===false).map(axis=>axis.toUpperCase()):[];
+  if(j.superseded)return false;
   const calibrationMessage='Сначала выполните калибровку'+(missingCalibration.length?' '+missingCalibration.join(' и '):'');
-  const messages={deferred:'Ожидаем подтверждение',timeout:'Нет подтверждения — проверьте состояние поворотки',unavailable:'Нет связи с повороткой',busy:'Поворотка занята, повторите команду',cancelled:'Команда отменена',storage_full:'Не хватает памяти для сохранения',hud_port_conflict:'Порт HUD совпадает с портом логгера',controller_settings_only:'Эти настройки доступны на контроллере поворотки',restart:'Сохранено. Устройство перезагружается',searching:'Поиск устройств…',invalid_or_port_conflict:'Проверьте настройки и порты',uart_in_use_by_hc05:'UART занят HC-05: выключите Bluetooth в настройках оборудования',not_calibrated:calibrationMessage,invalid:'Проверьте значения',ignored:'Сейчас выполняется предустановка',pending:'Цель ожидает подтверждения',ok:'Готово'};
+  const messages={deferred:'Ожидаем подтверждение',timeout:'Нет подтверждения — проверьте состояние поворотки',unavailable:'Проверьте связь, параметры движения и ошибку оси',busy:'Поворотка занята, повторите команду',cancelled:'Команда отменена',storage_full:'Не хватает памяти для сохранения',motion_storage_failed:'Не удалось сохранить параметры движения',hud_port_conflict:'Порт HUD совпадает с портом логгера',controller_settings_only:'Эти настройки доступны на контроллере поворотки',restart:'Сохранено. Устройство перезагружается',searching:'Поиск устройств…',invalid_or_port_conflict:'Проверьте настройки и порты',uart_in_use_by_hc05:'UART занят HC-05: выключите Bluetooth в настройках оборудования',not_calibrated:calibrationMessage,invalid:'Проверьте значения',ignored:'Сейчас выполняется предустановка',pending:'Цель ожидает подтверждения',ok:'Готово'};
   document.getElementById('forkMessage').textContent=(messages[j.result]||'Ошибка')+(path!=='/api/hud/select'&&name&&selection!==window._forkState?.hudSelectionEpoch?' · команда для '+name:'');
   const ok=r.status<400&&!!j.ok;
   notice?.finish(ok,ok&&j.result==='ok'?success:(messages[j.result]||'Не удалось выполнить действие'));
@@ -621,14 +623,76 @@ function fillPreset(){
 }
 async function savePreset(e){e.preventDefault();await forkPost('/api/preset',Object.fromEntries(new FormData(e.target)))}
 async function saveFork(e){e.preventDefault();const body=Object.fromEntries(new FormData(e.target));if(window._forkState?.build?.drive==='YAESU')body.speedEnabled=e.target.elements.speedEnabled.checked?'true':'false';else delete body.speedEnabled;if(window._forkState?.build?.display==='CROWPANEL_21')body.encoderInverted=e.target.elements.encoderInverted.checked?'true':'false';else delete body.encoderInverted;if(window._forkState?.deviceRole==='hud')for(const key of Object.keys(body))if(!['rotorName','n1mmPort','pstPort','reportPort','reportHost','encoderInverted','n1mmManualFollow','pstManualFollow','gs232ManualFollow','rotctldManualFollow','externalAzMode'].includes(key))delete body[key];if(await forkPost('/api/settings',body))delete e.target.dataset.dirty;}
+
+const simpleMotionKeys=['speedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees','coastDegrees','decelerationFactor'];
+const motionFields=[["OutputLimitPercent","Максимальный выход, %","Общий предел выхода, включая пусковой импульс. Проверьте допустимый уровень подключённого каскада.",1.0,100.0,"any","common"],["KickPercent","Пусковой импульс, %","Может превышать рабочий выход, но не общий предел. Например, старт 50%, движение 5%.",1.0,100.0,"any","kick"],["MovementDegrees","Подтверждение движения, °","Изменение угла для обнаружения страгивания. Выберите выше шума датчика.",0.001,10.0,"any","common"],["Velocity","Скорость, °/с","Предельная скорость профиля движения в каскадном режиме.",0.001,360.0,"any","cascade"],["Acceleration","Ускорение, °/с²","Ограничение ускорения профиля в обоих направлениях.",0.001,1000.0,"any","cascade"],["Deceleration","Торможение, °/с²","Допустимое замедление профиля. Подберите по инерции механизма.",0.001,1000.0,"any","cascade"],["Jerk","Рывок, °/с³","Ограничение изменения ускорения S-профиля. Меньше — плавнее.",0.001,10000.0,"any","cascade"],["PositionKp","Положение · P","Пропорциональная составляющая внешнего контура.",0.0,1000.0,"any","cascade"],["PositionKi","Положение · I","Интегральная составляющая внешнего контура. 0 — отключена.",0.0,1000.0,"any","cascade"],["PositionKd","Положение · D","Гашение движения по производной измеренного положения. 0 — отключено.",0.0,1000.0,"any","cascade"],["VelocityKp","Скорость · P","Пропорциональная составляющая внутреннего контура.",0.0,10000.0,"any","cascade"],["VelocityKi","Скорость · I","Интегральная составляющая внутреннего контура. 0 — отключена.",0.0,10000.0,"any","cascade"],["VelocityKd","Скорость · D","Производная измеренной скорости с фильтрацией. 0 — отключена.",0.0,10000.0,"any","cascade"],["Feedforward","Упреждение выхода, % на °/с","Приближённый выход на единицу скорости; ПИД исправляет остаточную ошибку.",0.0,100000.0,"any","cascade"],["PositionTolerance","Допуск положения, °","Допустимая ошибка при завершении наведения. Выберите по разрешению и шуму датчика.",0.001,90.0,"any","cascade"],["HoldResumeDegrees","Возобновлять удержание за, °","Порог коррекции отклонения; не меньше допуска положения.",0.001,180.0,"any","cascade"],["StoppedVelocity","Порог остановки, °/с","Измеренная скорость, ниже которой механизм считается остановленным.",0.001,10.0,"any","cascade"],["KickMs","Предел пускового импульса, мс","Если движение не обнаружено за это время, выход отключается с ошибкой.",20.0,10000.0,"1","kick"],["KickReleaseMs","Снятие пускового импульса, мс","Плавный переход от пускового выхода к рабочему после обнаружения движения.",20.0,2000.0,"1","kick"],["VelocityWindowMs","Окно оценки скорости, мс","Большее окно уменьшает шум, но увеличивает задержку. Не больше срока свежести.",40.0,600.0,"1","common"],["DerivativeFilterMs","Фильтр D, мс","Сглаживание производных обоих ПИД. Большее время сильнее подавляет шум.",20.0,2000.0,"1","cascade"],["FeedbackTimeoutMs","Срок свежести датчика, мс","При отсутствии новых измерений дольше этого срока выход отключается.",100.0,5000.0,"1","common"],["SettleMs","Подтверждение позиции, мс","Положение и скорость должны оставаться в допуске всё это время.",20.0,5000.0,"1","cascade"],["StallMs","Контроль заклинивания, мс","Отключение при отсутствии движения под ненулевым выходом. Смена цели таймер не сбрасывает.",500.0,30000.0,"1","common"]];
+function initMotionForms(){
+ const root=document.getElementById('motionForms');
+ for(const axis of ['az','el']){
+  const f=document.createElement('form');f.id=axis+'MotionForm';f.className='settings-pane';f.dataset.axis=axis;
+  f.innerHTML=`<h3>${axis.toUpperCase()}</h3><div class="row" data-motion-group="variable"><div class="field"><label for="${axis}RegulatorMode">Регулятор</label><select id="${axis}RegulatorMode" name="${axis}RegulatorMode" aria-describedby="${axis}MotionModeHelp"><option value="simple">Простой · без ПИД</option><option value="cascade">Каскадный ПИД</option></select><p class="field-help" id="${axis}MotionModeHelp">Параметры простого режима находятся ниже: скорость, выбег и S-образный разгон/торможение.</p></div></div><label class="check-field" data-motion-group="variable"><input type="checkbox" name="${axis}MotionKickEnabled"> Пусковой импульс для страгивания</label><label class="check-field" data-motion-group="cascade"><input type="checkbox" name="${axis}MotionHoldEnabled"> Активно удерживать заданную позицию</label><div class="row motion-fields"></div><p class="hint motion-status" role="status"></p><div class="form-actions"><button class="btn good" type="submit">Сохранить ${axis.toUpperCase()}</button><button class="btn" type="button" onclick="resetMotion('${axis}')">Сбросить ошибку</button></div>`;
+  const simple=document.createElement('div');simple.className='settings-group';simple.dataset.motionGroup='simpleSection';
+  simple.innerHTML='<h4>Параметры простого режима</h4><p class="hint" data-motion-group="simple">Разгон и торможение S-образные. Их плавность задаётся временем перехода; коэффициент торможения изменяет темп замедления. STOP отключает выход сразу.</p><div class="row simple-motion-fields"></div>';
+  for(const key of simpleMotionKeys){
+   const name=axis==='az'?key:'el'+key[0].toUpperCase()+key.slice(1),input=document.getElementById('forkSettings').elements[name],field=input.closest('.field');
+   field.dataset.motionGroup=key==='coastDegrees'?'coast':'simple';simple.querySelector('.simple-motion-fields').append(field);
+  }
+  f.insertBefore(simple,f.querySelector('.check-field'));
+  for(const [name,label,help,min,max,step,group] of motionFields){
+   const key=axis+'Motion'+name,field=document.createElement('div');field.className='field';field.dataset.motionGroup=group;
+   field.innerHTML=`<label for="${key}">${label}</label><input id="${key}" name="${key}" type="number" min="${min}" max="${max}" step="${step}" required aria-describedby="${key}Help"><p class="field-help" id="${key}Help">${help}</p>`;f.querySelector('.motion-fields').append(field);
+  }
+  f.addEventListener('input',()=>{f.dataset.dirty='1';motionVisibility(f)});f.onsubmit=saveMotion;root.append(f);motionVisibility(f);
+ }
+}
+function motionVisibility(f){
+ const axis=f.dataset.axis,variable=f.dataset.variable!=='false',cascade=variable&&f.elements[axis+'RegulatorMode'].value==='cascade',kick=f.elements[axis+'MotionKickEnabled'].checked;
+ for(const field of f.querySelectorAll('[data-motion-group]')){
+  const group=field.dataset.motionGroup,visible=group==='simpleSection'||group==='coast'?!cascade:group==='simple'?variable&&!cascade:group==='common'||group==='variable'?variable:group==='cascade'?cascade:variable&&kick;
+  field.classList.toggle('hide',!visible);for(const input of field.querySelectorAll('input,select'))input.disabled=!visible;
+ }
+}
+async function loadMotionSettings(){
+ if(window._forkState?.deviceRole==='hud')return;
+ try{const r=await fetch('/api/motion',{cache:'no-store'});if(!r.ok)return;const config=await r.json();
+  for(const [i,axis] of ['az','el'].entries()){
+   const f=document.getElementById(axis+'MotionForm'),m=config.axes[i];if(!m||f.dataset.dirty)continue;
+   f.elements[axis+'RegulatorMode'].value=m.regulatorMode;
+   for(const name of ['KickEnabled','HoldEnabled'])f.elements[axis+'Motion'+name].checked=!!m[name[0].toLowerCase()+name.slice(1)];
+   for(const [name] of motionFields)f.elements[axis+'Motion'+name].value=m[name];motionVisibility(f);
+  }
+ }catch(e){settingsFeedback('Не удалось прочитать параметры движения. Проверьте связь.')}
+}
+async function saveMotion(e){
+ e.preventDefault();const f=e.target,axis=f.dataset.axis,body=Object.fromEntries(new FormData(f));
+ for(const name of ['KickEnabled','HoldEnabled'])body[axis+'Motion'+name]=f.dataset.variable==='false'?'false':f.elements[axis+'Motion'+name].checked?'true':'false';
+ if(body[axis+'RegulatorMode']==='simple')body[axis+'MotionHoldEnabled']='false';
+ if(await forkPost('/api/settings',body)){delete f.dataset.dirty;await loadMotionSettings()}
+}
+async function resetMotion(axis){await forkPost('/api/motion/reset',{axis})}
+function renderMotionStatus(j){
+ const hud=j.deviceRole==='hud';document.getElementById('motionSettings').classList.toggle('hide',hud||j.build?.drive==='NONE');
+ const phases={idle:'Остановлен',kick:'Страгивание',run:'Движение',braking:'Торможение',holding:'Удержание',fault:'Ошибка'};
+ for(const [i,axis] of ['az','el'].entries()){
+  const f=document.getElementById(axis+'MotionForm'),a=j.axes?.[i];if(!a)continue;
+  f.classList.toggle('hide',axis==='el'&&j.model==='G800DXA');f.dataset.variable=String(!!a.speedEnabled);motionVisibility(f);
+  const state=!a.motionReady?'Ошибка сохранённых параметров движения':a.motionFault?'Выход отключён: '+motionFaultText(a.motionFault):phases[a.motionPhase]||'Остановлен';
+  f.querySelector('.motion-status').textContent=state+' · '+Number(a.measuredVelocity||0).toFixed(2)+' °/с';
+
+ }
+}
+function motionFaultText(code){return ({kick_start_timeout:'привод не тронулся',feedback_stale:'нет свежих показаний датчика',feedback_invalid:'неверные показания датчика',stalled:'движение прекратилось',planner_error:'ошибка профиля движения'})[code]||code}
+initMotionForms();
+
 function buttonTarget(j){return j.pendingValid?j.pending:j.lastTarget}
 function targetLabel(t,j){
  if(!t)return '';
  const az=t.hasAz?Number(t.az.toFixed(1))+'°':'',el=t.hasEl&&j.model!=='G800DXA'?'EL '+Number(t.el.toFixed(1))+'°':'';
  return az&&el?'AZ '+az+'\n'+el:az||el;
 }
+function targetCanStop(j){return j.moving||j.controlMode!=='manual'||j.axes?.some(a=>a.holdArmed||(a.regulatorMode==='cascade'&&a.tracking));}
 function updateTargetButton(j){
- const b=document.getElementById('executeTarget'),stop=j.moving||j.controlMode!=='manual',label=targetLabel(buttonTarget(j),j);
+ const b=document.getElementById('executeTarget'),stop=targetCanStop(j),label=targetLabel(buttonTarget(j),j);
  b.textContent=stop?'stop':label||'Повернуть';
  b.classList.toggle('stop',stop);b.classList.toggle('good',!stop);
  b.disabled=!stop&&!label;
@@ -637,7 +701,7 @@ function updateTargetButton(j){
 }
 async function targetAction(){
  const j=window._forkState;if(!j)return;
- if(j.moving||j.controlMode!=='manual'){await st();await upd();return;}
+ if(targetCanStop(j)){await st();await upd();return;}
  if(j.pendingValid){await forkPost('/api/execute',{});return;}
  const t=buttonTarget(j);if(!targetLabel(t,j))return;
  const body={};if(t.hasAz)body.az=t.az;if(t.hasEl&&j.model!=='G800DXA')body.el=t.el;
@@ -657,7 +721,8 @@ function updateFork(j){
  const elNodes=[document.getElementById('el').closest('.card'),document.getElementById('tel').closest('.field'),...document.querySelectorAll('.el-setting,.movebtn[data-dir="U"],.movebtn[data-dir="D"]')];
  [...elNodes,...document.querySelectorAll('.el-help')].forEach(n=>{if(n)n.classList.toggle('hide',g800)});
  const independent=['SEPARATE_PWM','BTS7960','SIMULATED'].includes(j.build?.drive);
- document.getElementById('speedSettings').classList.toggle('hide',j.build?.drive==='NONE'||(!g800&&!independent));
+ document.getElementById('coastSettings').classList.add('hide');
+ document.getElementById('speedSettings').classList.toggle('hide',j.build?.drive!=='YAESU'||!g800);
  document.getElementById('analogSpeedToggle').classList.toggle('hide',independent);
  document.getElementById('speedEnabled-help').classList.toggle('hide',independent);
  document.getElementById('elSpeedSettings').classList.toggle('hide',g800||!independent);
@@ -674,8 +739,8 @@ function updateFork(j){
  setText(document.getElementById('btmac'),j.btMac||'Недоступен');
  document.getElementById('movementButtons').classList.toggle('az-only',g800);
  const f=document.getElementById('forkSettings');
- for(const key of ['model','rotorName','n1mmPort','pstPort','reportPort','reportHost','n1mmManualFollow','pstManualFollow','gs232ManualFollow','rotctldManualFollow','externalAzMode','speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees','coastDegrees','decelerationFactor'])if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements[key].value=j[key];
- for(const key of ['speedPercent','startSpeedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees','coastDegrees','decelerationFactor']){const elKey='el'+key[0].toUpperCase()+key.slice(1);if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements[elKey].value=j[elKey];if(key.endsWith('Percent'))f.elements[key].min=independent?1:25;}
+ for(const key of ['model','rotorName','n1mmPort','pstPort','reportPort','reportHost','n1mmManualFollow','pstManualFollow','gs232ManualFollow','rotctldManualFollow','externalAzMode','startSpeedPercent'])if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements[key].value=j[key];
+ for(const axis of ['az','el'])for(const key of [...simpleMotionKeys,'startSpeedPercent']){const name=axis==='az'?key:'el'+key[0].toUpperCase()+key.slice(1),input=document.querySelector(`[name="${name}"]`),owner=input.closest('form');if(first||(!owner.dataset.dirty&&!owner.contains(document.activeElement)))input.value=j[axis==='az'?key:name];if(key.endsWith('Percent'))input.min=1;}
  setText(document.getElementById('elSpeedOutput'),(j.elSpeedOutputPercent||0).toFixed(1)+'%');
  setText(document.getElementById('speedOutput'),j.speedOutputPercent.toFixed(1)+'%');
  if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements.speedEnabled.checked=j.speedEnabled;
@@ -684,7 +749,8 @@ function updateFork(j){
  document.querySelector('#presetEditor [name=el]').min=j.elStart??0;document.querySelector('#presetEditor [name=el]').max=j.elMax??180;
  document.querySelector('#presetEditor [name=az]').min=j.azStart??0;document.querySelector('#presetEditor [name=az]').max=j.azMax??(j.azMode===36?360:450);
  if(first)fillPreset();
- const faults={calibration_storage_invalid:'Ошибка сохранённой калибровки: откройте настройки AZ',calibration_save_failed:'Не удалось сохранить калибровку',target_not_calibrated:'Сначала выполните калибровку',continuous_motion_timeout:'Превышено время непрерывного вращения',udp_bind_failed:'Не удалось открыть UDP-порт',pwm_attach_failed:'Не удалось включить регулировку скорости'};if(j.fault)setText(document.getElementById('forkMessage'),faults[j.fault]||'Ошибка управления');
+ renderMotionStatus(j);
+ const faults={calibration_storage_invalid:'Ошибка сохранённой калибровки: откройте настройки AZ',calibration_save_failed:'Не удалось сохранить калибровку',target_not_calibrated:'Сначала выполните калибровку',continuous_motion_timeout:'Превышено время непрерывного вращения',udp_bind_failed:'Не удалось открыть UDP-порт',pwm_attach_failed:'Не удалось включить регулировку скорости'};if(j.fault){const axis=j.axes?.find(a=>a.motionFault);setText(document.getElementById('forkMessage'),axis?motionFaultText(axis.motionFault):faults[j.fault]||'Ошибка управления');}
 }
 
 async function q(u){try{if((live.ready||window._forkState?.deviceRole==='hud')&&(u.startsWith('/api/move?')||u.startsWith('/api/target?'))){const url=new URL(u,location.origin);await forkPost(url.pathname,Object.fromEntries(url.searchParams));return ''}return await (await fetch(u,{cache:'no-store'})).text()}catch(e){return''}}

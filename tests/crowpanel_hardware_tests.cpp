@@ -1,9 +1,10 @@
+#include "motion_fixture.hpp"
 #include "hardware.hpp"
 #include <cassert>
 #include <cstdio>
 namespace forkrot::crowpanel { bool beginBus() { return true; } }
 int main() {
-  forkrot::Runtime runtime;
+  forkrot::MotionTestRuntime runtime;
   forkrot::Hardware hw(runtime);
   hw.beginDirections(); hw.beginAdc(); hw.beginInputs();
   assert(runtime.controller.driveFault);

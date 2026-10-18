@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "storage.hpp"
 #include "hardware.hpp"
 #include "hardware_form.hpp"
@@ -10,7 +11,7 @@ int main() {
     HardwareConfig cfg; cfg.drive=drive; cfg.simulation=simulation;
     cfg.pwmInverted=drive==2; cfg.bluetooth=false;
     assert(!board::validateHardware(cfg));
-    Runtime r; r.controller.configureHardware(cfg);
+    MotionTestRuntime r; r.controller.configureHardware(cfg);
     assert(r.controller.hardware==cfg);
     r.controller.feedback(0,0,true,true);
     Hardware h(r); fakeHardware={};
@@ -39,11 +40,12 @@ int main() {
   cfg.bluetooth=false; assert(!board::validateHardware(cfg));
 
   Storage s; Preferences::database.clear(); Preferences::failedBytesKey.clear();
-  Runtime first; s.loadHardware(first);
-  assert(first.recovery && first.recoveryReason==RecoveryReason::Initial);
-  assert(!first.hardwareRecord.hasConfirmed && first.controller.configurationLocked);
+  MotionTestRuntime first; s.loadHardware(first);
+  assert(!first.recovery && first.recoveryReason==RecoveryReason::None);
+  assert(first.hardwareRecord.hasConfirmed && !first.controller.configurationLocked);
+  assert(s.finishHardwareBoot(first));
   assert(s.stageHardware(first,first.controller.hardware));
-  Runtime initialTrial; s.loadHardware(initialTrial);
+  MotionTestRuntime initialTrial; s.loadHardware(initialTrial);
   assert(initialTrial.hardwareTrial && s.confirmHardware(initialTrial));
   s.loadHardware(first); assert(s.finishHardwareBoot(first));
   HardwareConfig candidate=first.controller.hardware;
@@ -51,7 +53,7 @@ int main() {
   candidate.simulation=true; candidate.bluetooth=true; candidate.bluetoothMode=BT_HC05;
   const auto good=first.hardwareRecord.good;
   assert(s.stageHardware(first,candidate));
-  Runtime trial; s.loadHardware(trial);
+  MotionTestRuntime trial; s.loadHardware(trial);
   assert(trial.hardwareTrial && !trial.recovery && trial.controller.configurationLocked);
   assert(trial.controller.hardware==candidate && trial.hardwareRecord.good==good);
   // Writing identical bytes is insufficient proof that NVS still accepts writes.
@@ -60,20 +62,20 @@ int main() {
   Preferences::failedBytesKey.clear();
   assert(s.probeHardwareStorage(trial) && trial.hardwareRecord.probeCounter==1);
   // A reset before explicit confirmation always goes to the minimal interface.
-  Runtime rolledBack; s.loadHardware(rolledBack);
+  MotionTestRuntime rolledBack; s.loadHardware(rolledBack);
   assert(rolledBack.recovery && !rolledBack.hardwareTrial && rolledBack.controller.configurationLocked);
   assert(rolledBack.hardwareRecord.good==good && !rolledBack.controller.hardware.bluetooth);
-  Runtime persistentRecovery; s.loadHardware(persistentRecovery);
+  MotionTestRuntime persistentRecovery; s.loadHardware(persistentRecovery);
   assert(persistentRecovery.recovery); // never retry the failed candidate automatically
   assert(s.stageHardware(persistentRecovery,candidate));
-  Runtime secondTrial; s.loadHardware(secondTrial);
+  MotionTestRuntime secondTrial; s.loadHardware(secondTrial);
   assert(s.confirmHardware(secondTrial));
   assert(secondTrial.controller.configurationLocked); // queues are cleared only by reboot
-  Runtime confirmed; s.loadHardware(confirmed);
+  MotionTestRuntime confirmed; s.loadHardware(confirmed);
   assert(!confirmed.recovery && !confirmed.hardwareTrial && confirmed.controller.hardware==candidate);
   assert(s.finishHardwareBoot(confirmed));
   assert(s.enterRecovery(confirmed,RecoveryReason::LowMemory));
-  Runtime lowMemory; s.loadHardware(lowMemory);
+  MotionTestRuntime lowMemory; s.loadHardware(lowMemory);
   assert(lowMemory.recovery && lowMemory.recoveryReason==RecoveryReason::LowMemory);
   assert(lowMemory.hardwareRecord.good==candidate && !lowMemory.controller.hardware.bluetooth);
   const auto oldGeneration=lowMemory.hardwareRecord.generation;
@@ -85,14 +87,14 @@ int main() {
   auto bytes=encodeHardware(lowMemory.hardwareRecord); HardwareRecord decoded;
   assert(decodeHardware(bytes,decoded)); bytes[12]^=1; assert(!decodeHardware(bytes,decoded));
   Preferences::database["hardware"]["config1"]=Preferences::Bytes(bytes.begin(),bytes.end());
-  Runtime corrupt; s.loadHardware(corrupt); assert(corrupt.recovery);
+  MotionTestRuntime corrupt; s.loadHardware(corrupt); assert(corrupt.recovery);
   assert(s.stageHardware(corrupt,good));
-  Runtime rtc; s.loadHardware(rtc,true); assert(rtc.recovery && rtc.controller.configurationLocked);
+  MotionTestRuntime rtc; s.loadHardware(rtc,true); assert(rtc.recovery && rtc.controller.configurationLocked);
 
-  Runtime catalog; catalog.hud.config.role=DeviceRole::Hud;
+  MotionTestRuntime catalog; catalog.hud.config.role=DeviceRole::Hud;
   assert(catalog.hud.add(42,{0x01020304,4534,false},"remote"));
   assert(s.saveHudConfig(catalog.hud.config) && s.saveHudPeers(catalog.hud));
-  Runtime configOnly; s.loadHud(configOnly,false);
+  MotionTestRuntime configOnly; s.loadHud(configOnly,false);
   assert(configOnly.hud.isHud() && configOnly.hud.count()==0);
   s.loadHud(configOnly,true); assert(configOnly.hud.count()==1);
   Calibration untouched(configOnly.controller); untouched.state().storageFault=true;

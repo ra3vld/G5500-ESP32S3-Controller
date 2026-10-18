@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "hud.hpp"
 #include <cassert>
 #include <cstdlib>
@@ -87,7 +88,7 @@ int main() {
     assert(!motor.moving());
   }
   // Client allocation failure leaves the mirror offline and motion unavailable.
-  Controller empty;
+  Controller empty = forkrot::testController();
   Protocol emptyProtocol(empty);
   Hud failed(empty, emptyProtocol);
   failed.config.role = DeviceRole::Hud;

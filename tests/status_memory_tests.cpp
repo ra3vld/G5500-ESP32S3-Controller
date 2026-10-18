@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "api.hpp"
 #include "write_budget.hpp"
 #include "byte_log.hpp"
@@ -23,7 +24,7 @@ void operator delete[](void *p, size_t) noexcept { std::free(p); }
 
 using namespace forkrot;
 int main() {
-  Controller controller;
+  Controller controller = forkrot::testController();
   Protocol protocol(controller);
   Settings settings;
   protocol.rotorName = "Россия\"\\\n";

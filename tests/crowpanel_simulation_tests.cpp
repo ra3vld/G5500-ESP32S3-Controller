@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "hardware.hpp"
 #include "crowpanel_knob.hpp"
 #include "storage.hpp"
@@ -8,12 +9,14 @@ namespace forkrot::crowpanel { bool beginBus() { return true; } }
 using namespace forkrot;
 static void fast(Controller &c) {
   for (auto &s : c.speeds) {
-    s = {100, 100, 100, 0, 0, 1};
+    s = {100, 100, 100, 100, 100, 1};
   }
+  // UI timing fixtures use an explicit 100% start; S-ramp dynamics are tested separately.
+  for(auto &m:c.motionSettings){m.kickEnabled=true;m.kickPercent=100;}
 }
 static void close(float value, float expected) { assert(std::abs(value - expected) < 0.002f); }
 int main() {
-  Runtime runtime;
+  MotionTestRuntime runtime;
   Hardware hw(runtime);
   hw.beginDirections(); hw.beginAdc(); hw.beginInputs();
   auto &c = runtime.controller;
@@ -42,13 +45,16 @@ int main() {
   const float beforeReverse = c.axes[0].current;
   c.target({0, 0, true, false}, false, 23100); c.tick(23100);
   close(c.axes[0].current, beforeReverse);
-  for (uint32_t at=23120;at<=23420;at+=20) c.tick(at);
-  assert(c.axes[0].direction==-1);
+  uint32_t reversedAt=0;
+  for (uint32_t at=23120;at<=24100;at+=20) {
+    c.tick(at); if(c.axes[0].direction==-1){reversedAt=at;break;}
+  }
+  assert(reversedAt && uint32_t(reversedAt-c.axes[0].offAt)>=300);
   const float reversePosition=c.axes[0].current;
-  c.tick(24420); close(c.axes[0].current, reversePosition-13.4f);
+  c.tick(reversedAt+1000); close(c.axes[0].current, reversePosition-13.4f);
   c.tick(100000); close(c.axes[0].current, 0); assert(!c.moving());
   // Jog obeys mechanical bounds and millis wraparound; no GPIO/ADC calls.
-  Controller wrap;
+  Controller wrap = forkrot::testController();
   fast(wrap);
   wrap.tick(0xfffffff0u); wrap.jog(0, 1, false, 0xfffffff0u); wrap.tick(0xfffffff0u);
   wrap.tick(uint32_t(0xfffffff0u + 1000u)); close(wrap.axes[0].current, 13.4f);
@@ -58,7 +64,7 @@ int main() {
   for (const auto mode : {Mode::Manual, Mode::Auto}) {
     for (unsigned axis = 0; axis < 2; ++axis) {
       for (bool reverse : {false, true}) {
-        Controller following;
+        Controller following = forkrot::testController();
         fast(following);
         following.feedback(reverse ? 140.f : 0.f, reverse ? 140.f : 0.f, true, true);
         following.setMode(mode, 100);
@@ -83,7 +89,7 @@ int main() {
   }
   // Knob pause holds both axes; the next single click reaches the original targets.
   for (const auto mode : {Mode::Manual, Mode::Auto}) {
-    Controller paused;
+    Controller paused = forkrot::testController();
     fast(paused);
     CrowPanelKnob pauseKnob(paused);
     uint32_t now = 100;
@@ -106,7 +112,7 @@ int main() {
     assert(!paused.moving());
   }
   // Actual CrowPanel settings: one detent starts motion in manual without a click.
-  Controller immediate;
+  Controller immediate = forkrot::testController();
   fast(immediate);
   CrowPanelKnob knob(immediate);
   immediate.tick(100);
@@ -146,7 +152,7 @@ int main() {
   assert(setting("invalid").status == 400 && !runtime.loggerSettings.encoderInverted);
   storage.saveForkSettings(runtime);
   assert(!std::get<bool>(Preferences::database["forkcfg"]["encinv"]));
-  Runtime loaded; storage.loadForkSettings(loaded);
+  MotionTestRuntime loaded; storage.loadForkSettings(loaded);
   assert(!loaded.loggerSettings.encoderInverted);
   assert(setting("true").status == 200);
   storage.saveForkSettings(runtime); storage.loadForkSettings(loaded);

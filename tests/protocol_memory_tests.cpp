@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "protocol.hpp"
 #include "input.hpp"
 #include "packet_queue.hpp"
@@ -15,14 +16,23 @@ void operator delete(void *p,size_t) noexcept { std::free(p); }
 void operator delete[](void *p,size_t) noexcept { std::free(p); }
 using namespace forkrot;
 int main() {
-  Controller c; Protocol p(c); c.feedback(20,30,true,true); c.setMode(Mode::Auto,0);
-  Controller stopController; stopController.feedback(20,30,true,true);
+  Controller c = forkrot::testController(); Protocol p(c); c.feedback(20,30,true,true); c.setMode(Mode::Auto,0);
+  Controller stopController = forkrot::testController(); stopController.feedback(20,30,true,true);
+  Controller regulated = forkrot::testController(); regulated.hardware.drive=DRIVE_BTS7960;
+  for(auto &m:regulated.motionSettings) m.mode=RegulatorMode::Cascade;
+  regulated.feedbackAt(0,20,true,0);regulated.feedbackAt(1,30,true,0);
   const std::string huge="<N1MMRotor><rotor>G5500</rotor><app>"+std::string(3800,'x')+"</app><goazi>180</goazi></N1MMRotor>";
   std::string many="M";while(many.size()<510)many+=" 1";
   LineBuffer input; PacketQueue<1024,8> queue;
   char out[512]; size_t length=0;uint32_t tag=0;std::string_view line;
   const std::string payload(512,'x');
   deny=true;
+  for(unsigned at=20;at<=2000;at+=20) {
+    regulated.feedbackAt(0,20+at*.001f,true,at);regulated.feedbackAt(1,30+at*.001f,true,at);
+    assert(regulated.target({50+at*.01f,60+at*.01f,true,true},false,at)==Result::Ok);
+    regulated.tick(at);
+    assert(regulated.axes[0].motionError==MotionError::None&&regulated.axes[1].motionError==MotionError::None);
+  }
   stopController.jog(0,1,false,0);stopController.jog(1,1,false,0);stopController.tick(0);
   assert(stopController.axes[0].direction==1 && stopController.axes[1].direction==1);
   stopController.stopNow(0,10);
@@ -61,5 +71,5 @@ int main() {
   assert(!input.feed('R', line) && !input.feed('\n', line));
   assert(!input.feed('C', line) && input.feed('\n', line) && line == "C");
   deny=false;
-  std::cout<<"PASS: 10000 bounded XML/sequence/line/byte-queue cycles with C++ allocations forbidden; early input rejection\n";
+  std::cout<<"PASS: two-axis Ruckig/PID replanning and 10000 XML/sequence/line/byte-queue cycles with C++ allocations forbidden\n";
 }

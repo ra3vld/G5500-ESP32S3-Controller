@@ -26,6 +26,10 @@ struct HudPreset {
   char label[49]{};
   Target target{};
 };
+struct HudMotion {
+  RegulatorMode mode=RegulatorMode::Simple;
+  bool ready=false,kickEnabled=false,holdEnabled=false;
+};
 struct HudState {
   Model model = Model::G5500;
   Mode mode = Mode::Manual;
@@ -37,6 +41,7 @@ struct HudState {
   uint32_t rangeRevision = 1;
   Axis axes[2]{};
   SpeedSettings speeds[2]{};
+  HudMotion motion[2]{};
   HudPreset presets[4];
   Target pending{}, lastTarget{0, 0, false, false};
   bool pendingValid = false, presetActive = false, targetKnown = false, speedEnabled = false,

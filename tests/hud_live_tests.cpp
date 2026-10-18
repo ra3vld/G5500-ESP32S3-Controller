@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "hud.hpp"
 #include <cassert>
 #include <deque>
@@ -8,7 +9,7 @@ struct Node;
 struct WirePacket { HudEndpoint from,to;std::vector<uint8_t> bytes; };
 struct Bus {unsigned dropAck=0;uint32_t now=0;std::vector<Node*> nodes;std::deque<WirePacket> queue;std::vector<WirePacket> history;void tick(uint32_t);};
 struct Node:HudTransport {
- Bus &bus;Controller c;Protocol p{c};Hud h{c,p};HudEndpoint endpoint;bool legacy=false;
+ Bus &bus;Controller c = forkrot::testController();Protocol p{c};Hud h{c,p};HudEndpoint endpoint;bool legacy=false;
  Node(Bus &b,int id,bool remote):bus(b),endpoint{uint32_t(id),4534,false}{h.config.role=remote?DeviceRole::Hud:DeviceRole::Controller;h.begin(id,id+100);h.setTransport(this);c.feedback(20,30,true,true);bus.nodes.push_back(this);}
  bool sendHud(const HudEndpoint &e,const uint8_t *p,size_t n) override {if(legacy&&p[4]>6)return true;bus.queue.push_back({endpoint,e,{p,p+n}});return true;}
  void select(Node &n){assert(h.add(n.h.id,n.endpoint,"drive"));assert(h.select(n.h.id));}

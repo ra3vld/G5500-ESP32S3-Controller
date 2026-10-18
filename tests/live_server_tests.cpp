@@ -1,13 +1,15 @@
+#include "motion_fixture.hpp"
 #include "live_server.hpp"
 #include <cassert>
 #include <iostream>
+#include <cmath>
 using namespace forkrot;
 // IDF 5.5.5 performs the handshake without invoking the URI handler.
 static int connect(int fd){const int rc=fakeServer.cfg.open_fn(&fakeServer,fd);if(rc==ESP_OK)fakeServer.websocketFds.insert(fd);return rc;}
 static int command(int fd,const std::string &data){httpd_req_t r{fakeServer.uri.user_ctx,HTTP_POST,fd,data};return fakeServer.uri.handler(&r);}
 static std::string packet(unsigned id,const char *path,const char *args=""){return "v=1&boot=a&selection=0&cid="+std::to_string(id)+"&path="+path+args;}
 int main(){
- Runtime runtime;runtime.hud.begin(1,10);runtime.controller.feedback(20,30,true,true);
+ MotionTestRuntime runtime;runtime.hud.begin(1,10);runtime.controller.feedback(20,30,true,true);
  LiveServer server(runtime);assert(server.begin());assert(fakeServer.cfg.max_open_sockets==4);
  assert(fakeServer.cfg.open_fn(&fakeServer,999)==ESP_OK);
  server.publish(5);pumpLive();assert(fakeServer.sent.empty()); // no frame before upgrade
@@ -40,19 +42,52 @@ int main(){
  assert(command(1001,packet(2,"/api/move","&d=S"))==ESP_OK);
  assert(command(1001,packet(3,"/api/target","&az=115"))==ESP_OK);
  server.commands(256);assert(runtime.controller.axes[0].target==115);
- // Queue saturation is explicit; never grow buffers or silently lose results.
- for(unsigned i=10;i<25;++i)command(1002,packet(i,"/api/target","&az=120"));
- assert(command(1002,packet(30,"/api/move","&d=S"))==ESP_OK);
- server.commands(260);assert(!runtime.controller.moving());server.publish(260);pumpLive();
- assert(fakeServer.closed.back()==1002);
+ // A burst retains the latest absolute target with bounded cancellation metadata.
+ for(unsigned i=10;i<210;++i) assert(command(1002,packet(i,"/api/target",("&az="+std::to_string(120+(i-10)*.1f)).c_str()))==ESP_OK);
+ server.commands(260);assert(std::abs(runtime.controller.axes[0].target-139.9f)<.001f);
+ server.publish(260);pumpLive();
+ bool cancelledRange=false;for(const auto &message:fakeServer.sent)cancelledRange|=message.second.find("cancelledThrough")!=std::string::npos;
+ assert(cancelledRange);assert(fakeServer.closed.back()!=1002);
+ assert(command(1002,packet(220,"/api/move","&d=S"))==ESP_OK);
+ server.commands(265);assert(!runtime.controller.moving());server.publish(265);pumpLive();
  for(unsigned t=300;t<=360;t+=5){server.publish(t);pumpLive();} // Drain earlier command replies.
  // Position samples coalesce at 5 Hz, while control/STOP remains immediate.
  runtime.controller.stopNow(-1,1000);server.publish(1000);pumpLive();fakeServer.sent.clear();
  for(unsigned t=1005;t<1200;t+=5){runtime.controller.feedback(float(t-1000),30,true,true);server.publish(t);pumpLive();}
  assert(fakeServer.sent.empty());
- server.publish(1200);pumpLive();assert(fakeServer.sent.size()==3);
+ server.publish(1200);pumpLive();assert(fakeServer.sent.size()==4);
  for(const auto &message:fakeServer.sent)assert(message.second.find("\"az\":195")!=std::string::npos);
- fakeServer.sent.clear();runtime.controller.setMode(Mode::Auto,1205);server.publish(1205);pumpLive();assert(fakeServer.sent.size()==3);
- fakeServer.sent.clear();runtime.controller.stopNow(-1,1210);server.publish(1210);pumpLive();assert(fakeServer.sent.size()==3);
+ fakeServer.sent.clear();runtime.controller.setMode(Mode::Auto,1205);server.publish(1205);pumpLive();assert(fakeServer.sent.size()==4);
+ fakeServer.sent.clear();runtime.controller.stopNow(-1,1210);server.publish(1210);pumpLive();assert(fakeServer.sent.size()==4);
+ // Sustain 200 absolute commands/s while the 20 ms controller keeps running.
+ auto &c=runtime.controller;c.hardware.drive=DRIVE_BTS7960;
+ c.motionSettings[0].kickEnabled=true;c.motionSettings[0].movementDegrees=.02f;
+ c.speeds[0].speedPercent=c.speeds[0].approachSpeedPercent=5;
+ c.speeds[0].coastDegrees=.1f;
+ c.feedbackAt(0,20,true,1480);server.publish(1480);pumpLive();
+ unsigned kicks=0;MotionPhase phase=MotionPhase::Idle;float position=20;
+ for(unsigned frame=0;frame<50;++frame) {
+   const unsigned at=1500+frame*20;
+   position+=c.axes[0].direction*c.axes[0].speedOutputPercent*.134f*.02f;
+   c.feedbackAt(0,position,true,at);
+   for(unsigned sub=0;sub<4;++sub) {
+     const unsigned n=frame*4+sub+1;
+     assert(command(1002,packet(300+n,"/api/target",("&az="+std::to_string(20+n*.1f)).c_str()))==ESP_OK);
+   }
+   server.commands(at);
+   // HTTPD services replies between 20 ms control ticks, as in the firmware loop.
+   for(unsigned sub=0;sub<4;++sub){server.publish(at+5*sub);pumpLive();}
+   if(c.axes[0].motionPhase==MotionPhase::Kick&&phase!=MotionPhase::Kick)++kicks;
+   phase=c.axes[0].motionPhase;
+   assert(c.axes[0].motionError==MotionError::None);
+ }
+ assert(kicks==1&&std::abs(c.axes[0].target-40)<.001f);
+ assert(c.axes[0].speedOutputPercent<=5.001f);
+ assert(command(1002,packet(501,"/api/move","&d=S"))==ESP_OK);server.commands(2500);
+ assert(!c.moving());server.publish(2500);pumpLive();
+ assert(command(1002,packet(500,"/api/target","&az=40"))==ESP_OK);server.commands(2520);
+ assert(!c.moving());server.publish(2520);pumpLive(); // Old delivery cannot rearm.
+ assert(command(1002,packet(502,"/api/target","&az=40"))==ESP_OK);server.commands(2540);
+ assert(c.axes[0].direction); // A new command may repeat the same coordinate.
  std::cout<<"PASS: actual HTTPD adapter: four clients, loop ownership, STOP priority, duplicate IDs, bounded backpressure, reconnect\n";
 }

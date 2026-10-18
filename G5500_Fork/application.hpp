@@ -27,6 +27,9 @@ public:
   void loadPrefs() override {
     storage_.loadPrefs(runtime_, calibration_, network_.credentials());
   }
+  void loadMotionSettings() override {
+    storage_.loadMotionSettings(runtime_);
+  }
   void loadProfilePresets() override {
     storage_.loadProfilePresets(runtime_);
   }
@@ -34,7 +37,11 @@ public:
     storage_.saveProfilePresets(runtime_);
   }
   void saveForkSettings() override {
-    storage_.saveForkSettings(runtime_);
+    if (!storage_.saveForkSettings(runtime_)) {
+      runtime_.controller.stopNow(-1,millis());
+      for(auto &m:runtime_.controller.motionSettings) m.ready=false;
+      runtime_.controller.fault="motion_storage_failed";
+    } else if(runtime_.controller.fault=="motion_storage_failed") runtime_.controller.fault.clear();
   }
   void setupWeb() override {
     web_server_.setupWeb();

@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 // Hold-to-run control: axes, ownership, stale input and remote packet ordering.
 #include "control.hpp"
 #include "crowpanel_touch.hpp"
@@ -12,7 +13,7 @@
 #include <vector>
 using namespace forkrot;
 static void core() {
-  Controller c;
+  Controller c = forkrot::testController();
   c.feedback(50, 50, true, true);
   assert(!c.displayedTarget().hasAz && !c.displayedTarget().hasEl);
   c.target({100, 0, true, false}, false, 0);
@@ -56,11 +57,11 @@ static void core() {
   for (auto &s : c.speeds) {
     s.speedPercent = 80;
     s.startSpeedPercent = 100;
-    s.accelerationMs = 0;
-    s.decelerationMs = 0;
+    s.accelerationMs = 100;
+    s.decelerationMs = 100;
   }
   run(5, 12, 3, .25f, -.75f, false, 1140);
-  c.tick(1440);
+  for (unsigned at = 1140; at <= 1740; at += 20) c.tick(at);
   if (c.variableSpeed(0)) {
     assert(std::abs(c.axes[0].speedOutputPercent - 20) < .01f);
   }
@@ -68,17 +69,17 @@ static void core() {
     assert(std::abs(c.axes[1].speedOutputPercent - 60) < .01f);
   }
   assert(c.speeds[0].speedPercent == 80 && c.speeds[1].speedPercent == 80);
-  run(5, 13, 3, 0, 0, true, 1450);
-  c.jog(0, 1, false, 1460);
-  c.tick(1760);
+  run(5, 13, 3, 0, 0, true, 1750);
+  c.jog(0, 1, false, 1760);
+  for (unsigned at = 1760; at <= 2160; at += 20) c.tick(at);
   if (c.variableSpeed(0)) {
     assert(c.axes[0].speedOutputPercent == 80);
   }
   // A pending sequence is still a sequence after tapping the displayed goals.
   c.stop();
   const Target points[] = {{150, 70, true, true}, {180, 80, true, true}};
-  assert(c.sequence(points, 2, 1000, 1800) == Result::Pending);
-  c.executeDisplayed(1810);
+  assert(c.sequence(points, 2, 1000, 2200) == Result::Pending);
+  c.executeDisplayed(2210);
   assert(c.sequenceCount() == 2);
 }
 static void touch() {
@@ -270,7 +271,7 @@ struct Bus {
 };
 struct Node : HudTransport {
   Bus &bus;
-  Controller c;
+  Controller c = forkrot::testController();
   Protocol p{c};
   Hud h{c, p};
   HudEndpoint endpoint;
@@ -361,7 +362,7 @@ static void fullscreenSwipeControl() {
     Bus bus;
     Node rotor(bus, 1, false), panel(bus, 2, true);
     for (auto &speed : rotor.c.speeds) {
-      speed.accelerationMs = speed.decelerationMs = 0; // Isolate capture from ramp timing.
+      speed.accelerationMs = speed.decelerationMs = 100;
     }
     panel.select(rotor);
     rotor.c.target({100, 80, true, true}, false, 0);
@@ -387,7 +388,8 @@ static void fullscreenSwipeControl() {
       };
       sample(true, 240, startY);
       const auto hold = [&](uint16_t x, uint16_t y, int az, int el) {
-        for (unsigned i = 0; i < 40; ++i) sample(true, x, y);
+        // Include the S-brake, mandatory 300 ms dead time and S-start.
+        for (unsigned i = 0; i < 60; ++i) sample(true, x, y);
         assert(rotor.c.axes[0].wanted == az && rotor.c.axes[1].wanted == el);
         assert(rotor.c.axes[0].direction == az && rotor.c.axes[1].direction == el);
       };
@@ -414,7 +416,7 @@ static void ringTargets() {
     bus.tick(t);
   }
   assert(panel.h.available());
-  Controller local;
+  Controller local = forkrot::testController();
   local.feedback(20, 50, true, true);
   CrowPanelKnob localKnob(local);
   HudKnob remoteKnob(panel.h, panel.c);

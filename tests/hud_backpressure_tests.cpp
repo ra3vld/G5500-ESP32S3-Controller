@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "hud.hpp"
 #include <cassert>
 #include <deque>
@@ -16,7 +17,7 @@ struct Bus {
 };
 struct Node : HudTransport {
   Bus &bus;
-  Controller c;
+  Controller c = forkrot::testController();
   Protocol p{c};
   Hud h{c, p};
   HudEndpoint endpoint;

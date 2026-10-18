@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "calibration.hpp"
 #include "hardware.hpp"
 #include "storage.hpp"
@@ -40,7 +41,7 @@ void calibrationMath() {
   CHECK(mapCal(2000, 100, 1100, 450) == 450);
   CHECK(mapCal(100, 100, 100, 450) == 0);
 
-  Controller controller;
+  Controller controller = forkrot::testController();
   Calibration calibration(controller);
   auto &data = calibration.state();
   data.az36LinearValid = true;
@@ -70,7 +71,7 @@ void calibrationMath() {
 
 void gpioOrdering() {
   fakeHardware = {};
-  Runtime runtime;
+  MotionTestRuntime runtime;
   Hardware hardware(runtime);
   hardware.beginDirections();
   for (unsigned i=0; i<fakeHardware.events.size(); i+=2) {
@@ -127,7 +128,7 @@ void gpioOrdering() {
   CHECK(detached);
   CHECK(fakeHardware.levels[PIN_SPEED] == LOW);
 
-  Runtime failingRuntime;
+  MotionTestRuntime failingRuntime;
   Hardware failingHardware(failingRuntime);
   failingRuntime.controller.model = Model::G800DXA;
   failingRuntime.controller.speedEnabled = true;
@@ -141,7 +142,7 @@ void gpioOrdering() {
 void storageCompatibility() {
   Preferences::database.clear();
   Preferences::opened.clear();
-  Runtime runtime;
+  MotionTestRuntime runtime;
   Calibration calibration(runtime.controller);
   WifiCredentials wifi;
   Storage storage;
@@ -287,7 +288,7 @@ void wifiPersistenceFailures() {
   CHECK(storage.saveWifi("Test network", "test-password") == WifiSaveResult::Ok);
 
   // New Storage object and full boot load exercise persistence, not RAM state.
-  Runtime rebootRuntime;
+  MotionTestRuntime rebootRuntime;
   Calibration rebootCalibration(rebootRuntime.controller);
   WifiCredentials reloaded;
   Storage rebootStorage;

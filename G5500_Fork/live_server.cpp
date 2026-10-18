@@ -9,16 +9,20 @@ namespace forkrot {
 namespace { struct Guard { SemaphoreHandle_t m; explicit Guard(SemaphoreHandle_t v):m(v){xSemaphoreTake(m,portMAX_DELAY);} ~Guard(){xSemaphoreGive(m);} }; }
 bool LiveServer::begin() {
   clients_.reset(new(std::nothrow) Clients{});
-  if(!clients_)return false;
+  state_.reset(new(std::nothrow) std::array<char,LIVE_STATE_CAPACITY>{});
+  if(!clients_ || !state_){clients_.reset();state_.reset();return false;}
   liveBootText(boot_,runtime_.hud.boot);
+  ingressRange_[0]=runtime_.controller.azRange;ingressRange_[1]=runtime_.controller.elRange;ingressEl_=runtime_.controller.model==Model::G5500;
+  for(unsigned i=0;i<2;++i) ingressReady_[i]=runtime_.controller.axes[i].calibrated &&
+    (!runtime_.controller.variableSpeed(i) || runtime_.controller.motionSettings[i].ready);
   mutex_=xSemaphoreCreateMutexStatic(&mutexStorage_);
   httpd_config_t cfg=HTTPD_DEFAULT_CONFIG();
   cfg.server_port=81; cfg.ctrl_port=32769; cfg.max_open_sockets=4; cfg.max_uri_handlers=1;
   cfg.stack_size=6144; cfg.recv_wait_timeout=1;cfg.send_wait_timeout=1;
   cfg.open_fn=opened;cfg.close_fn=closed;cfg.global_user_ctx=this;
-  if(httpd_start(&server_,&cfg)!=ESP_OK){server_=nullptr;clients_.reset();return false;}
+  if(httpd_start(&server_,&cfg)!=ESP_OK){server_=nullptr;clients_.reset();state_.reset();return false;}
   httpd_uri_t uri{};uri.uri="/api/live";uri.method=HTTP_GET;uri.handler=handler;uri.user_ctx=this;uri.is_websocket=true;
-  if(httpd_register_uri_handler(server_,&uri)!=ESP_OK){httpd_stop(server_);server_=nullptr;clients_.reset();return false;}
+  if(httpd_register_uri_handler(server_,&uri)!=ESP_OK){httpd_stop(server_);server_=nullptr;clients_.reset();state_.reset();return false;}
   return true;
 }
 esp_err_t LiveServer::opened(httpd_handle_t server,int fd) {
@@ -47,6 +51,11 @@ void LiveServer::reply(Client &c,uint32_t id,const char *body) {
   if(n<0||size_t(n)>=sizeof r.data){c.closing=true;return;}
   r.size=size_t(n);++c.count;
 }
+void LiveServer::cancelTarget(Client &c,uint32_t id) {
+  if(!c.cancelledFrom) c.cancelledFrom=c.cancelledThrough=id;
+  else if(id==c.cancelledThrough+1) c.cancelledThrough=id;
+  else reply(c,id,"{\"ok\":false,\"result\":\"cancelled\",\"superseded\":true}");
+}
 esp_err_t LiveServer::handler(httpd_req_t *req) {
   auto &self=*static_cast<LiveServer *>(req->user_ctx); const int fd=httpd_req_to_sockfd(req);
   if(req->method==HTTP_GET) {
@@ -67,8 +76,31 @@ esp_err_t LiveServer::handler(httpd_req_t *req) {
     if(request.id<=c.lastId){self.reply(c,request.id,"{\"ok\":false,\"result\":\"cancelled\"}");return ESP_OK;}
     c.lastId=request.id;
     auto &slot=request.stop()?c.stop:c.command;
-    if(slot.size)self.reply(c,request.id,"{\"ok\":false,\"result\":\"busy\"}");
-    else slot=input;
+    if(slot.size) {
+      LiveRequest old;
+      bool replace=!request.stop() && old.parse({slot.data,slot.size}) &&
+        old.path=="/api/target" && request.path=="/api/target" && old.boot==request.boot &&
+        old.selection==request.selection && old.get("rangeRevision")==request.get("rangeRevision");
+      if(replace) {
+        for(unsigned axis=0;axis<2;++axis) for(const LiveRequest *candidate:{&old,&request}) {
+          const auto value=candidate->get(axis?"el":"az"); if(value.empty()) continue;
+          float angle; if(!number(value,angle) || !self.ingressRange_[axis].contains(angle) ||
+              (axis && !self.ingressEl_ && angle!=0) ||
+              ((axis==0 || self.ingressEl_) && !self.ingressReady_[axis])) replace=false;
+        }
+      }
+      if(replace) {
+        bool barrier=false; LiveRequest stop;
+        if(c.stop.size && stop.parse({c.stop.data,c.stop.size})) barrier=old.id<stop.id && stop.id<request.id;
+        if(!barrier) for(const char *key:{"az","el"}) if(request.get(key).empty() && !old.get(key).empty()) {
+          float angle; if(!number(old.get(key),angle)) { replace=false; break; }
+          const int added=std::snprintf(input.data+input.size,sizeof input.data-input.size,"&%s=%.9g",key,double(angle));
+          if(added<0 || size_t(added)>=sizeof input.data-input.size) { replace=false;break; } input.size+=size_t(added);
+        }
+        if(replace) { self.cancelTarget(c,old.id);slot=input; }
+      }
+      if(!replace) self.reply(c,request.id,"{\"ok\":false,\"result\":\"busy\"}");
+    } else slot=input;
     return ESP_OK;
   }
   return ESP_FAIL;
@@ -105,7 +137,11 @@ void LiveServer::commands(uint32_t now) {
 }
 void LiveServer::publish(uint32_t now) {
   if(!server_)return;
-  bool any=false;{Guard lock(mutex_);for(auto &c:*clients_)any|=c.fd>=0;}
+  bool any=false;{Guard lock(mutex_);
+    ingressRange_[0]=runtime_.controller.azRange;ingressRange_[1]=runtime_.controller.elRange;ingressEl_=runtime_.controller.model==Model::G5500;
+    for(unsigned i=0;i<2;++i) ingressReady_[i]=runtime_.controller.axes[i].calibrated &&
+      (!runtime_.controller.variableSpeed(i) || runtime_.controller.motionSettings[i].ready);
+    for(auto &c:*clients_)any|=c.fd>=0;}
   if(!any)return;
   const uint32_t critical=liveControlFingerprint(runtime_.controller,runtime_.hud);
   if(critical!=controlHash_ || uint32_t(now-publishedAt_)>=WebPositionIntervalMs) {
@@ -116,14 +152,14 @@ void LiveServer::publish(uint32_t now) {
       Guard lock(mutex_);
       if(hash!=hash_||uint32_t(now-publishedAt_)>=250){
         hash_=hash;publishedAt_=now;++revision_;char boot[17];liveBootText(boot,runtime_.hud.boot);
-        JsonWriter out(state_,sizeof state_);out<<"{\"v\":1,\"type\":\"state\",\"boot\":"<<jsonQuoted(boot)<<",\"revision\":"<<revision_<<",\"state\":"<<std::string_view(j.data(),j.size())<<'}';
+        JsonWriter out(state_->data(),state_->size());out<<"{\"v\":1,\"type\":\"state\",\"boot\":"<<jsonQuoted(boot)<<",\"revision\":"<<revision_<<",\"state\":"<<std::string_view(j.data(),j.size())<<'}';
         stateSize_=out.good()?out.size():0;
       }
     }
   }
   bool queue=false;
   {Guard lock(mutex_);
-    bool needed=false;for(const auto &c:*clients_)needed|=c.fd>=0&&(c.closing||c.count||c.revision!=revision_);
+    bool needed=false;for(const auto &c:*clients_)needed|=c.fd>=0&&(c.closing||c.count||c.cancelledFrom||c.revision!=revision_);
     if(needed&&!workPending_&&uint32_t(now-wakeAt_)>=5){workPending_=true;wakeAt_=now;queue=true;}
   }
   if(queue&&httpd_queue_work(server_,sendWork,this)!=ESP_OK){Guard lock(mutex_);workPending_=false;++queueErrors_;}
@@ -145,8 +181,13 @@ void LiveServer::sendWork(void *context) {
     {Guard lock(self.mutex_);fd=client.fd;if(fd<0)continue;
       if(httpd_ws_get_fd_info(self.server_,fd)!=HTTPD_WS_CLIENT_WEBSOCKET)continue;
       close=client.closing&&!client.stop.size;
-      if(!close&&client.count){auto &r=client.replies[client.head];n=r.size;std::memcpy(data,r.data,n);client.head=(client.head+1)%4;--client.count;}
-      else if(!close&&client.revision!=self.revision_&&self.stateSize_){n=self.stateSize_;std::memcpy(data,self.state_,n);client.revision=self.revision_;}
+      if(!close&&client.cancelledFrom){
+        const int size=std::snprintf(data,sizeof data,"{\"v\":1,\"type\":\"result\",\"boot\":\"%s\",\"id\":%lu,\"cancelledFrom\":%lu,\"cancelledThrough\":%lu,\"result\":{\"ok\":false,\"result\":\"cancelled\",\"superseded\":true}}",self.boot_,(unsigned long)client.cancelledThrough,(unsigned long)client.cancelledFrom,(unsigned long)client.cancelledThrough);
+        if(size>0 && size_t(size)<sizeof data)n=size_t(size);
+        client.cancelledFrom=client.cancelledThrough=0;
+      }
+      else if(!close&&client.count){auto &r=client.replies[client.head];n=r.size;std::memcpy(data,r.data,n);client.head=(client.head+1)%4;--client.count;}
+      else if(!close&&client.revision!=self.revision_&&self.stateSize_){n=self.stateSize_;std::memcpy(data,self.state_->data(),n);client.revision=self.revision_;}
     }
     if(n){httpd_ws_frame_t frame{};frame.type=HTTPD_WS_TYPE_TEXT;frame.final=true;frame.payload=reinterpret_cast<uint8_t *>(data);frame.len=n;
       const bool sent=httpd_ws_send_frame_async(self.server_,fd,&frame)==ESP_OK;

@@ -20,8 +20,11 @@ constexpr uint32_t kMaximumSequenceIntervalMs = 999000;
 
 Controller::Controller() { configureHardware(hardware); }
 void Controller::configureHardware(const HardwareConfig &config) {
+  prepareMotionPlanner();
   hardware = config;
   speeds = {};
+  motionSettings = {};
+  motion_ = {};
   speeds[1].slowdownDegrees = 2;
   speedEnabled = hardware.drive != DRIVE_YAESU;
   if (hardware.drive == DRIVE_YAESU) speeds[0] = {50, 25, 25, 2000, 1500, 10};
@@ -68,6 +71,8 @@ Controller &Controller::operator=(const Controller &other) {
   presetSlot = other.presetSlot;
   speedEnabled = other.speedEnabled;
   speeds = other.speeds;
+  motionSettings = other.motionSettings;
+  motion_ = other.motion_;
   driveFault = other.driveFault;
   stopEpoch = other.stopEpoch;
   fault = other.fault;
@@ -123,7 +128,7 @@ bool Controller::valid(Target candidate) const {
           (elRange.contains(candidate.el) &&
            (model == Model::G5500 || candidate.el == 0)));
 }
-Result Controller::start(Target nextTarget, uint32_t, bool external) {
+Result Controller::start(Target nextTarget, uint32_t, bool) {
   if (driveFault) return Result::Invalid;
   if (!valid(nextTarget)) {
     return Result::Invalid;
@@ -132,31 +137,38 @@ Result Controller::start(Target nextTarget, uint32_t, bool external) {
       (nextTarget.hasEl && model == Model::G5500 && !axes[1].calibrated)) {
     return Result::NotCalibrated;
   }
+  for (unsigned i=0; i<2; ++i) if ((i ? nextTarget.hasEl && model == Model::G5500 : nextTarget.hasAz) &&
+      (axes[i].motionError != MotionError::None || (variableSpeed(i) && !motionSettings[i].ready))) return Result::Unavailable;
   bool accepted = false;
   targetKnown = true;
   for (unsigned i = 0; i < 2; ++i) {
     if ((i == 0 ? nextTarget.hasAz : nextTarget.hasEl) && (i == 0 || model == Model::G5500)) {
       Axis &axis = axes[i];
       const float value = i ? nextTarget.el : nextTarget.az;
-      if (external && axis.accepted && std::abs(value - axis.acceptedTarget) <= tolerance(i)) continue;
+      const bool unchanged = axis.accepted && value == axis.target && (axis.tracking || axis.holdArmed);
       accepted = true;
-      ++motionEpoch[i];
       axis.acceptedTarget = value;
       axis.accepted = true;
-      axis.completed = false;
       axis.target = value;
       axis.targetKnown = true;
       manualScale_[i] = 1;
-      float difference = axis.target - axis.current;
-      axis.wanted = std::abs(difference) <= tolerance(i) ? 0 : difference > 0 ? 1 : -1;
-      axis.tracking = axis.wanted != 0;
+      if (unchanged) continue;
+      ++motionEpoch[i];
+      axis.completed = false;
+      const bool cascade = variableSpeed(i) && motionSettings[i].mode == RegulatorMode::Cascade;
+      axis.holdArmed = cascade && motionSettings[i].holdEnabled;
+      const float difference = axis.target - axis.current;
+      const int requested = std::abs(difference) <= tolerance(i) ? 0 : difference > 0 ? 1 : -1;
+      if (!cascade) axis.wanted = requested;
+      else if (!axis.direction) axis.wanted = requested;
+      axis.tracking = cascade || requested != 0;
       axis.completed = !axis.tracking;
     }
   }
   if (accepted) {
     lastTarget = nextTarget;
     if (model == Model::G800DXA) lastTarget.hasEl = false;
-    fault.clear();
+    if(axes[0].motionError==MotionError::None && axes[1].motionError==MotionError::None) fault.clear();
   }
   return Result::Ok;
 }
@@ -179,7 +191,9 @@ Result Controller::target(Target nextTarget, bool external, uint32_t now, bool f
   }
   cancelSequence();
   if (external && mode == Mode::Manual && !followInManual) {
-    pending = nextTarget;
+    if (!pendingValid) pending = {0,0,false,false};
+    if (nextTarget.hasAz) { pending.az=nextTarget.az; pending.hasAz=true; }
+    if (nextTarget.hasEl) { pending.el=nextTarget.el; pending.hasEl=true; }
     pendingValid = true;
     return Result::Pending;
   }
@@ -220,13 +234,20 @@ Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now
     presetSlot = -1;
   }
   if (driveFault) return Result::Invalid;
+  if (axes[axis].motionError != MotionError::None || (variableSpeed(axis) && !motionSettings[axis].ready)) return Result::Unavailable;
+  if (variableSpeed(axis) && motionSettings[axis].mode == RegulatorMode::Cascade && !axes[axis].calibrated) return Result::NotCalibrated;
+  if (axes[axis].tracking || axes[axis].holdArmed) {
+    // Taking over a running position command changes intent, not the current
+    // velocity/acceleration boundary state or the load compensation integral.
+    axes[axis].holdArmed=false;motion_[axis].positionPid.reset();motion_[axis].settling=false;
+  }
   ++motionEpoch[axis];
   manualScale_[axis] = 1;
   axes[axis].completed = false;
   axes[axis].accepted = false;
   axes[axis].tracking = false;
   axes[axis].wanted = direction;
-  fault.clear();
+  if(axes[0].motionError==MotionError::None && axes[1].motionError==MotionError::None) fault.clear();
   return Result::Ok;
 }
 void Controller::stop(int axis) {
@@ -252,6 +273,7 @@ void Controller::stop(int axis) {
       axes[i].tracking = false;
       axes[i].completed = false;
       axes[i].speedOutputPercent = 0;
+      cancelMotion(unsigned(i));
     }
   }
 }
@@ -275,6 +297,7 @@ bool Controller::stopOwnedJog(unsigned axis, uint32_t epoch, uint32_t now) {
   ++motionEpoch[axis];
   axes[axis].wanted = 0;
   axes[axis].speedOutputPercent = 0;
+  cancelMotion(axis);
   output(axis, 0, now);
   return true;
 }
@@ -423,6 +446,10 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
     return Result::Invalid;
   }
   const float values[] = {az, el};
+  for(unsigned i=0;i<2;++i) if((mask&(1u<<i)) && values[i]!=0 && !(s->blocked&(1u<<i))) {
+    if(axes[i].motionError!=MotionError::None || (variableSpeed(i) && !motionSettings[i].ready)) { closeManual(*s,now);return Result::Unavailable; }
+    if(variableSpeed(i) && motionSettings[i].mode==RegulatorMode::Cascade && !axes[i].calibrated) { closeManual(*s,now);return Result::NotCalibrated; }
+  }
   for (unsigned i = 0; i < 2; ++i) {
     const uint8_t bit = 1u << i;
     if (motionEpoch[i] != s->epoch[i]) {
@@ -499,7 +526,9 @@ void Controller::setModel(Model nextModel) {
     axis.hasRun = false;
     axis.accepted = false;
     axis.targetKnown = false;
+    axis.measuredVelocity = axis.requestedVelocity = axis.profileAcceleration = 0;
   }
+  motion_ = {};
 }
 void Controller::setMaximum(float value) {
   if (value == 360 || value == 450) {
@@ -513,7 +542,7 @@ bool Controller::setRange(AzRange range, uint8_t profile, uint32_t now) {
   if (azRange == range && azProfile == profile) {
     return true;
   }
-  stopNow(0, now);
+  resetFeedback(0, now);
   azRange = range;
   azProfile = profile;
   if (!++rangeRevision) {
@@ -529,7 +558,7 @@ bool Controller::setRange(AzRange range, uint8_t profile, uint32_t now) {
 bool Controller::setElRange(RotationRange next, uint8_t profile, uint32_t now) {
   if (remote || model != Model::G5500 || !validElProfile(profile, next)) return false;
   if (elRange == next && elProfile == profile) return true;
-  stopNow(1, now);
+  resetFeedback(1, now);
   elRange = next;
   elProfile = profile;
   if (!++rangeRevision) ++rangeRevision;
@@ -715,6 +744,8 @@ void Controller::tick(uint32_t now) {
     }
   }
   }
+  if (hardware.simulation) for (unsigned i=0; i<2; ++i)
+    if (i==0 || model==Model::G5500) feedbackAt(i,axes[i].current,true,now);
   if (!sequence_.empty() && uint32_t(now - sequenceAdvancedAt_) >= sequenceIntervalMs_) {
     if (++sequenceIndex_ >= sequence_.size()) {
       sequence_.clear();
@@ -735,9 +766,9 @@ void Controller::tick(uint32_t now) {
       axis.tracking = false;
     }
     if (axis.tracking &&
-        (!axis.calibrated ||
+        (!axis.calibrated || ((motionSettings[i].mode != RegulatorMode::Cascade || !variableSpeed(i)) && (
          (axis.wanted > 0 && axis.current >= axis.target - tolerance(i)) ||
-         (axis.wanted < 0 && axis.current <= axis.target + tolerance(i)))) {
+         (axis.wanted < 0 && axis.current <= axis.target + tolerance(i)))))) {
       axis.completed = axis.calibrated;
       axis.wanted = 0;
       axis.tracking = false;
@@ -762,46 +793,15 @@ void Controller::tick(uint32_t now) {
       stop();
       fault = "continuous_motion_timeout";
     }
-    const bool variableSpeed = this->variableSpeed(i);
-    const auto &speed = speeds[i];
-    if (variableSpeed && axis.direction && axis.wanted && axis.direction != axis.wanted) {
-      // Brake in the old direction, then let output() enforce the 300 ms interlock.
-      axis.speedOutputPercent =
-          std::max(0.f, axis.speedOutputPercent -
-                            speed.decelerationFactor * speed.speedPercent * float(elapsed) /
-                                std::max(1u, speed.decelerationMs));
-      if (axis.speedOutputPercent > 0) {
-        continue;
-      }
-    }
-    const int oldDirection = axis.direction;
-    output(i, axis.wanted, now);
-    if (!variableSpeed || !axis.direction) {
-      axis.speedOutputPercent = 0;
-      continue;
-    }
-    float requested = float(speed.speedPercent) * manualScale_[i];
-    if (axis.tracking) {
-      const float distance = std::abs(axis.target - axis.current);
-      const float fraction = std::max(0.f, std::min(1.f, (distance - tolerance(i)) /
-                                                             std::max(1u, speed.slowdownDegrees)));
-      const float approach = float(std::min(speed.approachSpeedPercent, speed.speedPercent));
-      requested = approach + (speed.speedPercent - approach) * fraction;
-    }
-    if (!oldDirection) {
-      axis.speedOutputPercent = std::min(float(speed.startSpeedPercent), requested);
-    } else if (requested > axis.speedOutputPercent) {
-      axis.speedOutputPercent =
-          std::min(requested, axis.speedOutputPercent +
-                                  speed.speedPercent * float(elapsed) / std::max(1u, speed.accelerationMs));
-    } else {
-      axis.speedOutputPercent =
-          std::max(requested, axis.speedOutputPercent -
-                                  speed.decelerationFactor * speed.speedPercent * float(elapsed) /
-                                      std::max(1u, speed.decelerationMs));
+    if (!axis.calibrated && axis.holdArmed) { motionFault(i,MotionError::FeedbackInvalid,now); continue; }
+    if (this->variableSpeed(i)) tickMotion(i,now);
+    else {
+      cancelMotion(i);
+      output(i,axis.wanted,now);
+      axis.speedOutputPercent=0;
     }
   }
-  if (presetActive && !moving()) {
+  if (presetActive && !moving() && !axes[0].tracking && !axes[1].tracking) {
     presetActive = false;
     presetSlot = -1;
   }

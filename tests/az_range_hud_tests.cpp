@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "hud.hpp"
 #include "hud_input.hpp"
 #include "api.hpp"
@@ -24,10 +25,10 @@ struct Bus {
 struct Node : HudTransport {
   Bus &bus;
   HudEndpoint endpoint;
-  Controller controller;
+  Controller controller = forkrot::testController();
   Protocol protocol{controller};
   Hud hud{controller, protocol};
-  unsigned maxVersion = 3;
+  unsigned maxVersion = 4;
   unsigned selectionChanges = 0;
   void selectionChanged() override { ++selectionChanges; }
   Node(Bus &b, uint64_t id, uint32_t address, bool remote = false) : bus(b), endpoint{address, 4534, false} {
@@ -72,7 +73,7 @@ int main() {
     Bus bus;Node rotor(bus,1,1), panel(bus,2,2,true);
     rotor.controller.setRange(range,AZ_CUSTOM);rotor.controller.feedback(range.start,20,true,true);
     panel.save(rotor);panel.hud.select(1);bus.tick(100);
-    assert(panel.hud.available() && panel.hud.active()->wireVersion==3);
+    assert(panel.hud.available() && panel.hud.active()->wireVersion==4);
     assert(panel.controller.azRange==range && panel.controller.rangeRevision==rotor.controller.rangeRevision);
     assert(panel.controller.target({range.end,0,true,false},false,100)==Result::Deferred);
     const auto request=panel.hud.requestId();bus.tick(110);
@@ -95,27 +96,27 @@ int main() {
   { // New HUD falls back to a real HUD/1 wire image for a legacy standard-range peer.
     Bus bus;Node rotor(bus,1,1), panel(bus,2,2,true);rotor.maxVersion=1;
     panel.save(rotor);panel.hud.select(1);bus.tick(100);assert(!panel.hud.available());
-    bus.tick(200);bus.tick(300);assert(panel.hud.available() && panel.hud.active()->wireVersion==1);
+    bus.tick(200);bus.tick(300);bus.tick(400);assert(panel.hud.available() && panel.hud.active()->wireVersion==1);
     assert(panel.controller.minimum==0 && panel.controller.maximum==450);
-    panel.controller.target({100,0,true,false},false,301);bus.tick(310);
+    panel.controller.target({100,0,true,false},false,401);bus.tick(410);
     assert(rotor.controller.axes[0].target==100);
   }
   { // A legacy HUD must not keep controlling after the controller switches to custom.
     Bus bus;Node rotor(bus,1,1), panel(bus,2,2,true);panel.maxVersion=1;
-    panel.save(rotor);panel.hud.select(1);bus.tick(100);bus.tick(200);bus.tick(300);
+    panel.save(rotor);panel.hud.select(1);bus.tick(100);bus.tick(200);bus.tick(300);bus.tick(400);
     assert(panel.hud.available() && panel.hud.active()->wireVersion==1);
-    rotor.controller.setRange({-60,390},AZ_CUSTOM,301);rotor.controller.feedback(0,20,true,true);
-    panel.controller.target({100,0,true,false},false,301);bus.tick(310);
+    rotor.controller.setRange({-60,390},AZ_CUSTOM,401);rotor.controller.feedback(0,20,true,true);
+    panel.controller.target({100,0,true,false},false,401);bus.tick(410);
     assert(!rotor.controller.moving() && !rotor.controller.axes[0].targetKnown);
-    rotor.controller.jog(0,1,false,311);rotor.controller.tick(311);assert(rotor.controller.moving());
-    panel.controller.stopNow(-1,312);bus.tick(320);assert(!rotor.controller.moving());
+    rotor.controller.jog(0,1,false,411);rotor.controller.tick(411);assert(rotor.controller.moving());
+    panel.controller.stopNow(-1,412);bus.tick(420);assert(!rotor.controller.moving());
   }
   for (unsigned oldVersion : {1u,2u,3u}) {
     Bus bus;Node rotor(bus,1,1),panel(bus,2,2,true);panel.maxVersion=oldVersion;
-    panel.save(rotor);panel.hud.select(1);bus.tick(100);bus.tick(200);bus.tick(300);
+    panel.save(rotor);panel.hud.select(1);bus.tick(100);bus.tick(200);bus.tick(300);bus.tick(400);
     assert(panel.hud.available() && panel.hud.active()->wireVersion==oldVersion);
-    rotor.controller.setElRange({-30,210},EL_CUSTOM,301);rotor.controller.feedback(20,10,true,true);
-    panel.controller.target({100,100,true,true},false,302);bus.tick(310);
+    rotor.controller.setElRange({-30,210},EL_CUSTOM,401);rotor.controller.feedback(20,10,true,true);
+    panel.controller.target({100,100,true,true},false,402);bus.tick(410);
     assert(!rotor.controller.moving()); // Old geometry and old protocol cannot start either axis.
     if(oldVersion==3) {
       bus.tick(600);assert((panel.controller.elRange==RotationRange{-30,210}));
@@ -126,5 +127,5 @@ int main() {
     rotor.controller.jog(1,1,false,700);rotor.controller.tick(700);
     panel.controller.stopNow(-1,701);bus.tick(710);assert(!rotor.controller.moving());
   }
-  std::cout<<"PASS: HUD/3 AZ/EL ranges/revisions, delayed-command rejection, HUD/1 fallback and STOP compatibility\n";
+  std::cout<<"PASS: HUD/4 AZ/EL ranges/revisions, delayed-command rejection, HUD/1 fallback and STOP compatibility\n";
 }

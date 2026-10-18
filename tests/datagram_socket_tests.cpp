@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 // Exercise the firmware's actual datagram adapter over localhost UDP.
 #include "datagram_socket.hpp"
 #include "protocol.hpp"
@@ -42,7 +43,7 @@ int main() {
   assert(n1mm.receive(packet) == DatagramResult::Empty);
   assert(allocations == before); // no RX allocation while idle
 
-  Controller controller;
+  Controller controller = forkrot::testController();
   Protocol protocol(controller);
   const std::string target = "<N1MMRotor><rotor>G5500</rotor><goazi>123</goazi></N1MMRotor>";
   assert(logger.send(loopback, n1mm.localPort(), target));

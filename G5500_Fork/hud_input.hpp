@@ -14,6 +14,10 @@ class HudKnob {
   uint32_t busyAt_ = 0, busyEpoch_ = 0;
   bool busyNotice_ = false;
   unsigned axis_ = 0;
+  bool active() const {
+    return controller_.moving() || std::any_of(controller_.axes.begin(),controller_.axes.end(),
+        [](const Axis &a){return a.tracking || a.holdArmed;});
+  }
   void recordResult(Result result, uint32_t now) {
     lastResult = result;
     busyNotice_ = result == Result::Busy;
@@ -32,7 +36,7 @@ class HudKnob {
     if (pauseRequest_) {
       const auto result = hud_.result(pauseRequest_).result;
       if (result != Result::Deferred) {
-        if (result != Result::Ok || controller_.stopEpoch != pauseEpoch_ || controller_.moving())
+        if (result != Result::Ok || controller_.stopEpoch != pauseEpoch_ || active())
           resume_ = false;
         stopEpoch_ = controller_.stopEpoch;
         pauseRequest_ = 0;
@@ -168,9 +172,10 @@ public:
       } else if (!long_) {
         if (menu) {
           choose(highlighted);
-        } else if (controller_.moving()) {
+        } else if (active()) {
           resumeTarget_ = {controller_.axes[0].target, controller_.axes[1].target,
-                           controller_.axes[0].tracking, controller_.axes[1].tracking};
+                           controller_.axes[0].tracking || controller_.axes[0].holdArmed,
+                           controller_.axes[1].tracking || controller_.axes[1].holdArmed};
           pauseEpoch_ = controller_.stopEpoch + 1;
           stop(now);
           pauseRequest_ = hud_.requestId();
@@ -204,7 +209,7 @@ public:
       }
       resume_ = click_ = false;
       const auto &a = controller_.axes[axis_];
-      const float base = controller_.intendedTarget(axis_, a.tracking ? a.target : a.current);
+      const float base = controller_.intendedTarget(axis_, a.tracking || a.holdArmed ? a.target : a.current);
       const float next = std::clamp(base + (inverted ? -float(delta) : float(delta)) * 20.f, controller_.range(axis_).start,
                                     controller_.range(axis_).end);
       recordResult(

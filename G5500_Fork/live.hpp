@@ -3,7 +3,7 @@
 #include "runtime.hpp"
 #include "http_request_gate.hpp"
 namespace forkrot {
-inline constexpr size_t LIVE_INPUT_CAPACITY = 512, LIVE_STATE_CAPACITY = 2048;
+inline constexpr size_t LIVE_INPUT_CAPACITY = 512, LIVE_STATE_CAPACITY = 3072;
 struct LiveRequest {
   char bytes[LIVE_INPUT_CAPACITY + 1]{};
   FormArgument args[16];

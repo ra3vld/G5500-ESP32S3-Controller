@@ -14,6 +14,10 @@ class CrowPanelKnob {
   float maximum_ = 0;
   uint32_t rangeRevision_ = 0;
   Model model_ = Model::G5500;
+  bool active() const {
+    return controller_.moving() || std::any_of(controller_.axes.begin(),controller_.axes.end(),
+        [](const Axis &a){return a.tracking || a.holdArmed;});
+  }
   void synchronize(bool inverted) {
     if (rangeRevision_ != controller_.rangeRevision || model_ != controller_.model || maximum_ != controller_.maximum || epoch_ != controller_.stopEpoch || inverted_ != inverted) {
       click_ = false;
@@ -24,7 +28,7 @@ class CrowPanelKnob {
       inverted_ = inverted;
     }
     if (model_ == Model::G800DXA) axis_ = 0;
-    if (canResume_ && (controller_.moving() || controller_.axes[0].wanted || controller_.axes[1].wanted ||
+    if (canResume_ && (active() ||
         controller_.pendingValid || !controller_.targetKnown ||
         (resumeTarget_.hasAz && controller_.axes[0].target != resumeTarget_.az) ||
         (resumeTarget_.hasEl && controller_.axes[1].target != resumeTarget_.el))) canResume_ = false;
@@ -64,10 +68,11 @@ public:
     long_ = true; // A held knob must not confirm a target after a touch toggle.
   }
   void confirm(uint32_t now) {
-    if (controller_.moving() || controller_.axes[0].wanted || controller_.axes[1].wanted) {
+    if (active()) {
       // Only a knob stop pauses a tracked target; touch/fault/mode STOP cancels it.
       const Target interrupted{controller_.axes[0].target, controller_.axes[1].target,
-                               controller_.axes[0].tracking, controller_.axes[1].tracking};
+                               controller_.axes[0].tracking || controller_.axes[0].holdArmed,
+                               controller_.axes[1].tracking || controller_.axes[1].holdArmed};
       stop(now);
       resumeTarget_ = interrupted;
       canResume_ = interrupted.hasAz || interrupted.hasEl;
@@ -101,7 +106,7 @@ public:
       down_ = raw_;
       if (down_) {
         downAt_ = now; long_ = false;
-        handledOnPress_ = controller_.moving() || controller_.axes[0].wanted || controller_.axes[1].wanted;
+        handledOnPress_ = active();
         if (handledOnPress_) { click_ = false; confirm(now); }
       } else {
         released = true;
@@ -120,7 +125,7 @@ public:
     if (delta && !raw_ && !down_ && !released) {
       canResume_ = false;
       const auto &axis = controller_.axes[axis_];
-      const float origin = axis.tracking ? axis.target : axis.current;
+      const float origin = axis.tracking || axis.holdArmed ? axis.target : axis.current;
       const float next = std::clamp(origin + (inverted_ ? -float(delta) : float(delta)) * StepDegrees, controller_.range(axis_).start,
                                    controller_.range(axis_).end);
       // Every detent updates the controller immediately, including during motion.

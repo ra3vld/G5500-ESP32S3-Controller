@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "hardware.hpp"
 #include "storage.hpp"
 #include "input.hpp"
@@ -17,7 +18,7 @@ uint32_t moduleDuty(uint32_t gpioDuty) {
 }
 constexpr int pwmIdleLevel = DRIVE_INTERFACE == DRIVE_BTS7960 && BTS7960_PWM_INVERTED ? HIGH : LOW;
 #define CHECK(x) do { ++checks; if (!(x)) throw std::runtime_error(std::string(__FILE__)+":"+std::to_string(__LINE__)+": " #x); } while (0)
-Controller ready() { Controller c; c.feedback(20,30,true,true); c.setMode(Mode::Auto,0); return c; }
+Controller ready() { Controller c = forkrot::testController(); c.feedback(20,30,true,true); c.setMode(Mode::Auto,0); return c; }
 void onePass() {
   auto c = ready();
   CHECK(c.target({90,80,true,true},true,0)==Result::Ok); c.tick(0);
@@ -25,18 +26,18 @@ void onePass() {
   CHECK(c.axes[0].completed && !c.axes[0].direction);
   for (int noise : {91,99,94,100,92}) {
     c.feedback(float(noise),45,true,true);
-    CHECK(c.target({90,80,true,true},true,40)==Result::Ok); c.tick(40);
+    c.tick(40); // Noise alone does not restart a completed one-pass move.
     CHECK(c.axes[0].completed && !c.axes[0].direction);
   }
   c.feedback(100,45,true,true); c.stop(0);
   c.target({90,80,true,true},true,50); c.tick(50);
-  CHECK(!c.axes[0].direction && !c.axes[0].wanted && !c.axes[0].tracking && c.axes[0].acceptedTarget==90);
+  CHECK(c.axes[0].wanted==-1 && c.axes[0].tracking && c.axes[0].acceptedTarget==90);
   CHECK(c.axes[1].tracking);
   CHECK(c.target({95,90,true,true},true,60)==Result::Ok); c.tick(60);
-  CHECK(c.axes[0].target==90 && c.axes[0].acceptedTarget==90);
+  CHECK(c.axes[0].target==95 && c.axes[0].acceptedTarget==95);
   CHECK(c.axes[1].target==90);
   CHECK(c.target({96,90,true,true},true,80)==Result::Ok);
-  CHECK(c.axes[0].acceptedTarget==96); // accumulated against 90, not ignored 95
+  CHECK(c.axes[0].acceptedTarget==96); // a new nearby value is accepted independently of coast
   c.feedback(110,45,true,true); c.tick(80);
   CHECK(c.target({96,90,true,true},false,100)==Result::Ok); c.tick(400);
   CHECK(c.axes[0].direction==-1); // explicit local command may re-arm
@@ -60,7 +61,7 @@ void limitReversal() {
   c.target({100,0,true,false},true,10); c.tick(10);
   CHECK(c.axes[0].direction==0 && c.axes[0].wanted==-1 && c.axes[0].tracking);
   c.tick(309); CHECK(c.axes[0].direction==0);
-  c.tick(310); CHECK(c.axes[0].direction==-1);
+  c.tick(330); CHECK(c.axes[0].direction==-1);
   c.stop(); c.feedback(0,30,true,true); c.jog(0,-1,false,600); c.tick(600);
   c.target({100,0,true,false},true,610); c.tick(610);
   CHECK(c.axes[0].wanted==1); c.tick(910); CHECK(c.axes[0].direction==1);
@@ -75,7 +76,7 @@ void filters() {
   CHECK(f.sample(1000,now+20)==1000);
   PositionFilter wrap; wrap.sample(10,0xfffffff0u);
   CHECK(!wrap.due(3)); CHECK(wrap.due(4));
-  fakeHardware = {}; Runtime r; Hardware h(r);
+  fakeHardware = {}; MotionTestRuntime r; Hardware h(r);
   fakeHardware.millivolts[PIN_AZ_ADC]=1200;
   CHECK(h.filteredMv(0)==1200); CHECK(fakeHardware.readsMv==25);
   fakeHardware.millivolts[PIN_AZ_ADC]=3000;
@@ -100,20 +101,20 @@ void settings() {
   p.line("S",1001); CHECK(p.line("N",1001).reply=="N=0/0\r\n");
 #if DRIVE_INTERFACE != DRIVE_YAESU
   CHECK(api(c,p,cfg,"/api/settings",{{"azSpeedPercent","1"},{"elSpeedPercent","1"}},0).status==200);
-  Preferences::database.clear(); Storage storage; Runtime r;
+  Preferences::database.clear(); Storage storage; MotionTestRuntime r;
   Preferences::database["forkcfg"]["speed"] = uint32_t(77);
   Preferences::database["forkcfg"]["startspd"] = uint32_t(31);
-  storage.loadForkSettings(r); CHECK(r.controller.speedPercent==100);
+  storage.loadForkSettings(r); CHECK(r.controller.speedPercent==50);
   r.controller.speedPercent=1; r.controller.speeds[1].speedPercent=33;
   r.controller.target({90,60,true,true},true,0); storage.saveForkSettings(r);
   CHECK(std::get<uint32_t>(Preferences::database["forkcfg"]["speed"])==77);
-  Runtime loaded; storage.loadForkSettings(loaded);
+  MotionTestRuntime loaded; storage.loadForkSettings(loaded);
   CHECK(loaded.controller.speedPercent==1 && loaded.controller.speeds[1].speedPercent==33);
   CHECK(!loaded.controller.targetKnown && !loaded.controller.pendingValid && !loaded.controller.moving());
 #endif
 }
 void outputs() {
-  fakeHardware={}; Runtime r; Hardware h(r); h.beginDirections(); h.beginInputs();
+  fakeHardware={}; MotionTestRuntime r; Hardware h(r); h.beginDirections(); h.beginInputs();
   CHECK(fakeHardware.levels[PIN_SPEED]==LOW);
   if (PIN_EL_SPEED>=0) CHECK(fakeHardware.levels[PIN_EL_SPEED]==LOW);
 #if DRIVE_INTERFACE == DRIVE_BTS7960
@@ -125,7 +126,7 @@ void outputs() {
   r.controller.model=Model::G800DXA; r.controller.speedEnabled=true;
 #endif
   CHECK(r.controller.target({100,120,true,DRIVE_INTERFACE != DRIVE_YAESU},false,0)==Result::Ok);
-  r.controller.tick(0); h.applyOutputs();
+  r.controller.tick(0);r.controller.tick(20);fakeHardware.now=20;h.applyOutputs();
   std::map<int,uint32_t> duties;
   for (const auto &e : fakeHardware.events) if (e.operation=="pwm") duties[e.pin]=moduleDuty(e.value);
 #if DRIVE_INTERFACE == DRIVE_BTS7960
@@ -135,13 +136,15 @@ void outputs() {
 #elif DRIVE_INTERFACE == DRIVE_SEPARATE_PWM
   CHECK(duties[PIN_SPEED]>0 && duties[PIN_EL_SPEED]>0);
 #endif
-  r.controller.tick(2000); fakeHardware.now=2000; h.applyOutputs();
+  for(unsigned at=40;at<=2000;at+=20){r.controller.tick(at);fakeHardware.now=at;h.applyOutputs();}
   CHECK(r.controller.axes[0].speedOutputPercent>18);
-  r.controller.jog(0,-1,false,2000); r.controller.tick(2000); h.applyOutputs();
-  r.controller.tick(3200); fakeHardware.now=3200; h.applyOutputs();
-  CHECK(r.controller.axes[0].direction==0);
-  r.controller.tick(3499); CHECK(r.controller.axes[0].direction==0);
-  r.controller.tick(3500); fakeHardware.now=3500; h.applyOutputs(); CHECK(r.controller.axes[0].direction==-1);
+  r.controller.jog(0,-1,false,2000);r.controller.tick(2000);h.applyOutputs();
+  unsigned stoppedAt=0;
+  for(unsigned at=2020;at<=5000;at+=20){r.controller.tick(at);fakeHardware.now=at;h.applyOutputs();if(!r.controller.axes[0].direction){stoppedAt=at;break;}}
+  CHECK(stoppedAt>2000&&r.controller.axes[0].speedOutputPercent==0);
+  r.controller.tick(stoppedAt+299);CHECK(!r.controller.axes[0].direction);
+  r.controller.tick(stoppedAt+320);fakeHardware.now=stoppedAt+320;h.applyOutputs();CHECK(r.controller.axes[0].direction==-1);
+
 #if DRIVE_INTERFACE == DRIVE_BTS7960
   for (const auto &e : fakeHardware.events) if (e.operation=="pwm") {
     duties[e.pin]=moduleDuty(e.value);
@@ -169,7 +172,7 @@ void outputs() {
 #endif
   for (const auto &e : fakeHardware.events) if (e.operation=="pwm") duties[e.pin]=moduleDuty(e.value);
   for (const auto &e : duties) CHECK(e.second==0);
-  fakeHardware={}; Runtime broken; Hardware fail(broken); fail.beginDirections();
+  fakeHardware={}; MotionTestRuntime broken; Hardware fail(broken); fail.beginDirections();
 #if DRIVE_INTERFACE == DRIVE_YAESU
   broken.controller.model=Model::G800DXA; broken.controller.speedEnabled=true;
 #endif
@@ -182,7 +185,7 @@ void outputs() {
   const int count=DRIVE_INTERFACE==DRIVE_BTS7960 ? 4 : DRIVE_INTERFACE==DRIVE_SEPARATE_PWM ? 2 : 1;
   for (int failure=0; failure<count; ++failure) {
     fakeHardware={}; fakeHardware.failAttachAt=failure;
-    Runtime partiallyAttached; Hardware partial(partiallyAttached); partial.beginDirections();
+    MotionTestRuntime partiallyAttached; Hardware partial(partiallyAttached); partial.beginDirections();
 #if DRIVE_INTERFACE == DRIVE_YAESU
     partiallyAttached.controller.model=Model::G800DXA; partiallyAttached.controller.speedEnabled=true;
 #endif
@@ -201,7 +204,7 @@ void outputs() {
 
 }
 void button() {
-  fakeHardware={}; Runtime r; Hardware h(r); h.beginInputs(); Button b;
+  fakeHardware={}; MotionTestRuntime r; Hardware h(r); h.beginInputs(); Button b;
   if (PIN_CONFIRM>=0) {
     fakeHardware.levels[PIN_CONFIRM]=USER_BUTTON_ACTIVE_LOW ? LOW : HIGH;
     CHECK(!b.sample(h.buttonReleased(),0)); CHECK(!b.sample(h.buttonReleased(),100));

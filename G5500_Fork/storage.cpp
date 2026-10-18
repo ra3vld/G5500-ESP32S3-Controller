@@ -8,6 +8,37 @@
 #include <cmath>
 namespace forkrot {
 using namespace board;
+namespace {
+// The readiness flag and both regulator/simple settings share one verified NVS
+// value. An interrupted legacy-key write cannot arm a mixed configuration.
+using DriveRecord=std::array<uint8_t,MotionRecordSize+36>;
+uint32_t driveChecksum(const DriveRecord &b) {
+  uint32_t h=2166136261u;for(size_t i=0;i<b.size()-4;++i)h=(h^b[i])*16777619u;return h;
+}
+DriveRecord encodeDrive(const MotionSettings &m,const SpeedSettings &s) {
+  DriveRecord b{};const auto motion=encodeMotionSettings(m);std::copy(motion.begin(),motion.end(),b.begin());
+  size_t at=motion.size();auto put=[&](uint32_t n){for(unsigned i=0;i<4;++i)b[at++]=uint8_t(n>>(8*i));};
+  for(unsigned n:{s.speedPercent,s.startSpeedPercent,s.approachSpeedPercent,s.accelerationMs,s.decelerationMs,s.slowdownDegrees})put(n);
+  for(float n:{s.coastDegrees,s.decelerationFactor}){uint32_t bits;std::memcpy(&bits,&n,4);put(bits);}
+  put(driveChecksum(b));return b;
+}
+bool decodeDrive(const DriveRecord &b,MotionSettings &m,SpeedSettings &s) {
+  MotionRecord motion{};std::copy_n(b.begin(),motion.size(),motion.begin());
+  MotionSettings next;SpeedSettings speed;
+  if(!decodeMotionSettings(motion,next))return false;
+  size_t at=motion.size();auto get=[&](){uint32_t n=0;for(unsigned i=0;i<4;++i)n|=uint32_t(b[at++])<<(8*i);return n;};
+  speed.speedPercent=get();speed.startSpeedPercent=get();speed.approachSpeedPercent=get();
+  speed.accelerationMs=get();speed.decelerationMs=get();speed.slowdownDegrees=get();
+  auto real=[&](){const uint32_t n=get();float f;std::memcpy(&f,&n,4);return f;};
+  speed.coastDegrees=real();speed.decelerationFactor=real();
+  if(get()!=driveChecksum(b) || speed.speedPercent<1 || speed.speedPercent>100 ||
+     speed.startSpeedPercent<1 || speed.startSpeedPercent>100 || speed.approachSpeedPercent<1 || speed.approachSpeedPercent>100 ||
+     speed.accelerationMs<100 || speed.accelerationMs>10000 || speed.decelerationMs<100 || speed.decelerationMs>10000 ||
+     speed.slowdownDegrees<1 || speed.slowdownDegrees>90 || !std::isfinite(speed.coastDegrees) || speed.coastDegrees<0 || speed.coastDegrees>90 ||
+     !std::isfinite(speed.decelerationFactor) || speed.decelerationFactor<.1f || speed.decelerationFactor>10) return false;
+  m=next;s=speed;return true;
+}
+}
 bool Storage::writeHardware(const HardwareRecord &record) {
   const auto bytes = encodeHardware(record);
   if (!prefs_.begin("hardware", false)) { prefs_.end(); return false; }
@@ -34,8 +65,13 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
     record = {};
     record.phase = ConfigPhase::Recovery;
     record.reason = !readable ? RecoveryReason::Storage : RecoveryReason::Invalid;
-  } else if (fresh) {
-    record.phase = ConfigPhase::Recovery; record.reason = RecoveryReason::Initial;
+  } else if (fresh || (!record.hasConfirmed && record.phase == ConfigPhase::Recovery &&
+                       record.reason == RecoveryReason::Initial)) {
+    // A fresh board starts with this build's hardware defaults. Only later
+    // hardware edits need an explicit trial/confirmation; faults stay latched.
+    record = {};
+    record.hasConfirmed = true; record.phase = ConfigPhase::Starting;
+    record.reason = RecoveryReason::None;
   } else if (forceRecovery || record.phase == ConfigPhase::Testing || record.phase == ConfigPhase::Starting) {
     if (record.phase != ConfigPhase::Recovery) record.reason = RecoveryReason::Unconfirmed;
     record.phase = ConfigPhase::Recovery;
@@ -436,11 +472,11 @@ void Storage::loadForkSettings(Runtime &runtime) {
   if (runtime.controller.hardware.drive == DRIVE_YAESU) {
   runtime.controller.speedEnabled = prefs_.getBool("speedon", false);
   runtime.controller.speedPercent =
-      constrain(prefs_.getUInt("speed", 50), runtime.controller.hardware.simulation ? 1u : 25u, 100u);
+      constrain(prefs_.getUInt("speed", 50), 1u, 100u);
   runtime.controller.startSpeedPercent =
-      constrain(prefs_.getUInt("startspd", 25), runtime.controller.hardware.simulation ? 1u : 25u, 100u);
+      constrain(prefs_.getUInt("startspd", 25), 1u, 100u);
   runtime.controller.approachSpeedPercent =
-      constrain(prefs_.getUInt("approachspd", 25), runtime.controller.hardware.simulation ? 1u : 25u, 100u);
+      constrain(prefs_.getUInt("approachspd", 25), 1u, 100u);
   runtime.controller.accelerationMs = constrain(prefs_.getUInt("accelms", 2000), 100u, 10000u);
   runtime.controller.decelerationMs = constrain(prefs_.getUInt("decelms", 1500), 100u, 10000u);
   runtime.controller.slowdownDegrees = constrain(prefs_.getUInt("slowdeg", 10), 1u, 90u);
@@ -494,9 +530,32 @@ void Storage::loadForkSettings(Runtime &runtime) {
   }
   prefs_.end();
   }
+  loadMotionSettings(runtime);
 }
 
-void Storage::saveForkSettings(const Runtime &runtime) {
+void Storage::loadMotionSettings(Runtime &runtime) {
+  if(runtime.hud.isHud()) return;
+  runtime.controller.stop();
+  runtime.controller.motionSettings = {};
+  prefs_.begin("forkmotion",true);
+  for(unsigned i=0;i<2;++i) {
+    char key[12]; std::snprintf(key,sizeof key,"%c%u%u%u",runtime.controller.hardware.simulation?'s':'r',
+        unsigned(runtime.controller.hardware.drive),unsigned(runtime.controller.model),i);
+    DriveRecord record{}; MotionSettings settings; SpeedSettings speed;
+    const size_t storedSize=prefs_.getBytesLength(key);
+    if(storedSize==record.size() && prefs_.getBytes(key,record.data(),record.size())==record.size() &&
+       decodeDrive(record,settings,speed)) { runtime.controller.motionSettings[i]=settings;runtime.controller.speeds[i]=speed; }
+    else if(storedSize) {
+      // Missing settings use working defaults; damaged settings fail closed.
+      runtime.controller.motionSettings[i].ready=false;
+      runtime.controller.fault="motion_storage_failed";
+    }
+  }
+  prefs_.end();
+
+}
+
+bool Storage::saveForkSettings(const Runtime &runtime) {
   prefs_.begin("forkcfg", false);
   if (!runtime.hud.isHud()) {
     prefs_.putUChar("model", runtime.controller.model == forkrot::Model::G800DXA ? 1 : 0);
@@ -534,7 +593,7 @@ void Storage::saveForkSettings(const Runtime &runtime) {
   prefs_.end();
   if (runtime.controller.hardware.drive != DRIVE_YAESU || runtime.controller.hardware.simulation) {
   if (runtime.hud.isHud())
-    return;
+    return true;
   prefs_.begin("forkpwm", false);
   for (unsigned i=0; i<2; ++i) {
     const auto &speed = runtime.controller.speeds[i];
@@ -550,6 +609,19 @@ void Storage::saveForkSettings(const Runtime &runtime) {
   }
   prefs_.end();
   }
+  if(runtime.hud.isHud()) return true;
+  const bool opened=prefs_.begin("forkmotion",false);
+  if(!opened) { prefs_.end(); return false; }
+  bool valid=true;
+  for(unsigned i=0;i<2;++i) {
+    char key[12]; std::snprintf(key,sizeof key,"%c%u%u%u",runtime.controller.hardware.simulation?'s':'r',
+        unsigned(runtime.controller.hardware.drive),unsigned(runtime.controller.model),i);
+    const auto record=encodeDrive(runtime.controller.motionSettings[i],runtime.controller.speeds[i]);
+    prefs_.putBytes(key,record.data(),record.size()); DriveRecord check{};
+    valid=prefs_.getBytesLength(key)==record.size() && prefs_.getBytes(key,check.data(),check.size())==check.size() && check==record && valid;
+  }
+  prefs_.end(); return valid;
+
 }
 
 const char *Storage::presetNamespace(const Runtime &runtime) {

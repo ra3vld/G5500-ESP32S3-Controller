@@ -19,6 +19,7 @@ public:
   }
   int adcAvgMv(int pin);
   int filteredMv(unsigned axis);
+  uint32_t sampledAt(unsigned axis) const { return filters_[axis].sampledAt(); }
   bool buttonReleased() const;
   void adcDiagRead(int pin, int &raw, int &mv);
   void rgbSet(uint8_t r, uint8_t g, uint8_t b);

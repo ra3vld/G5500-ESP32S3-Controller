@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "hardware.hpp"
 #include <cassert>
 #include <cmath>
@@ -7,15 +8,16 @@ using namespace forkrot;
 static void close(float a, float b) { assert(std::abs(a - b) < .002f); }
 int main() {
   static_assert(DRIVE_SIMULATION == 1);
-  Runtime runtime;
+  MotionTestRuntime runtime;
   Hardware hw(runtime);
   auto &c = runtime.controller;
   hw.beginDirections(); hw.beginAdc(); hw.beginInputs(); hw.allStop();
   assert(c.axes[0].calibrated && c.axes[1].calibrated && !c.driveFault);
   assert(c.variableSpeed(0) && c.variableSpeed(1));
   for (auto &s : c.speeds) {
-    s = {100, 100, 100, 0, 0, 1};
+    s = {100, 100, 100, 100, 100, 1};
   }
+  for(auto &m:c.motionSettings){m.kickEnabled=true;m.kickPercent=100;}
   assert(stateJson(c, runtime.protocol, runtime.loggerSettings, 0).find("\"drive\":\"SIMULATED\"") != std::string::npos);
   fakeHardware.now = 100;
   c.tick(100);

@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "hud.hpp"
 #include "hud_input.hpp"
 #include "api.hpp"
@@ -24,7 +25,7 @@ struct Bus {
 struct Node : HudTransport {
   Bus &bus;
   HudEndpoint endpoint;
-  Controller controller;
+  Controller controller = forkrot::testController();
   Protocol protocol{controller};
   Hud hud{controller, protocol};
   unsigned selectionChanges = 0;
@@ -66,6 +67,46 @@ void Bus::tick(uint32_t at) {
   pump();
 }
 int main() {
+  {
+    Bus stream;Node motor(stream,1,1),panel(stream,2,2,true);
+    motor.controller.hardware.drive=DRIVE_BTS7960;motor.controller.speedEnabled=true;
+    motor.controller.motionSettings[0].kickEnabled=true;
+    panel.save(motor);panel.hud.select(1);stream.tick(100);
+    assert(panel.hud.active()->wireVersion==4);
+    uint32_t previous=0;
+    for(unsigned i=1;i<=200;++i){
+      assert(panel.controller.target({20+.1f*i,0,true,false},false,100)==Result::Deferred);
+      if(previous)assert(panel.hud.result(previous).result==Result::Cancelled);
+      previous=panel.hud.requestId();
+    }
+    stream.tick(110);assert(motor.controller.axes[0].target==40);
+    assert(panel.hud.result(previous).result==Result::Ok);
+    assert(motor.controller.axes[0].motionPhase==MotionPhase::Kick);
+    assert(panel.controller.motionSettings[0].ready&&panel.controller.motionSettings[0].kickEnabled);
+    assert(panel.controller.axes[0].motionPhase==MotionPhase::Kick);
+    assert(panel.controller.target({9999,0,true,false},false,110)==Result::Invalid);
+    auto &held=motor.controller.axes[0];held.current=held.target=40;
+    held.tracking=false;held.wanted=held.direction=0;held.speedOutputPercent=0;
+    held.holdArmed=true;held.motionPhase=MotionPhase::Holding;
+    motor.controller.motionSettings[0].mode=RegulatorMode::Cascade;
+    motor.controller.motionSettings[0].holdEnabled=true;stream.tick(200);
+    assert(panel.controller.axes[0].holdArmed&&!panel.controller.moving());
+    HudKnob knob(panel.hud,panel.controller);
+    knob.sample(true,false,0,200);knob.sample(true,true,0,240);
+    knob.sample(true,false,0,280);knob.sample(true,false,0,320);stream.tick(320);
+    assert(!motor.controller.axes[0].holdArmed&&!motor.controller.moving());
+    knob.sample(true,false,0,360);knob.sample(true,true,0,400);
+    knob.sample(true,false,0,440);knob.sample(true,false,0,480);
+    knob.sample(true,false,0,840);stream.tick(840);
+    assert(motor.controller.axes[0].holdArmed);
+    for(unsigned at=860;at<=1240;at+=20) stream.tick(at);
+    assert(panel.controller.axes[0].holdArmed&&!panel.controller.axes[0].tracking);
+    panel.controller.axes[0].current=40.2f;panel.controller.axes[0].tracking=false;
+    HudKnob detent(panel.hud,panel.controller);
+    detent.sample(true,false,0,1300);detent.sample(true,false,-1,1340);stream.tick(1340);
+    assert(motor.controller.axes[0].target==60);
+  }
+
   Bus bus;
   Node rotor(bus, 1, 0x0100007f), other(bus, 2, 0x0200007f), a(bus, 10, 0x0a00007f, true),
       b(bus, 11, 0x0b00007f, true);
@@ -356,7 +397,9 @@ int main() {
     assert(panel.controller.target({160, 0, true, false}, false, 120) == Result::Deferred);
     assert(panel.controller.target({170, 0, true, false}, false, 120) == Result::Deferred);
     assert(panel.controller.target({180, 0, true, false}, false, 120) == Result::Deferred);
-    assert(panel.controller.target({190, 0, true, false}, false, 120) == Result::Busy);
+    const auto displaced=panel.hud.requestId();
+    assert(panel.controller.target({190, 0, true, false}, false, 120) == Result::Deferred);
+    assert(panel.hud.result(displaced).result==Result::Cancelled);
     panel.controller.stopNow(-1, 120);
     assert(panel.hud.lastResult() == Result::Deferred);
     load.tick(130);
@@ -477,8 +520,10 @@ int main() {
     panel.save(motor); panel.save(other); panel.hud.select(1); notices.tick(100);
     HudKnob knob(panel.hud, panel.controller);
     auto fill = [&] {
-      for (unsigned i = 0; i < 3; ++i)
-        assert(panel.controller.target({90.f + i * 20, 0, true, false}, false, notices.now) == Result::Deferred);
+      assert(panel.controller.target({90,0,true,false},false,notices.now)==Result::Deferred);
+      ControlCommand mode;mode.op=ControlOp::Mode;mode.mode=Mode::Auto;assert(panel.hud.submit(mode)==Result::Deferred);
+      ControlCommand save;save.op=ControlOp::SavePreset;save.slot=0;save.target={120,0,true,false};std::memcpy(save.label,"test",5);
+      assert(panel.hud.submit(save)==Result::Deferred);
     };
     fill();
     knob.setBearing(180, 110);
@@ -514,7 +559,10 @@ int main() {
     const uint32_t start = UINT32_MAX - 100;
     notices.tick(start);
     HudKnob knob(panel.hud, panel.controller);
-    for (unsigned i = 0; i < 4; ++i) knob.setBearing(180, start);
+    assert(panel.controller.target({90,0,true,false},false,start)==Result::Deferred);
+    ControlCommand mode;mode.op=ControlOp::Mode;mode.mode=Mode::Auto;assert(panel.hud.submit(mode)==Result::Deferred);
+    ControlCommand save;save.op=ControlOp::SavePreset;save.target={120,0,true,false};std::memcpy(save.label,"test",5);assert(panel.hud.submit(save)==Result::Deferred);
+    knob.setBearing(180,start);
     assert(knob.lastResult == Result::Busy && knob.busyNotice(start));
     for (uint32_t elapsed = 100; elapsed < 1000; elapsed += 100) notices.tick(start + elapsed);
     assert(knob.busyNotice(start + 999));

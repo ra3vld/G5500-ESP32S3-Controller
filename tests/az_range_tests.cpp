@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "api.hpp"
 #include "calibration_record.hpp"
 #include "crowpanel_knob.hpp"
@@ -12,7 +13,7 @@ int main() {
   for (AzRange r : {AzRange{0,360},{0,450},{-60,390},{50,500},{300,390},
                      {-700,-250},{-3600,-3599},{50,770},{-360,720},{3600,7200},{-60.1f,389.9f}}) {
     assert(r.valid());
-    Controller c; assert(c.setRange(r,AZ_CUSTOM)); c.feedback(r.start,0,true,true);
+    Controller c = forkrot::testController(); assert(c.setRange(r,AZ_CUSTOM)); c.feedback(r.start,0,true,true);
     assert(c.valid({r.start,0,true,false}) && c.valid({r.end,0,true,false}));
     assert(!c.valid({r.start-.1f,0,true,false}) && !c.valid({r.end+.1f,0,true,false}));
     for (float current : {r.start,r.end,(r.start+r.end)/2}) for (int angle=0;angle<360;angle+=7)
@@ -41,7 +42,7 @@ int main() {
   assert(std::isnan(nearest(90,320,AzRange{300,390})));
   for(AzRange bad : {AzRange{0,0},{0,3601},{-3601,0},{3601,4000},{NAN,450},{0,INFINITY},{.01f,450}})
     assert(!bad.valid());
-  Controller c;c.feedback(60,20,true,true);assert(c.setRange({50,500},AZ_CUSTOM));
+  Controller c = forkrot::testController();c.feedback(60,20,true,true);assert(c.setRange({50,500},AZ_CUSTOM));
   Protocol p(c);Settings settings;
   assert(p.datagram("<PST><AZIMUTH>20</AZIMUTH></PST>",0).result==Result::Pending);near(c.pending.az,380);
   assert(p.datagram("<N1MMRotor><rotor>*</rotor><goazi>20</goazi></N1MMRotor>",1).result==Result::Pending);near(c.pending.az,380);
@@ -73,7 +74,7 @@ int main() {
   near(c.tolerance(0),.1f);
 #endif
   { // Presets retain their coordinate; every sequence point must remain reachable.
-    Controller motion;motion.setRange({-60,390},AZ_CUSTOM);motion.feedback(-60,0,true,true);
+    Controller motion = forkrot::testController();motion.setRange({-60,390},AZ_CUSTOM);motion.feedback(-60,0,true,true);
     assert(motion.savePreset(0,"Negative",{-50,0,true,false})==Result::Ok);
     assert(motion.preset(0,0)==Result::Ok);motion.tick(0);assert(motion.axes[0].direction==1);
     motion.setRange({50,500},AZ_CUSTOM,1);
@@ -91,7 +92,7 @@ int main() {
     motion.stopNow(-1,310);assert(!motion.moving());
   }
   for (bool reverse : {false,true}) {
-    Controller controller;Calibration cal(controller);
+    Controller controller = forkrot::testController();Calibration cal(controller);
     auto &s=cal.state();s.az45OSet=s.az45FSet=s.az45LinearValid=true;
     s.cal.az45_0=reverse?2800:100;s.cal.az45Max=reverse?100:2800;
     for(unsigned i=0;i<6;++i)s.az45CalMv[i]=s.cal.az45_0+(s.cal.az45Max-s.cal.az45_0)*int(i)/5;

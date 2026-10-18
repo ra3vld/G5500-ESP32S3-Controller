@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "api.hpp"
 #include "storage.hpp"
 #include <cassert>
@@ -7,14 +8,14 @@ using namespace forkrot;
 int main() {
   Preferences::database.clear();
   Storage storage;
-  Runtime fresh;
+  MotionTestRuntime fresh;
   storage.loadForkSettings(fresh);
   assert(fresh.protocol.externalAzMode == ExternalAzMode::Shortest);
   assert(stateJson(fresh.controller, fresh.protocol, fresh.loggerSettings, 0).find(
              "\"externalAzMode\":\"shortest\"") != std::string::npos);
   for (bool hud : {false, true}) {
     for (const char *mode : {"mechanical", "shortest"}) {
-      Runtime r;
+      MotionTestRuntime r;
       if (hud) {
         r.hud.config.role = DeviceRole::Hud;
         r.hud.begin(1, 2);
@@ -34,7 +35,7 @@ int main() {
                  {{"externalAzMode", "shortest"}, {"pstManualFollow", "bad"}}, 1).status == 400);
       assert(stateJson(r.controller, r.protocol, r.loggerSettings, 1) == before);
       storage.saveForkSettings(r);
-      Runtime loaded;
+      MotionTestRuntime loaded;
       if (hud) {
         loaded.hud.config.role = DeviceRole::Hud;
         loaded.hud.begin(1, 3);
@@ -44,7 +45,7 @@ int main() {
       assert(!loaded.controller.moving() && !loaded.controller.pendingValid);
     }
   }
-  Runtime r; r.controller.feedback(350, 30, true, true);
+  MotionTestRuntime r; r.controller.feedback(350, 30, true, true);
   assert(r.protocol.datagram("<PST><AZIMUTH>10</AZIMUTH></PST>", 1).result == Result::Pending);
   assert(r.controller.pending.az == 370);
   assert(api(r.controller, r.protocol, r.loggerSettings, "/api/settings",

@@ -31,22 +31,22 @@ void Application::updatePosition() {
   if (runtime_.controller.model == forkrot::Model::G800DXA) {
     runtime_.currentEl = 0;
   }
-  runtime_.controller.feedback(
-      runtime_.currentAz, runtime_.currentEl,
+  for (unsigned i=0; i<2; ++i) runtime_.controller.feedbackAt(
+      i, i ? runtime_.currentEl : runtime_.currentAz,
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
-      false, false);
+      false,
 #else
-      calibrationState.calibrationMode == CAL_MULTI_POINT ? calibration_.activeAzMultiValid()
-                                                          : calibration_.activeAzLinearValid(),
-      calibrationState.calibrationMode == CAL_MULTI_POINT ? calibration_.activeElMultiValid()
-                                                          : calibration_.activeElLinearValid());
+      calibrationState.calibrationMode == CAL_MULTI_POINT
+          ? (i ? calibration_.activeElMultiValid() : calibration_.activeAzMultiValid())
+          : (i ? calibration_.activeElLinearValid() : calibration_.activeAzLinearValid()),
 #endif
+      hardware_.sampledAt(i));
   }
 }
 
 bool Application::saveCal() {
   if (runtime_.hud.isHud()) return false;
-  runtime_.controller.stopNow(-1, millis());
+  runtime_.controller.resetFeedback(-1, millis());
   hardware_.applyOutputs();
   if (!storage_.saveCal(runtime_, calibration_)) {
     loadPrefs();

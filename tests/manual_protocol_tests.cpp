@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "api.hpp"
 #include "storage.hpp"
 #include <cassert>
@@ -21,7 +22,7 @@ static void policies() {
   for (auto model : {Model::G5500, Model::G800DXA}) {
     for (auto mode : {Mode::Manual, Mode::Auto, Mode::AutoHour}) {
       for (unsigned mask = 0; mask < 16; ++mask) {
-        Controller c; c.setModel(model); c.feedback(20, 30, true, true);
+        Controller c = forkrot::testController(); c.setModel(model); c.feedback(20, 30, true, true);
         Protocol p(c); Settings settings;
         configure(c, p, settings, mask);
         c.setMode(mode, 0);
@@ -50,7 +51,7 @@ static void policies() {
   }
 }
 static void changesAndSafety() {
-  Controller c; c.feedback(20, 30, true, true); Protocol p(c); Settings s;
+  Controller c = forkrot::testController(); c.feedback(20, 30, true, true); Protocol p(c); Settings s;
   assert(send(p, 0).result == Result::Pending);
   configure(c, p, s, 5); // N1MM/GS-232 follow; PST/rotctld confirm.
   assert(c.pendingValid && !c.moving()); // Saving never executes an old target.
@@ -77,11 +78,11 @@ static void changesAndSafety() {
   }
   c.feedback(20, 30, true, true);
   assert(p.line("M9999", 111).result == Result::Invalid && !c.moving());
-  // Immediate external targets retain the noise/repeated-target threshold.
+  // Every fractional/nearby external goal updates the accepted absolute target.
   assert(p.line("M100", 112).result == Result::Ok);
   c.feedback(95, 30, true, true); c.tick(113); assert(!c.moving());
-  assert(p.line("M103", 114).result == Result::Ok && !c.moving());
-  assert(c.axes[0].acceptedTarget == 100);
+  assert(p.line("M103", 114).result == Result::Ok && c.axes[0].tracking);
+  assert(c.axes[0].acceptedTarget == 103);
   assert(p.line("M106", 115).result == Result::Ok && c.axes[0].tracking);
   c.stop();
   // PST's EL, LP and PARK all obey its independent policy.
@@ -106,12 +107,12 @@ static void changesAndSafety() {
 static void apiAndStorage() {
   Preferences::database.clear();
   Storage storage;
-  Runtime fresh; storage.loadForkSettings(fresh);
+  MotionTestRuntime fresh; storage.loadForkSettings(fresh);
   for (const char *key : keys)
     assert(stateJson(fresh.controller, fresh.protocol, fresh.loggerSettings, 0).find(
         std::string("\"") + key + "\":false") != std::string::npos);
   for (unsigned mask = 0; mask < 16; ++mask) {
-    Runtime r; r.controller.feedback(20, 30, true, true);
+    MotionTestRuntime r; r.controller.feedback(20, 30, true, true);
     configure(r.controller, r.protocol, r.loggerSettings, mask);
     const auto before = stateJson(r.controller, r.protocol, r.loggerSettings, 0);
     for (const char *key : keys) {
@@ -120,7 +121,7 @@ static void apiAndStorage() {
       assert(stateJson(r.controller, r.protocol, r.loggerSettings, 0) == before);
     }
     storage.saveForkSettings(r);
-    Runtime loaded; storage.loadForkSettings(loaded);
+    MotionTestRuntime loaded; storage.loadForkSettings(loaded);
     for (unsigned i = 0; i < 4; ++i) {
       const bool follow = mask & (1u << i);
       assert(stateJson(loaded.controller, loaded.protocol, loaded.loggerSettings, 0).find(

@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "storage.hpp"
 #include "calibration_record.hpp"
 #include <cassert>
@@ -10,7 +11,7 @@ int main() {
   legacy["a45z"]=int32_t(100);legacy["a45f"]=int32_t(2800);
   legacy["a45os"]=true;legacy["a45fs"]=true;
   legacy["ssid"]=String("untouched");
-  Runtime r;Calibration cal(r.controller);Storage storage;WifiCredentials wifi;
+  MotionTestRuntime r;Calibration cal(r.controller);Storage storage;WifiCredentials wifi;
   storage.loadPrefs(r,cal,wifi);assert(cal.activeAzLinearValid());
   assert(legacy.count("azgeom1"));assert(wifi.wifiSsid==String("untouched"));
   // Upgrade the deployed 384-byte AZ v1 record, retaining both axes' measurements.
@@ -28,7 +29,7 @@ int main() {
   assert(cal.configureEl(EL_STANDARD,0,180));assert(cal.activeElLinearValid());
   assert(cal.configureAz(AZ_CUSTOM,-60,450));assert(storage.saveCal(r,cal));
   const auto saved=std::get<Preferences::Bytes>(legacy["azgeom1"]);
-  Runtime reboot;Calibration loaded(reboot.controller);WifiCredentials credentials;
+  MotionTestRuntime reboot;Calibration loaded(reboot.controller);WifiCredentials credentials;
   storage.loadPrefs(reboot,loaded,credentials);
   assert(reboot.controller.minimum==-60 && reboot.controller.maximum==390);
   assert(loaded.activeAzLinearValid());assert(loaded.mapAz(100)==-60);

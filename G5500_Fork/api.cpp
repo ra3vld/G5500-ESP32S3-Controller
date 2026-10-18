@@ -1,4 +1,5 @@
 #include "api.hpp"
+#include "motion_json.hpp"
 #include "board.hpp"
 #include "http_request_gate.hpp"
 #include <array>
@@ -166,7 +167,8 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
          << ",\"calibrated\":" << (axis.calibrated ? "true" : "false") << ",\"direction\":" << axis.direction
          << ",\"stopToleranceDegrees\":" << controller.effectiveTolerance(i)
          << ",\"speedEnabled\":" << (controller.variableSpeed(i) ? "true" : "false")
-         << ",\"speedOutputPercent\":" << axis.speedOutputPercent << '}';
+         << ",\"speedOutputPercent\":" << axis.speedOutputPercent;
+    writeAxisMotion(json,controller,i); json << '}';
   }
   json << ']';
   for (unsigned i=0; i<2; ++i) {
@@ -285,6 +287,8 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     auto model = controller.model;
     bool enabled = controller.speedEnabled;
     auto speeds = controller.speeds;
+    auto motion = controller.motionSettings;
+    bool motionTouched[2]{};
     bool valid = true;
     // Compile-time hardware configuration is read-only, including attempted aliases.
     for (const auto &entry : form) {
@@ -355,8 +359,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
         if (old && modern && aliased != prefixed) valid = false;
         if (modern || old) field = modern ? prefixed : aliased;
       };
-      const unsigned minimum =
-          !controller.hardware.simulation && controller.hardware.drive == DRIVE_YAESU && i == 0 ? 25 : 1;
+      const unsigned minimum = 1;
       value("speedPercent", speed.speedPercent, minimum, 100);
       value("startSpeedPercent", speed.startSpeedPercent, minimum, 100);
       value("approachSpeedPercent", speed.approachSpeedPercent, minimum, 100);
@@ -375,8 +378,39 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       };
       realValue("coastDegrees", speed.coastDegrees, 0, 90);
       realValue("decelerationFactor", speed.decelerationFactor, 0.1f, 10);
+      auto &m=motion[i]; char key[48];
+      std::snprintf(key,sizeof key,"%sRegulatorMode",prefix);
+      if (has(form,key)) {
+        motionTouched[i]=true; const auto mode=get(form,key);
+        valid=(mode=="simple" || mode=="cascade") && valid;
+        m.mode=mode=="cascade"?RegulatorMode::Cascade:RegulatorMode::Simple;
+      }
+      for (auto field : {std::pair<const char *,bool *>{"Ready",&m.ready},{"KickEnabled",&m.kickEnabled},{"HoldEnabled",&m.holdEnabled}}) {
+        std::snprintf(key,sizeof key,"%sMotion%s",prefix,field.first);
+        if (has(form,key)) { motionTouched[i]=true; valid=boolean(get(form,key),*field.second)&&valid; }
+      }
+      for (const auto &f:motionRealFields) {
+        std::snprintf(key,sizeof key,"%sMotion%s",prefix,f.name);
+        if (has(form,key)) { motionTouched[i]=true; float n;
+          const bool ok=number(get(form,key),n)&&n>=f.lo&&n<=f.hi; valid=ok&&valid;
+          if(ok) m.*f.member=n;
+        }
+      }
+      for (const auto &f:motionIntFields) {
+        std::snprintf(key,sizeof key,"%sMotion%s",prefix,f.name);
+        if(has(form,key)) { motionTouched[i]=true; valid=integer(get(form,key),m.*f.member,f.lo,f.hi)&&valid; }
+      }
+      if(motionTouched[i]) m.ready=true; // legacy MotionReady is accepted, never an authorization gate
+      valid=m.valid()&&valid;
+      const bool variable=controller.hardware.simulation || (controller.hardware.drive==DRIVE_YAESU
+          ? i==0 && model==Model::G800DXA && enabled : i==0 || model==Model::G5500);
+      if(motionTouched[i] && m.mode==RegulatorMode::Cascade && !variable) valid=false;
+
     }
     valid = valid && next.n1mmPort != next.pstPort;
+    if(model!=controller.model && (motionTouched[0] || motionTouched[1])) valid=false;
+    if(valid && (motion[0].ready || motion[1].ready) && !prepareMotionPlanner())
+      return {503,"{\"ok\":false,\"result\":\"unavailable\"}"};
     if (valid) {
       if (model != controller.model) {
         controller.setModel(model);
@@ -389,9 +423,16 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       protocol.manualFollow = follow;
       protocol.setExternalAzMode(azMode);
       controller.speedEnabled = enabled;
+      for(unsigned i=0;i<2;++i) {
+        if (!(controller.speeds[i]==speeds[i])) controller.stopNow(int(i),now);
+        controller.configureMotion(i,motion[i],now);
+      }
       controller.speeds = speeds;
       result = Result::Ok;
     }
+  } else if (path == "/api/motion/reset") {
+    const auto axis=get(form,"axis");
+    if(axis=="az" || axis=="el" || axis=="all") result=controller.resetMotion(axis=="all"?-1:axis=="az"?0:1,now);
   } else if (path == "/api/target") {
     float az = 0, el = 0;
     const bool hasAz = has(form, "az"), hasEl = has(form, "el");

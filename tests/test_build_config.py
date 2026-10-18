@@ -22,6 +22,7 @@ class BuildConfigTests(unittest.TestCase):
         for path in (ROOT / 'G5500_Fork').iterdir():
             if path.suffix in {'.hpp', '.h', '.c', '.cpp', '.ino', '.csv'} and not path.name.endswith('.ino.cpp'):
                 shutil.copy2(path, self.source / path.name)
+        shutil.copytree(ROOT / 'G5500_Fork/src', self.source / 'src')
         (self.root / 'tools').mkdir()
         for name in ['build_platformio.py', 'prepare_sketch.py', 'generate_web_assets.py']:
             shutil.copy2(ROOT / 'tools' / name, self.root / 'tools' / name)
@@ -139,6 +140,9 @@ class BuildConfigTests(unittest.TestCase):
         for name in ['build_config.hpp', 'build_config_options.hpp', 'build_config_checks.hpp', 'runtime_defaults.hpp', 'hardware_config.hpp']:
             self.assertEqual((sketch / name).read_bytes(), (self.source / name).read_bytes())
         self.assertEqual((sketch / 'partitions.csv').read_bytes(), (self.source / 'partitions_s2.csv').read_bytes())
+        for path in (self.source / 'src').rglob('*'):
+            if path.is_file():
+                self.assertEqual((sketch / path.relative_to(self.source)).read_bytes(), path.read_bytes())
 
     def test_crowpanel_profile_dependencies_and_arduino_copy(self):
         self.compile({'SELECTED_BOARD': 5, 'TFT_DISPLAY_ENABLED': 0, 'DRIVE_SIMULATION': 1,

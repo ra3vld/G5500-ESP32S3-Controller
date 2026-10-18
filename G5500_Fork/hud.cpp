@@ -131,7 +131,7 @@ void header(Writer &w, const Header &h) {
 bool header(Reader &r, Header &h) {
   for (char c : std::string_view("HUD")) if (r.u8() != uint8_t(c)) r.ok = false;
   h.version = r.u8() - '0';
-  if (h.version < 1 || h.version > 3) r.ok = false;
+  if (h.version < 1 || h.version > 4) r.ok = false;
   h.kind = Kind(r.u8());
   h.source = r.u64();
   h.target = r.u64();
@@ -256,7 +256,7 @@ bool command(Reader &r, ControlCommand &c) {
   }
   return r.done();
 }
-void state(Writer &w, const HudState &s, bool compact = false, bool extended = false, bool geometry = false, bool elevation = false) {
+void state(Writer &w, const HudState &s, bool compact = false, bool extended = false, bool geometry = false, bool elevation = false, bool motion = false) {
   w.u8(uint8_t(s.model));
   w.u8(uint8_t(s.mode));
   w.real(s.maximum);
@@ -296,8 +296,15 @@ void state(Writer &w, const HudState &s, bool compact = false, bool extended = f
   }
   if (geometry) { w.real(s.minimum); w.u8(s.azProfile); w.u32(s.rangeRevision); }
   if (elevation) { w.real(s.elRange.start); w.real(s.elRange.end); w.u8(s.elProfile); }
+  if(motion) for(unsigned i=0;i<2;++i) {
+    const auto &m=s.motion[i]; const auto &a=s.axes[i];
+    w.u8(uint8_t(m.mode));w.u8(uint8_t(m.ready)|uint8_t(m.holdEnabled)<<1|uint8_t(m.kickEnabled)<<2|uint8_t(a.holdArmed)<<3);
+    w.u8(uint8_t(a.motionPhase));w.u8(uint8_t(a.motionError));
+    w.real(a.measuredVelocity);w.real(a.requestedVelocity);w.real(a.profileAcceleration);
+    w.real(s.speeds[i].coastDegrees);w.real(s.speeds[i].decelerationFactor);
+  }
 }
-bool state(Reader &r, HudState &s, bool compact = false, bool extended = false, bool geometry = false, bool elevation = false) {
+bool state(Reader &r, HudState &s, bool compact = false, bool extended = false, bool geometry = false, bool elevation = false, bool motion = false) {
   s.model = Model(r.u8());
   s.mode = Mode(r.u8());
   s.maximum = r.real();
@@ -363,6 +370,15 @@ bool state(Reader &r, HudState &s, bool compact = false, bool extended = false, 
   s.azProfile = geometry ? r.u8() : s.maximum == 360 ? AZ_P36 : AZ_P45;
   s.rangeRevision = geometry ? r.u32() : 1;
   if (elevation) { s.elRange.start=r.real(); s.elRange.end=r.real(); s.elProfile=r.u8(); }
+  if(motion) for(unsigned i=0;i<2;++i) {
+    auto &m=s.motion[i]; auto &a=s.axes[i]; m.mode=RegulatorMode(r.u8());const auto flags=r.u8();
+    m.ready=flags&1;m.holdEnabled=flags&2;m.kickEnabled=flags&4;a.holdArmed=flags&8;
+    a.motionPhase=MotionPhase(r.u8());a.motionError=MotionError(r.u8());
+    a.measuredVelocity=r.real();a.requestedVelocity=r.real();a.profileAcceleration=r.real();
+    s.speeds[i].coastDegrees=r.real();s.speeds[i].decelerationFactor=r.real();
+    if(m.mode>RegulatorMode::Cascade || flags>15 || a.motionPhase>MotionPhase::Fault || a.motionError>MotionError::Planner ||
+       s.speeds[i].coastDegrees<0 || s.speeds[i].coastDegrees>90 || s.speeds[i].decelerationFactor<.1f || s.speeds[i].decelerationFactor>10) return false;
+  }
   const AzRange range{s.minimum,s.maximum};
   if (!validAzProfile(s.azProfile,range) || !s.rangeRevision ||
       !validElProfile(s.elProfile,s.elRange) || !range.contains(s.axes[0].current) || !s.elRange.contains(s.axes[1].current)) return false;
@@ -459,6 +475,8 @@ void HudState::capture(const Controller &c, const Protocol &p, uint32_t now) {
   for (unsigned i = 0; i < 2; ++i) {
     axes[i] = c.axes[i];
     speeds[i] = c.speeds[i];
+    const auto &m=c.motionSettings[i];
+    motion[i] = {m.mode,m.ready,m.kickEnabled,m.holdEnabled};
     variable[i] = c.variableSpeed(i);
     tolerance[i] = c.effectiveTolerance(i);
   }
@@ -489,6 +507,8 @@ void HudState::apply(Controller &c, Protocol &p, uint32_t now) const {
   for (unsigned i = 0; i < 2; ++i) {
     c.axes[i] = axes[i];
     c.speeds[i] = speeds[i];
+    auto &m=c.motionSettings[i]; m.mode=motion[i].mode;m.ready=motion[i].ready;
+    m.kickEnabled=motion[i].kickEnabled;m.holdEnabled=motion[i].holdEnabled;
     c.remoteVariable[i] = variable[i];
     c.remoteTolerance[i] = tolerance[i];
   }
@@ -661,6 +681,7 @@ Result Hud::submit(const ControlCommand &c) {
   lastResult_ = Result::Unavailable;
   if (!available() || !p)
     return lastResult_;
+  if(c.op==ControlOp::Target && !controller_.valid(c.target)) return lastResult_=Result::Invalid;
   if (c.op == ControlOp::ManualDrive) {
     if (!p->manual) {
       return lastResult_ = Result::Unavailable;
@@ -700,6 +721,22 @@ Result Hud::submit(const ControlCommand &c) {
   // The new command must sort after the release emitted by takeover.
   lastRequest_ = nextSerial();
   Job *slot = nullptr;
+  ControlCommand next=c;
+  if(c.op==ControlOp::Target) {
+    Job *tail=nullptr;
+    for(auto &j:client_->jobs) if(j.used && (!tail || int32_t(j.id-tail->id)>0)) tail=&j;
+    bool ready=true;
+    if(tail) for(unsigned i=0;i<2;++i) if(i ? c.target.hasEl||tail->command.target.hasEl : c.target.hasAz||tail->command.target.hasAz)
+      if((i==0 || controller_.model==Model::G5500) && (!controller_.axes[i].calibrated ||
+          (p->wireVersion>=4 && controller_.variableSpeed(i) && !controller_.motionSettings[i].ready))) ready=false;
+    if(ready && tail && tail->command.op==ControlOp::Target && tail->peer==p->id && tail->boot==p->boot &&
+       tail->selection==selectionEpoch && tail->rangeRevision==p->state.rangeRevision &&
+       tail->command.external==c.external && tail->command.followInManual==c.followInManual) {
+      if(!next.target.hasAz && tail->command.target.hasAz) { next.target.hasAz=true; next.target.az=tail->command.target.az; }
+      if(!next.target.hasEl && tail->command.target.hasEl) { next.target.hasEl=true; next.target.el=tail->command.target.el; }
+      finish(*tail,Result::Cancelled); slot=tail;
+    }
+  }
   if (stop) {
     slot = &client_->jobs[0];
     if (slot->used)
@@ -710,7 +747,7 @@ Result Hud::submit(const ControlCommand &c) {
     for (auto &h : client_->held)
       if (h.peer == p->id)
         h.active = false;
-  } else
+  } else if(!slot)
     for (unsigned i = 1; i < 4; ++i)
       if (!client_->jobs[i].used) {
         slot = &client_->jobs[i];
@@ -722,7 +759,7 @@ Result Hud::submit(const ControlCommand &c) {
   }
   *slot = Job{};
   slot->used = true;
-  slot->command = c;
+  slot->command = next;
   slot->peer = p->id;
   slot->boot = p->boot;
   slot->endpoint = p->endpoint;
@@ -791,7 +828,7 @@ bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
   auto *selected = peer(targetId);
   const bool extended = !discovery && selected && selected->manual && selected->fresh(now);
   const uint8_t version = selected && selected->received ? selected->wireVersion :
-      selected ? (selected->probeVersion = selected->probeVersion == 1 ? 3 : selected->probeVersion - 1) : 3;
+      selected ? (selected->probeVersion = selected->probeVersion == 1 ? 4 : selected->probeVersion - 1) : 4;
   header(w, {discovery  ? Kind::Discover
              : extended ? Kind::ExtendedQuery
                         : Kind::Query,
@@ -801,7 +838,7 @@ bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
     return false;
   if (discovery) {
     scanSerial_ = serial;
-    for (uint8_t oldVersion : {uint8_t(2),uint8_t(1)}) {
+    for (uint8_t oldVersion : {uint8_t(3),uint8_t(2),uint8_t(1)}) {
       Writer legacy{tx_,sizeof tx_}; header(legacy,{Kind::Discover,id,targetId,boot,0,serial,0,oldVersion});
       const auto bytes=legacy.finish();
       if(bytes) transport_->sendHud(e,tx_,bytes);
@@ -811,7 +848,7 @@ bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
     // Keep the working version first after packet loss. Probe one alternative
     // as well so a reboot into older/newer firmware can still renegotiate.
     if (p->received && !p->fresh(now)) {
-      p->probeVersion = p->probeVersion == 1 ? 3 : p->probeVersion - 1;
+      p->probeVersion = p->probeVersion == 1 ? 4 : p->probeVersion - 1;
       if (p->probeVersion != version) {
         Writer probe{tx_,sizeof tx_};
         header(probe,{Kind::Query,id,targetId,boot,0,serial,0,p->probeVersion});
@@ -843,7 +880,7 @@ bool Hud::sendState(const HudEndpoint &e, uint64_t targetId, uint32_t seq, bool 
     w.u8(uint8_t(result));
   HudState s;
   s.capture(controller_, protocol_, now);
-  state(w, s, compact, false, version >= 2, version >= 3);
+  state(w, s, compact, false, version >= 2, version >= 3, version >= 4);
   auto n = w.finish();
   return transport_ && n && transport_->sendHud(e, tx_, n);
 }
@@ -981,7 +1018,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     const uint32_t revision = telemetry ? r.u32() : 0;
     HudState s;
     if (compact) s = p->state;
-    if (!state(r, s, compact, extended, h.version >= 2, h.version >= 3) || (h.version >= 2 && h.geometry != s.rangeRevision)) {
+    if (!state(r, s, compact, extended, h.version >= 2, h.version >= 3, h.version >= 4) || (h.version >= 2 && h.geometry != s.rangeRevision)) {
       ++rejected;
       return;
     }
@@ -1066,7 +1103,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     }
     p->wireVersion = h.version;
     // After a dropout, try the last negotiated version before falling back.
-    p->probeVersion = h.version == 3 ? 1 : h.version + 1;
+    p->probeVersion = h.version == 4 ? 1 : h.version + 1;
     if (p->boot && p->boot != h.boot) {
       p->live = false;
       p->manual = false;
@@ -1115,7 +1152,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       header(w, {Kind::ExtendedState, id, h.source, boot, h.boot, h.serial, now, h.version, controller_.rangeRevision});
       HudState s;
       s.capture(controller_, protocol_, now);
-      state(w, s, false, true, h.version >= 2, h.version >= 3);
+      state(w, s, false, true, h.version >= 2, h.version >= 3, h.version >= 4);
       const auto n = w.finish();
       if (n && transport_) {
         transport_->sendHud(e, tx_, n);
@@ -1282,12 +1319,12 @@ void Hud::publishLive() {
   HudState current; current.capture(controller_, protocol_, now);
   current.remaining = (current.remaining / 1000) * 1000;
   Writer fingerprint{tx_, sizeof tx_};
-  state(fingerprint, current, true, true, true);
+  state(fingerprint, current, true, true, true, true, true);
   const uint32_t hash = hudCrc(tx_, fingerprint.size);
   HudState control = current;
-  for (auto &axis : control.axes) { axis.current = 0; axis.speedOutputPercent = 0; }
+  for (auto &axis : control.axes) { axis.current = 0; axis.speedOutputPercent = 0; axis.measuredVelocity=axis.requestedVelocity=axis.profileAcceleration=0; }
   fingerprint = {tx_, sizeof tx_};
-  state(fingerprint, control, true, true, true);
+  state(fingerprint, control, true, true, true, true, true);
   const uint32_t controlHash = hudCrc(tx_, fingerprint.size);
   if (hash != liveHash_ && (controlHash != controlHash_ || uint32_t(now - liveChangedAt_) >= HudPositionIntervalMs)) {
     liveHash_ = hash; controlHash_ = controlHash; liveChangedAt_ = now; ++liveRevision_;
@@ -1300,7 +1337,7 @@ void Hud::publishLive() {
     header(w, {sub.extended ? Kind::ExtendedTelemetry : Kind::Telemetry, id, sub.source, boot,
                sub.boot, sub.serial, now, sub.wireVersion, controller_.rangeRevision});
     w.u32(liveRevision_);
-    state(w, current, true, sub.extended, sub.wireVersion >= 2, sub.wireVersion >= 3);
+    state(w, current, true, sub.extended, sub.wireVersion >= 2, sub.wireVersion >= 3, sub.wireVersion >= 4);
     const auto n = w.finish();
     if (n && transport_) {
       sub.sent = now;

@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "bluetooth.hpp"
 #include "protocol.hpp"
 #include <iostream>
@@ -62,7 +63,7 @@ int main() { try {
   for (int i = 0; i < 8; ++i) CHECK(bt.send("queued"));
   CHECK(!bt.send("overflow")); CHECK(fakeSpp.writes.size() == 1);
   // A congested transmitter does not prevent command processing, including STOP.
-  Controller controller; controller.feedback(20, 30, true, true); Protocol protocol(controller);
+  Controller controller = forkrot::testController(); controller.feedback(20, 30, true, true); Protocol protocol(controller);
   CHECK(protocol.line("R", 0).result == Result::Ok); CHECK(controller.moving());
   sppFeed("S\r"); CHECK(bt.receive(command)); CHECK(protocol.line(command, 1).result == Result::Ok);
   CHECK(!controller.moving());

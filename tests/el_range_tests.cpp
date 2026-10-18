@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "api.hpp"
 #include "calibration_record.hpp"
 #include "crowpanel_knob.hpp"
@@ -8,7 +9,7 @@ static void near(float a,float b) { assert(std::abs(a-b)<.002f); }
 int main() {
   for (RotationRange r : {RotationRange{0,180},{-30,210},{50,230},{-180,-30},
                           {10,11},{-3600,0},{3600,7200},{-.1f,179.9f}}) {
-    Controller c;Protocol p(c);Settings settings;
+    Controller c = forkrot::testController();Protocol p(c);Settings settings;
     assert(c.setElRange(r,EL_CUSTOM));c.feedback(20,r.start,true,true);
     assert(c.valid({0,r.start,false,true}) && c.valid({0,r.end,false,true}));
     assert(!c.valid({0,r.start-.1f,false,true}) && !c.valid({0,r.end+.1f,false,true}));
@@ -23,7 +24,7 @@ int main() {
     if(r.span()<359) {knob.setBearing(r.end+.1f,101);assert(knob.lastResult==Result::Invalid);}
     c.stopNow(-1,102);
   }
-  Controller c;Protocol p(c);Settings settings;
+  Controller c = forkrot::testController();Protocol p(c);Settings settings;
   assert(c.setElRange({-30,210},EL_CUSTOM));c.feedback(20,0,true,true);
   CrowPanelKnob knob(c);knob.selectAxis();knob.setBearing(340,0);near(c.axes[1].target,-20);c.stopNow(-1,0);
   assert(p.line("W100 -20",1).result==Result::Pending);near(c.pending.el,-20);
@@ -52,7 +53,7 @@ int main() {
   assert(c.elProfile==EL_STANDARD && (c.elRange==RotationRange{0,180}));
   assert(c.valid({100,0,true,true}) && !c.valid({100,1,true,true}));
   for (bool reverse : {false,true}) {
-    Controller controller;Calibration cal(controller);auto &s=cal.state();
+    Controller controller = forkrot::testController();Calibration cal(controller);auto &s=cal.state();
     s.elOSet=s.elFSet=s.elLinearValid=true;s.cal.el0=reverse?2800:100;s.cal.elMax=reverse?100:2800;
     for(unsigned i=0;i<EL_CAL_N;++i)s.elCalMv[i]=s.cal.el0+(s.cal.elMax-s.cal.el0)*int(i)/4;
     cal.refreshMultiCalValidity();assert(cal.configureEl(EL_CUSTOM,-30,180));

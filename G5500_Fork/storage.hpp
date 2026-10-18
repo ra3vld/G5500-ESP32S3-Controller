@@ -29,7 +29,8 @@ public:
   void loadTouchCalibration(TouchCalibration &touchCalibration);
   void saveTouchCalibration(const TouchCalibration &touchCalibration);
   void loadForkSettings(Runtime &runtime);
-  void saveForkSettings(const Runtime &runtime);
+  void loadMotionSettings(Runtime &runtime);
+  bool saveForkSettings(const Runtime &runtime);
   void loadProfilePresets(Runtime &runtime);
   void saveProfilePresets(const Runtime &runtime);
   void addResetHistoryEntry(int bootResetReason, const String &bootResetReasonText);

@@ -23,6 +23,7 @@ out.mkdir(parents=True, exist_ok=True)
 for f in source.iterdir():
     if f.suffix in {'.ino', '.cpp', '.c', '.hpp', '.h'} and not f.name.endswith('.ino.cpp'):
         shutil.copy2(f, out / f.name)
+shutil.copytree(source / 'src', out / 'src', dirs_exist_ok=True)
 partitions = 'partitions_esp32_8mb.csv' if a.target == 'esp32-8mb' else 'partitions_esp32.csv' if a.target == 'esp32' else 'partitions_s3.csv' if a.target in ('s3', 'crowpanel') else 'partitions_s2.csv'
 shutil.copy2(source / partitions, out / 'partitions.csv')
 print(out / 'G5500_Fork.ino')

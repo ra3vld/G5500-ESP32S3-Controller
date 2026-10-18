@@ -12,6 +12,7 @@ class PositionFilter {
 public:
   bool due(uint32_t now) const { return !count_ || uint32_t(now-at_) >= 20; }
   int value() const { return result_; }
+  uint32_t sampledAt() const { return at_; }
   int sample(int mv, uint32_t now) {
     if (!due(now)) return result_;
     values_[index_] = mv;

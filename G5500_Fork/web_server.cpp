@@ -1,3 +1,4 @@
+#include "motion_json.hpp"
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "web_server.hpp"
 #include "web_page.hpp"
@@ -451,8 +452,13 @@ void WebInterface::setupForkWeb() {
     }
     web_.send(r.status, "application/json", r.body.c_str());
   });
+  web_.on("/api/motion", HTTP_GET, [this] {
+    if(runtime_.hud.isHud()) { web_.send(409,"application/json","{\"ok\":false,\"result\":\"controller_settings_only\"}"); return; }
+    JsonWriter j(statusBuffer_,sizeof statusBuffer_);
+    writeMotionConfiguration(j,runtime_.controller); sendJson(j);
+  });
   for (const char *route :
-       {"/api/mode", "/api/execute", "/api/preset", "/api/preset/run", "/api/settings"}) {
+       {"/api/mode", "/api/execute", "/api/preset", "/api/preset/run", "/api/settings", "/api/motion/reset"}) {
     String path = route;
     web_.on(path, HTTP_POST, [this, path] {
       auto oldModel = runtime_.controller.model;
@@ -463,13 +469,18 @@ void WebInterface::setupForkWeb() {
         if (oldModel != runtime_.controller.model) {
           // Old calibration was already saved on each calibration edit.
           actions_.loadPrefs();
+          actions_.loadMotionSettings();
           runtime_.controller.setRange(calibration_.activeAzRange(), calibration_.state().gsAzMode, millis());
           actions_.loadProfilePresets();
           actions_.invalidateDisplay();
           runtime_.targetValid = false;
+          // Reapply the explicit simple/settings fields to the newly loaded
+          // profile. Combined model + PID changes are rejected by the API.
+          if(path == "/api/settings") response = callApi(path.c_str());
         }
         if (path == "/api/mode" || path == "/api/settings") {
           actions_.saveForkSettings();
+          if(runtime_.controller.fault=="motion_storage_failed") response={503,"{\"ok\":false,\"result\":\"motion_storage_failed\"}"};
         }
         if (path == "/api/preset") {
           actions_.saveProfilePresets();

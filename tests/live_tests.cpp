@@ -1,3 +1,4 @@
+#include "motion_fixture.hpp"
 #include "live.hpp"
 #include "hud_uart_tx.hpp"
 #include <cassert>
@@ -5,7 +6,7 @@
 #include <vector>
 using namespace forkrot;
 int main() {
-  Controller c;Protocol p(c);Settings settings;Hud h(c,p);h.begin(1,10);c.feedback(20,30,true,true);
+  Controller c = forkrot::testController();Protocol p(c);Settings settings;Hud h(c,p);h.begin(1,10);c.feedback(20,30,true,true);
   LiveRequest request;
   const std::string prefix="v=1&cid=1&boot=000000000000000a&selection=0&path=";
   assert(request.parse(prefix+"%2Fapi%2Ftarget&az=123"));

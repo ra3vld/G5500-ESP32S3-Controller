@@ -3,6 +3,7 @@
 #include "build_config.hpp"
 #include "hardware_config.hpp"
 #include "az_range.hpp"
+#include "motion.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -76,9 +77,15 @@ public:
   }
 };
 struct SpeedSettings {
-  unsigned speedPercent = 100, startSpeedPercent = 18, approachSpeedPercent = 18;
+  unsigned speedPercent = 50, startSpeedPercent = 18, approachSpeedPercent = 18;
   unsigned accelerationMs = 1800, decelerationMs = 1200, slowdownDegrees = 3;
   float coastDegrees = 0, decelerationFactor = 1;
+  bool operator==(const SpeedSettings &o) const {
+    return speedPercent==o.speedPercent && startSpeedPercent==o.startSpeedPercent &&
+      approachSpeedPercent==o.approachSpeedPercent && accelerationMs==o.accelerationMs &&
+      decelerationMs==o.decelerationMs && slowdownDegrees==o.slowdownDegrees &&
+      coastDegrees==o.coastDegrees && decelerationFactor==o.decelerationFactor;
+  }
 };
 struct Axis {
   float current = 0, target = 0;
@@ -89,6 +96,10 @@ struct Axis {
   bool hasRun = false;
   bool targetKnown = false;
   float speedOutputPercent = 0;
+  float measuredVelocity = 0, requestedVelocity = 0, profileAcceleration = 0;
+  MotionPhase motionPhase = MotionPhase::Idle;
+  MotionError motionError = MotionError::None;
+  bool holdArmed = false;
 };
 struct Preset {
   std::string label;
@@ -127,6 +138,7 @@ public:
   int presetSlot = -1;
   bool speedEnabled = DRIVE_INTERFACE != DRIVE_YAESU;
   std::array<SpeedSettings, 2> speeds{};
+  std::array<MotionSettings, 2> motionSettings{};
   unsigned &speedPercent = speeds[0].speedPercent;
   unsigned &startSpeedPercent = speeds[0].startSpeedPercent;
   unsigned &approachSpeedPercent = speeds[0].approachSpeedPercent;
@@ -136,6 +148,8 @@ public:
   bool driveFault = false;
   bool variableSpeed(unsigned i) const;
   float tolerance(unsigned i) const {
+    if (variableSpeed(i) && motionSettings[i].mode == RegulatorMode::Cascade)
+      return motionSettings[i].positionTolerance;
     return std::min(speeds[i].coastDegrees, range(i).span() / 10);
   }
   size_t sequenceIndex() const {
@@ -150,6 +164,11 @@ public:
   std::string fault;
   Controller();
   void feedback(float az, float el, bool azCal, bool elCal);
+  void feedbackAt(unsigned axis, float position, bool calibrated, uint32_t sampledAt);
+  // A changed calibration starts a new measurement coordinate system.
+  void resetFeedback(int axis, uint32_t now);
+  bool configureMotion(unsigned axis, const MotionSettings &, uint32_t now);
+  Result resetMotion(int axis, uint32_t now);
   Result target(Target t, bool external, uint32_t now, bool followInManual = false);
   Result jog(unsigned axis, int direction, bool external, uint32_t now);
   void stop(int axis = -1);
@@ -197,6 +216,10 @@ private:
   uint32_t autoHourStartedAt_ = 0, sequenceAdvancedAt_ = 0, sequenceIntervalMs_ = 0;
   uint32_t lastSpeedUpdateAt_ = 0;
   bool speedUpdateStarted_ = false;
+  std::array<MotionRuntime, 2> motion_{};
+  void cancelMotion(unsigned axis);
+  void motionFault(unsigned axis, MotionError, uint32_t now);
+  void tickMotion(unsigned axis, uint32_t now);
   FixedVector<Target, 16> sequence_, pendingSequence_;
   size_t sequenceIndex_ = 0;
   Result start(Target t, uint32_t now, bool external = false);
