@@ -9,14 +9,17 @@
 #include <algorithm>
 namespace forkrot {
 
-namespace {
-float lineAzimuth(float angle, const Controller &controller) {
-  // Ordinary bearings choose the nearest reachable turn. Explicit signed and
-  // multi-turn coordinates retain their mechanical position.
-  return angle >= 0 && angle <= 360
-             ? nearest(angle, controller.axes[0].current, controller.azRange)
-             : angle;
+float Protocol::externalAzimuth(float angle, bool bidirectional) const {
+  return externalAzMode == ExternalAzMode::Mechanical
+             ? angle
+             : nearest(angle, controller_.axes[0].current, controller_.azRange, bidirectional);
 }
+float Protocol::lineAzimuth(float angle) const {
+  // In shortest mode ordinary bearings choose the nearest reachable turn.
+  // Explicit signed and multi-turn coordinates retain their mechanical position.
+  return angle >= 0 && angle <= 360 ? externalAzimuth(angle) : angle;
+}
+namespace {
 std::string_view trimView(std::string_view s) {
   size_t a = 0, b = s.size();
   while (a < b && (std::isspace((unsigned char)s[a]) || s[a] == 0)) {
@@ -211,7 +214,8 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
     auto az = field(root, "goazi");
     float value = 0, offset = 0;
     bool bidirectional = false;
-    if (!az || !az->children.empty() || !number(az->text, value) || value < 0 || value > 360) {
+    if (!az || !az->children.empty() || !number(az->text, value) ||
+        (externalAzMode == ExternalAzMode::Shortest && (value < 0 || value > 360))) {
       return packet;
     }
     auto offsetField = field(root, "offset");
@@ -222,8 +226,7 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
     if (!flag(field(root, "bidirectional"), bidirectional)) {
       return packet;
     }
-    value =
-        nearest(value + offset, controller_.axes[0].current, controller_.azRange, bidirectional);
+    value = externalAzimuth(value + offset, bidirectional);
     packet.result = controller_.target({value, 0, true, false}, true, now, manualFollow.n1mm);
     return packet;
   }
@@ -252,7 +255,8 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
   }
   auto az = field(root, "AZIMUTH"), el = field(root, "ELEVATION");
   float azimuth = 0, elevation = 0;
-  if (az && (!number(az->text, azimuth) || azimuth < 0 || azimuth > 7200)) {
+  if (az && (!number(az->text, azimuth) ||
+             (externalAzMode == ExternalAzMode::Shortest && (azimuth < 0 || azimuth > 7200)))) {
     return packet;
   }
   if (el && (!number(el->text, elevation) || !controller_.elRange.contains(elevation) ||
@@ -335,8 +339,9 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
   }
   bool changed = lp != longPath_;
   const float base = az ? azimuth : pstBaseAzimuth_;
-  const float resolved = nearest(lp ? heading(base + 180) : base, controller_.axes[0].current, controller_.azRange);
-  if ((az || (changed && pstBaseValid_)) && !std::isfinite(resolved)) return packet;
+  const float resolved = externalAzimuth(lp ? base + 180 : base);
+  if ((az || (changed && pstBaseValid_)) &&
+      (!std::isfinite(resolved) || !controller_.azRange.contains(resolved))) return packet;
   if (az) {
     pstBaseAzimuth_ = azimuth;
     pstBaseValid_ = true;
@@ -428,7 +433,7 @@ Packet Protocol::line(std::string_view input, uint32_t now, bool tcp) {
     if (v.size() != 3 || !number(v[1], az) || !number(v[2], el)) {
       packet.result = Result::Invalid;
     } else {
-      packet.result = controller_.target({lineAzimuth(az, controller_), el, true, true}, true, now,
+      packet.result = controller_.target({lineAzimuth(az), el, true, true}, true, now,
                                           manualFollow.rotctld);
     }
   } else if (u[0] == 'M' || u[0] == 'W') {
@@ -447,7 +452,7 @@ Packet Protocol::line(std::string_view input, uint32_t now, bool tcp) {
     if (packet.result == Result::Ok) {
       if (nums.size() == (hasEl ? 2u : 1u)) {
         packet.result = controller_.target(
-            {lineAzimuth(nums[0], controller_), hasEl ? nums[1] : 0, true, hasEl}, true, now,
+            {lineAzimuth(nums[0]), hasEl ? nums[1] : 0, true, hasEl}, true, now,
             manualFollow.gs232);
       } else if (nums.size() >= (hasEl ? 3u : 2u) && (!hasEl || (nums.size() - 1) % 2 == 0) &&
                  nums[0] >= 1 && nums[0] <= 999 && std::floor(nums[0]) == nums[0]) {

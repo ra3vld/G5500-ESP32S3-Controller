@@ -568,6 +568,27 @@ int main() {
     knob.sample(true, false, 0, 700); taps.tick(710);
     assert(motor.controller.axes[0].tracking);
   }
+  // External AZ interpretation belongs to the receiving HUD. The controller
+  // receives the resolved mechanical coordinate without resolving it again.
+  for (const char *mode : {"shortest", "mechanical"}) {
+    for (unsigned source = 0; source < 4; ++source) {
+      Bus routes;
+      Node motor(routes, 1, 0x0100007f), panel(routes, 10, 0x0a00007f, true);
+      motor.controller.feedback(350, 30, true, true);
+      panel.save(motor); assert(panel.hud.select(1)); routes.tick(100);
+      Settings local;
+      assert(api(panel.controller, panel.protocol, local, "/api/settings",
+                 {{"externalAzMode", mode}}, 100).status == 200);
+      const char *command[] = {"M10", "P 10 45", "<PST><AZIMUTH>10</AZIMUTH></PST>",
+                              "<N1MMRotor><rotor>*</rotor><goazi>10</goazi></N1MMRotor>"};
+      assert((source < 2 ? panel.protocol.line(command[source], 110, true)
+                         : panel.protocol.datagram(command[source], 110)).result == Result::Deferred);
+      const auto id = panel.hud.requestId(); routes.tick(120);
+      assert(panel.hud.result(id).result == Result::Pending);
+      assert(motor.controller.pending.az == (std::string(mode) == "shortest" ? 370 : 10));
+      assert(!motor.controller.moving());
+    }
+  }
   // Per-protocol manual following belongs to the receiving HUD and travels with
   // its command. The selected controller stays manual and enforces preset priority.
   for (bool follow : {false, true}) {

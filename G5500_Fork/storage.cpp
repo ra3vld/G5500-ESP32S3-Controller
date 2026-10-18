@@ -463,6 +463,9 @@ void Storage::loadForkSettings(Runtime &runtime) {
   runtime.protocol.manualFollow.pst = prefs_.getBool("pmanual", false);
   runtime.protocol.manualFollow.gs232 = prefs_.getBool("gmanual", false);
   runtime.protocol.manualFollow.rotctld = prefs_.getBool("rmanual", false);
+  runtime.protocol.setExternalAzMode(prefs_.getBool("azmech", false)
+                                        ? forkrot::ExternalAzMode::Mechanical
+                                        : forkrot::ExternalAzMode::Shortest);
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   runtime.loggerSettings.encoderInverted = prefs_.getBool("encinv", true);
 #endif
@@ -524,6 +527,7 @@ void Storage::saveForkSettings(const Runtime &runtime) {
   prefs_.putBool("pmanual", runtime.protocol.manualFollow.pst);
   prefs_.putBool("gmanual", runtime.protocol.manualFollow.gs232);
   prefs_.putBool("rmanual", runtime.protocol.manualFollow.rotctld);
+  prefs_.putBool("azmech", runtime.protocol.externalAzMode == forkrot::ExternalAzMode::Mechanical);
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   prefs_.putBool("encinv", runtime.loggerSettings.encoderInverted);
 #endif

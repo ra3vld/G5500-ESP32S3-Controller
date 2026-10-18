@@ -11,6 +11,7 @@ struct Packet {
 struct ManualFollowSettings {
   bool n1mm = false, pst = false, gs232 = false, rotctld = false;
 };
+enum class ExternalAzMode { Shortest, Mechanical };
 class Protocol {
   Controller &controller_;
   float pstBaseAzimuth_ = 0;
@@ -19,11 +20,18 @@ class Protocol {
   uint32_t loadedIntervalMs_ = 1000;
   uint32_t loadedStopEpoch_ = 0;
   bool loadedSequenceStarted_ = false;
+  float externalAzimuth(float angle, bool bidirectional = false) const;
+  float lineAzimuth(float angle) const;
 
 public:
   std::string rotorName = "G5500";
   ManualFollowSettings manualFollow;
+  ExternalAzMode externalAzMode = ExternalAzMode::Shortest;
   explicit Protocol(Controller &c) : controller_(c) {}
+  void setExternalAzMode(ExternalAzMode mode) {
+    if (externalAzMode != mode) resetPst();
+    externalAzMode = mode;
+  }
   std::string positionReport(float mechanicalAz) const;
   Packet datagram(std::string_view input, uint32_t now);
   Packet line(std::string_view input, uint32_t now, bool tcp = false);

@@ -52,6 +52,11 @@ bool boolean(std::string_view s, bool &v) {
   }
   return false;
 }
+bool externalAzMode(std::string_view s, ExternalAzMode &mode) {
+  if (s != "shortest" && s != "mechanical") return false;
+  mode = s == "mechanical" ? ExternalAzMode::Mechanical : ExternalAzMode::Shortest;
+  return true;
+}
 bool ip(std::string_view s) {
   for (unsigned i = 0; i < 4; ++i) {
     auto dot = s.find('.');
@@ -114,6 +119,8 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"pstManualFollow\":" << (protocol.manualFollow.pst ? "true" : "false")
        << ",\"gs232ManualFollow\":" << (protocol.manualFollow.gs232 ? "true" : "false")
        << ",\"rotctldManualFollow\":" << (protocol.manualFollow.rotctld ? "true" : "false")
+       << ",\"externalAzMode\":\""
+       << (protocol.externalAzMode == ExternalAzMode::Mechanical ? "mechanical" : "shortest") << '"'
        << ",\"reportPort\":" << settings.reportPort
        << ",\"reportHost\":" << jsonQuoted(settings.reportHost) << ",\"n1mmReport\":\""
        << jsonEscaped(protocol.rotorName) << '@'
@@ -206,6 +213,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     auto next = settings;
     auto name = protocol.rotorName;
     auto follow = protocol.manualFollow;
+    auto azMode = protocol.externalAzMode;
     for (const auto &entry : form) {
       const auto key = entry.first, value = entry.second;
       bool ok = false;
@@ -233,6 +241,8 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
         ok = boolean(value, follow.gs232);
       else if (key == "rotctldManualFollow")
         ok = boolean(value, follow.rotctld);
+      else if (key == "externalAzMode")
+        ok = externalAzMode(value, azMode);
       if (!ok)
         return {400, "{\"ok\":false,\"result\":\"controller_settings_only\"}"};
     }
@@ -240,6 +250,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     settings = next;
     protocol.rotorName = name;
     protocol.manualFollow = follow;
+    protocol.setExternalAzMode(azMode);
     return {200, "{\"ok\":true,\"result\":\"ok\"}"};
   }
   if (path == "/api/mode") {
@@ -270,6 +281,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     auto next = settings;
     auto name = protocol.rotorName;
     auto follow = protocol.manualFollow;
+    auto azMode = protocol.externalAzMode;
     auto model = controller.model;
     bool enabled = controller.speedEnabled;
     auto speeds = controller.speeds;
@@ -307,6 +319,8 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       if (has(form, entry.first))
         valid = boolean(get(form, entry.first), *entry.second) && valid;
     }
+    if (has(form, "externalAzMode"))
+      valid = externalAzMode(get(form, "externalAzMode"), azMode) && valid;
     if (has(form, "reportHost")) {
       next.reportHost = get(form, "reportHost");
       valid = valid && (next.reportHost.empty() || ip(next.reportHost));
@@ -373,6 +387,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       settings = next;
       protocol.rotorName = name;
       protocol.manualFollow = follow;
+      protocol.setExternalAzMode(azMode);
       controller.speedEnabled = enabled;
       controller.speeds = speeds;
       result = Result::Ok;
