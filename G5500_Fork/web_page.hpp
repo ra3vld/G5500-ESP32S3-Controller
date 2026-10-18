@@ -822,6 +822,7 @@ async function saveAp(){
 function pct(v,m){v=Math.max(0,Math.min(m,v));return(v/m*100).toFixed(1)+'%'}
 let statusPending=false,statusRefreshQueued=false;
 async function upd(force=false){
+if(otaBusy)return;
 if(live.ready&&!force)return;
 if(statusPending){if(force)statusRefreshQueued=true;return;}
 statusPending=true;
@@ -888,7 +889,7 @@ function drawRssi(j){
  setText(rmin,j.min===null?'-':j.min+' dBm');setText(rmax,j.max===null?'-':j.max+' dBm');setText(ravg,j.avg===null?'-':j.avg+' dBm');setText(rcount,j.count||0);
 }
 new ResizeObserver(()=>{if(rssiData)drawRssi(rssiData);}).observe(document.getElementById('rchart'));
-async function loadRssi(){if(document.getElementById('settingsPanel').hidden)return;try{let j=await (await fetch('/api/rssi?range='+rrange,{cache:'no-store'})).json();drawRssi(j)}catch(e){}}
+async function loadRssi(){if(otaBusy||document.getElementById('settingsPanel').hidden)return;try{let j=await (await fetch('/api/rssi?range='+rrange,{cache:'no-store'})).json();drawRssi(j)}catch(e){}}
 document.querySelectorAll('.rbtn').forEach(b=>b.addEventListener('click',()=>{rrange=b.dataset.r;document.querySelectorAll('.rbtn').forEach(q=>q.classList.remove('active'));b.classList.add('active');loadRssi();}));
 window.addEventListener('hashchange',()=>selectTab(location.hash.slice(1),false));
 document.querySelectorAll('[role=tab]').forEach(tab=>tab.addEventListener('keydown',event=>{
@@ -956,14 +957,14 @@ function hudRow(peer,discovered){
  return row;
 }
 async function loadHudPeers(){
- if(hudPollBusy)return;hudPollBusy=true;
+ if(otaBusy||hudPollBusy)return;hudPollBusy=true;
  try{const data=await (await fetch('/api/hud/peers?offset='+hudOffset,{cache:'no-store'})).json();hudTotal=data.total;
  const box=document.getElementById('hudPeers');box.replaceChildren(...data.items.map(p=>hudRow(p,false)));
  document.getElementById('hudPageInfo').textContent=hudTotal?`${hudOffset+1}–${Math.min(hudOffset+8,hudTotal)} / ${hudTotal}`:'Добавьте поворотку';
  document.getElementById('hudPrev').disabled=hudOffset===0;document.getElementById('hudNext').disabled=hudOffset+8>=hudTotal;
  }catch(e){}finally{hudPollBusy=false;hudLastPoll=Date.now()}
 }
-async function loadHudDiscovery(){try{const data=await (await fetch('/api/hud/peers?discovered=1&offset='+hudDiscoveredOffset,{cache:'no-store'})).json();hudDiscoveryTotal=data.total;document.getElementById('hudDiscovered').replaceChildren(...data.items.map(p=>hudRow(p,true)));document.getElementById('hudDiscoveryInfo').textContent='Найдено: '+data.total}catch(e){}}
+async function loadHudDiscovery(){if(otaBusy)return;try{const data=await (await fetch('/api/hud/peers?discovered=1&offset='+hudDiscoveredOffset,{cache:'no-store'})).json();hudDiscoveryTotal=data.total;document.getElementById('hudDiscovered').replaceChildren(...data.items.map(p=>hudRow(p,true)));document.getElementById('hudDiscoveryInfo').textContent='Найдено: '+data.total}catch(e){}}
 async function hudSearch(uart=false,manual=false){
  await forkPost('/api/hud/discover',{transport:uart?'uart':'wifi',address:manual?document.getElementById('hudAddress').value:'',port:manual?document.getElementById('hudPeerPort').value:window._forkState?.hudPort||4534});
  hudDiscoveredOffset=0;setTimeout(loadHudDiscovery,500);setTimeout(loadHudDiscovery,1800);

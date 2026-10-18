@@ -13,14 +13,16 @@ const initial=()=>({available:true,reason:'available',flashBytes:4194304,imageBy
 (async()=>{
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
  try{
-  for(const scenario of ['success','cancel','failure']){
-   let state=initial(),starts=0,finishes=0,cancels=0;const chunks=[],errors=[];
+  for(const scenario of ['success','hud-success','cancel','failure']){
+   let state=initial(),starts=0,finishes=0,cancels=0,backgroundDuringUpload=0;const chunks=[],errors=[];
    const page=await browser.newPage({viewport:{width:1100,height:900},locale:'ru-RU'});
    page.on('pageerror',e=>errors.push(e.message));
    await page.route('http://ota.test/**',async route=>{
     const req=route.request(),u=new URL(req.url());let body={},code=200;
     if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:html});
-    if(u.pathname==='/api/status')body=status;
+    if(state.writing&&!u.pathname.startsWith('/api/ota'))backgroundDuringUpload++;
+    if(u.pathname==='/api/status')body=scenario==='hud-success'?{...status,deviceRole:'hud',hudOnline:true}:status;
+    else if(u.pathname==='/api/hud/peers')body={items:[],total:0};
     else if(u.pathname==='/api/ota')body=state;
     else if(u.pathname.startsWith('/api/ota/')){
      assert.equal(req.headers()['x-ota-token'],'test-session');
@@ -29,7 +31,7 @@ const initial=()=>({available:true,reason:'available',flashBytes:4194304,imageBy
       const data=req.postDataBuffer();assert.equal(Number(u.searchParams.get('offset')),state.receivedBytes);
       if(scenario==='failure'){body={error:'write_failed'};code=409;state.error='write_failed';state.writing=false;}
       else {chunks.push(data);state.receivedBytes+=data.length;}
-      if(scenario==='cancel')await new Promise(r=>setTimeout(r,150));
+      if(scenario==='cancel'||scenario==='hud-success')await new Promise(r=>setTimeout(r,150));
      }
      if(u.pathname.endsWith('/finish')){finishes++;state.complete=true;state.writing=false;}
      if(u.pathname.endsWith('/cancel')){cancels++;state.writing=false;state.error='cancelled';}
@@ -67,13 +69,14 @@ const initial=()=>({available:true,reason:'available',flashBytes:4194304,imageBy
    }
    await page.locator('#otaFile').setInputFiles({name:'firmware.bin',mimeType:'application/octet-stream',buffer:bytes});
    await page.locator('#otaUpload').click();
+   if(scenario==='hud-success'){await page.waitForFunction(()=>otaBusy&&otaState?.available);await page.evaluate(()=>Promise.all([upd(true),loadRssi(),loadHudPeers(),loadHudDiscovery()]));}
    if(scenario==='cancel'){await page.waitForFunction(()=>document.getElementById('otaMessage').textContent.includes('Остановка')===false);await page.locator('#otaCancel').click();}
    await page.waitForFunction(()=>!otaBusy);
    assert.equal(starts,1);
-   if(scenario==='success'){assert.equal(finishes,1);assert.deepEqual(Buffer.concat(chunks),bytes);assert.match(await page.locator('#otaMessage').textContent(),/перезагружается/);}
+   if(scenario.endsWith('success')){assert.equal(finishes,1);assert.equal(backgroundDuringUpload,0,'background polling competed with OTA');assert.deepEqual(Buffer.concat(chunks),bytes);assert.match(await page.locator('#otaMessage').textContent(),/перезагружается/);}
    else{assert.equal(finishes,0);assert.equal(cancels,1);assert(await page.locator('#otaReboot').isVisible());assert.match(await page.locator('#otaMessage').textContent(),/остановлено до перезагрузки/);}
    assert.deepEqual(errors,[]);await page.close();
   }
-  console.log('OTA browser: capability, insufficient flash/layout, file limits/chip, complete chunks, cancellation/error, ArduinoOTA and 320/390/1100px passed');
+  console.log('OTA browser: capability, insufficient flash/layout, file limits/chip, complete chunks, HUD polling paused during upload, cancellation/error, ArduinoOTA and 320/390/1100px passed');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});
