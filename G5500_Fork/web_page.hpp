@@ -52,6 +52,7 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 .device-list{display:grid;gap:10px}.device-peer{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px}.device-peer>.btn:first-child{text-align:left}.device-peer-note{grid-column:1/-1;color:var(--m);font-size:13px}.device-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0;font-size:13px;color:var(--m)}.device-pagination>span{text-align:center;overflow-wrap:anywhere}
 @media(max-width:600px){.device-fields{grid-template-columns:minmax(0,1fr);gap:14px}.device-actions>.btn,.device-address>.btn{width:100%}.device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}.device-peer>.btn:first-child{grid-column:1/-1}.device-pagination .btn{padding:10px 12px}}
 [hidden]{display:none!important}.nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+.history-intro{margin:20px 0}.history-intro h2{font-size:24px;margin:0 0 8px}.history-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}.history-entry.card{margin:0;padding:18px 20px}.history-entry h3{font-size:16px;color:var(--a);margin:0 0 12px}.history-entry ul{margin:0;padding-left:20px;line-height:1.6;font-size:15px}.history-entry li+li{margin-top:8px}#historyPanel{padding-bottom:16px}
 .current-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;padding:12px;font-size:13px}.current-status span{display:block;color:var(--m);margin-bottom:5px}.current-status b{font-size:14px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.current-status .online{color:var(--a)}.current-status .offline{color:#e5a94f}
 .action-feedback{position:fixed;z-index:50;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:calc(100% - 24px);max-width:620px;display:flex;align-items:center;gap:12px;padding:12px 14px;background:#132532;border:2px solid #57bde8;border-radius:12px;box-shadow:0 6px 30px #0009;font-size:16px;line-height:1.4;overflow-wrap:anywhere}.action-feedback[data-state=success]{border-color:#24d18d}.action-feedback[data-state=error]{border-color:#ff7970}.action-feedback>div{flex:1;min-width:0}.action-feedback strong{display:block;margin-bottom:3px}.action-feedback button{flex:none;border:0;border-radius:8px;min-width:44px;min-height:44px;background:#294153;color:white;font-size:24px;cursor:pointer}.action-feedback[data-state=pending] button{visibility:hidden}.btn[aria-busy=true]{opacity:.8;outline:2px solid #57bde8;outline-offset:2px}.btn[aria-busy=true]::after{content:' …'}
 
@@ -148,9 +149,10 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <div id="rotatorConnection" class="connection-status" data-state="pending" role="status" aria-live="polite" aria-atomic="true">Проверяем связь…</div>
 </header>
 <nav class="nav" aria-label="Разделы контроллера">
-<div class="nav-tabs" role="tablist" aria-label="Управление и настройки">
+<div class="nav-tabs" role="tablist" aria-label="Управление, настройки и история">
 <button id="controlTab" class="active" role="tab" aria-controls="controlPanel" aria-selected="true" onclick="selectTab('control')">Управление</button>
 <button id="settingsTab" role="tab" aria-controls="settingsPanel" aria-selected="false" tabindex="-1" onclick="selectTab('settings')">Настройки</button>
+<button id="historyTab" role="tab" aria-controls="historyPanel" aria-selected="false" tabindex="-1" onclick="selectTab('history')">История</button>
 </div>
 <a href="/adc">ADC TEST</a>
 <a href="/resetdiag">RESET DIAG</a>
@@ -327,6 +329,44 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <div class="period-options" aria-describedby="signalPeriodHelp"><button class="btn rbtn active" data-r="hour">Час</button><button class="btn rbtn" data-r="day">Сутки</button><button class="btn rbtn" data-r="week">Неделя</button><button class="btn rbtn" data-r="month">Месяц</button><button class="btn rbtn" data-r="year">Год</button></div>
 <p class="field-help" id="signalPeriodHelp">Выберите период истории Wi-Fi. Чем ближе значение dBm к нулю, тем сильнее сигнал; пробелы на графике означают отсутствие измерений.</p><canvas height="260" id="rchart" width="900"></canvas>
 <div class="kv"><div>Мин.: <b id="rmin">-</b></div><div>Макс.: <b id="rmax">-</b></div><div>Среднее: <b id="ravg">-</b></div><div>Измерений: <b id="rcount">0</b></div></div></div></details></section></section>
+<section id="historyPanel" role="tabpanel" aria-labelledby="historyTab" hidden>
+<div class="history-intro"><h2>История разработки</h2><p class="hint">Основные возможности форка RA3VLD по датам их появления.</p></div>
+<ol class="history-list">
+<li class="card history-entry"><h3><time datetime="2026-10-18">18 октября 2026</time></h3><ul>
+<li>Отдельный выбор подтверждения цели или автоследования в ручном режиме для N1MM, PstRotator, GS-232 и rotctld / Hamlib.</li>
+<li>Подсказки к настройкам, отметка NC для некалиброванных осей и статус связи с повороткой в заголовке.</li>
+<li>Обновление прошивки по сети из браузера и через ArduinoOTA.</li>
+</ul></li>
+<li class="card history-entry"><h3><time datetime="2026-10-17">17 октября 2026</time></h3><ul>
+<li>Режим выносного пульта HUD: выбор поворотки и управление по Wi-Fi или UART.</li>
+<li>Тач-управление обеими осями на CrowPanel: выбор цели на кольце и ведение пальцем.</li>
+<li>Управление и обновление положения через WebSocket.</li>
+<li>Произвольные диапазоны AZ и EL, включая отрицательные углы, и калибровка по точкам внутри диапазона.</li>
+<li>Настройка выбега и темпа торможения отдельно для каждой оси.</li>
+<li>Отдельная вкладка настроек и компактный статус устройства.</li>
+</ul></li>
+<li class="card history-entry"><h3><time datetime="2026-10-16">16 октября 2026</time></h3><ul>
+<li>Круглый дисплей CrowPanel 2.1 с энкодером: выбор цели, режимов и пауза движения.</li>
+<li>Имитация привода для проверки управления без моторов и датчиков.</li>
+<li>Диагностика памяти, отказов выделения и времени работы основного цикла.</li>
+</ul></li>
+<li class="card history-entry"><h3><time datetime="2026-10-15">15 октября 2026</time></h3><ul>
+<li>Общая конфигурация сборки с выбором платы, дисплея, привода и Bluetooth.</li>
+</ul></li>
+<li class="card history-entry"><h3><time datetime="2026-10-14">14 октября 2026</time></h3><ul>
+<li>Поддержка приводов с раздельным PWM и модулей BTS7960 / IBT-2.</li>
+<li>Классический ESP32 и встроенный Bluetooth SPP для GS-232.</li>
+</ul></li>
+<li class="card history-entry"><h3><time datetime="2026-10-13">13 октября 2026</time></h3><ul>
+<li>Сборки с экраном TFT и тач-панелью или без дисплея.</li>
+</ul></li>
+<li class="card history-entry"><h3><time datetime="2026-10-12">12 октября 2026</time></h3><ul>
+<li>Публикация форка для G-5500 и G-800DXA на ESP32-S3 и ESP32-S2: веб-управление, калибровка, ручной и автоматические режимы, четыре предустановки.</li>
+<li>Управление из логгеров по N1MM / PstRotator UDP, GS-232 через UART и HC-05, rotctld и GS-232 через TCP.</li>
+<li>Регулировка скорости G-800DXA с плавным разгоном, замедлением у цели и торможением перед реверсом.</li>
+</ul></li>
+</ol>
+</section>
 <footer class="page-footer">
 <span>G5500 Fork 0.1.0 · оригинал &copy; UA1CFM</span>
 <div class="footer-links"><a href="https://github.com/ra3vld/G5500-ESP32S3-Controller" target="_blank" rel="noopener noreferrer">Репозиторий RA3VLD</a><a href="https://github.com/ua1cfm/G5500-ESP32S3-Controller" target="_blank" rel="noopener noreferrer">Оригинал UA1CFM</a></div>
@@ -362,15 +402,17 @@ async function settingsRequest(path,options={}){
 }
 
 
+const pageTabs=['control','settings','history'];
 function selectTab(name,updateHash=true){
+ if(!pageTabs.includes(name))name='control';
  const settings=name==='settings',opening=settings&&document.getElementById('settingsPanel').hidden;
  document.body.classList.toggle('settings-view',settings);
- for(const tab of ['control','settings']){
-  const active=(tab==='settings')===settings,button=document.getElementById(tab+'Tab');
+ for(const tab of pageTabs){
+  const active=tab===name,button=document.getElementById(tab+'Tab');
   document.getElementById(tab+'Panel').hidden=!active;
   button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;
  }
- if(updateHash&&location.hash!==(settings?'#settings':'#control'))location.hash=settings?'settings':'control';
+ if(updateHash&&location.hash!=='#'+name)location.hash=name;
  if(!settings)document.getElementById('settingsFeedback').hidden=true;
  if(opening)loadRssi();
  if(updateHash)(settings?document.querySelector('.wrap'):window).scrollTo({top:0,behavior:'instant'});
@@ -765,13 +807,14 @@ function drawRssi(j){
 new ResizeObserver(()=>{if(rssiData)drawRssi(rssiData);}).observe(document.getElementById('rchart'));
 async function loadRssi(){if(document.getElementById('settingsPanel').hidden)return;try{let j=await (await fetch('/api/rssi?range='+rrange,{cache:'no-store'})).json();drawRssi(j)}catch(e){}}
 document.querySelectorAll('.rbtn').forEach(b=>b.addEventListener('click',()=>{rrange=b.dataset.r;document.querySelectorAll('.rbtn').forEach(q=>q.classList.remove('active'));b.classList.add('active');loadRssi();}));
-window.addEventListener('hashchange',()=>selectTab(location.hash==='#settings'?'settings':'control',false));
+window.addEventListener('hashchange',()=>selectTab(location.hash.slice(1),false));
 document.querySelectorAll('[role=tab]').forEach(tab=>tab.addEventListener('keydown',event=>{
  if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
- event.preventDefault();const next=event.key==='Home'?'control':event.key==='End'?'settings':tab.id==='controlTab'?'settings':'control';
+ event.preventDefault();const index=pageTabs.indexOf(tab.id.slice(0,-3));
+ const next=event.key==='Home'?pageTabs[0]:event.key==='End'?pageTabs[pageTabs.length-1]:pageTabs[(index+(event.key==='ArrowRight'?1:-1)+pageTabs.length)%pageTabs.length];
  selectTab(next);document.getElementById(next+'Tab').focus();
 }));
-selectTab(location.hash==='#settings'?'settings':'control',false);
+selectTab(location.hash.slice(1),false);
 setInterval(loadRssi,30000);
 setInterval(upd,1000);setInterval(()=>upd(true),15000);upd();
 
