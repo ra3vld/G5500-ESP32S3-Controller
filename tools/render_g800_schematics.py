@@ -56,7 +56,7 @@ def speed_selector(x,y,w,color=orange,ground_net='GND'):
     box(x,y,w,380,'white','#c8d3e2',12)
     text(x+20,y+16,'S1: ШИМ / РУЧНАЯ СКОРОСТЬ · показано положение ШИМ',24,color,b=True)
     # VR1 is a voltage divider across EXT CONTROL pins 6 and 5.
-    text(x+30,y+65,'EXT CONTROL pin 6 · +5 В*',20,color,b=True)
+    text(x+30,y+65,'EXT CONTROL pin 6 · VD*',20,color,b=True)
     line([(x+80,y+100),(x+480,y+100),(x+480,y+170)],color)
     terminal(x+80,y+100,color)
     box(x+471,y+170,18,40,'white',color,0)
@@ -79,7 +79,7 @@ def speed_selector(x,y,w,color=orange,ground_net='GND'):
     text(x+1220,y+185,'Без среднего положения OFF.',19,color)
     text(x+1220,y+217,'Разрыв перед замыканием; менять при STOP.',19,color)
     text(x+20,y+310,'Вариант без VR1: вход B соединить с pin 6 для фиксированной скорости; выход ШИМ отделяется S1.',19,color)
-    text(x+20,y+345,'* Для блока с +5 В на pin 6; проверить относительно pin 5. Передняя ручка SPEED действует только с передними кнопками.',18,muted)
+    text(x+20,y+345,'* VD не стабилизирован: при делителе 1,2/1 кОм около 4,55 В без нагрузки. Проверить относительно pin 5. SPEED — для передних кнопок.',18,muted)
 def diode_up(x,y1,y2):
     line([(x,y1),(x,y1+12)],green)
     poly([(x-10,y1+30),(x+10,y1+30),(x,y1+12)],green)
@@ -114,7 +114,7 @@ def render_common():
     box(1530,215,420,945)
     text(1554,245,'YAESU G-800DXA',27,b=True)
     text(1554,286,'EXT CONTROL · mini-DIN 6',21,muted,b=True)
-    for y,n,label,col in [(350,'1','CW · по часовой',blue),(550,'2','CCW · против часовой',blue),(810,'4','Положение · 2–4,5 В',green),(950,'3','Скорость · 0–5 В',orange),(1080,'5','Общий · GND',muted),(1130,'6','+5 В* → VR1',orange)]:
+    for y,n,label,col in [(350,'1','CW · по часовой',blue),(550,'2','CCW · против часовой',blue),(810,'4','Положение · 2–4,5 В',green),(950,'3','Скорость · 0–5 В',orange),(1080,'5','Общий · GND',muted),(1130,'6','VD* → VR1',orange)]:
         terminal(1530,y,col);text(1550,y-17,n,28,col,b=True);text(1594,y-10,label,19,col)
     text(1555,413,'CW: замкнуть pin 1 на pin 5',18,muted)
     text(1555,614,'CCW: замкнуть pin 2 на pin 5',18,muted)
