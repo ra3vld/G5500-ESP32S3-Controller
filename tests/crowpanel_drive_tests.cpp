@@ -33,7 +33,7 @@ static void noInvalidGpio() {
     if(e.operation=="mode" && e.pin==PIN_SPEED) assert(e.value==OUTPUT_OPEN_DRAIN);
     if(e.operation=="attach") {
       if(DRIVE_INTERFACE==DRIVE_YAESU) assert(e.pin==PIN_SPEED && e.value==20000);
-      else assert(e.pin!=PIN_SPEED && e.value==1000);
+      else assert(e.pin!=PIN_SPEED && e.value==20000);
     }
   }
 }

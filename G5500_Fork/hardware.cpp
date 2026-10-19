@@ -214,7 +214,7 @@ bool Hardware::preparePwm(bool enable) {
     outputsOff();
     const unsigned count = c.drive == DRIVE_BTS7960 ? 4 : c.drive == DRIVE_SEPARATE_PWM ? 2 : 1;
     for (unsigned i=0; i<count; ++i) {
-      attached_[i] = ledcAttach(pins[i], c.drive == DRIVE_YAESU ? 20000 : 1000, 10);
+      attached_[i] = ledcAttach(pins[i], 20000, 10);
       if (!attached_[i]) {
         outputsOff();
         for (unsigned j=0; j<=i; ++j) {

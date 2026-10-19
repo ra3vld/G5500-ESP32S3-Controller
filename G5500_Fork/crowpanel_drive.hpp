@@ -21,7 +21,7 @@ public:
     // Detect a held button or an external pull-down before acquiring any PWM.
     if (digitalRead(board::PIN_SPEED) != HIGH) return fail();
     for (unsigned i = pwm_ ? 0 : 2; i < (pwm_ ? 2u : 3u); ++i) {
-      attached_[i] = ledcAttach(pins_[i], pwm_ ? 1000 : 20000, 10);
+      attached_[i] = ledcAttach(pins_[i], 20000, 10);
       if (!attached_[i]) {
         fail();
         for (unsigned j=0; j<3; ++j) if (attached_[j]) {

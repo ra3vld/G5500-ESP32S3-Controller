@@ -127,6 +127,8 @@ void outputs() {
 #endif
   CHECK(r.controller.target({100,120,true,DRIVE_INTERFACE != DRIVE_YAESU},false,0)==Result::Ok);
   r.controller.tick(0);r.controller.tick(20);fakeHardware.now=20;h.applyOutputs();
+  CHECK(fakeHardware.attachCalls==(DRIVE_INTERFACE==DRIVE_BTS7960 ? 4u : DRIVE_INTERFACE==DRIVE_SEPARATE_PWM ? 2u : 1u));
+  for (const auto &e : fakeHardware.events) if (e.operation=="attach") CHECK(e.value==20000);
   std::map<int,uint32_t> duties;
   for (const auto &e : fakeHardware.events) if (e.operation=="pwm") duties[e.pin]=moduleDuty(e.value);
 #if DRIVE_INTERFACE == DRIVE_BTS7960
