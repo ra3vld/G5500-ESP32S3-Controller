@@ -114,6 +114,14 @@ static void profilesAndNoise() {
   CHECK(faults.fault=="el_kick_start_timeout");
 }
 static void feedbackSafety() {
+  for(int direction:{-1,1}) {
+    auto stopped=ready();CHECK(stopped.jog(0,direction,false,0)==Result::Ok);stopped.tick(0);
+    for(unsigned at=20;at<=3400;at+=20) {
+      stopped.feedbackAt(0,10+((at/20)%2?.14f:-.14f),true,at);stopped.tick(at);
+    }
+    CHECK(stopped.axes[0].motionError==MotionError::Stalled);
+    CHECK(!stopped.axes[0].direction && stopped.axes[0].speedOutputPercent==0);
+  }
   for(bool cascade:{false,true}) {
     auto fast=ready(cascade);fast.jog(0,1,false,0);fast.tick(0);
     // Real-drive replay: 3 degrees per fresh 20ms conversion (150 deg/s),
@@ -151,6 +159,22 @@ static void feedbackSafety() {
   for(unsigned stamp=20;stamp<=2000;stamp+=20){c.feedbackAt(0,10,false,stamp);c.tick(stamp);}
   CHECK(c.axes[0].direction&&c.axes[0].motionError==MotionError::None);
 }
+static void cascadeKickOverspeed() {
+  auto c=ready(true);auto &m=c.motionSettings[0];m.kickEnabled=true;m.kickPercent=50;m.kickReleaseMs=20;
+  CHECK(c.target({50,0,true,false},false,0)==Result::Ok);c.tick(0);
+  CHECK(c.axes[0].motionPhase==MotionPhase::Kick);
+  float previousAcceleration=0;
+  for(unsigned at=20;at<=500;at+=20) {
+    c.feedbackAt(0,10+float(at)*.01f,true,at);c.tick(at);const auto &a=c.axes[0];
+    CHECK(a.measuredVelocity>m.velocity);
+    CHECK(std::abs(a.requestedVelocity)<=m.velocity+.001f);
+    CHECK(std::abs(a.profileAcceleration)<=m.acceleration+.001f);
+    CHECK(std::abs(a.profileAcceleration-previousAcceleration)<=m.jerk*.02f+.001f);
+    if(at>20)CHECK(a.speedOutputPercent==0); // Brake after the configured kick handoff.
+    CHECK(a.motionError==MotionError::None);previousAcceleration=a.profileAcceleration;
+  }
+  c.stopNow(-1,520);CHECK(!c.moving());CHECK(!c.axes[0].holdArmed);
+}
 static void stallRetry() {
   const auto stalled=[](unsigned axis=0) {
     auto c=ready(); CHECK(c.jog(axis,1,false,0)==Result::Ok);c.tick(0);
@@ -185,4 +209,4 @@ static void stallRetry() {
   CHECK(c.manualDrive(1,1,1,200,1,1,0,false,3060)!=Result::Ok);CHECK(c.axes[0].motionError==MotionError::Stalled);
   CHECK(c.manualDrive(1,1,2,201,1,1,0,false,3080)==Result::Ok);CHECK(c.axes[0].motionError==MotionError::None);
 }
-int main() { try { records();stallRetry();kickAndStream();cascadeHold();profilesAndNoise();feedbackSafety();std::cout<<"PASS motion: "<<checks<<" checks; Controller bytes="<<sizeof(Controller)<<"\n"; } catch(const std::exception &e) { std::cerr<<e.what()<<'\n';return 1; } }
+int main() { try { records();stallRetry();kickAndStream();cascadeHold();profilesAndNoise();feedbackSafety();cascadeKickOverspeed();std::cout<<"PASS motion: "<<checks<<" checks; Controller bytes="<<sizeof(Controller)<<"\n"; } catch(const std::exception &e) { std::cerr<<e.what()<<'\n';return 1; } }

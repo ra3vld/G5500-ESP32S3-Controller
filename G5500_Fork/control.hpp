@@ -119,7 +119,7 @@ struct AutoTuneState {
   const char *reason = "";
   float origin = 0, otherPosition = 0, lower = 0, upper = 0, limit = 0, level = 0;
   float phasePosition = 0, noiseLow = 0, noiseHigh = 0, noiseVelocity = 0, threshold = 0;
-  float velocityIntegral = 0, previousVelocity = 0, validationError = 0, validationTarget = 0;
+  float peakVelocity = 0, validationError = 0, validationTarget = 0;
   float nextLevel = 0, searchLevel = 0;
   float lastPosition = 0, sampleVelocity = 0, stoppingDistance = 0;
   float plateauVelocity = 0;
