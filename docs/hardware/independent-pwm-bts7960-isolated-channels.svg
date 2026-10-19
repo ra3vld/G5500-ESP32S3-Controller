@@ -1,17 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1800" viewBox="0 0 2400 1800">
 <title>PC817C PWM and ENABLE channel circuits</title>
 <rect width="100%" height="100%" fill="white"/>
-<text x="45" y="30" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="36" font-weight="bold" fill="#172b46">Развязка PC817C: два разных включения каналов</text>
-<text x="47" y="82" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="normal" fill="#245fbe">Лист 2. Корпус DIP4, вид сверху: 1 анод, 2 катод, 3 эмиттер, 4 коллектор.</text>
-<text x="47" y="126" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#586575">Все резисторы LED: 200 Ом, 1%; GPIO: 10 кОм к GND_CTRL. Номиналы подтвердить по току и уровням.</text>
+<text x="45" y="56" font-family="DejaVu Sans,sans-serif" font-size="36" font-weight="bold" fill="#172b46">Развязка PC817C: два разных включения каналов</text>
+<text x="47" y="100" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="normal" fill="#245fbe">Лист 2. Корпус DIP4, вид сверху: 1 анод, 2 катод, 3 эмиттер, 4 коллектор.</text>
+<text x="47" y="141" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#586575">Все резисторы LED: 200 Ом, 1%; GPIO: 10 кОм к GND_CTRL. Номиналы подтвердить по току и уровням.</text>
 <rect x="45" y="195" width="2310" height="590" fill="#f6f8fc" stroke="#aebed2" stroke-width="2"/>
-<text x="65" y="213" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#245fbe">PWM: повторить 4 раза (U1...U4)</text>
+<text x="1880" y="152" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="bold" fill="#087c60">3V3_CTRL</text>
+<polyline points="1880,170 2005,170" fill="none" stroke="#087c60" stroke-width="3"/>
+<polyline points="2005,170 2057.0,170" fill="none" stroke="#087c60" stroke-width="3"/>
+<rect x="2057.0" y="163" width="36" height="14" fill="white" stroke="#087c60" stroke-width="2"/>
+<polyline points="2093.0,170 2145,170" fill="none" stroke="#087c60" stroke-width="3"/>
+<text x="2047.0" y="152" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087c60">R35 · 500Ω</text>
+<polyline points="2145,170 2225,170 2225,185" fill="none" stroke="#087c60" stroke-width="3"/>
+<polyline points="2213,185 2237,185" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="2217,191 2233,191" fill="none" stroke="#586575" stroke-width="2"/>
+<polyline points="2222,197 2228,197" fill="none" stroke="#586575" stroke-width="2"/>
+<text x="2180" y="214" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#586575">GND_CTRL</text>
+<text x="65" y="234" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#245fbe">PWM: повторить 4 раза (U1...U4)</text>
 <rect x="940" y="305" width="440" height="330" fill="white" stroke="#aebed2" stroke-width="2"/>
-<text x="1050" y="320" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="25" font-weight="bold" fill="#172b46">PC817C: PWM</text>
-<text x="950" y="388" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#245fbe">1 A</text>
-<text x="950" y="532" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#245fbe">2 K</text>
-<text x="1285" y="388" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#a65600">4 C</text>
-<text x="1285" y="532" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#a65600">3 E</text>
+<text x="1050" y="338" font-family="DejaVu Sans,sans-serif" font-size="25" font-weight="bold" fill="#172b46">PC817C: PWM</text>
+<text x="950" y="403" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#245fbe">1 A</text>
+<text x="950" y="547" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#245fbe">2 K</text>
+<text x="1285" y="403" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#a65600">4 C</text>
+<text x="1285" y="547" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#a65600">3 E</text>
 <polyline points="940,405 1045,405 1045,443" fill="none" stroke="#245fbe" stroke-width="3"/>
 <polyline points="1025,443 1065,443 1045,473 1025,443" fill="none" stroke="#245fbe" stroke-width="2"/>
 <polyline points="1025,477 1065,477" fill="none" stroke="#245fbe" stroke-width="2"/>
@@ -37,50 +48,50 @@
 <polyline points="1240,448 1285,420 1285,405 1380,405" fill="none" stroke="#a65600" stroke-width="3"/>
 <polyline points="1240,497 1285,525 1285,545 1380,545" fill="none" stroke="#a65600" stroke-width="3"/>
 <polyline points="1260,516 1285,525 1271,501" fill="none" stroke="#a65600" stroke-width="2"/>
-<text x="65" y="380" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="25" font-weight="bold" fill="#245fbe">GPIO PWM</text>
+<text x="65" y="398" font-family="DejaVu Sans,sans-serif" font-size="25" font-weight="bold" fill="#245fbe">GPIO PWM</text>
 <polyline points="245,405 940,405" fill="none" stroke="#245fbe" stroke-width="3"/>
 <circle cx="400" cy="405" r="4" fill="#245fbe"/>
 <polyline points="400,413 400,416.0" fill="none" stroke="#586575" stroke-width="3"/>
 <rect x="393" y="416.0" width="14" height="36" fill="white" stroke="#586575" stroke-width="2"/>
 <polyline points="400,452.0 400,455" fill="none" stroke="#586575" stroke-width="3"/>
-<text x="418" y="422.0" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">10k</text>
+<text x="418" y="436.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">10k</text>
 <polyline points="400,405 400,413" fill="none" stroke="#586575" stroke-width="3"/>
 <polyline points="388,455 412,455" fill="none" stroke="#586575" stroke-width="2"/>
 <polyline points="392,461 408,461" fill="none" stroke="#586575" stroke-width="2"/>
 <polyline points="397,467 403,467" fill="none" stroke="#586575" stroke-width="2"/>
-<text x="355" y="473" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#586575">GND_CTRL</text>
+<text x="355" y="484" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#586575">GND_CTRL</text>
 <polyline points="610,405 672.0,405" fill="none" stroke="#245fbe" stroke-width="3"/>
 <rect x="672.0" y="398" width="36" height="14" fill="white" stroke="#245fbe" stroke-width="2"/>
 <polyline points="708.0,405 770,405" fill="none" stroke="#245fbe" stroke-width="3"/>
-<text x="662.0" y="374" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#245fbe">200Ω</text>
+<text x="662.0" y="387" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#245fbe">200Ω</text>
 <polyline points="940,545 810,545 810,590" fill="none" stroke="#245fbe" stroke-width="3"/>
 <polyline points="798,590 822,590" fill="none" stroke="#586575" stroke-width="2"/>
 <polyline points="802,596 818,596" fill="none" stroke="#586575" stroke-width="2"/>
 <polyline points="807,602 813,602" fill="none" stroke="#586575" stroke-width="2"/>
-<text x="765" y="608" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#586575">GND_CTRL</text>
+<text x="765" y="619" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#586575">GND_CTRL</text>
 <polyline points="1380,405 1900,405" fill="none" stroke="#a65600" stroke-width="3"/>
 <circle cx="1600" cy="405" r="4" fill="#a65600"/>
 <polyline points="1600,285 1600,327.0" fill="none" stroke="#087c60" stroke-width="3"/>
 <rect x="1593" y="327.0" width="14" height="36" fill="white" stroke="#087c60" stroke-width="2"/>
 <polyline points="1600,363.0 1600,405" fill="none" stroke="#087c60" stroke-width="3"/>
-<text x="1618" y="333.0" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087c60">2,2k</text>
-<text x="1550" y="253" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#087c60">5V_M</text>
-<text x="1930" y="390" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="25" font-weight="bold" fill="#a65600">RPWM / LPWM</text>
+<text x="1618" y="347.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087c60">2,2k</text>
+<text x="1550" y="269" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#087c60">5V_M</text>
+<text x="1930" y="408" font-family="DejaVu Sans,sans-serif" font-size="25" font-weight="bold" fill="#a65600">RPWM / LPWM</text>
 <polyline points="1380,545 1490,545 1490,590" fill="none" stroke="#a65600" stroke-width="3"/>
 <polyline points="1478,590 1502,590" fill="none" stroke="#586575" stroke-width="2"/>
 <polyline points="1482,596 1498,596" fill="none" stroke="#586575" stroke-width="2"/>
 <polyline points="1487,602 1493,602" fill="none" stroke="#586575" stroke-width="2"/>
-<text x="1445" y="608" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#586575">GND_M</text>
-<text x="65" y="674" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#245fbe">GPIO HIGH → LED ON → выход LOW. GPIO LOW → LED OFF → выход HIGH.</text>
-<text x="65" y="718" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="normal" fill="#172b46">На GPIO: duty = 1023 − требуемый duty. 0% моста → 100% GPIO; 100% моста → 0% GPIO.</text>
+<text x="1445" y="619" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#586575">GND_M</text>
+<text x="65" y="692" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#245fbe">GPIO HIGH → LED ON → выход LOW. GPIO LOW → LED OFF → выход HIGH.</text>
+<text x="65" y="736" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="normal" fill="#172b46">На GPIO: duty = 1023 − требуемый duty. 0% моста → 100% GPIO; 100% моста → 0% GPIO.</text>
 <rect x="45" y="825" width="2310" height="600" fill="#fff8ea" stroke="#aebed2" stroke-width="2"/>
-<text x="65" y="843" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#a65600">ENABLE: повторить 2 раза (U5 / AZ, U6 / EL)</text>
+<text x="65" y="864" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#a65600">ENABLE: повторить 2 раза (U5 / AZ, U6 / EL)</text>
 <rect x="940" y="930" width="440" height="330" fill="white" stroke="#aebed2" stroke-width="2"/>
-<text x="1050" y="945" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="25" font-weight="bold" fill="#172b46">PC817C: EN</text>
-<text x="950" y="1013" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#245fbe">1 A</text>
-<text x="950" y="1157" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#245fbe">2 K</text>
-<text x="1285" y="1013" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#a65600">4 C</text>
-<text x="1285" y="1157" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#a65600">3 E</text>
+<text x="1050" y="963" font-family="DejaVu Sans,sans-serif" font-size="25" font-weight="bold" fill="#172b46">PC817C: EN</text>
+<text x="950" y="1028" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#245fbe">1 A</text>
+<text x="950" y="1172" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#245fbe">2 K</text>
+<text x="1285" y="1028" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#a65600">4 C</text>
+<text x="1285" y="1172" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#a65600">3 E</text>
 <polyline points="940,1030 1045,1030 1045,1068" fill="none" stroke="#245fbe" stroke-width="3"/>
 <polyline points="1025,1068 1065,1068 1045,1098 1025,1068" fill="none" stroke="#245fbe" stroke-width="2"/>
 <polyline points="1025,1102 1065,1102" fill="none" stroke="#245fbe" stroke-width="2"/>
@@ -106,58 +117,58 @@
 <polyline points="1240,1073 1285,1045 1285,1030 1380,1030" fill="none" stroke="#a65600" stroke-width="3"/>
 <polyline points="1240,1122 1285,1150 1285,1170 1380,1170" fill="none" stroke="#a65600" stroke-width="3"/>
 <polyline points="1260,1141 1285,1150 1271,1126" fill="none" stroke="#a65600" stroke-width="2"/>
-<text x="65" y="1005" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="25" font-weight="bold" fill="#245fbe">GPIO ENABLE</text>
+<text x="65" y="1023" font-family="DejaVu Sans,sans-serif" font-size="25" font-weight="bold" fill="#245fbe">GPIO ENABLE</text>
 <polyline points="300,1030 940,1030" fill="none" stroke="#245fbe" stroke-width="3"/>
 <circle cx="400" cy="1030" r="4" fill="#245fbe"/>
 <polyline points="400,1038 400,1041.0" fill="none" stroke="#586575" stroke-width="3"/>
 <rect x="393" y="1041.0" width="14" height="36" fill="white" stroke="#586575" stroke-width="2"/>
 <polyline points="400,1077.0 400,1080" fill="none" stroke="#586575" stroke-width="3"/>
-<text x="418" y="1047.0" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">10k</text>
+<text x="418" y="1061.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">10k</text>
 <polyline points="400,1030 400,1038" fill="none" stroke="#586575" stroke-width="3"/>
 <polyline points="388,1080 412,1080" fill="none" stroke="#586575" stroke-width="2"/>
 <polyline points="392,1086 408,1086" fill="none" stroke="#586575" stroke-width="2"/>
 <polyline points="397,1092 403,1092" fill="none" stroke="#586575" stroke-width="2"/>
-<text x="355" y="1098" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#586575">GND_CTRL</text>
+<text x="355" y="1109" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#586575">GND_CTRL</text>
 <polyline points="610,1030 672.0,1030" fill="none" stroke="#245fbe" stroke-width="3"/>
 <rect x="672.0" y="1023" width="36" height="14" fill="white" stroke="#245fbe" stroke-width="2"/>
 <polyline points="708.0,1030 770,1030" fill="none" stroke="#245fbe" stroke-width="3"/>
-<text x="662.0" y="999" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#245fbe">200Ω</text>
+<text x="662.0" y="1012" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#245fbe">200Ω</text>
 <polyline points="940,1170 810,1170 810,1220" fill="none" stroke="#245fbe" stroke-width="3"/>
 <polyline points="798,1220 822,1220" fill="none" stroke="#586575" stroke-width="2"/>
 <polyline points="802,1226 818,1226" fill="none" stroke="#586575" stroke-width="2"/>
 <polyline points="807,1232 813,1232" fill="none" stroke="#586575" stroke-width="2"/>
-<text x="765" y="1238" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#586575">GND_CTRL</text>
+<text x="765" y="1249" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#586575">GND_CTRL</text>
 <polyline points="1380,1030 1530,1030 1530,970" fill="none" stroke="#087c60" stroke-width="3"/>
-<text x="1480" y="937" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#087c60">5V_M</text>
+<text x="1480" y="953" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#087c60">5V_M</text>
 <polyline points="1380,1170 1950,1170" fill="none" stroke="#a65600" stroke-width="3"/>
 <circle cx="1600" cy="1170" r="4" fill="#245fbe"/>
 <polyline points="1600,1178 1600,1181.0" fill="none" stroke="#586575" stroke-width="3"/>
 <rect x="1593" y="1181.0" width="14" height="36" fill="white" stroke="#586575" stroke-width="2"/>
 <polyline points="1600,1217.0 1600,1220" fill="none" stroke="#586575" stroke-width="3"/>
-<text x="1618" y="1187.0" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">10k</text>
+<text x="1618" y="1201.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#586575">10k</text>
 <polyline points="1600,1170 1600,1178" fill="none" stroke="#586575" stroke-width="3"/>
 <polyline points="1588,1220 1612,1220" fill="none" stroke="#586575" stroke-width="2"/>
 <polyline points="1592,1226 1608,1226" fill="none" stroke="#586575" stroke-width="2"/>
 <polyline points="1597,1232 1603,1232" fill="none" stroke="#586575" stroke-width="2"/>
-<text x="1555" y="1238" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#586575">GND_M</text>
+<text x="1555" y="1249" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#586575">GND_M</text>
 <circle cx="1840" cy="1170" r="4" fill="#a65600"/>
 <polyline points="1840,1170 1840,1210 1950,1210" fill="none" stroke="#a65600" stroke-width="3"/>
-<text x="1970" y="1156" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#a65600">R_EN (3)</text>
-<text x="1970" y="1197" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#a65600">L_EN (4)</text>
-<text x="65" y="1318" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#a65600">GPIO HIGH → LED ON → EN HIGH. LED OFF / ESP32 без питания → EN LOW.</text>
-<text x="65" y="1362" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="normal" fill="#172b46">ENABLE не инвертировать. Коллектор - к 5V_M, эмиттер - к двум EN и 10 кОм к GND_M.</text>
+<text x="1970" y="1174" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#a65600">R_EN (3)</text>
+<text x="1970" y="1215" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#a65600">L_EN (4)</text>
+<text x="65" y="1337" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#a65600">GPIO HIGH → LED ON → EN HIGH. LED OFF / ESP32 без питания → EN LOW.</text>
+<text x="65" y="1379" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="normal" fill="#172b46">ENABLE не инвертировать. Коллектор - к 5V_M, эмиттер - к двум EN и 10 кОм к GND_M.</text>
 <rect x="45" y="1465" width="1140" height="245" fill="#f6f8fc" stroke="#aebed2" stroke-width="2"/>
-<text x="65" y="1482" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">Нагрузка и питание</text>
-<text x="65" y="1530" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">На IBT-2: все 4 входные подтяжки ≥10 кОм.</text>
-<text x="65" y="1567" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">При 1 кОм заменить входные резисторы на 10 кОм.</text>
-<text x="65" y="1604" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">R_IS/SR не менять. C у VCC модулей: 100 нФ + 1 мкФ.</text>
-<text x="65" y="1641" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">LED каждого PC817C: измерить IF ≥5 мА при HIGH.</text>
+<text x="65" y="1501" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">Нагрузка и питание</text>
+<text x="65" y="1545" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">На IBT-2: все 4 входные подтяжки ≥10 кОм.</text>
+<text x="65" y="1582" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">При 1 кОм заменить входные резисторы на 10 кОм.</text>
+<text x="65" y="1619" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">R_IS/SR не менять. C у VCC модулей: 100 нФ + 1 мкФ.</text>
+<text x="65" y="1656" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">LED каждого PC817C: измерить IF ≥5 мА при HIGH.</text>
 <rect x="1220" y="1465" width="1135" height="245" fill="#f6f8fc" stroke="#aebed2" stroke-width="2"/>
-<text x="1240" y="1482" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">Проверка 1 кГц</text>
-<text x="1240" y="1530" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">PC817: фронты до 18 мкс при условиях даташита.</text>
-<text x="1240" y="1567" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">10-битная команда не гарантирует 10-битную точность.</text>
-<text x="1240" y="1604" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Проверить 1 / 5 / 18 / 50 / 99% и STOP на модуле.</text>
-<text x="1240" y="1641" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Отдельно измерить EN при потере питания ESP32.</text>
-<text x="47" y="1740" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">GND_CTRL и GND_M не соединять. PC817C не имеет выводов VCC: питание 5V_M поступает в выходную цепь.</text>
-<text x="47" y="1770" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#586575">При включённой инверсии PWM проверьте уровни и отключение ENABLE на входах модулей.</text>
+<text x="1240" y="1501" font-family="DejaVu Sans,sans-serif" font-size="26" font-weight="bold" fill="#172b46">Проверка 1 кГц</text>
+<text x="1240" y="1545" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">PC817: фронты до 18 мкс при условиях даташита.</text>
+<text x="1240" y="1583" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">10-битная команда не гарантирует 10-битную точность.</text>
+<text x="1240" y="1619" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Проверить 1 / 5 / 18 / 50 / 99% и STOP на модуле.</text>
+<text x="1240" y="1656" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#172b46">Отдельно измерить EN при потере питания ESP32.</text>
+<text x="47" y="1755" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#586575">GND_CTRL и GND_M не соединять. PC817C не имеет выводов VCC: питание 5V_M поступает в выходную цепь.</text>
+<text x="47" y="1785" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#586575">Защита ADC показана на листе 1; R35 общий для AZ/EL, один на контроллер. Проверить отключение ENABLE.</text>
 </svg>

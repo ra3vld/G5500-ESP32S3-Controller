@@ -152,6 +152,7 @@ def audit(d):
         "R7": ("CW_GPIO", "GND"), "R8": ("CCW_GPIO", "GND"), "R23": ("PWM", "GND"),
         "R20": ("PWM_ISO", "RC1"), "R21": ("RC1", "RC2"), "R22": ("BUF", "SPEED_PWM"),
         "R3": ("AZ", "AZ_RAW"), "R11": ("AZ", "GND"), "D2.A": "AZ", "D2.K": "3V3",
+        "D7.A": "GND", "D7.K": "AZ", "R35": ("3V3", "GND"),
         "C20": ("RC1", "GND"), "C21": ("RC2", "GND"), "C2": ("AZ", "GND"),
         "C30": ("3V3", "GND"), "C31": ("VY", "GND"), "C32": ("VY", "GND"),
         "C33": ("VY", "GND"), "R1135": ("10V", "VD"), "R1136": ("VD", "GND"),
@@ -283,6 +284,11 @@ def build():
     d.wire("3V3", (500, 330), (820, 330), (820, 1900), (1100, 1900))
     d.capacitor("C30", 690, 330, 460, "3V3", "C30 · 100 нФ", tx=850)
     d.wire("GND", (690, 460), (560, 460))
+    d.wire("3V3", (820, 330), (1140, 330))
+    d.resistor("R35", (1140, 330), (1140, 460), ("3V3", "GND"),
+               "R35 · 500 Ом", tx=1170, ty=365)
+    d.text(1170, 405, "0,125 Вт · 6,6 мА", 21, GRAY)
+    d.wire("GND", (1140, 460), (690, 460))
     d.text(1540, 270, "V_YAESU · питание U8/U9 только в положении ШИМ", 25, COLORS["VY"], True)
     d.wire("VY", (1540, 1230), (1540, 330), (2380, 330), (2380, 1140), (2490, 1140))
     for name, x, label in [("C31", 1740, "C31 · 100 нФ"), ("C32", 1960, "C32 · 1 мкФ"),
@@ -396,7 +402,7 @@ def build():
     d.text(2480, 1640, "Менять при", 21, GRAY)
     d.text(2480, 1680, "STOP.", 21, GRAY)
 
-    # Existing universal S2/S3 ADC chain, unchanged values and BAT85 orientation.
+    # Universal S2/S3 divider with upper/lower Schottky clamps.
     d.wire("AZ_RAW", (2770, 1970), (2270, 1970))
     d.resistor("R3", (2050, 1970), (2270, 1970), ("AZ", "AZ_RAW"), "R3 · 6,8 кОм · 1%", ty=2010)
     d.wire("AZ", (2050, 1970), (500, 1970))
@@ -409,6 +415,14 @@ def build():
     d.stroke([(1100, 1942), (1100, 1970)], COLORS["AZ"])
     d.bodies.append(("D2", 1084, 1912, 1116, 1942))
     d.text(1140, 1903, "D2 · BAT85 · K → +3,3 В", 23, COLORS["AZ"])
+    d.pin("D7.K", 900, 1970, "AZ"); d.pin("D7.A", 900, 2150, "GND")
+    d.stroke([(900, 1970), (900, 2020)], COLORS["AZ"])
+    d.stroke([(884, 2020), (916, 2020)], COLORS["AZ"])
+    d.symbols.append(f'<polygon points="900,2024 886,2050 914,2050" fill="white" stroke="{COLORS["AZ"]}" stroke-width="3"/>')
+    d.stroke([(900, 2050), (900, 2150)], COLORS["AZ"])
+    d.bodies.append(("D7", 884, 2020, 916, 2050))
+    d.text(930, 2075, "D7 · BAT85", 23, COLORS["AZ"])
+    d.text(930, 2110, "A → GND; K → ADC", 21, COLORS["AZ"])
     d.text(1500, 1870, "Uadc ≈ 0,409 × U(pin 4) · 4,5 В → 1,84 В", 23, COLORS["AZ"], True)
 
     d.text(55, 2240, "VD: 10 В × 1 кОм / (1,2 кОм + 1 кОм) ≈ 4,55 В без нагрузки; Rвых ≈ 545 Ом. С U8/U9 ориентир ≈ 4,1 В до нагрузки pin 3.", 25, COLORS["VD"], True)

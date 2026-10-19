@@ -1,80 +1,80 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="2000" height="2230" viewBox="0 0 2000 2230">
 <rect width="2000" height="2230" fill="#f5f7fb"/>
-<text x="50" y="35" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="38" font-weight="bold" fill="#172b46">ESP32-S3 → Yaesu G-800DXA</text>
-<text x="52" y="91" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="normal" fill="#51627a">Направления через PC817C · обратная связь AZ через делитель · выход скорости 0–5 В</text>
+<text x="50" y="63.0" font-family="DejaVu Sans,sans-serif" font-size="38" font-weight="bold" fill="#172b46">ESP32-S3 → Yaesu G-800DXA</text>
+<text x="52" y="109.0" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="normal" fill="#51627a">Направления через PC817C · обратная связь AZ через делитель · выход скорости 0–5 В</text>
 <rect x="50" y="137" width="1900" height="54" rx="10" fill="#fff3dc" stroke="#e4bc72" stroke-width="2"/>
-<text x="72" y="151" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#ba650c">ESP32-S3-DevKitC-1 N16R8. Эта распиновка скорости относится к DevKit, а не к UEDX.</text>
+<text x="72" y="167.5" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#ba650c">ESP32-S3-DevKitC-1 N16R8. Эта распиновка скорости относится к DevKit, а не к UEDX.</text>
 <rect x="50" y="215" width="420" height="945" rx="16" fill="white" stroke="#c8d3e2" stroke-width="2"/>
-<text x="75" y="245" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="27" font-weight="bold" fill="#172b46">ESP32-S3-DevKitC-1</text>
-<text x="75" y="286" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#51627a">N16R8 · распиновка автора</text>
-<text x="74" y="338" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="bold" fill="#2463ce">GPIO16 · RIGHT / CW</text>
+<text x="75" y="265.5" font-family="DejaVu Sans,sans-serif" font-size="27" font-weight="bold" fill="#172b46">ESP32-S3-DevKitC-1</text>
+<text x="75" y="302.0" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="normal" fill="#51627a">N16R8 · распиновка автора</text>
+<text x="74" y="355.5" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="bold" fill="#2463ce">GPIO16 · RIGHT / CW</text>
 <circle cx="470" cy="350" r="6" fill="white" stroke="#2463ce" stroke-width="2"/>
-<text x="74" y="538" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="bold" fill="#2463ce">GPIO15 · LEFT / CCW</text>
+<text x="74" y="555.5" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="bold" fill="#2463ce">GPIO15 · LEFT / CCW</text>
 <circle cx="470" cy="550" r="6" fill="white" stroke="#2463ce" stroke-width="2"/>
-<text x="74" y="798" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="bold" fill="#087f71">GPIO4 · AZ / ADC</text>
+<text x="74" y="815.5" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="bold" fill="#087f71">GPIO4 · AZ / ADC</text>
 <circle cx="470" cy="810" r="6" fill="white" stroke="#087f71" stroke-width="2"/>
-<text x="74" y="938" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="bold" fill="#ba650c">GPIO21 · SPEED PWM</text>
+<text x="74" y="955.5" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="bold" fill="#ba650c">GPIO21 · SPEED PWM</text>
 <circle cx="470" cy="950" r="6" fill="white" stroke="#ba650c" stroke-width="2"/>
-<text x="74" y="1068" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="bold" fill="#51627a">GND</text>
+<text x="74" y="1085.5" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="bold" fill="#51627a">GND</text>
 <circle cx="470" cy="1080" r="6" fill="white" stroke="#51627a" stroke-width="2"/>
-<text x="75" y="395" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">Направления: HIGH = включить</text>
-<text x="75" y="425" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">LOW = выключить</text>
-<text x="75" y="603" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">GPIO5 · EL — не подключать</text>
-<text x="75" y="633" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">GPIO17/18 · UP/DOWN — NC</text>
-<text x="75" y="686" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="bold" fill="#172b46">Дисплей и HC-05:</text>
-<text x="75" y="718" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">сохраняется разводка автора</text>
-<text x="75" y="859" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087f71">Делитель S2/S3 · резисторы 1%</text>
-<text x="75" y="887" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087f71">ADC_11db · калибровать по мВ</text>
-<text x="75" y="988" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">GPIO21 — добавление форка</text>
-<text x="75" y="1020" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">PWM: 20 кГц, 10 бит</text>
-<text x="75" y="1120" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="bold" fill="#172b46">Питание: отдельные +5 В / GND</text>
+<text x="75" y="409.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">Направления: HIGH = включить</text>
+<text x="75" y="439.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">LOW = выключить</text>
+<text x="75" y="617.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">GPIO5 · EL — не подключать</text>
+<text x="75" y="647.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">GPIO17/18 · UP/DOWN — NC</text>
+<text x="75" y="701.0" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="bold" fill="#172b46">Дисплей и HC-05:</text>
+<text x="75" y="729.0" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">сохраняется разводка автора</text>
+<text x="75" y="872.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087f71">Делитель S2/S3 · резисторы 1%</text>
+<text x="75" y="901.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087f71">ADC_11db · калибровать по мВ</text>
+<text x="75" y="1002.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">GPIO21 — добавление форка</text>
+<text x="75" y="1034.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">PWM: 20 кГц, 10 бит</text>
+<text x="75" y="1134.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="bold" fill="#172b46">Питание: отдельные +5 В / GND</text>
 <rect x="1530" y="215" width="420" height="945" rx="16" fill="white" stroke="#c8d3e2" stroke-width="2"/>
-<text x="1554" y="245" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="27" font-weight="bold" fill="#172b46">YAESU G-800DXA</text>
-<text x="1554" y="286" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="bold" fill="#51627a">EXT CONTROL · mini-DIN 6</text>
+<text x="1554" y="265.0" font-family="DejaVu Sans,sans-serif" font-size="27" font-weight="bold" fill="#172b46">YAESU G-800DXA</text>
+<text x="1554" y="302.0" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="bold" fill="#51627a">EXT CONTROL · mini-DIN 6</text>
 <circle cx="1530" cy="350" r="6" fill="white" stroke="#2463ce" stroke-width="2"/>
-<text x="1550" y="333" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#2463ce">1</text>
-<text x="1594" y="340" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#2463ce">CW · по часовой</text>
+<text x="1550" y="353.5" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#2463ce">1</text>
+<text x="1594" y="354.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#2463ce">CW · по часовой</text>
 <circle cx="1530" cy="550" r="6" fill="white" stroke="#2463ce" stroke-width="2"/>
-<text x="1550" y="533" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#2463ce">2</text>
-<text x="1594" y="540" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#2463ce">CCW · против часовой</text>
+<text x="1550" y="554.0" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#2463ce">2</text>
+<text x="1594" y="554.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#2463ce">CCW · против часовой</text>
 <circle cx="1530" cy="810" r="6" fill="white" stroke="#087f71" stroke-width="2"/>
-<text x="1550" y="793" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#087f71">4</text>
-<text x="1594" y="800" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#087f71">Положение · 2–4,5 В</text>
+<text x="1550" y="813.5" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#087f71">4</text>
+<text x="1594" y="814.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#087f71">Положение · 2–4,5 В</text>
 <circle cx="1530" cy="950" r="6" fill="white" stroke="#ba650c" stroke-width="2"/>
-<text x="1550" y="933" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#ba650c">3</text>
-<text x="1594" y="940" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#ba650c">Скорость · 0–5 В</text>
+<text x="1550" y="954.0" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#ba650c">3</text>
+<text x="1594" y="954.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#ba650c">Скорость · 0–5 В</text>
 <circle cx="1530" cy="1080" r="6" fill="white" stroke="#51627a" stroke-width="2"/>
-<text x="1550" y="1063" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#51627a">5</text>
-<text x="1594" y="1070" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">Общий · GND</text>
+<text x="1550" y="1083.5" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#51627a">5</text>
+<text x="1594" y="1085.0" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">Общий · GND</text>
 <circle cx="1530" cy="1130" r="6" fill="white" stroke="#ba650c" stroke-width="2"/>
-<text x="1550" y="1113" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#ba650c">6</text>
-<text x="1594" y="1120" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#ba650c">VD* → VR1</text>
-<text x="1555" y="413" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#51627a">CW: замкнуть pin 1 на pin 5</text>
-<text x="1555" y="614" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#51627a">CCW: замкнуть pin 2 на pin 5</text>
-<text x="1555" y="867" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">Диапазон зависит от OUT VOL ADJ</text>
-<text x="1555" y="1006" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">S1: ШИМ / движок VR1</text>
+<text x="1550" y="1134.0" font-family="DejaVu Sans,sans-serif" font-size="28" font-weight="bold" fill="#ba650c">6</text>
+<text x="1594" y="1134.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#ba650c">VD* → VR1</text>
+<text x="1555" y="426.5" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#51627a">CW: замкнуть pin 1 на pin 5</text>
+<text x="1555" y="627.5" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#51627a">CCW: замкнуть pin 2 на pin 5</text>
+<text x="1555" y="879.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">Диапазон зависит от OUT VOL ADJ</text>
+<text x="1555" y="1018.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">S1: ШИМ / движок VR1</text>
 <polyline points="470,350 635,350" fill="none" stroke="#2463ce" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="635,350 682.0,350" fill="none" stroke="#2463ce" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="682.0" y="341" width="36" height="18" rx="0" fill="white" stroke="#2463ce" stroke-width="2"/>
 <polyline points="718.0,350 765,350" fill="none" stroke="#2463ce" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="630" y="314" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#2463ce">R6 · 330 Ом</text>
+<text x="630" y="327.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#2463ce">R6 · 330 Ом</text>
 <polyline points="765,350 855,350" fill="none" stroke="#2463ce" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="555" cy="350" r="5" fill="#2463ce"/>
 <polyline points="555,365 555,374.5" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="546" y="374.5" width="18" height="36" rx="0" fill="white" stroke="#51627a" stroke-width="2"/>
 <polyline points="555,410.5 555,420" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="585" y="377" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#51627a">10 кОм</text>
+<text x="585" y="388.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#51627a">10 кОм</text>
 <polyline points="555,350 555,365" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="555,420 555,440" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="540,440 570,440" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="545,447 565,447" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="551,454 559,454" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="855" y="302" width="300" height="137" rx="12" fill="#eef4ff" stroke="#a9bfdf" stroke-width="2"/>
-<text x="905" y="309" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="bold" fill="#2463ce">U4 · PC817C</text>
-<text x="870" y="342" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#2463ce">1 · A</text>
-<text x="870" y="393" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">2 · K</text>
-<text x="1060" y="342" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#2463ce">4 · C</text>
-<text x="1060" y="393" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">3 · E</text>
+<text x="905" y="324.0" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="bold" fill="#2463ce">U4 · PC817C</text>
+<text x="870" y="354.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#2463ce">1 · A</text>
+<text x="870" y="405.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">2 · K</text>
+<text x="1060" y="354.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#2463ce">4 · C</text>
+<text x="1060" y="405.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">3 · E</text>
 <polyline points="855,402 815,402 815,435" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="800,435 830,435" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="805,442 825,442" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -85,24 +85,24 @@
 <polyline points="635,550 682.0,550" fill="none" stroke="#2463ce" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="682.0" y="541" width="36" height="18" rx="0" fill="white" stroke="#2463ce" stroke-width="2"/>
 <polyline points="718.0,550 765,550" fill="none" stroke="#2463ce" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="630" y="514" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#2463ce">R5 · 330 Ом</text>
+<text x="630" y="527.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#2463ce">R5 · 330 Ом</text>
 <polyline points="765,550 855,550" fill="none" stroke="#2463ce" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="555" cy="550" r="5" fill="#2463ce"/>
 <polyline points="555,565 555,574.5" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="546" y="574.5" width="18" height="36" rx="0" fill="white" stroke="#51627a" stroke-width="2"/>
 <polyline points="555,610.5 555,620" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="585" y="577" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#51627a">10 кОм</text>
+<text x="585" y="588.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#51627a">10 кОм</text>
 <polyline points="555,550 555,565" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="555,620 555,640" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="540,640 570,640" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="545,647 565,647" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="551,654 559,654" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="855" y="502" width="300" height="137" rx="12" fill="#eef4ff" stroke="#a9bfdf" stroke-width="2"/>
-<text x="905" y="509" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="bold" fill="#2463ce">U3 · PC817C</text>
-<text x="870" y="542" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#2463ce">1 · A</text>
-<text x="870" y="593" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">2 · K</text>
-<text x="1060" y="542" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#2463ce">4 · C</text>
-<text x="1060" y="593" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">3 · E</text>
+<text x="905" y="524.0" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="bold" fill="#2463ce">U3 · PC817C</text>
+<text x="870" y="554.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#2463ce">1 · A</text>
+<text x="870" y="605.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">2 · K</text>
+<text x="1060" y="554.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#2463ce">4 · C</text>
+<text x="1060" y="605.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">3 · E</text>
 <polyline points="855,602 815,602 815,635" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="800,635 830,635" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="805,642 825,642" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -112,17 +112,17 @@
 <polyline points="1310,402 1310,602 1310,745" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="1310,745 1310,797 1320,805 1310,821 1310,938 1320,946 1310,962 1310,1080" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="1310" cy="602" r="5" fill="#51627a"/>
-<text x="655" y="666" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#51627a">CW и CCW не включать одновременно; требуется проверка reset / STOP / реверса.</text>
+<text x="655" y="680.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#51627a">CW и CCW не включать одновременно; требуется проверка reset / STOP / реверса.</text>
 <polyline points="1530,810 1260,810" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="1120,810 1172.0,810" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="1172.0" y="801" width="36" height="18" rx="0" fill="white" stroke="#087f71" stroke-width="2"/>
 <polyline points="1208.0,810 1260,810" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="1115" y="774" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087f71">R3 · 6,8 кОм</text>
+<text x="1115" y="787.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#087f71">R3 · 6,8 кОм</text>
 <polyline points="1120,810 470,810" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="1040,833 1040,843.5" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="1031" y="843.5" width="18" height="36" rx="0" fill="white" stroke="#087f71" stroke-width="2"/>
 <polyline points="1040,879.5 1040,890" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="1060" y="845" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#087f71">R11 · 4,7 кОм</text>
+<text x="1060" y="857.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#087f71">R11 · 4,7 кОм</text>
 <polyline points="1040,810 1040,833" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="1040" cy="810" r="5" fill="#087f71"/>
 <polyline points="1040,890 1040,910" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -133,7 +133,7 @@
 <polyline points="694,864 726,864" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="694,876 726,876" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="710,876 710,905" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="744" y="862" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#087f71">C2 · 100 нФ</text>
+<text x="550" y="874.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#087f71">C2 · 100 нФ</text>
 <polyline points="710,810 710,835" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="710" cy="810" r="5" fill="#087f71"/>
 <polyline points="695,905 725,905" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -145,119 +145,141 @@
 <polyline points="902,752 928,752" fill="none" stroke="#087f71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="915,772 915,810" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="915" cy="810" r="5" fill="#087f71"/>
-<polyline points="915,742 915,725" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="867" y="696" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="bold" fill="#087f71">+3,3 В</text>
-<text x="932" y="754" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#087f71">D2 · BAT85</text>
-<text x="570" y="745" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="bold" fill="#087f71">Uadc ≈ 0,409 × U(pin 4)</text>
-<text x="1135" y="897" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#087f71">4,5 В → 1,84 В</text>
+<polyline points="915,742 915,700" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="930" y="723.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="bold" fill="#087f71">+3,3 В ESP</text>
+<text x="932" y="766.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#087f71">D2 · BAT85</text>
+<polyline points="860,835 860,847" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="850,865 870,865 860,847 850,865" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="850,865 870,865 860,847" fill="white" stroke="#087f71" stroke-width="3"/>
+<polyline points="847,845 873,845" fill="none" stroke="#087f71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="860,865 860,900" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="860,810 860,835" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="860" cy="810" r="5" fill="#087f71"/>
+<polyline points="845,900 875,900" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="850,907 870,907" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="856,914 864,914" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="880" y="877.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#087f71">D7 · BAT85</text>
+<polyline points="915,700 1080,700" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="915" cy="700" r="5" fill="#087f71"/>
+<polyline points="1080,700 1080,707.0" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1071" y="707.0" width="18" height="36" rx="0" fill="white" stroke="#087f71" stroke-width="2"/>
+<polyline points="1080,743.0 1080,750" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1100" y="712.0" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#087f71"></text>
+<polyline points="1080,750 1080,760" fill="none" stroke="#087f71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1065,760 1095,760" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1070,767 1090,767" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1076,774 1084,774" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1105" y="714.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#087f71">R35 · 500 Ом · 0,125 Вт</text>
+<text x="570" y="758.5" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="bold" fill="#087f71">Uadc ≈ 0,409 × U(pin 4)</text>
+<text x="1135" y="908.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#087f71">4,5 В → 1,84 В</text>
 <polyline points="470,950 595,950" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="595" y="920" width="180" height="67" rx="10" fill="#fff5e8" stroke="#e0b98d" stroke-width="2"/>
-<text x="605" y="928" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="bold" fill="#ba650c">74HCT245</text>
-<text x="605" y="957" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#ba650c">3,3 → 5 В</text>
+<text x="605" y="942.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="bold" fill="#ba650c">74HCT245</text>
+<text x="605" y="968.0" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#ba650c">3,3 → 5 В</text>
 <rect x="855" y="920" width="160" height="67" rx="10" fill="#fff5e8" stroke="#e0b98d" stroke-width="2"/>
-<text x="865" y="928" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="bold" fill="#ba650c">2 × RC</text>
-<text x="865" y="957" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#ba650c">10 кОм / 1 мкФ</text>
+<text x="865" y="942.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="bold" fill="#ba650c">2 × RC</text>
+<text x="865" y="968.0" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#ba650c">10 кОм / 1 мкФ</text>
 <rect x="1110" y="920" width="155" height="67" rx="10" fill="#fff5e8" stroke="#e0b98d" stroke-width="2"/>
-<text x="1120" y="928" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="bold" fill="#ba650c">MCP6002</text>
-<text x="1120" y="957" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#ba650c">повторитель</text>
+<text x="1120" y="942.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="bold" fill="#ba650c">MCP6002</text>
+<text x="1120" y="965.0" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="normal" fill="#ba650c">повторитель</text>
 <polyline points="775,950 855,950" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="1015,950 1110,950" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="1265,950 1360,950" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="1360" y="925" width="140" height="90" rx="10" fill="#fff5e8" stroke="#e0b98d" stroke-width="2"/>
-<text x="1375" y="933" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="bold" fill="#ba650c">S1</text>
-<text x="1375" y="966" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">см. ниже</text>
+<text x="1375" y="947.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="bold" fill="#ba650c">S1</text>
+<text x="1375" y="975.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">см. ниже</text>
 <polyline points="1500,950 1530,950" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="1325,990 1360,990" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="1325" y="1020" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#ba650c">VR1</text>
+<text x="1325" y="1031.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#ba650c">VR1</text>
 <polyline points="1430,1130 1530,1130" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="1390" y="1098" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#ba650c">к VR1</text>
+<text x="1390" y="1109.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#ba650c">к VR1</text>
 <polyline points="470,1080 1530,1080" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="1310" cy="1080" r="5" fill="#51627a"/>
-<text x="631" y="1104" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">Общая земля ESP32, согласующего каскада и EXT CONTROL pin 5</text>
+<text x="631" y="1119.0" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">Общая земля ESP32, согласующего каскада и EXT CONTROL pin 5</text>
 <rect x="50" y="1190" width="1900" height="435" rx="12" fill="white" stroke="#c8d3e2" stroke-width="2"/>
-<text x="72" y="1210" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#ba650c">ВЫХОД СКОРОСТИ: СОГЛАСОВАНИЕ 3,3 → 5 В + ФИЛЬТР + АНАЛОГОВЫЙ БУФЕР</text>
-<text x="72" y="1254" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">Питание U8 и U9: стабилизированные +5 В. У каждой микросхемы 100 нФ между питанием и GND.</text>
-<text x="78" y="1320" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="bold" fill="#ba650c">GPIO21</text>
-<text x="78" y="1352" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">PWM 3,3 В</text>
+<text x="72" y="1232.5" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#ba650c">ВЫХОД СКОРОСТИ: СОГЛАСОВАНИЕ 3,3 → 5 В + ФИЛЬТР + АНАЛОГОВЫЙ БУФЕР</text>
+<text x="72" y="1269.0" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">Питание U8 и U9: стабилизированные +5 В. У каждой микросхемы 100 нФ между питанием и GND.</text>
+<text x="78" y="1336.0" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="bold" fill="#ba650c">GPIO21</text>
+<text x="78" y="1365.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">PWM 3,3 В</text>
 <polyline points="80,1390 300,1390" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="245" cy="1390" r="5" fill="#ba650c"/>
 <polyline points="245,1410 245,1419.5" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="236" y="1419.5" width="18" height="36" rx="0" fill="white" stroke="#51627a" stroke-width="2"/>
 <polyline points="245,1455.5 245,1465" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="73" y="1422" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#51627a">R23 · 100 кОм</text>
+<text x="73" y="1433.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#51627a">R23 · 100 кОм</text>
 <polyline points="245,1390 245,1410" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="245,1465 245,1485" fill="none" stroke="#51627a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="230,1485 260,1485" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="235,1492 255,1492" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="241,1499 249,1499" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="300" y="1305" width="270" height="170" rx="10" fill="#fff5e8" stroke="#e0b98d" stroke-width="2"/>
-<text x="317" y="1320" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="bold" fill="#ba650c">U8 · 74HCT245N</text>
-<text x="317" y="1380" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">8 · A7</text>
-<text x="476" y="1380" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">12 · B7</text>
-<text x="317" y="1412" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#51627a">20 VCC, 1 DIR → +5 В</text>
-<text x="317" y="1440" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#51627a">10 GND, 19 /OE → GND</text>
+<text x="317" y="1336.0" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="bold" fill="#ba650c">U8 · 74HCT245N</text>
+<text x="317" y="1393.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">8 · A7</text>
+<text x="476" y="1393.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">12 · B7</text>
+<text x="317" y="1423.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#51627a">20 VCC, 1 DIR → +5 В</text>
+<text x="317" y="1451.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#51627a">10 GND, 19 /OE → GND</text>
 <polyline points="570,1390 645,1390" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="645,1390 687.0,1390" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="687.0" y="1381" width="36" height="18" rx="0" fill="white" stroke="#ba650c" stroke-width="2"/>
 <polyline points="723.0,1390 765,1390" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="640" y="1354" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">R20 · 10 кОм</text>
+<text x="640" y="1366.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">R20 · 10 кОм</text>
 <polyline points="765,1390 910,1390" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="812" cy="1390" r="5" fill="#ba650c"/>
 <polyline points="812,1406 812,1439" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="796,1439 828,1439" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="796,1451 828,1451" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="812,1451 812,1485" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="839" y="1437" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">C20</text>
+<text x="839" y="1449.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">C20</text>
 <polyline points="812,1390 812,1406" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="797,1485 827,1485" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="802,1492 822,1492" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="808,1499 816,1499" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="835" y="1459" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#ba650c">1 мкФ</text>
+<text x="835" y="1470.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#ba650c">1 мкФ</text>
 <polyline points="910,1390 952.0,1390" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="952.0" y="1381" width="36" height="18" rx="0" fill="white" stroke="#ba650c" stroke-width="2"/>
 <polyline points="988.0,1390 1030,1390" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="905" y="1354" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">R21 · 10 кОм</text>
+<text x="905" y="1366.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">R21 · 10 кОм</text>
 <polyline points="1030,1390 1180,1390" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="1090" cy="1390" r="5" fill="#ba650c"/>
 <polyline points="1090,1406 1090,1439" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="1074,1439 1106,1439" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="1074,1451 1106,1451" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="1090,1451 1090,1485" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="1010" y="1437" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">C21</text>
+<text x="1010" y="1449.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">C21</text>
 <polyline points="1090,1390 1090,1406" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="1075,1485 1105,1485" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="1080,1492 1100,1492" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="1086,1499 1094,1499" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="1010" y="1459" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#ba650c">1 мкФ</text>
+<text x="1010" y="1470.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#ba650c">1 мкФ</text>
 <polyline points="1180,1350 1180,1470 1310,1410 1180,1350" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polygon points="1180,1350 1180,1470 1310,1410" fill="#fff5e8" stroke="#ba650c" stroke-width="3"/>
-<text x="1190" y="1380" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#ba650c">+</text>
-<text x="1190" y="1422" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#ba650c">−</text>
-<text x="1149" y="1365" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#ba650c">3</text>
-<text x="1149" y="1423" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#ba650c">2</text>
-<text x="1225" y="1400" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="bold" fill="#ba650c">U9</text>
-<text x="1187" y="1305" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="bold" fill="#ba650c">MCP6002T-I/SN</text>
-<text x="1187" y="1331" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">SOIC-8</text>
+<text x="1190" y="1393.5" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#ba650c">+</text>
+<text x="1190" y="1430.0" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#ba650c">−</text>
+<text x="1149" y="1376.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#ba650c">3</text>
+<text x="1149" y="1434.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#ba650c">2</text>
+<text x="1225" y="1413.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="bold" fill="#ba650c">U9</text>
+<text x="1187" y="1320.0" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="bold" fill="#ba650c">MCP6002T-I/SN</text>
+<text x="1187" y="1343.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">SOIC-8</text>
 <polyline points="1310,1410 1410,1410" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="1360" cy="1410" r="5" fill="#ba650c"/>
 <polyline points="1360,1410 1360,1515 1160,1515 1160,1440 1180,1440" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="1244" y="1480" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#ba650c">1 → 2</text>
-<text x="1188" y="1545" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">8 → +5 В; 4 → GND</text>
-<text x="1530" y="1537" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">U9B: 5 → GND; 6 ↔ 7</text>
+<text x="1244" y="1491.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#ba650c">1 → 2</text>
+<text x="1188" y="1557.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">8 → +5 В; 4 → GND</text>
+<text x="1530" y="1549.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#51627a">U9B: 5 → GND; 6 ↔ 7</text>
 <polyline points="1410,1410 1447.0,1410" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="1447.0" y="1401" width="36" height="18" rx="0" fill="white" stroke="#ba650c" stroke-width="2"/>
 <polyline points="1483.0,1410 1520,1410" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="1405" y="1374" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">R22 · 100 Ом</text>
+<text x="1405" y="1386.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">R22 · 100 Ом</text>
 <polyline points="1520,1410 1870,1410" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="1870" cy="1410" r="6" fill="white" stroke="#ba650c" stroke-width="2"/>
-<text x="1615" y="1362" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="bold" fill="#ba650c">к S1.A · ШИМ</text>
-<text x="1615" y="1458" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">Переключатель показан ниже</text>
-<text x="320" y="1512" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#51627a">Неиспользуемые A1…A6, A8 → GND;</text>
-<text x="320" y="1537" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#51627a">B1…B6, B8 оставить свободными.</text>
-<text x="72" y="1584" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="bold" fill="#ba650c">Uout ≈ 5 В × duty: 25% → 1,25 В; 50% → 2,50 В; 75% → 3,75 В; 100% → около 5 В.</text>
+<text x="1615" y="1378.0" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="bold" fill="#ba650c">к S1.A · ШИМ</text>
+<text x="1615" y="1470.5" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="normal" fill="#ba650c">Переключатель показан ниже</text>
+<text x="320" y="1523.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#51627a">Неиспользуемые A1…A6, A8 → GND;</text>
+<text x="320" y="1549.5" font-family="DejaVu Sans,sans-serif" font-size="16" font-weight="normal" fill="#51627a">B1…B6, B8 оставить свободными.</text>
+<text x="72" y="1598.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="bold" fill="#ba650c">Uout ≈ 5 В × duty: 25% → 1,25 В; 50% → 2,50 В; 75% → 3,75 В; 100% → около 5 В.</text>
 <rect x="50" y="1650" width="1900" height="380" rx="12" fill="white" stroke="#c8d3e2" stroke-width="2"/>
-<text x="70" y="1666" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#ba650c">S1: ШИМ / РУЧНАЯ СКОРОСТЬ · показано положение ШИМ</text>
-<text x="80" y="1715" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="bold" fill="#ba650c">EXT CONTROL pin 6 · VD*</text>
+<text x="70" y="1684.0" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#ba650c">S1: ШИМ / РУЧНАЯ СКОРОСТЬ · показано положение ШИМ</text>
+<text x="80" y="1730.0" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="bold" fill="#ba650c">EXT CONTROL pin 6 · VD*</text>
 <polyline points="130,1750 530,1750 530,1820" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="130" cy="1750" r="6" fill="white" stroke="#ba650c" stroke-width="2"/>
 <rect x="521" y="1820" width="18" height="40" rx="0" fill="white" stroke="#ba650c" stroke-width="2"/>
@@ -266,14 +288,14 @@
 <polyline points="515,1930 545,1930" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="520,1937 540,1937" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="526,1944 534,1944" fill="none" stroke="#51627a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="80" y="1893" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#ba650c">pin 5 · GND</text>
-<text x="270" y="1825" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="bold" fill="#ba650c">VR1 · 10 кОм</text>
-<text x="270" y="1857" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">линейный</text>
+<text x="80" y="1908.0" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#ba650c">pin 5 · GND</text>
+<text x="270" y="1840.0" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="bold" fill="#ba650c">VR1 · 10 кОм</text>
+<text x="270" y="1871.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">линейный</text>
 <polyline points="539,1840 950,1840" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="540,1840 556,1833 556,1847 540,1840" fill="none" stroke="#ba650c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <polygon points="540,1840 556,1833 556,1847" fill="#ba650c" stroke="#ba650c" stroke-width="2"/>
-<text x="670" y="1857" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">B · движок VR1</text>
-<text x="670" y="1723" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">A · от R22, выход ШИМ</text>
+<text x="670" y="1870.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">B · движок VR1</text>
+<text x="670" y="1736.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#ba650c">A · от R22, выход ШИМ</text>
 <polyline points="700,1760 950,1760" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <polyline points="1100,1800 950,1760" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="950" cy="1760" r="6" fill="white" stroke="#ba650c" stroke-width="2"/>
@@ -281,14 +303,14 @@
 <circle cx="1100" cy="1800" r="6" fill="white" stroke="#ba650c" stroke-width="2"/>
 <polyline points="1100,1800 1250,1800" fill="none" stroke="#ba650c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="1250" cy="1800" r="6" fill="white" stroke="#ba650c" stroke-width="2"/>
-<text x="1270" y="1787" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="bold" fill="#ba650c">EXT CONTROL pin 3 · скорость</text>
-<text x="1080" y="1728" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="bold" fill="#ba650c">S1 · SPDT ON-ON</text>
-<text x="1270" y="1835" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#ba650c">Без среднего положения OFF.</text>
-<text x="1270" y="1867" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#ba650c">Разрыв перед замыканием; менять при STOP.</text>
-<text x="70" y="1960" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#ba650c">Вариант без VR1: вход B соединить с pin 6 для фиксированной скорости; выход ШИМ отделяется S1.</text>
-<text x="70" y="1995" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#51627a">* VD не стабилизирован: при делителе 1,2/1 кОм около 4,55 В без нагрузки. Проверить относительно pin 5. SPEED — для передних кнопок.</text>
-<text x="52" y="2060" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#51627a">Выход 0–5 В номинальный: крайние уровни зависят от питания, нагрузки и размаха ОУ. Измерить перед подключением.</text>
-<text x="52" y="2098" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">ADC S2/S3: 5 В → 2,04 В; при 5,5 В и допусках резисторов 1% не более 2,275 В. Повторить калибровку.</text>
-<text x="52" y="2136" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#51627a">Номера EXT CONTROL не обозначают вид со стороны пайки. Точка = соединение. Схема пока не проверена на оборудовании.</text>
-<text x="52" y="2174" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="bold" fill="#087f71">Лучше подобрать под МК: S2 — R3 6,8 кОм / R11 4,7 кОм; S3 — R3 4,7 кОм / R11 5,1 кОм. Оба 1%; вход ≤5,5 В.</text>
+<text x="1270" y="1803.0" font-family="DejaVu Sans,sans-serif" font-size="21" font-weight="bold" fill="#ba650c">EXT CONTROL pin 3 · скорость</text>
+<text x="1080" y="1743.0" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="bold" fill="#ba650c">S1 · SPDT ON-ON</text>
+<text x="1270" y="1849.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#ba650c">Без среднего положения OFF.</text>
+<text x="1270" y="1881.5" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#ba650c">Разрыв перед замыканием; менять при STOP.</text>
+<text x="70" y="1975.0" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#ba650c">Вариант без VR1: вход B соединить с pin 6 для фиксированной скорости; выход ШИМ отделяется S1.</text>
+<text x="70" y="2009.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#51627a">* VD не стабилизирован: при делителе 1,2/1 кОм около 4,55 В без нагрузки. Проверить относительно pin 5. SPEED — для передних кнопок.</text>
+<text x="52" y="2075.5" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#51627a">Выход 0–5 В номинальный: крайние уровни зависят от питания, нагрузки и размаха ОУ. Измерить перед подключением.</text>
+<text x="52" y="2113.0" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">ADC S2/S3: 5 В → 2,04 В; при 5,5 В и допусках резисторов 1% не более 2,275 В. Повторить калибровку.</text>
+<text x="52" y="2150.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#51627a">Номера EXT CONTROL не обозначают вид со стороны пайки. Точка = соединение. Схема пока не проверена на оборудовании.</text>
+<text x="52" y="2188.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="bold" fill="#087f71">Лучше подобрать под МК: S2 — R3 6,8 кОм / R11 4,7 кОм; S3 — R3 4,7 кОм / R11 5,1 кОм. Оба 1%; вход ≤5,5 В.</text>
 </svg>

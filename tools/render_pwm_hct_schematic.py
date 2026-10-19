@@ -1,42 +1,32 @@
 #!/usr/bin/env python3
 """Render the reviewed two-axis BTS7960 reference as SVG, PNG and vector PDF.
-Requires Pillow, ReportLab and DejaVu Sans; no network or image generation.
+Requires Pillow, rsvg-convert and DejaVu Sans; no network or image generation.
 """
 from html import escape
 from pathlib import Path
+import subprocess
 from PIL import Image, ImageDraw, ImageFont
-from reportlab.pdfgen import canvas
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'docs/hardware/independent-pwm-bts7960-hct'
 W,H=2400,1730
 FONT='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 BOLD='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
-pdfmetrics.registerFont(TTFont('DejaVu',FONT));pdfmetrics.registerFont(TTFont('DejaVuBold',BOLD))
-pdf=canvas.Canvas(str(OUT.with_suffix('.pdf')),pagesize=(W/2,H/2));pdf.setTitle('Two-axis BTS7960 wiring - ESP32-S2 Mini / ESP32-S3')
-pdf.scale(.5,.5)
 im=Image.new('RGB',(W,H),'white');d=ImageDraw.Draw(im)
 svg=[f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}">','<rect width="100%" height="100%" fill="white"/>']
 INK='#172b46';BLUE='#245fbe';GREEN='#087c60';ORANGE='#a65600';GRAY='#586575'
-def color(value):
-    pdf.setStrokeColor(value);pdf.setFillColor(value)
 def text(x,y,value,size=22,c=INK,bold=False):
     value=str(value);f=ImageFont.truetype(BOLD if bold else FONT,size)
     d.text((x,y),value,font=f,fill=c,anchor='lt')
-    svg.append(f'<text x="{x}" y="{y}" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="{size}" font-weight="{"bold" if bold else "normal"}" fill="{c}">{escape(value)}</text>')
-    pdf.setFillColor(c);pdf.setFont('DejaVuBold' if bold else 'DejaVu',size);pdf.drawString(x,H-y-size*.8,value)
+    baseline=y-f.getbbox(value,anchor='ls')[1]
+    svg.append(f'<text x="{x}" y="{baseline}" font-family="DejaVu Sans,sans-serif" font-size="{size}" font-weight="{"bold" if bold else "normal"}" fill="{c}">{escape(value)}</text>')
 def line(points,c=INK,width=3):
     d.line(points,fill=c,width=width)
     svg.append('<polyline points="'+' '.join(f'{x},{y}' for x,y in points)+f'" fill="none" stroke="{c}" stroke-width="{width}"/>')
-    color(c);pdf.setLineWidth(width)
-    for (x1,y1),(x2,y2) in zip(points,points[1:]):pdf.line(x1,H-y1,x2,H-y2)
 def box(x,y,w,h,fill='#f6f8fc',stroke='#aebed2'):
     d.rectangle((x,y,x+w,y+h),fill=fill,outline=stroke,width=2)
     svg.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{fill}" stroke="{stroke}" stroke-width="2"/>')
-    pdf.setFillColor(fill);pdf.setStrokeColor(stroke);pdf.setLineWidth(2);pdf.rect(x,H-y-h,w,h,fill=1,stroke=1)
 def dot(x,y,c=INK):
-    d.ellipse((x-4,y-4,x+4,y+4),fill=c);svg.append(f'<circle cx="{x}" cy="{y}" r="4" fill="{c}"/>');color(c);pdf.circle(x,H-y,4,fill=1,stroke=0)
+    d.ellipse((x-4,y-4,x+4,y+4),fill=c);svg.append(f'<circle cx="{x}" cy="{y}" r="4" fill="{c}"/>')
 def ground(x,y):
     for w,dy in [(12,0),(8,6),(3,12)]:line([(x-w,y+dy),(x+w,y+dy)],GRAY,2)
 def resistor(x1,x2,y,label,c=BLUE,size=18):
@@ -123,7 +113,11 @@ text(950,1388,'ADC4 (AZ) / ADC5 (EL)',22,GREEN,True)
 line([(895,1400),(895,1375)],GREEN)
 line([(885,1375),(905,1375),(895,1358),(885,1375)],GREEN,2)
 line([(883,1355),(907,1355)],GREEN,2)
-line([(895,1355),(895,1340),(930,1340)],GREEN);text(945,1331,'3,3 В',18,GREEN)
+line([(895,1355),(895,1340),(1100,1340)],GREEN);text(945,1350,'3,3 В ESP',18,GREEN)
+resistor(1100,1240,1340,'R35 · 500Ω',GREEN)
+line([(1240,1340),(1300,1340),(1300,1360)],GREEN);ground(1300,1360)
+text(995,1450,'R35: один на ESP',17,GREEN)
+text(995,1478,'0,125 Вт · 6,6 мА',17,GREEN)
 line([(895,1400),(895,1430)],GREEN)
 line([(883,1433),(907,1433)],GREEN,2)
 line([(895,1436),(885,1455),(905,1455),(895,1436)],GREEN,2)
@@ -144,5 +138,7 @@ text(1400,1532,'LCD RW=GND; 5 В LCD - через отдельный TTL-буф�
 text(47,1615,'BTS7960: PWM идёт на RPWM/LPWM; GPIO21 и GPIO33/47 - ENABLE, не выходы скорости.',23,BLUE,True)
 text(47,1652,'Схема для стандартного DC-модуля, проверка реального оборудования отдельно. BTN7960: только с тем же интерфейсом.',20,GRAY)
 text(47,1687,'Источники: Handson Technology BTS7960 Motor Driver; TI SN74HCT245 (SCLS020H). Подробные ссылки и сборка - в .md рядом.',18,GRAY)
-svg.append('</svg>');OUT.with_suffix('.svg').write_text('\n'.join(svg)+'\n');im.save(OUT.with_suffix('.png'));pdf.showPage();pdf.save()
+svg.append('</svg>');OUT.with_suffix('.svg').write_text('\n'.join(svg)+'\n');im.save(OUT.with_suffix('.png'))
+subprocess.run(['rsvg-convert','--format','pdf','--dpi-x','144','--dpi-y','144',
+                '--output',str(OUT.with_suffix('.pdf')),str(OUT.with_suffix('.svg'))],check=True)
 for suffix in ('.svg','.png','.pdf'):print(OUT.with_suffix(suffix))

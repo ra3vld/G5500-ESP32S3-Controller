@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Render direct and PC817C-isolated IBT-2 wiring in SVG, PNG and vector PDF.
 
-Requires Pillow, ReportLab and DejaVu Sans. The isolated PDF has two pages:
+Requires Pillow, rsvg-convert, pdfunite and DejaVu Sans. The isolated PDF has two pages:
 connections and the two distinct optocoupler circuits. No network is used.
 """
 from html import escape
 from pathlib import Path
+import subprocess
+import tempfile
 from PIL import Image, ImageDraw, ImageFont
-from reportlab.pdfgen import canvas
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'docs/hardware'
@@ -17,8 +16,6 @@ W, H = 2400, 1800
 FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 BOLD = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 INK, BLUE, GREEN, ORANGE, GRAY, RED = '#172b46', '#245fbe', '#087c60', '#a65600', '#586575', '#ac3434'
-pdfmetrics.registerFont(TTFont('DejaVu', FONT))
-pdfmetrics.registerFont(TTFont('DejaVuBold', BOLD))
 CHANNELS = [('AZ RPWM / CW', 16, 16, 'U1'), ('AZ LPWM / CCW', 34, 15, 'U2'),
             ('AZ ENABLE', 21, 21, 'U5'), ('EL RPWM / UP', 17, 17, 'U3'),
             ('EL LPWM / DOWN', 18, 18, 'U4'), ('EL ENABLE', 33, 47, 'U6')]
@@ -26,13 +23,11 @@ CHANNELS = [('AZ RPWM / CW', 16, 16, 'U1'), ('AZ LPWM / CCW', 34, 15, 'U2'),
 class Drawing:
     def __init__(self, stem, title):
         self.stem = stem
-        self.pdf = canvas.Canvas(str(OUT / (stem + '.pdf')), pagesize=(W/2, H/2))
-        self.pdf.setTitle(title)
+        self.pages = []
         self.page(stem, title)
 
     def page(self, stem, title):
         self.page_stem = stem
-        self.pdf.scale(.5, .5)
         self.im = Image.new('RGB', (W, H), 'white')
         self.d = ImageDraw.Draw(self.im)
         self.svg = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}">',
@@ -43,33 +38,21 @@ class Drawing:
         s = str(s)
         f = ImageFont.truetype(BOLD if bold else FONT, size)
         self.d.text((x, y), s, font=f, fill=c, anchor='lt')
-        self.svg.append(f'<text x="{x}" y="{y}" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="{size}" font-weight="{"bold" if bold else "normal"}" fill="{c}">{escape(s)}</text>')
-        self.pdf.setFillColor(c)
-        self.pdf.setFont('DejaVuBold' if bold else 'DejaVu', size)
-        self.pdf.drawString(x, H-y-size*.8, s)
+        baseline = y - f.getbbox(s, anchor='ls')[1]
+        self.svg.append(f'<text x="{x}" y="{baseline}" font-family="DejaVu Sans,sans-serif" font-size="{size}" font-weight="{"bold" if bold else "normal"}" fill="{c}">{escape(s)}</text>')
         self.bounds.append((x, y, x+f.getlength(s), y+size, s))
 
     def line(self, points, c=INK, width=3):
         self.d.line(points, fill=c, width=width)
         self.svg.append('<polyline points="' + ' '.join(f'{x},{y}' for x,y in points) + f'" fill="none" stroke="{c}" stroke-width="{width}"/>')
-        self.pdf.setStrokeColor(c)
-        self.pdf.setLineWidth(width)
-        for (x1,y1),(x2,y2) in zip(points,points[1:]):
-            self.pdf.line(x1,H-y1,x2,H-y2)
 
     def box(self, x, y, w, h, fill='#f6f8fc', stroke='#aebed2'):
         self.d.rectangle((x,y,x+w,y+h),fill=fill,outline=stroke,width=2)
         self.svg.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{fill}" stroke="{stroke}" stroke-width="2"/>')
-        self.pdf.setFillColor(fill)
-        self.pdf.setStrokeColor(stroke)
-        self.pdf.setLineWidth(2)
-        self.pdf.rect(x,H-y-h,w,h,fill=1,stroke=1)
 
     def dot(self, x, y, c=BLUE):
         self.d.ellipse((x-4,y-4,x+4,y+4),fill=c)
         self.svg.append(f'<circle cx="{x}" cy="{y}" r="4" fill="{c}"/>')
-        self.pdf.setFillColor(c)
-        self.pdf.circle(x,H-y,4,fill=1,stroke=0)
 
     def ground(self, x, y, net='GND'):
         for w,dy in [(12,0),(8,6),(3,12)]:
@@ -112,11 +95,22 @@ class Drawing:
         self.svg.append('</svg>')
         (OUT/(self.page_stem+'.svg')).write_text('\n'.join(self.svg)+'\n')
         self.im.save(OUT/(self.page_stem+'.png'))
-        self.pdf.showPage()
+        self.pages.append(self.page_stem)
         for suffix in ('.svg','.png'): print(OUT/(self.page_stem+suffix))
 
     def save(self):
-        self.pdf.save()
+        with tempfile.TemporaryDirectory(prefix='bts7960-pdf-') as directory:
+            pages = []
+            for stem in self.pages:
+                page = str(Path(directory) / (stem + '.pdf'))
+                subprocess.run(['rsvg-convert', '--format', 'pdf', '--dpi-x', '144', '--dpi-y', '144',
+                                '--output', page, str(OUT / (stem + '.svg'))], check=True)
+                pages.append(page)
+            target = OUT / (self.stem + '.pdf')
+            if len(pages) == 1:
+                target.write_bytes(Path(pages[0]).read_bytes())
+            else:
+                subprocess.run(['pdfunite', *pages, str(target)], check=True)
         print(OUT/(self.stem+'.pdf'))
 
 def notes(d,x,y,w,h,title,rows,c=INK,size=21):
@@ -148,6 +142,51 @@ def module(d,top,axis,ys,vcc,gnd):
     for dy,label in [(147,'M+'),(191,'M−')]:
         d.text(1910,top+dy-22,label,20,ORANGE)
         d.line([(1980,top+dy),(2170,top+dy)],ORANGE)
+
+def bleeder(d, x, y, isolated=False):
+    """One load on the controller rail, shared by both ADC channels."""
+    rail = '3V3_CTRL' if isolated else '3V3'
+    net = 'GND_CTRL' if isolated else 'GND'
+    d.text(x,y-31,rail,18,GREEN,True)
+    d.line([(x,y),(x+125,y)],GREEN)
+    d.resistor(x+125,x+265,y,'R35 · 500Ω',GREEN)
+    d.line([(x+265,y),(x+345,y),(x+345,y+15)],GREEN)
+    d.ground(x+345,y+15,net)
+
+def feedback_frontend(d, isolated):
+    """Repeat the divider and both clamps for each sensor; R35 is shared."""
+    net = 'GND_CTRL' if isolated else 'GND'
+    rail = '3V3_CTRL' if isolated else '3V3'
+    d.box(45,1380,1250,360)
+    d.text(65,1397,'Вход AZ / EL: повторить на каждую ось',25,INK,True)
+    d.text(65,1450,'0...5 В',20,GREEN)
+    d.line([(100,1490),(210,1490)],GREEN)
+    d.resistor(210,360,1490,'6,8k · 1%',GREEN)
+    d.line([(360,1490),(730,1490)],GREEN)
+    d.pulldown(430,1490,'4,7k · 1%',net)
+    d.cap(590,1490,net)
+    d.resistor(730,850,1490,'1k',GREEN)
+    d.line([(850,1490),(1160,1490)],GREEN);d.dot(910,1490,GREEN)
+    d.text(1020,1460,'ADC4 / ADC5',21,GREEN,True)
+    d.line([(910,1490),(910,1473)],GREEN)
+    d.line([(900,1473),(920,1473),(910,1455),(900,1473)],GREEN,2)
+    d.line([(898,1452),(922,1452)],GREEN,2)
+    d.line([(910,1452),(910,1438),(940,1438)],GREEN)
+    d.text(950,1427,rail,18,GREEN,True)
+    d.line([(910,1490),(910,1507)],GREEN)
+    d.line([(898,1510),(922,1510)],GREEN,2)
+    d.line([(910,1513),(900,1531),(920,1531),(910,1513)],GREEN,2)
+    d.line([(910,1531),(910,1550)],GREEN);d.ground(910,1550,net)
+    d.text(950,1508,'BAT54S: два диода',18,GREEN)
+    d.text(950,1537,'Нижний: A=GND, K=ADC',17,GREEN)
+    for i, value in enumerate([
+        'ADC_11db: 5 В → 2,04 В; вход 5,5 В → ≤2,275 В (1%).',
+        'R35: один 500 Ом / 0,125 Вт на шину 3V3 / GND контроллера.',
+        'Датчик на GND_M требует развязки; здесь только GND_CTRL.' if isolated else
+        'Датчик и ограничители подключать к сигнальной земле ESP32.',
+        'Для S3: 4,7 / 5,1 кОм (1%, вход ≤5,5 В); калибровать по мВ.',
+    ]):
+        d.text(65,1595+i*36,value,20)
 
 def overview(isolated):
     stem='independent-pwm-bts7960'+('-isolated' if isolated else '')
@@ -182,6 +221,7 @@ def overview(isolated):
             d.dot(1385,yy)
             d.line([(1385,yy),(1385,yy+25),(1450,yy+25)],BLUE)
             if not isolated: d.pulldown(1230,yy)
+    bleeder(d,80,900,isolated)
     module(d,260,'AZ',ys[:3],'5V_M' if isolated else '3V3','GND_M' if isolated else 'GND★')
     module(d,590,'EL',ys[3:],'5V_M' if isolated else '3V3','GND_M' if isolated else 'GND★')
     d.text(47,962,('BTS7960_PWM_INVERTED=1: только RPWM/LPWM. ENABLE сохраняет активный HIGH.' if isolated else
@@ -209,33 +249,24 @@ def overview(isolated):
                'Земля ESP32 - отдельный сигнальный возврат.',
                'Силовой ток не проходит через ESP32 и его землю.']
     notes(d,1160,1020,1195,315,'Питание и земля',power,ORANGE)
-    feedback=['0...5 В → 6,8 кОм (1%) → узел → 1 кОм → ADC4/5.',
-              'Узел: 4,7 кОм (1%) и 100 нФ к '+('GND_CTRL.' if isolated else 'GND.'),
-              'У ADC: Schottky A=ADC/K=3V3, A=GND/K=ADC (BAT54S).',
-              'S2/S3, ADC_11db: 5 В → 2,04 В; 5,5 В → ≤2,275 В (1%).',
-              'Для S3: 4,7 кОм сверху / 5,1 кОм на землю (1%, вход ≤5,5 В).']
-    if isolated: feedback += ['Только плавающие датчики на стороне GND_CTRL.',
-                               'Активный датчик на GND_M требует своей развязки.']
-    else: feedback += ['Датчик питается по паспорту; GPIO0 → кнопка → GND.',
-                       'Пользовательская кнопка: INPUT_PULLUP, active LOW.']
-    notes(d,45,1380,1250,320,'Обратная связь AZ / EL: подбирать номиналы под МК',feedback,size=20)
+    feedback_frontend(d,isolated)
     if isolated:
         extra=['PWM 1 кГц; фронты PC817 и малые duty проверить.',
                'Подтяжки входов IBT-2 должны быть ≥10 кОм.',
                'Если стоят 1 кОм - заменить входные на 10 кОм.',
                'Датчики, R_IS/L_IS, приборы не замыкают барьер.',
                'R_IS/L_IS: NC; разводка оптоканалов - лист 2.',
-               'GPIO0 / периферия остаются на GND_CTRL.']
+               'Кнопка: GPIO0 → GND_CTRL, INPUT_PULLUP.']
     else:
         extra=['R_IS / L_IS: NC; их выход не ограничен до 3,3 В.',
                'TFT: MOSI10/SCK11/MISO2, CS12/DC13/RST14;',
                'touch: CS8/IRQ9. LCD: RS8/E9, D4...D7=10...13.',
                'LCD RW=GND; логика LCD 5 В требует согласования.',
                'GPIO21 и GPIO33/47 - ENABLE, не выходы скорости.',
-               'Встроенные буферы IBT-2 сохраняются.']
+               'Кнопка: GPIO0 → GND, INPUT_PULLUP.']
     notes(d,1330,1380,1025,320,'Условия подключения',extra,size=20)
-    d.text(47,1730,'Перед подключением двигателя проверьте уровни, питание, направления и STOP на своём оборудовании.',20,GRAY)
-    d.text(47,1770,'Подключение и номиналы: инструкция рядом со схемой.',19,GRAY)
+    d.text(47,1750,'Перед подключением двигателя проверьте уровни, питание, направления и STOP на своём оборудовании.',19,GRAY)
+    d.text(47,1772,'Подключение и номиналы: инструкция рядом со схемой.',17,GRAY)
     d.finish_page()
     if isolated: details(d)
     d.save()
@@ -268,6 +299,7 @@ def details(d):
     d.text(47,126,'Все резисторы LED: 200 Ом, 1%; GPIO: 10 кОм к GND_CTRL. Номиналы подтвердить по току и уровням.',21,GRAY)
     # Four PWM channels: common-emitter phototransistor, output pulled HIGH.
     d.box(45,195,2310,590)
+    bleeder(d,1880,170,True)
     d.text(65,213,'PWM: повторить 4 раза (U1...U4)',28,BLUE,True)
     opto(d,940,305,'PC817C: PWM')
     d.text(65,380,'GPIO PWM',25,BLUE,True)
@@ -318,7 +350,7 @@ def details(d):
         'Отдельно измерить EN при потере питания ESP32.',
     ],size=20)
     d.text(47,1740,'GND_CTRL и GND_M не соединять. PC817C не имеет выводов VCC: питание 5V_M поступает в выходную цепь.',20,GRAY)
-    d.text(47,1770,'При включённой инверсии PWM проверьте уровни и отключение ENABLE на входах модулей.',19,GRAY)
+    d.text(47,1770,'Защита ADC показана на листе 1; R35 общий для AZ/EL, один на контроллер. Проверить отключение ENABLE.',19,GRAY)
     d.finish_page()
 
 if __name__=='__main__':

@@ -37,7 +37,7 @@
 | HC-05 RX / TX / STATE | 6 / 7 / 3 |
 | UART0 RX / TX | 44 / 43 |
 
-Эта таблица относится к S3 и прежней S2 в интерфейсе YAESU. Выбранный дисплей может быть NONE, ILI9341/XPT2046 или параллельный LCD1602. [Схема с TFT](hardware/g5500-esp32s3-tft-schematic.pdf) сохранена из оригинала UA1CFM.
+Эта таблица относится к S3 и прежней S2 в интерфейсе YAESU. Выбранный дисплей может быть NONE, ILI9341/XPT2046 или параллельный LCD1602. Схема с TFT на основе оригинала UA1CFM: [PDF](hardware/g5500-esp32s3-tft-schematic.pdf), [SVG](hardware/g5500-esp32s3-tft-schematic.svg), [PNG](hardware/g5500-esp32s3-tft-schematic.png). У входов EL/AZ добавлены нижние BAT85 D7/D8 и общий R35 500 Ом между 3,3 В и GND; при сборке используйте [номиналы ADC](hardware/adc-input.md).
 
 ## Классический ESP32 WROOM/WROVER
 
