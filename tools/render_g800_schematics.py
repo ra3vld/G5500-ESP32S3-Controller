@@ -90,7 +90,7 @@ def diode_up(x,y1,y2):
 def render_common():
     canvas(2000,2230)
     text(50,35,'ESP32-S3 → Yaesu G-800DXA',38,b=True)
-    text(52,91,'Основные GPIO и оптокаскады — по схеме UA1CFM · добавлен выход скорости 0–5 В',23,muted)
+    text(52,91,'Направления через PC817C · обратная связь AZ через делитель · выход скорости 0–5 В',23,muted)
     box(50,137,1900,54,'#fff3dc','#e4bc72',10)
     text(72,151,'ESP32-S3-DevKitC-1 N16R8. Эта распиновка скорости относится к DevKit, а не к UEDX.',22,orange,b=True)
 

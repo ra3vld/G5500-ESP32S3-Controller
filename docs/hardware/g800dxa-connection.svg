@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="2000" height="2230" viewBox="0 0 2000 2230">
 <rect width="2000" height="2230" fill="#f5f7fb"/>
 <text x="50" y="35" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="38" font-weight="bold" fill="#172b46">ESP32-S3 → Yaesu G-800DXA</text>
-<text x="52" y="91" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="normal" fill="#51627a">Основные GPIO и оптокаскады — по схеме UA1CFM · добавлен выход скорости 0–5 В</text>
+<text x="52" y="91" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="23" font-weight="normal" fill="#51627a">Направления через PC817C · обратная связь AZ через делитель · выход скорости 0–5 В</text>
 <rect x="50" y="137" width="1900" height="54" rx="10" fill="#fff3dc" stroke="#e4bc72" stroke-width="2"/>
 <text x="72" y="151" dominant-baseline="text-before-edge" font-family="DejaVu Sans,sans-serif" font-size="22" font-weight="bold" fill="#ba650c">ESP32-S3-DevKitC-1 N16R8. Эта распиновка скорости относится к DevKit, а не к UEDX.</text>
 <rect x="50" y="215" width="420" height="945" rx="16" fill="white" stroke="#c8d3e2" stroke-width="2"/>
