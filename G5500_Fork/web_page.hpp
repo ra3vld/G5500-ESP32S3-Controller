@@ -21,7 +21,7 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 .nav{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px;padding:8px;background:#0b1720;border:1px solid #294153;border-radius:12px;position:sticky;top:0;z-index:20}
 .nav-tabs{display:flex;gap:8px;flex-wrap:wrap}
 .nav button,.nav a{border:0;cursor:pointer;font-family:inherit;display:inline-block;padding:9px 12px;border-radius:9px;background:#173044;color:#fff;text-decoration:none;font-weight:700;font-size:14px}
-.range-editors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.range-editor{min-width:0}.range-editor>.label{font-size:18px}.command-card h2{margin-top:0}.command-card h3{font-size:16px;margin:20px 0 8px}.control-mode{margin-bottom:16px}.target-controls{margin:16px 0}.range-editor .seg{display:flex;flex-wrap:wrap}.range-editor .seg .btn{flex:1 1 120px;font-size:14px}.range-editor input{max-width:100%}.calbox .row{align-items:center;gap:8px}.calbox .row>span{flex:1 1 150px}.calbox .row .btn{white-space:normal}@media(max-width:760px){.range-editors{grid-template-columns:1fr}}
+.range-editors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.range-editor{min-width:0}.range-editor>.label{font-size:18px}.command-card h2{margin-top:0}.command-card h3{font-size:16px;margin:20px 0 8px}.control-mode{margin-top:16px}.target-controls{margin:16px 0}.range-editor .seg{display:flex;flex-wrap:wrap}.range-editor .seg .btn{flex:1 1 120px;font-size:14px}.range-editor input{max-width:100%}.calbox .row{align-items:center;gap:8px}.calbox .row>span{flex:1 1 150px}.calbox .row .btn{white-space:normal}@media(max-width:760px){.range-editors{grid-template-columns:1fr}}
 .nav button.active{background:#167a5c}.nav button:hover,.nav a:hover{background:#235b78}
 .card{background:var(--p);border:1px solid var(--b);border-radius:12px;padding:12px;margin-top:10px}
 .big{font-size:54px;font-weight:700}.targetbig{font-size:34px;font-weight:700;color:var(--a)}.sep{font-size:30px;color:var(--m);font-weight:400}.unit{font-size:25px;color:var(--m)}.label{color:var(--m);font-size:13px;text-transform:uppercase;letter-spacing:.08em}
@@ -170,26 +170,26 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 </div>
 
 <div class="card command-card"><h2>Наведение</h2>
-<div class="control-mode">
-<div class="label">Режим управления</div>
-<div class="mode-controls" style="margin-top:8px">
-<div class="field"><label for="followMode">Следование командам</label><select id="followMode" onchange="forkPost('/api/mode',{mode:this.value})"><option value="manual">Ручной</option><option value="auto">Автоматический</option><option value="auto_1h">Авто 1 ч</option></select></div></div>
-<div id="hourLeft" aria-live="polite"></div>
-<div id="waitingTarget" style="margin-top:8px">Нет ожидающей цели</div>
-</div>
+<div id="waitingTarget" style="margin-bottom:16px">Нет ожидающей цели</div>
 
 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
 <div><div class="label">Состояние привода</div><div class="drive-status"><div id="motion" role="status" aria-live="polite" style="font-size:23px;font-weight:700">STOP</div><button id="resetDriveError" class="btn hide" type="button" onclick="resetMotion('all')">Сбросить ошибку</button></div></div>
 <div><span class="status"><span id="caldot" class="dot"></span><span id="caltxt">Calibration</span></span></div></div>
-<div class="target-controls"><div class="label">Задать угол</div><div class="row" style="margin-top:8px">
-<div class="field"><label id="tazlbl">AZ 0..450°</label><input id="taz" type="number" step="0.1" min="0" max="450"></div>
-<div class="field"><label id="tellbl">EL 0…180°</label><input id="tel" type="number" step="0.1" min="0" max="180"></div>
-<button class="btn good" onclick="go()">Повернуть</button></div></div>
 <h3>Ручное вращение</h3>
 <div id="movementButtons" class="controls" style="margin-top:10px">
 <button class="btn blank">-</button><button class="btn movebtn" data-dir="U"><span>▲ UP</span></button><button class="btn blank">-</button>
 <button class="btn movebtn" data-dir="L"><span>◀ LEFT</span></button><button id="executeTarget" class="btn good" onclick="targetAction()" disabled>Повернуть</button><button class="btn movebtn" data-dir="R"><span>RIGHT ▶</span></button>
 <button class="btn blank">-</button><button class="btn movebtn" data-dir="D"><span>▼ DOWN</span></button><button class="btn blank">-</button>
+</div>
+<div class="target-controls"><div class="label">Задать угол</div><div class="row" style="margin-top:8px">
+<div class="field"><label id="tazlbl">AZ 0..450°</label><input id="taz" type="number" step="0.1" min="0" max="450"></div>
+<div class="field"><label id="tellbl">EL 0…180°</label><input id="tel" type="number" step="0.1" min="0" max="180"></div>
+<button class="btn good" onclick="go()">Повернуть</button></div></div>
+<div class="control-mode">
+<div class="label">Режим управления</div>
+<div class="mode-controls" style="margin-top:8px">
+<div class="field"><label for="followMode">Следование командам</label><select id="followMode" onchange="forkPost('/api/mode',{mode:this.value})"><option value="manual">Ручной</option><option value="auto">Автоматический</option><option value="auto_1h">Авто 1 ч</option></select></div></div>
+<div id="hourLeft" aria-live="polite"></div>
 </div>
 
 </div>
