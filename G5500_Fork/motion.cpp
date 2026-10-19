@@ -411,6 +411,7 @@ Result Controller::startAutoTune(unsigned i, RegulatorMode mode, float travel, f
 void Controller::autoTunePhase(AutoTunePhase phase,uint32_t now) {
   auto &t=autoTune;t.phase=phase;t.phaseAt=now;t.phasePosition=axes[unsigned(t.axis)].current;
   t.sampleCount=t.sampleNext=0;t.velocityIntegral=0;t.previousVelocity=0;t.settled=false;t.plateauReady=false;
+  t.plateauAt=0;t.plateauVelocity=0;
 }
 void Controller::autoTuneLevel(float level) {
   auto &t=autoTune;t.level=std::clamp(std::ceil(level),1.f,std::floor(t.limit));
@@ -592,36 +593,63 @@ void Controller::tickAutoTune(uint32_t now) {
     t.velocityIntegral+=.5f*(t.previousVelocity+velocity)*dt;t.previousVelocity=velocity;
     const uint32_t elapsed=uint32_t(now-t.phaseAt);
     if(f.at!=t.sampledAt) {t.sampledAt=f.at;t.positions[t.sampleNext]=a.current;t.sampleTimes[t.sampleNext]=f.at;t.sampleNext=(t.sampleNext+1)%t.positions.size();t.sampleCount=std::min(unsigned(t.positions.size()),t.sampleCount+1);}
-    if(t.phase==AutoTunePhase::Low && elapsed>std::max(400u,2*t.originalMotion.velocityWindowMs) && velocity<t.threshold) {
-      if(t.level+1>t.limit-2) {finishAutoTune(AutoTunePhase::Failed,"no_sustained_motion",now);return;}
-      const float level=t.level+1;measurement.lowOutput=level;t.relocations=0;
-      autoTuneCoast(AutoTunePhase::Low,t.direction,level,false,now);return;
+    const auto retryHigher=[&](const char *reason) {
+      if(t.level+1>t.limit-2) {finishAutoTune(AutoTunePhase::Failed,reason,now);return;}
+      // A kick may coast through the low test and stop during the high test.
+      // Near friction, a moving drive can also fail to sustain steady speed.
+      // Re-identify both plateaus at a higher output, within the existing cap.
+      const float level=t.level+1;measurement.lowOutput=level;
+      measurement.lowVelocity=measurement.highOutput=measurement.highVelocity=0;t.relocations=0;
+      autoTuneCoast(AutoTunePhase::Low,t.direction,level,false,now);
+    };
+    if(elapsed>2500) {retryHigher("unstable_response");return;}
+    if(elapsed>std::max(400u,2*t.originalMotion.velocityWindowMs) && velocity<t.threshold) {
+      retryHigher("no_sustained_motion");return;
     }
     if(elapsed<std::max(200u,t.originalMotion.velocityWindowMs) || t.sampleCount<8)return;
     // Fit the fresh position samples directly. The control velocity estimator
     // adds a second delay, which previously consumed most of a short stroke.
-    const unsigned first=t.sampleCount==t.positions.size()?t.sampleNext:0;
+    const unsigned oldest=t.sampleCount==t.positions.size()?t.sampleNext:0;
+    unsigned skip=0;
+    const uint32_t window=std::max(200u,t.originalMotion.velocityWindowMs);
+    while(t.sampleCount-skip>8 && uint32_t(f.at-t.sampleTimes[(oldest+skip)%t.positions.size()])>window)++skip;
+    const unsigned first=(oldest+skip)%t.positions.size(),count=t.sampleCount-skip;
     const auto index=[&](unsigned n){return (first+n)%t.positions.size();};
     const auto seconds=[&](unsigned n){return float(uint32_t(t.sampleTimes[index(n)]-t.sampleTimes[first]))/1000;};
     float sx=0,sy=0,sxx=0,sxy=0;
-    for(unsigned n=0;n<t.sampleCount;++n) {
+    for(unsigned n=0;n<count;++n) {
       const float x=seconds(n),y=t.direction*(t.positions[index(n)]-t.positions[first]);
       sx+=x;sy+=y;sxx+=x*x;sxy+=x*y;
     }
-    const float denominator=t.sampleCount*sxx-sx*sx;
+    const float denominator=count*sxx-sx*sx;
     if(denominator<=0)return;
-    const float mean=(t.sampleCount*sxy-sx*sy)/denominator;
-    const unsigned half=t.sampleCount/2;
+    const float mean=(count*sxy-sx*sy)/denominator;
+    const unsigned half=count/2;
     const auto slope=[&](unsigned from,unsigned to) {
-      return t.direction*(t.positions[index(to)]-t.positions[index(from)])/(seconds(to)-seconds(from));
+      float xsum=0,ysum=0,xxsum=0,xysum=0;
+      for(unsigned n=from;n<=to;++n) {
+        const float x=seconds(n),y=t.direction*(t.positions[index(n)]-t.positions[first]);
+        xsum+=x;ysum+=y;xxsum+=x*x;xysum+=x*y;
+      }
+      const unsigned n=to-from+1;
+      return (n*xysum-xsum*ysum)/(n*xxsum-xsum*xsum);
     };
-    const float trend=std::abs(slope(0,half-1)-slope(t.sampleCount-half,t.sampleCount-1));
-    const float span=seconds(t.sampleCount-1);
+    const float trend=std::abs(slope(0,half-1)-slope(count-half,count-1));
+    const float span=seconds(count-1);
     const float noise=std::max(t.noiseHigh-t.noiseLow,.1f*t.originalMotion.movementDegrees);
-    if(mean<=t.threshold || trend>std::max({.08f*mean,.25f*t.threshold,2*noise/span})) {
-      if(elapsed>2500)finishAutoTune(AutoTunePhase::Failed,"unstable_response",now);
+    if(mean<=t.threshold || trend>std::max({.08f*mean,.25f*t.threshold,4*noise/span})) {
       return;
     }
+    // Confirm with a second, non-overlapping window at the same output. One
+    // short, locally straight section of the kick's decay is not steady motion.
+    // An ADC step in an intermediate overlapping window does not erase the
+    // first fit; expire it instead of matching a much later oscillation cycle.
+    const float agreement=std::max({.1f*mean,.25f*t.threshold,2*noise/span});
+    const uint32_t confirmation=std::max(uint32_t(200),uint32_t(span*1000));
+    if(!t.plateauAt || uint32_t(f.at-t.plateauAt)>2*confirmation || std::abs(mean-t.plateauVelocity)>agreement) {
+      t.plateauAt=f.at;t.plateauVelocity=mean;return;
+    }
+    if(uint32_t(f.at-t.plateauAt)<confirmation)return;
     t.relocations=0;
     if(t.phase==AutoTunePhase::Low) {
       measurement.lowVelocity=mean;autoTuneLevel(measurement.lowOutput+1);measurement.highOutput=t.level;

@@ -1,6 +1,7 @@
 #include "control.hpp"
 #include "motion_json.hpp"
 #include "api.hpp"
+#include "position_filter.hpp"
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -12,8 +13,9 @@ struct Rig {
   uint32_t now=0;
   float position=90,velocity=0;
   float positiveStart=30,negativeStart=35,sustaining=10,gain=.2f,bias=8;
-  float negativeSustaining=0,negativeGain=1,quantum=0;
-  bool jam=false;
+  float negativeSustaining=0,negativeGain=1,quantum=0,timeConstant=.12f,rippleBelow=0;
+  bool jam=false,medianFeedback=false;
+  PositionFilter filter;
   explicit Rig(bool cascade=false,unsigned axis=0,uint32_t stamp=0):now(stamp),axis(axis) {
     c.hardware.simulation=false;c.hardware.drive=DRIVE_BTS7960;
     c.feedbackAt(0,90,true,now);c.feedbackAt(1,90,true,now);
@@ -27,11 +29,16 @@ struct Rig {
     const float start=a.direction<0?negativeStart:positiveStart;
     const float minimum=a.direction<0 && negativeSustaining>0?negativeSustaining:sustaining;
     float desired=a.direction*(u>=minimum?gain*(a.direction<0?negativeGain:1)*(u-bias):0);
+    if(u<rippleBelow)desired*=1+.45f*std::sin(float(now)*.009f);
     if(jam || (std::abs(velocity)<.01f && u+.001f<start))desired=0;
-    velocity+=(desired-velocity)*(.02f/.12f);
+    velocity+=(desired-velocity)*(.02f/timeConstant);
     if(std::abs(velocity)<.003f && desired==0)velocity=0;
     position+=velocity*.02f;now+=20;
-    if(fresh){c.feedbackAt(axis,quantum>0?std::round(position/quantum)*quantum:position,true,now);c.feedbackAt(1-axis,90,true,now);}
+    if(fresh){
+      const float measured=medianFeedback?filter.sample(int(std::round(position/quantum)),now)*quantum:
+          quantum>0?std::round(position/quantum)*quantum:position;
+      c.feedbackAt(axis,measured,true,now);c.feedbackAt(1-axis,90,true,now);
+    }
     c.tick(now);
   }
   Result start(float travel=60){return c.startAutoTune(axis,c.motionSettings[axis].mode,travel,50,now);}
@@ -114,6 +121,36 @@ static void fastBounded(float travel,bool cascade=false,unsigned axis=0) {
   }
   if(travel<=20)CHECK(relocated);
 }
+static void inertialPlateaus(bool median=false) {
+  Rig r;r.positiveStart=49;r.negativeStart=28;r.sustaining=17;r.negativeSustaining=18;
+  r.gain=1.5f;r.bias=4;r.negativeGain=.8f;r.quantum=.14f;r.timeConstant=.3f;r.medianFeedback=median;
+  auto &m=r.c.motionSettings[0];m.kickEnabled=true;m.kickPercent=28;m.kickMs=800;
+  m.movementDegrees=1;m.stoppedVelocity=1;m.outputLimitPercent=50;
+  r.c.speeds[0].coastDegrees=1.5f;
+  CHECK(r.start(60)==Result::Ok);
+  for(unsigned n=0;n<6000 && r.c.autoTune.active();++n) {
+    r.step();CHECK(r.position>=30 && r.position<=150);
+    // A decaying kick must never be recorded as a sustainable work plateau.
+    for(unsigned d=0;d<2;++d) {
+      const auto &p=r.c.autoTune.measurements[d];
+      if(p.lowVelocity>0)CHECK(p.lowOutput>=(d?18:17));
+    }
+  }
+  if(r.c.autoTune.phase!=AutoTunePhase::Complete)std::cerr<<"inertial "<<r.c.autoTune.reason<<'\n';
+  CHECK(r.c.autoTune.phase==AutoTunePhase::Complete);
+  CHECK(r.c.autoTune.proposedSpeed.speedPercent>=18);
+}
+static void marginalWorkOutput() {
+  Rig r;r.positiveStart=r.negativeStart=28;r.sustaining=15;r.gain=.7f;r.bias=8;
+  r.rippleBelow=19;r.quantum=.05f;
+  auto &m=r.c.motionSettings[0];m.kickEnabled=true;m.kickPercent=28;m.kickMs=800;
+  m.movementDegrees=.5f;m.stoppedVelocity=.2f;m.outputLimitPercent=50;
+  CHECK(r.start(60)==Result::Ok);
+  for(unsigned n=0;n<6000 && r.c.autoTune.active();++n)r.step();
+  if(r.c.autoTune.phase!=AutoTunePhase::Complete)std::cerr<<"marginal "<<r.c.autoTune.reason<<'\n';
+  CHECK(r.c.autoTune.phase==AutoTunePhase::Complete);
+  CHECK(r.c.autoTune.proposedSpeed.speedPercent>=19);
+}
 static void transport() {
   Rig r;Protocol p(r.c);Settings settings;
   Form start{{"action","start"},{"axis","az"},{"mode","simple"},{"travel","60"},{"outputLimit","50"},{"id","0"}};
@@ -134,4 +171,4 @@ static void transport() {
   CHECK(r.c.autoTune.phase==AutoTunePhase::Cancelled);
   CHECK(r.c.speeds[0].speedPercent==20);
 }
-int main(){try{completed(false,0);completed(true,0);completed(false,1);completed(true,1,0xfffff000u);safety();highStiction();fastBounded(60);fastBounded(20);fastBounded(10);fastBounded(60,true,1);transport();std::cout<<"PASS autotune: "<<checks<<" checks\n";}catch(const std::exception &e){std::cerr<<e.what()<<'\n';return 1;}}
+int main(){try{completed(false,0);completed(true,0);completed(false,1);completed(true,1,0xfffff000u);safety();highStiction();fastBounded(60);fastBounded(20);fastBounded(10);fastBounded(60,true,1);inertialPlateaus();inertialPlateaus(true);marginalWorkOutput();transport();std::cout<<"PASS autotune: "<<checks<<" checks\n";}catch(const std::exception &e){std::cerr<<e.what()<<'\n';return 1;}}

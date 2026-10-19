@@ -122,7 +122,8 @@ struct AutoTuneState {
   float velocityIntegral = 0, previousVelocity = 0, validationError = 0, validationTarget = 0;
   float nextLevel = 0, searchLevel = 0;
   float lastPosition = 0, sampleVelocity = 0, stoppingDistance = 0;
-  uint32_t positionAt = 0;
+  float plateauVelocity = 0;
+  uint32_t positionAt = 0, plateauAt = 0;
   std::array<float, 16> positions{};
   std::array<uint32_t, 16> sampleTimes{};
   unsigned sampleCount = 0, sampleNext = 0;
