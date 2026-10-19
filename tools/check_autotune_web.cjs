@@ -13,13 +13,26 @@ for(const axis of ['az','el']){
  f.elements[axis==='az'?'coastDegrees':'elCoastDegrees']={value:'2'};
 }
 const state={deviceRole:'controller',controlMode:'manual',moving:false,azStart:0,azMax:450,elStart:0,elMax:180,azRangeRevision:1,
- axes:[{current:90,calibrated:true},{current:90,calibrated:true}],autotune:{phase:'idle',active:false,axis:-1,id:0}};
+ axes:[{current:90,calibrated:true,regulatorMode:'cascade',motionPhase:'idle',measuredVelocity:0,requestedVelocity:0,speedOutputPercent:0},{current:90,calibrated:true,regulatorMode:'simple',motionPhase:'idle',measuredVelocity:0,speedOutputPercent:0}],autotune:{phase:'idle',active:false,axis:-1,id:0}};
 const context=vm.createContext({window:{_forkState:state},document:{getElementById:node,querySelector:node},Number,Math,
  setText:(n,t)=>n.textContent=t,settingsFeedback:t=>feedback.push(t),motionFaultText:t=>t,
  forkPost:async(path,body)=>{posts.push({path,body:{...body}});return true},loadMotionSettings:async()=>{},upd:async()=>{},
  fetch:async()=>({ok:true,json:async()=>context.details})});
 vm.runInContext(script.slice(script.indexOf('let autoTuneRequest='),script.indexOf('function renderMotionStatus(')),context);
+vm.runInContext(script.slice(script.indexOf('function motionFaultText('),script.indexOf('function renderDriveStatus(')),context);
 (async()=>{
+ vm.runInContext('renderAutoTune(window._forkState)',context);
+ assert.equal(node('azTunePosition').textContent,'90.00°');assert.equal(node('azTuneVelocity').textContent,'0.00 °/с');
+ assert.equal(node('azTuneCenter').textContent,'В середину (225°)');assert(!node('azTuneCenter').disabled);assert(node('azTuneReset').disabled);
+ assert.equal(node('azTuneRoom').textContent,'90.00° / 360.00°');
+ await vm.runInContext("autoTunePrepare('center','az')",context);
+ assert.equal(posts.at(-1).path,'/api/motion/autotune');assert.equal(posts.at(-1).body.action,'center');assert.equal(posts.at(-1).body.axis,'az');assert.equal(posts.at(-1).body.rangeRevision,1);posts.length=0;
+ state.elStart=-45;state.elMax=190;vm.runInContext('renderAutoTune(window._forkState)',context);assert.equal(node('elTuneCenter').textContent,'В середину (72.5°)');
+ state.axes[0].motionFault='stalled';state.fault='az_stalled';vm.runInContext('renderAutoTune(window._forkState)',context);
+ assert.match(node('azTuneDriveState').textContent,/Ошибка: AZ: движение прекратилось/);assert(node('azTuneCenter').disabled);assert(!node('azTuneReset').disabled);
+ await vm.runInContext("autoTunePrepare('reset','az')",context);assert.equal(posts.at(-1).path,'/api/motion/reset');assert.equal(posts.at(-1).body.axis,'all');posts.length=0;
+ state.axes[0].motionFault='feedback_stale';state.fault='az_feedback_stale';vm.runInContext('renderAutoTune(window._forkState)',context);assert.equal(node('azTuneVelocity').textContent,'—');
+ state.axes[0].motionFault='';state.fault='';
  await vm.runInContext("autoTuneAction('start','az')",context);
  assert.equal(posts.length,1);assert.equal(posts[0].path,'/api/motion/autotune');
  assert.equal(posts[0].body.id,0);assert.equal(posts[0].body.rangeRevision,1);assert.equal(posts[0].body.mode,'cascade');
@@ -31,6 +44,9 @@ vm.runInContext(script.slice(script.indexOf('let autoTuneRequest='),script.index
  vm.runInContext('renderAutoTune(window._forkState)',context);
  assert.match(node('azTuneStatus').textContent,/Измерение отклика.*назад/);assert(node('azTuneStart').disabled);assert(node('elTuneStart').disabled);
  assert(!node('azTuneCancel').disabled);assert(node('elTuneCancel').disabled);assert(node('azTuneApply').disabled);
+ assert(node('azTuneCenter').disabled);assert(node('azTuneReset').disabled);assert(!node('azTuneStop').disabled);
+ const blocked=posts.length;await vm.runInContext("autoTunePrepare('center','az')",context);await vm.runInContext("autoTunePrepare('reset','az')",context);assert.equal(posts.length,blocked);
+ await vm.runInContext("autoTunePrepare('stop','az')",context);assert.equal(posts.at(-1).path,'/api/move');assert.equal(posts.at(-1).body.d,'S');
  state.autotune={phase:'complete',active:false,axis:0,id:1,mode:'cascade',validationError:.12};context.details={...state.autotune,result};
  vm.runInContext('renderAutoTune(window._forkState)',context);await new Promise(resolve=>setImmediate(resolve));
  assert(!node('azTuneApply').disabled);assert(node('elTuneApply').disabled);assert.match(node('azTuneResult').textContent,/Положение P \/ I \/ D/);assert.match(node('azTuneResult').textContent,/Удержание выключено/);
@@ -42,5 +58,8 @@ vm.runInContext(script.slice(script.indexOf('let autoTuneRequest='),script.index
  state.axes[0].current=90;state.controlMode='auto';await vm.runInContext("autoTuneAction('start','az')",context);assert.match(node('azTuneStatus').textContent,/ручной режим/);
  state.controlMode='manual';node('azMotionForm').dataset.dirty='1';await vm.runInContext("autoTuneAction('start','az')",context);assert.match(feedback.at(-1),/Сначала сохраните/);
  assert.match(source,/type="button" id="\$\{axis\}TuneStart"/);
- console.log('PASS: autotune UI, bounded start, mode/axis and run ID, progress, preview, explicit Apply, cancel, preflight and JS syntax');
+ state.controlMode='manual';delete node('azMotionForm').dataset.dirty;delete state.axes[0].measuredVelocity;vm.runInContext('renderAutoTune(window._forkState)',context);assert.equal(node('azTuneVelocity').textContent,'—');
+ state.moving=true;vm.runInContext('renderAutoTune(window._forkState)',context);assert(node('azTuneCenter').disabled);assert(node('azTuneStart').disabled);assert(!node('azTuneStop').disabled);
+ const countMoving=posts.length;await vm.runInContext("autoTunePrepare('center','az')",context);assert.equal(posts.length,countMoving);
+ console.log('PASS: autotune telemetry, mechanical midpoint, reset, independent STOP, motion/tuning guards, bounded start, run ID, preview and Apply');
 })().catch(e=>{console.error(e);process.exit(1)});

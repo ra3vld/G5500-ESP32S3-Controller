@@ -32,6 +32,18 @@ static void records() {
   CHECK(c.motionSettings[0].movementDegrees==5&&c.speeds[0].speedPercent==50);
   MotionPid pid;for(int i=0;i<1000;++i) CHECK(pid.step(10,0,0,5,10,0,.02f,.1f,0,5)==5);
   CHECK(std::abs(pid.integral)<.001f); CHECK(pid.step(-1,0,0,5,10,0,.02f,.1f,0,5)==0);
+  for(int direction:{-1,1}) {
+    MotionPid saturated;
+    const float lo=direction<0?-1.f:0.f,hi=direction<0?0.f:1.f;
+    CHECK(std::abs(saturated.step(float(direction),0,.25f*direction,0,.6f,0,1,.1f,lo,hi)-.85f*direction)<.0001f);
+    const float frozen=saturated.integral;
+    for(unsigned n=0;n<100;++n) {
+      CHECK(saturated.step(float(direction),0,.25f*direction,0,.6f,0,1,.1f,lo,hi)==direction);
+      CHECK(saturated.integral==frozen);
+    }
+    CHECK(std::abs(saturated.step(float(-direction),0,.25f*direction,0,.6f,0,1,.1f,lo,hi))<.85f);
+    CHECK(std::abs(saturated.integral)<.0001f);
+  }
 }
 static void kickAndStream() {
   auto c=ready(); auto &m=c.motionSettings[0];m.kickEnabled=true;m.kickPercent=50;m.kickMs=500;
@@ -116,7 +128,7 @@ static void profilesAndNoise() {
 static void feedbackSafety() {
   for(int direction:{-1,1}) {
     auto stopped=ready();CHECK(stopped.jog(0,direction,false,0)==Result::Ok);stopped.tick(0);
-    for(unsigned at=20;at<=3400;at+=20) {
+    for(unsigned at=20;at<=4200;at+=20) {
       stopped.feedbackAt(0,10+((at/20)%2?.14f:-.14f),true,at);stopped.tick(at);
     }
     CHECK(stopped.axes[0].motionError==MotionError::Stalled);
@@ -159,6 +171,36 @@ static void feedbackSafety() {
   for(unsigned stamp=20;stamp<=2000;stamp+=20){c.feedbackAt(0,10,false,stamp);c.tick(stamp);}
   CHECK(c.axes[0].direction&&c.axes[0].motionError==MotionError::None);
 }
+static void lowOutputProgress() {
+  for(bool cascade:{false,true}) for(unsigned axis:{0u,1u}) {
+    auto c=ready(cascade);auto &m=c.motionSettings[axis];
+    m.kickEnabled=false;m.stallMs=500;m.velocity=1;m.feedforward=6;
+    m.velocityKp=m.velocityKi=m.velocityKd=0;
+    c.speeds[axis].speedPercent=c.speeds[axis].approachSpeedPercent=6;
+    c.speeds[axis].accelerationMs=100;
+    CHECK(c.jog(axis,1,false,0)==Result::Ok);c.tick(0);
+    for(unsigned at=20;at<=4000;at+=20) {
+      c.feedbackAt(0,10,true,at);c.feedbackAt(1,30,true,at);c.tick(at);
+      CHECK(c.axes[axis].motionError==MotionError::None);
+    }
+    CHECK(c.axes[axis].direction && c.axes[axis].speedOutputPercent<7);
+    // Restoring meaningful output receives its own full timeout.
+    m.feedforward=8;c.speeds[axis].speedPercent=7;
+    uint32_t first=0;
+    for(unsigned at=4020;at<=7000;at+=20) {
+      c.feedbackAt(0,10,true,at);c.feedbackAt(1,30,true,at);c.tick(at);
+      if(!first && c.axes[axis].speedOutputPercent>=7-1e-4f)first=at;
+      if(c.axes[axis].motionError!=MotionError::None) {
+        CHECK(first && at-first>=m.stallMs);break;
+      }
+    }
+    CHECK(c.axes[axis].motionError==MotionError::Stalled);
+    // Freshness is independent of output and must still stop the drive.
+    c=ready(cascade);c.motionSettings[axis].outputLimitPercent=6;
+    CHECK(c.jog(axis,1,false,0)==Result::Ok);c.tick(0);c.tick(501);
+    CHECK(c.axes[axis].motionError==MotionError::FeedbackStale);
+  }
+}
 static void cascadeKickOverspeed() {
   auto c=ready(true);auto &m=c.motionSettings[0];m.kickEnabled=true;m.kickPercent=50;m.kickReleaseMs=20;
   CHECK(c.target({50,0,true,false},false,0)==Result::Ok);c.tick(0);
@@ -176,14 +218,15 @@ static void cascadeKickOverspeed() {
   c.stopNow(-1,520);CHECK(!c.moving());CHECK(!c.axes[0].holdArmed);
 }
 static void stallRetry() {
-  const auto stalled=[](unsigned axis=0) {
-    auto c=ready(); CHECK(c.jog(axis,1,false,0)==Result::Ok);c.tick(0);
+  const auto prepared=[]() { auto c=ready();for(auto &m:c.motionSettings)m.stallMs=2500;return c; };
+  const auto stalled=[&](unsigned axis=0) {
+    auto c=prepared(); CHECK(c.jog(axis,1,false,0)==Result::Ok);c.tick(0);
     for(unsigned now=20;now<=3200;now+=20) { c.feedbackAt(0,10,true,now);c.feedbackAt(1,30,true,now);c.tick(now); }
     CHECK(c.axes[axis].motionError==MotionError::Stalled);CHECK(!c.axes[axis].direction);return c;
   };
   auto c=stalled(); CHECK(c.target({90,0,true,false},false,3220)==Result::Ok);
   CHECK(c.axes[0].motionError==MotionError::None&&c.fault.empty());c.tick(3220);CHECK(c.axes[0].direction);
-  c=ready();c.target({90,0,true,false},false,0);c.tick(0);
+  c=prepared();c.target({90,0,true,false},false,0);c.tick(0);
   for(unsigned now=20;now<=3200;now+=20){c.feedbackAt(0,10,true,now);c.feedbackAt(1,30,true,now);c.tick(now);}
   CHECK(c.axes[0].motionError==MotionError::Stalled);CHECK(c.target({90,0,true,false},false,3220)==Result::Ok);
   CHECK(c.axes[0].motionError==MotionError::None&&c.axes[0].tracking);
@@ -199,14 +242,14 @@ static void stallRetry() {
   CHECK(c.sequence(points,2,1000,3240)==Result::Pending);CHECK(c.execute(3260)==Result::Ok);
   c.feedbackAt(0,11,true,4260);c.tick(4260);CHECK(c.axes[0].target==180);
   for(auto error:{MotionError::KickTimeout,MotionError::FeedbackStale,MotionError::FeedbackInvalid,MotionError::Planner}) {
-    c=ready();c.axes[0].motionError=error;CHECK(c.target({90,0,true,false},false,0)==Result::Unavailable);
+    c=prepared();c.axes[0].motionError=error;CHECK(c.target({90,0,true,false},false,0)==Result::Unavailable);
     CHECK(c.jog(0,1,false,0)==Result::Unavailable);CHECK(c.axes[0].motionError==error);
   }
-  c=ready();CHECK(c.manualDrive(1,1,1,1,1,1,0,false,0)==Result::Ok);c.tick(0);
+  c=prepared();CHECK(c.manualDrive(1,1,1,1,1,1,0,false,0)==Result::Ok);c.tick(0);
   for(unsigned now=20;now<=3020;now+=20) { c.feedbackAt(0,10,true,now);c.feedbackAt(1,30,true,now);c.manualDrive(1,1,1,now/20+1,1,1,0,false,now);c.tick(now); }
   CHECK(c.axes[0].motionError==MotionError::Stalled);
   CHECK(c.manualDrive(1,1,1,1,1,1,0,false,3040)==Result::Cancelled);CHECK(c.axes[0].motionError==MotionError::Stalled);
   CHECK(c.manualDrive(1,1,1,200,1,1,0,false,3060)!=Result::Ok);CHECK(c.axes[0].motionError==MotionError::Stalled);
   CHECK(c.manualDrive(1,1,2,201,1,1,0,false,3080)==Result::Ok);CHECK(c.axes[0].motionError==MotionError::None);
 }
-int main() { try { records();stallRetry();kickAndStream();cascadeHold();profilesAndNoise();feedbackSafety();cascadeKickOverspeed();std::cout<<"PASS motion: "<<checks<<" checks; Controller bytes="<<sizeof(Controller)<<"\n"; } catch(const std::exception &e) { std::cerr<<e.what()<<'\n';return 1; } }
+int main() { try { records();stallRetry();kickAndStream();cascadeHold();profilesAndNoise();feedbackSafety();lowOutputProgress();cascadeKickOverspeed();std::cout<<"PASS motion: "<<checks<<" checks; Controller bytes="<<sizeof(Controller)<<"\n"; } catch(const std::exception &e) { std::cerr<<e.what()<<'\n';return 1; } }

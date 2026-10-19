@@ -120,7 +120,7 @@ struct AutoTuneState {
   float origin = 0, otherPosition = 0, lower = 0, upper = 0, limit = 0, level = 0;
   float phasePosition = 0, noiseLow = 0, noiseHigh = 0, noiseVelocity = 0, threshold = 0;
   float peakVelocity = 0, validationError = 0, validationTarget = 0;
-  float nextLevel = 0, searchLevel = 0;
+  float nextLevel = 0, searchLevel = 0, minimumLevel = 0;
   float lastPosition = 0, sampleVelocity = 0, stoppingDistance = 0;
   float plateauVelocity = 0;
   uint32_t positionAt = 0, plateauAt = 0;
@@ -172,6 +172,7 @@ public:
   std::array<SpeedSettings, 2> speeds{};
   std::array<MotionSettings, 2> motionSettings{};
   AutoTuneState autoTune{};
+  Result centerForAutoTune(unsigned axis, uint32_t now);
   Result startAutoTune(unsigned axis, RegulatorMode mode, float travel, float outputLimit, uint32_t now);
   Result cancelAutoTune(uint32_t now);
   Result applyAutoTune(uint32_t id, uint32_t now);
@@ -266,6 +267,7 @@ private:
   void finishAutoTune(AutoTunePhase, const char *reason, uint32_t now);
   void autoTunePhase(AutoTunePhase, uint32_t now);
   void autoTuneLevel(float level);
+  void raiseAutoTuneMinimum(uint32_t now);
   bool autoTuneProbe(AutoTunePhase, int direction, float level, uint32_t now);
   void autoTuneCoast(AutoTunePhase next, int direction, float level, bool relocate, uint32_t now);
   bool proposeAutoTune(uint32_t now);

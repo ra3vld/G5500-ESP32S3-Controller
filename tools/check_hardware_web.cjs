@@ -8,7 +8,7 @@ const config={driveInterface:0,simulation:0,bluetoothEnabled:0,bluetoothMode:3,f
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
  try{
   for(const mobile of [false,true]){
-   let state={token:123,generation:2,recovery:true,trial:false,ready:false,reason:'low_memory',remainingMs:120000,heapFree:3000,heapMaxBlock:512,backend:'NONE',sppSupported:true,classicEsp32:true,crowpanel:false,independentDrive:true,hasConfirmed:true,configured:{...config}},probeFails=false;
+   let state={token:123,generation:2,recovery:true,trial:false,ready:false,reason:'low_memory',failureCount:2,failureLimit:3,failureResetMs:1800000,remainingMs:120000,heapFree:3000,heapMaxBlock:512,backend:'NONE',sppSupported:true,classicEsp32:true,crowpanel:false,independentDrive:true,hasConfirmed:true,configured:{...config}},probeFails=false;
    const requests=[],errors=[];
    const page=await browser.newPage({viewport:{width:mobile?360:1100,height:900},locale:'ru-RU'});
    page.on('pageerror',e=>errors.push(e.message));
@@ -25,6 +25,8 @@ const config={driveInterface:0,simulation:0,bluetoothEnabled:0,bluetoothMode:3,f
    await page.goto('http://hardware.test/recovery');
    await page.waitForFunction(()=>!document.getElementById('save').disabled);
    assert.match(await page.locator('#state').textContent(),/восстановления/);
+   assert.match(await page.locator('#failures').textContent(),/Сбои: 2 \/ 3/);
+   assert.match(await page.locator('#failures').textContent(),/30 минут/);
    assert(await page.locator('#confirm').isDisabled());
    await page.locator('[name=buttonGpio]').fill('38');
    await page.evaluate(()=>refresh());
@@ -36,8 +38,9 @@ const config={driveInterface:0,simulation:0,bluetoothEnabled:0,bluetoothMode:3,f
    assert.equal(requests.at(-1).path,'/api/hardware');
    assert.deepEqual(requests.at(-1).body,{token:'123',generation:'2',...Object.fromEntries(Object.entries({...config,driveInterface:2,pwmInverted:1,buttonGpio:38}).map(([k,v])=>[k,String(v)]))});
    await page.evaluate(()=>{busy=false;dirty=false;});
-   state={...state,recovery:false,trial:true,ready:true,heapFree:40000,heapMaxBlock:16000};
+   state={...state,recovery:false,trial:true,ready:true,failureCount:0,heapFree:40000,heapMaxBlock:16000};
    probeFails=true;await page.evaluate(()=>refresh());
+   assert.match(await page.locator('#failures').textContent(),/Сбои: 0 \/ 3/);
    assert(await page.locator('#confirm').isDisabled()); // light status alone never authorizes confirmation
    probeFails=false;await page.evaluate(()=>refresh());
    assert(!(await page.locator('#confirm').isDisabled()));
@@ -60,6 +63,10 @@ const config={driveInterface:0,simulation:0,bluetoothEnabled:0,bluetoothMode:3,f
    assert.equal(await page.locator('[name=driveInterface] option[value="2"]').evaluate(el=>el.disabled),false);
    assert.equal(await page.locator('[name=bluetoothEnabled]').isDisabled(),true);
    assert.equal(await page.locator('[name=bluetoothEnabled]').inputValue(),'0');
+   state={...state,failureCount:undefined};await page.evaluate(()=>refresh());
+   assert.equal(await page.locator('#failures').textContent(),''); // older firmware remains readable
+   state={...state,failureCount:3};await page.evaluate(()=>refresh());
+   assert.match(await page.locator('#failures').textContent(),/Сбои: 3 \/ 3/);
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
    assert.deepEqual(errors,[]);
    if(process.env.HARDWARE_SCREENSHOT_DIR){fs.mkdirSync(process.env.HARDWARE_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:path.join(process.env.HARDWARE_SCREENSHOT_DIR,mobile?'hardware-mobile.png':'hardware-desktop.png'),fullPage:true});}

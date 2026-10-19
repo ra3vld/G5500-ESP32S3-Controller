@@ -104,7 +104,9 @@ float MotionPid::step(float error, float measurement, float ff, float kp, float 
   const float candidate = std::clamp(integral + (integrate ? ki*error*dt : 0), -limit, limit);
   const float raw = ff + kp*error + candidate - kd*derivative;
   if ((raw >= lo && raw <= hi) || (raw > hi && error < 0) || (raw < lo && error > 0)) integral = candidate;
-  return std::clamp(ff + kp*error + integral - kd*derivative, lo, hi);
+  // Conditional integration freezes the state, not the commanded output.
+  // Returning the old integral here can strand PWM just below the limit.
+  return std::clamp(raw, lo, hi);
 }
 void MotionFeedback::sample(float position, bool calibrated, uint32_t stamp, unsigned window) {
   const bool wasValid=valid;
@@ -378,17 +380,42 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
   }
   axis.speedOutputPercent=axis.direction ? std::clamp(requested,0.f,m.outputLimitPercent) : 0;
   axis.motionPhase=MotionPhase::Run;
-  if (axis.speedOutputPercent > 0 && axis.calibrated && r.feedback.timed) {
+  const bool tuning = autoTune.active() && autoTune.axis == int(i);
+  // A small correction can legitimately remain below the drive's dead band.
+  // Start a full progress interval only when meaningful output is restored.
+  // Autotune still observes low output: no motion there is a search result.
+  if (!tuning && axis.speedOutputPercent < 7.f-1e-4f) r.progressValid=false;
+  else if ((tuning || axis.speedOutputPercent > 0) && axis.calibrated && r.feedback.timed) {
     // Only a new furthest position in the commanded direction is progress.
     // Alternating ADC counts at a stationary shaft must not keep it powered.
     if (!r.progressValid || axis.direction*(axis.current-r.progressPosition) >= std::min(.1f,m.movementDegrees)) {
       r.progressAt=now; r.progressPosition=axis.current; r.progressValid=true;
-    } else if (uint32_t(now-r.progressAt) >= m.stallMs) { motionFault(i,MotionError::Stalled,now); }
+    } else if (uint32_t(now-r.progressAt) >= m.stallMs) {
+      if(tuning) raiseAutoTuneMinimum(now);
+      else motionFault(i,MotionError::Stalled,now);
+    }
   }
 }
 const char *Controller::autoTunePhaseName(AutoTunePhase phase) {
   static constexpr const char *names[]={"idle","quiet","start","low","high","coast","reposition","validate","complete","cancelled","failed"};
   return names[unsigned(phase)];
+}
+Result Controller::centerForAutoTune(unsigned i, uint32_t now) {
+  if(remote || configurationLocked || i>1 || (i==1 && model!=Model::G5500) || !variableSpeed(i)) return Result::Unavailable;
+  if(autoTune.active() || mode!=Mode::Manual || moving() || pendingValid || presetActive || sequenceCount() ||
+      axes[0].tracking || axes[1].tracking || axes[0].holdArmed || axes[1].holdArmed) return Result::Busy;
+  if(!axes[i].calibrated) return Result::NotCalibrated;
+  if(driveFault || !fault.empty() || axes[0].motionError!=MotionError::None || axes[1].motionError!=MotionError::None)
+    return Result::Unavailable;
+  const auto &feedback=motion_[i].feedback;
+  if(!feedback.timed || !feedback.valid || uint32_t(now-feedback.at)>motionSettings[i].feedbackTimeoutMs)
+    return Result::Unavailable;
+  const auto bounds=range(i);const float middle=bounds.start+bounds.span()/2;
+  const auto result=start({middle,middle,i==0,i==1},now,false);
+  // Preparation is a one-shot movement, even if normal positioning uses hold.
+  // Keep the saved hold preference intact for subsequent ordinary targets.
+  if(result==Result::Ok)axes[i].holdArmed=false;
+  return result;
 }
 Result Controller::startAutoTune(unsigned i, RegulatorMode mode, float travel, float limit, uint32_t now) {
   if (remote || configurationLocked || i>1 || (i==1 && model!=Model::G5500) || !variableSpeed(i)) return Result::Unavailable;
@@ -426,6 +453,29 @@ void Controller::autoTuneLevel(float level) {
   auto &t=autoTune;t.level=std::clamp(std::ceil(level),1.f,std::floor(t.limit));
   speeds[unsigned(t.axis)].speedPercent=unsigned(t.level);
   speeds[unsigned(t.axis)].approachSpeedPercent=speeds[unsigned(t.axis)].speedPercent;
+}
+void Controller::raiseAutoTuneMinimum(uint32_t now) {
+  auto &t=autoTune;
+  if(t.phase!=AutoTunePhase::Low && t.phase!=AutoTunePhase::High && t.phase!=AutoTunePhase::Validate) {
+    finishAutoTune(AutoTunePhase::Failed,"no_sustained_motion",now);return;
+  }
+  // Re-identify at a higher *measured* working output. A temporary PWM floor
+  // during validation would hide a bad candidate that fails again after Apply.
+  const bool validating=t.phase==AutoTunePhase::Validate;
+  const float next=validating ? std::max(t.measurements[0].highOutput,t.measurements[1].highOutput)+1 : t.level+1;
+  t.minimumLevel=std::max(t.minimumLevel,next);
+  if(t.minimumLevel>std::floor(t.limit)-2) {
+    finishAutoTune(AutoTunePhase::Failed,"no_sustained_motion",now);return;
+  }
+  const int direction=validating?1:t.direction;
+  for(unsigned d=0;d<2;++d) if(validating || (direction>0?0u:1u)==d) {
+    auto &m=t.measurements[d];
+    m.lowOutput=t.minimumLevel;m.lowVelocity=m.highOutput=m.highVelocity=0;
+  }
+  t.relocations=0;
+  // Stop and confirm coast before the next bounded startup. The global time,
+  // stroke, output cap and saved kick/stall deadlines are never extended.
+  autoTuneCoast(AutoTunePhase::Low,direction,t.minimumLevel,false,now);
 }
 bool Controller::autoTuneProbe(AutoTunePhase phase,int direction,float level,uint32_t now) {
   auto &t=autoTune;const unsigned i=unsigned(t.axis);
@@ -506,12 +556,12 @@ bool Controller::proposeAutoTune(uint32_t now) {
     m.velocityKp=tau/(gain*(lambda+delay));m.velocityKi=m.velocityKp/std::min(tau,4*(lambda+delay));m.velocityKd=0;
     m.feedforward=std::max(a.lowOutput/a.lowVelocity,b.lowOutput/b.lowVelocity);
     m.positionKp=1/(4*lambda);m.positionKi=m.positionKd=0;
-    m.velocity=std::min(m.velocity,.7f*speed);
-    // The step model identifies moving friction. At a lower requested speed,
-    // feedforward alone may fall below it. Build the missing output within the
-    // existing progress deadline instead of waiting until stall protection trips.
-    const float recovery=std::max(.1f,float(m.stallMs)/2000);
-    m.velocityKi=std::max(m.velocityKi,std::max(a.lowOutput,b.lowOutput)/(m.velocity*recovery));
+    // Do not deliberately command less than the measured sustaining speeds.
+    // The faster of the two low plateaus keeps both directions out of their
+    // observed low-speed friction region.
+    // The old saved speed may itself be below the drive's sustainable region.
+    // It is a parameter being tuned, not the operator's trial-output limit.
+    m.velocity=std::clamp(std::max(a.lowVelocity,b.lowVelocity),.001f,360.f);
     // A position band finer than the measured coast would keep the cascade
     // reversing forever. Expose the attainable band in the proposed settings.
     m.positionTolerance=std::max({m.positionTolerance,m.movementDegrees,std::max(a.coastDegrees,b.coastDegrees)});
@@ -519,6 +569,12 @@ bool Controller::proposeAutoTune(uint32_t now) {
     m.acceleration=std::min(m.acceleration,m.velocity/lambda);
     m.deceleration=std::min(m.deceleration,m.velocity/lambda);
     m.jerk=std::min(m.jerk,m.acceleration/lambda);
+    // Recover breakaway output after a kick even while the S-profile is slow.
+    // Use the velocity reachable during recovery, not only cruise velocity.
+    const float recovery=std::max(.1f,float(m.stallMs)/2000);
+    const float recoverableVelocity=std::max(.001f,std::min({m.velocity,m.acceleration*recovery,
+        .5f*m.jerk*recovery*recovery}));
+    m.velocityKi=std::max(m.velocityKi,std::max({a.lowOutput,b.lowOutput,m.kickPercent})/(recoverableVelocity*recovery));
   }
   if(!m.valid() || m.movementDegrees>10)return false;
   const unsigned i=unsigned(t.axis);
@@ -631,7 +687,7 @@ void Controller::tickAutoTune(uint32_t now) {
       measurement.startMs=std::max(measurement.startMs,elapsed);t.relocations=0;
       // Begin below the old work level, rather than assuming it is slow enough
       // for identification. Raise it only if this drive cannot sustain motion.
-      const float low=std::min({t.limit-2,float(t.originalSpeed.speedPercent),std::max(5.f,std::min(15.f,measurement.startOutput/2))});
+      const float low=std::max(t.minimumLevel,std::min({t.limit-2,float(t.originalSpeed.speedPercent),std::max(5.f,std::min(15.f,measurement.startOutput/2))}));
       autoTuneLevel(low);measurement.lowOutput=t.level;autoTunePhase(AutoTunePhase::Low,now);return;
     }
     const uint32_t maximum=std::min({2800u,t.originalMotion.stallMs,
@@ -661,18 +717,9 @@ void Controller::tickAutoTune(uint32_t now) {
     }
     const uint32_t elapsed=uint32_t(now-t.phaseAt);
     if(f.at!=t.sampledAt) {t.sampledAt=f.at;t.positions[t.sampleNext]=a.current;t.sampleTimes[t.sampleNext]=f.at;t.sampleNext=(t.sampleNext+1)%t.positions.size();t.sampleCount=std::min(unsigned(t.positions.size()),t.sampleCount+1);}
-    const auto retryHigher=[&](const char *reason) {
-      if(t.level+1>t.limit-2) {finishAutoTune(AutoTunePhase::Failed,reason,now);return;}
-      // A kick may coast through the low test and stop during the high test.
-      // Near friction, a moving drive can also fail to sustain steady speed.
-      // Re-identify both plateaus at a higher output, within the existing cap.
-      const float level=t.level+1;measurement.lowOutput=level;
-      measurement.lowVelocity=measurement.highOutput=measurement.highVelocity=0;t.relocations=0;
-      autoTuneCoast(AutoTunePhase::Low,t.direction,level,false,now);
-    };
-    if(elapsed>2500) {retryHigher("unstable_response");return;}
+    if(elapsed>2500) {raiseAutoTuneMinimum(now);return;}
     if(elapsed>std::max(400u,2*t.originalMotion.velocityWindowMs) && velocity<t.threshold) {
-      retryHigher("no_sustained_motion");return;
+      raiseAutoTuneMinimum(now);return;
     }
     if(elapsed<std::max(200u,t.originalMotion.velocityWindowMs) || t.sampleCount<8)return;
     // Fit the fresh position samples directly. The control velocity estimator

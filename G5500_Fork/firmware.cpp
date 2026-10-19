@@ -50,7 +50,8 @@ void Application::serviceConfigurationSafety() {
       runtimeMetrics.allocationFailures.load(), runtime_.hardwareTrial);
   if (reason != RecoveryReason::None) { failConfiguration(reason); return; }
   if (!runtime_.hardwareTrial && runtime_.memoryGuard.ready(millis()) &&
-      !storage_.finishHardwareBoot(runtime_)) failConfiguration(RecoveryReason::Storage);
+      !storage_.finishHardwareBoot(runtime_,uint32_t(millis()-runtime_.memoryGuard.started)))
+    failConfiguration(RecoveryReason::Storage);
 }
 
 void Application::controllerSetup() {
@@ -60,7 +61,7 @@ void Application::controllerSetup() {
   storage_.loadHud(runtime_, false);
   const auto reset = esp_reset_reason();
   const bool unexpected = reset == ESP_RST_PANIC || reset == ESP_RST_INT_WDT ||
-      reset == ESP_RST_TASK_WDT || reset == ESP_RST_WDT;
+      reset == ESP_RST_TASK_WDT || reset == ESP_RST_WDT || reset == ESP_RST_BROWNOUT;
   storage_.loadHardware(runtime_, unexpected || (reset != ESP_RST_POWERON &&
       __atomic_load_n(&recoveryLatch, __ATOMIC_RELAXED) == RecoveryCookie));
   __atomic_store_n(&recoveryLatch, 0u, __ATOMIC_RELAXED);

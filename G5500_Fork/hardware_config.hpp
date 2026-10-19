@@ -44,6 +44,42 @@ inline const char *recoveryReasonName(RecoveryReason r) {
   default: return "none";
   }
 }
+inline bool automaticRecoveryReason(RecoveryReason r) {
+  return r == RecoveryReason::Unconfirmed || r == RecoveryReason::LowMemory ||
+      r == RecoveryReason::Allocation || r == RecoveryReason::Radio || r == RecoveryReason::Storage;
+}
+struct RecoveryHistory {
+  static constexpr uint8_t Limit = 3;
+  static constexpr uint32_t StableMs = 30u * 60u * 1000u;
+  uint8_t failures = 0;
+  bool pending = false; // this fault was already counted before restarting
+  RecoveryReason last = RecoveryReason::None;
+  void record(RecoveryReason reason) {
+    if (failures < Limit) ++failures;
+    pending = true; last = reason;
+  }
+  bool due() const { return failures >= Limit; }
+  bool operator==(const RecoveryHistory &o) const {
+    return failures == o.failures && pending == o.pending && last == o.last;
+  }
+};
+// Separate from the hardware record so old hardware settings remain readable.
+using RecoveryBytes = std::array<uint8_t, 12>;
+inline RecoveryBytes encodeRecovery(const RecoveryHistory &r) {
+  RecoveryBytes b{'R','F',1,r.failures,uint8_t(r.pending),uint8_t(r.last)};
+  uint32_t crc = 2166136261u;
+  for (unsigned i=0; i<8; ++i) crc = (crc ^ b[i]) * 16777619u;
+  for (unsigned i=0; i<4; ++i) b[8+i] = uint8_t(crc >> (8*i));
+  return b;
+}
+inline bool decodeRecovery(const RecoveryBytes &b, RecoveryHistory &r) {
+  if (b[0]!='R' || b[1]!='F' || b[2]!=1 || b[3]>RecoveryHistory::Limit || b[4]>1 ||
+      b[5]>uint8_t(RecoveryReason::Initial) || (!b[3] && (b[4] || b[5])) ||
+      (b[3] && !automaticRecoveryReason(RecoveryReason(b[5])))) return false;
+  RecoveryHistory next; next.failures=b[3];next.pending=b[4];next.last=RecoveryReason(b[5]);
+  if (encodeRecovery(next)!=b) return false;
+  r=next;return true;
+}
 struct HardwareRecord {
   HardwareConfig good{}, candidate{};
   uint32_t generation = 1;

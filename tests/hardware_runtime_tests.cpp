@@ -5,7 +5,68 @@
 #include <cassert>
 #include <iostream>
 using namespace forkrot;
+static void recoveryPolicy() {
+  Storage s;Preferences::database.clear();Preferences::failedBytesKey.clear();
+  MotionTestRuntime boot;s.loadHardware(boot);assert(s.finishHardwareBoot(boot));
+  const auto good=boot.hardwareRecord.good;
+  // A detected failure plus its restart is one event, not two.
+  for(unsigned count=1;count<=RecoveryHistory::Limit;++count) {
+    assert(s.enterRecovery(boot,RecoveryReason::Allocation));
+    s.loadHardware(boot,true);
+    assert(boot.recoveryHistory.failures==count && !boot.recoveryHistory.pending);
+    assert(boot.recovery==(count==RecoveryHistory::Limit));
+    assert(boot.hardwareRecord.good==good && !boot.controller.moving());
+    if(!boot.recovery)assert(s.finishHardwareBoot(boot));
+  }
+  MotionTestRuntime latched;s.loadHardware(latched);assert(latched.recovery && latched.recoveryHistory.failures==3);
+  assert(s.finishHardwareBoot(latched,RecoveryHistory::StableMs));assert(latched.recoveryHistory.failures==3);
+  // Explicit retry starts a new series; ordinary short successful boots do not.
+  assert(s.stageHardware(latched,good));assert(!latched.recoveryHistory.failures);
+  MotionTestRuntime trial;s.loadHardware(trial);assert(trial.hardwareTrial && s.confirmHardware(trial));
+  s.loadHardware(boot);assert(s.finishHardwareBoot(boot));
+  assert(s.enterRecovery(boot,RecoveryReason::LowMemory));s.loadHardware(boot);
+  assert(boot.recoveryHistory.failures==1 && !boot.recovery);
+  assert(s.finishHardwareBoot(boot,RecoveryHistory::StableMs-1));assert(boot.recoveryHistory.failures==1);
+  MotionTestRuntime powerCycle;s.loadHardware(powerCycle);assert(powerCycle.recoveryHistory.failures==1);
+  assert(s.finishHardwareBoot(powerCycle,RecoveryHistory::StableMs-1));assert(powerCycle.recoveryHistory.failures==1);
+  const uint32_t started=UINT32_MAX-1234,now=started+RecoveryHistory::StableMs;
+  assert(s.finishHardwareBoot(powerCycle,uint32_t(now-started)));assert(!powerCycle.recoveryHistory.failures);
+  const auto transactions=Preferences::opened.size();
+  for(unsigned n=0;n<100;++n)assert(s.finishHardwareBoot(powerCycle,RecoveryHistory::StableMs+n));
+  assert(Preferences::opened.size()==transactions); // no periodic flash wear
+  // Pending history survives failure of the second NVS write.
+  s.loadHardware(powerCycle);assert(powerCycle.hardwareRecord.phase==ConfigPhase::Starting);
+  Preferences::failedBytesKey="config1";
+  assert(!s.enterRecovery(powerCycle,RecoveryReason::Radio));Preferences::failedBytesKey.clear();
+  s.loadHardware(boot,true);assert(boot.recoveryHistory.failures==1 && !boot.recovery);
+  assert(s.finishHardwareBoot(boot));
+  Preferences::failedBytesKey="recovery1";
+  assert(!s.finishHardwareBoot(boot,RecoveryHistory::StableMs));assert(boot.recoveryHistory.failures==1);
+  Preferences::failedBytesKey.clear();
+  // Requested recovery stays immediate; returning from it remains explicit.
+  assert(s.enterRecovery(boot,RecoveryReason::Requested));s.loadHardware(boot,true);
+  assert(boot.recovery && boot.recoveryReason==RecoveryReason::Requested && boot.recoveryHistory.failures==1);
+  // Legacy automatic recovery with no counter is the first fault, not a lockout.
+  auto old=boot.hardwareRecord;old.phase=ConfigPhase::Recovery;old.reason=RecoveryReason::Unconfirmed;
+  auto bytes=encodeHardware(old);Preferences::database["hardware"]["config1"]=Preferences::Bytes(bytes.begin(),bytes.end());
+  Preferences::database["hardware"].erase("recovery1");s.loadHardware(boot);
+  assert(!boot.recovery && boot.recoveryHistory.failures==1 && boot.hardwareRecord.good==good);
+  assert(s.finishHardwareBoot(boot));
+  auto history=encodeRecovery(boot.recoveryHistory);RecoveryHistory decoded;
+  assert(decodeRecovery(history,decoded) && decoded==boot.recoveryHistory);
+  for(unsigned i=0;i<history.size();++i){auto bad=history;bad[i]^=0x80;assert(!decodeRecovery(bad,decoded));}
+  history[8]^=1;Preferences::database["hardware"]["recovery1"]=Preferences::Bytes(history.begin(),history.end());
+  s.loadHardware(boot);assert(boot.recovery && boot.recoveryReason==RecoveryReason::Storage && boot.hardwareRecord.good==good);
+  // Repeated interrupted starts also use the three-event threshold.
+  Preferences::database.clear();s.loadHardware(boot);
+  for(unsigned count=1;count<=3;++count) {
+    MotionTestRuntime next;s.loadHardware(next);assert(next.recoveryHistory.failures==count);
+    assert(next.recovery==(count==3));assert(!next.controller.moving());
+  }
+  Preferences::database.clear();
+}
 int main() {
+  recoveryPolicy();
   // Each runtime driver/simulation combination is exercised in this one binary.
   for (unsigned drive=0; drive<3; ++drive) for (bool simulation : {false,true}) {
     HardwareConfig cfg; cfg.drive=drive; cfg.simulation=simulation;
@@ -61,12 +122,14 @@ int main() {
   assert(!s.probeHardwareStorage(trial));
   Preferences::failedBytesKey.clear();
   assert(s.probeHardwareStorage(trial) && trial.hardwareRecord.probeCounter==1);
-  // A reset before explicit confirmation always goes to the minimal interface.
+  // A failed candidate falls back to known-good hardware, never to that candidate.
   MotionTestRuntime rolledBack; s.loadHardware(rolledBack);
-  assert(rolledBack.recovery && !rolledBack.hardwareTrial && rolledBack.controller.configurationLocked);
-  assert(rolledBack.hardwareRecord.good==good && !rolledBack.controller.hardware.bluetooth);
+  assert(!rolledBack.recovery && !rolledBack.hardwareTrial && !rolledBack.controller.configurationLocked);
+  assert(rolledBack.hardwareRecord.good==good && rolledBack.controller.hardware==good);
+  assert(rolledBack.recoveryHistory.failures==1);
+  MotionTestRuntime secondFailure;s.loadHardware(secondFailure);assert(!secondFailure.recovery && secondFailure.recoveryHistory.failures==2);
   MotionTestRuntime persistentRecovery; s.loadHardware(persistentRecovery);
-  assert(persistentRecovery.recovery); // never retry the failed candidate automatically
+  assert(persistentRecovery.recovery && persistentRecovery.recoveryHistory.failures==3);
   assert(s.stageHardware(persistentRecovery,candidate));
   MotionTestRuntime secondTrial; s.loadHardware(secondTrial);
   assert(s.confirmHardware(secondTrial));
@@ -76,8 +139,8 @@ int main() {
   assert(s.finishHardwareBoot(confirmed));
   assert(s.enterRecovery(confirmed,RecoveryReason::LowMemory));
   MotionTestRuntime lowMemory; s.loadHardware(lowMemory);
-  assert(lowMemory.recovery && lowMemory.recoveryReason==RecoveryReason::LowMemory);
-  assert(lowMemory.hardwareRecord.good==candidate && !lowMemory.controller.hardware.bluetooth);
+  assert(!lowMemory.recovery && lowMemory.recoveryHistory.failures==1);
+  assert(lowMemory.hardwareRecord.good==candidate && lowMemory.controller.hardware==candidate);
   const auto oldGeneration=lowMemory.hardwareRecord.generation;
   Preferences::failedBytesKey="config1";
   assert(!s.stageHardware(lowMemory,good));

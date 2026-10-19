@@ -643,7 +643,7 @@ function initMotionForms(){
    field.innerHTML=`<label for="${key}">${label}</label><input id="${key}" name="${key}" type="number" min="${min}" max="${max}" step="${step}" required aria-describedby="${key}Help"><p class="field-help" id="${key}Help">${help}</p>`;f.querySelector('.motion-fields').append(field);
   }
   const tuner=document.createElement('div');tuner.className='settings-group';tuner.dataset.motionGroup='variable';
-  tuner.innerHTML=`<h3>Автотюн</h3><p class="hint">Пробные движения в обе стороны и проверочное наведение. Сначала выберите ручной режим и освободите ход вокруг текущей позиции. STOP отменяет процедуру. Предложенные параметры сохраняются только кнопкой «Применить»; удержание остаётся выключенным.</p><div class="row"><div class="field"><label for="${axis}TuneTravel">Допустимый ход в каждую сторону, °</label><input id="${axis}TuneTravel" type="number" min="10" max="90" step="1" value="60"><p class="field-help">Весь выбранный ход должен находиться внутри откалиброванного диапазона с запасом до упоров.</p></div><div class="field"><label for="${axis}TuneLimit">Предел пробного выхода, %</label><input id="${axis}TuneLimit" type="number" min="10" max="100" step="1" value="50"><p class="field-help">Не выше сохранённого максимального выхода оси.</p></div></div><p id="${axis}TuneStatus" role="status" aria-live="polite">Готов к запуску</p><div id="${axis}TuneResult" class="hint"></div><div class="form-actions"><button class="btn" type="button" id="${axis}TuneStart" onclick="autoTuneAction('start','${axis}')">Запустить автотюн</button><button class="btn" type="button" id="${axis}TuneCancel" onclick="autoTuneAction('cancel','${axis}')" disabled>Отменить</button><button class="btn good" type="button" id="${axis}TuneApply" onclick="autoTuneAction('apply','${axis}')" disabled>Применить результат</button></div>`;
+  tuner.innerHTML=`<h3>Автотюн</h3><div class="kv"><div>Положение<br><strong id="${axis}TunePosition">—</strong></div><div>Измеренная скорость<br><strong id="${axis}TuneVelocity">—</strong></div><div>Заданная скорость<br><strong id="${axis}TuneRequestedVelocity">—</strong></div><div>Выход привода<br><strong id="${axis}TuneOutput">—</strong></div><div>Диапазон<br><strong id="${axis}TuneRange">—</strong></div><div>Свободный ход − / +<br><strong id="${axis}TuneRoom">—</strong></div></div><p id="${axis}TuneDriveState" role="status" aria-live="polite">Нет данных о приводе</p><div class="form-actions"><button class="btn" type="button" id="${axis}TuneCenter" onclick="autoTunePrepare('center','${axis}')">В середину диапазона</button><button class="btn" type="button" id="${axis}TuneReset" onclick="autoTunePrepare('reset','${axis}')" disabled>Сбросить ошибки</button><button class="btn stop" type="button" id="${axis}TuneStop" onclick="autoTunePrepare('stop','${axis}')" disabled>STOP</button></div><p class="hint">К середине — с сохранёнными настройками, без удержания после достижения. Предел пробного выхода действует только во время автотюна.</p><p class="hint">Пробные движения в обе стороны и проверочное наведение. Сначала выберите ручной режим и освободите ход вокруг текущей позиции. STOP отменяет процедуру. Предложенные параметры сохраняются только кнопкой «Применить»; удержание остаётся выключенным.</p><div class="row"><div class="field"><label for="${axis}TuneTravel">Допустимый ход в каждую сторону, °</label><input id="${axis}TuneTravel" type="number" min="10" max="90" step="1" value="60"><p class="field-help">Весь выбранный ход должен находиться внутри откалиброванного диапазона с запасом до упоров.</p></div><div class="field"><label for="${axis}TuneLimit">Предел пробного выхода, %</label><input id="${axis}TuneLimit" type="number" min="10" max="100" step="1" value="50"><p class="field-help">Не выше сохранённого максимального выхода оси.</p></div></div><p id="${axis}TuneStatus" role="status" aria-live="polite">Готов к запуску</p><div id="${axis}TuneResult" class="hint"></div><div class="form-actions"><button class="btn" type="button" id="${axis}TuneStart" onclick="autoTuneAction('start','${axis}')">Запустить автотюн</button><button class="btn" type="button" id="${axis}TuneCancel" onclick="autoTuneAction('cancel','${axis}')" disabled>Отменить</button><button class="btn good" type="button" id="${axis}TuneApply" onclick="autoTuneAction('apply','${axis}')" disabled>Применить результат</button></div>`;
   tuner.addEventListener('input',e=>e.stopPropagation());f.append(tuner);
   f.addEventListener('input',()=>{f.dataset.dirty='1';motionVisibility(f)});f.onsubmit=saveMotion;root.append(f);motionVisibility(f);
  }
@@ -677,6 +677,30 @@ async function resetMotion(axis){
  button.disabled=true;try{await forkPost('/api/motion/reset',{axis})}finally{button.disabled=false}
 }
 let autoTuneRequest=false,autoTuneResultKey='',autoTuneDetails=null;
+function autoTuneSetupProblem(j,i){
+ return j.deviceRole!=='controller'||j.configurationLocked?'Управление сейчас недоступно.':j.controlMode!=='manual'?'Выберите ручной режим.':
+  j.autotune?.active||j.moving||j.pendingValid||j.presetActive||j.axes?.some(a=>a.direction||a.tracking||a.holdArmed)?'Остановите движение и снимите ожидающую цель.':
+  !j.axes?.[i]?.calibrated?'Сначала выполните калибровку оси.':driveFaultMessages(j).length?'Сначала устраните и сбросьте ошибку привода.':'';
+}
+function autoTuneMiddle(j,axis){
+ const low=j[axis+'Start'],high=j[axis+'Max'];
+ return typeof low==='number'&&typeof high==='number'&&Number.isFinite(low)&&Number.isFinite(high)&&high>low?low+(high-low)/2:null;
+}
+async function autoTunePrepare(action,axis){
+ // STOP remains available while another preparation request awaits its reply.
+ if(action==='stop'){await forkPost('/api/move',{d:'S'});await upd(true);return}
+ if(autoTuneRequest)return;
+ const j=window._forkState||{},i=axis==='az'?0:1;
+ if(j.deviceRole!=='controller'||j.autotune?.active)return;
+ if(action==='center'){
+  const problem=autoTuneSetupProblem(j,i)||(document.getElementById(axis+'MotionForm').dataset.dirty?'Сначала сохраните параметры оси.':'')||(autoTuneMiddle(j,axis)===null?'Нет данных о диапазоне оси.':'');
+  if(problem){settingsFeedback(problem);return}
+ }else if(action!=='reset'||j.moving||j.axes?.some(a=>a.direction||a.tracking||a.holdArmed))return;
+ autoTuneRequest=true;renderAutoTune(j);
+ try{await forkPost(action==='center'?'/api/motion/autotune':'/api/motion/reset',action==='center'?{action:'center',axis,rangeRevision:j.azRangeRevision}:{axis:'all'});await upd(true)}
+ finally{autoTuneRequest=false;renderAutoTune(window._forkState||{})}
+}
+
 async function autoTuneAction(action,axis){
  if(autoTuneRequest)return;
  const f=document.getElementById(axis+'MotionForm'),body={action};
@@ -708,8 +732,24 @@ function renderAutoTune(j){
  reasons.control_timing='слишком большая задержка расчёта';reasons.motion_storage_failed='не удалось сохранить параметры';
  for(const [i,axis] of ['az','el'].entries()){
   const own=t.axis===i,status=document.getElementById(axis+'TuneStatus');
+  const a=j.axes?.[i]||{},number=(v,unit)=>typeof v==='number'&&Number.isFinite(v)?v.toFixed(2)+unit:'—';
+  const sensed=a.calibrated&&!['feedback_stale','feedback_invalid'].includes(a.motionFault);
+  const middle=autoTuneMiddle(j,axis),errors=driveFaultMessages(j),busy=!!(j.moving||j.axes?.some(v=>v.direction||v.tracking||v.holdArmed));
+  setText(document.getElementById(axis+'TunePosition'),a.calibrated?number(a.current,'°'):'—');
+  setText(document.getElementById(axis+'TuneVelocity'),sensed?number(a.measuredVelocity,' °/с'):'—');
+  setText(document.getElementById(axis+'TuneRequestedVelocity'),a.regulatorMode==='cascade'&&(!own||!t.active||t.phase==='validate')?number(a.requestedVelocity,' °/с'):'—');
+  setText(document.getElementById(axis+'TuneOutput'),number(a.speedOutputPercent,'%'));
+  setText(document.getElementById(axis+'TuneRange'),middle===null?'—':number(j[axis+'Start'],'°')+' … '+number(j[axis+'Max'],'°'));
+  setText(document.getElementById(axis+'TuneRoom'),middle===null||!a.calibrated||typeof a.current!=='number'?'—':number(Math.max(0,a.current-j[axis+'Start']),'°')+' / '+number(Math.max(0,j[axis+'Max']-a.current),'°'));
+  const drivePhases={idle:'Остановлен',kick:'Страгивание',run:'Движение',braking:'Торможение',holding:'Удержание',fault:'Ошибка привода'};
+  setText(document.getElementById(axis+'TuneDriveState'),errors.length?'Ошибка: '+errors.join(' · '):!a.calibrated?'Нет калибровки':drivePhases[a.motionPhase]||'Нет данных о приводе');
+  const center=document.getElementById(axis+'TuneCenter');setText(center,middle===null?'В середину диапазона':'В середину ('+Number(middle.toFixed(2))+'°)');
+  center.disabled=autoTuneRequest||!!autoTuneSetupProblem(j,i)||middle===null||!!document.getElementById(axis+'MotionForm').dataset.dirty;
+  document.getElementById(axis+'TuneReset').disabled=autoTuneRequest||t.active||busy||!errors.length;
+  document.getElementById(axis+'TuneStop').disabled=!busy&&!t.active&&!autoTuneRequest;
+
   setText(status,own?(phases[t.phase]||t.phase)+(t.active?' · '+(t.direction>0?'вперёд':'назад')+' · '+Number(t.output).toFixed(0)+'%':'')+(t.reason&&t.reason!=='applied'?' · '+(reasons[t.reason]||motionFaultText(t.reason)):''):'Готов к запуску');
-  document.getElementById(axis+'TuneStart').disabled=autoTuneRequest||t.active;
+  document.getElementById(axis+'TuneStart').disabled=autoTuneRequest||t.active||busy;
   document.getElementById(axis+'TuneCancel').disabled=autoTuneRequest||!t.active||!own;
   document.getElementById(axis+'TuneApply').disabled=autoTuneRequest||t.phase!=='complete'||!own||autoTuneDetails?.id!==t.id;
   document.querySelector('#'+axis+'MotionForm button[type=submit]').disabled=!!t.active;

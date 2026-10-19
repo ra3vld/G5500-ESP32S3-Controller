@@ -24,6 +24,10 @@ void WebInterface::writeHardwareStatus() {
     << ",\"trial\":" << (runtime_.hardwareTrial ? "true" : "false")
     << ",\"recovery\":" << (runtime_.recovery ? "true" : "false")
     << ",\"reason\":" << jsonQuoted(recoveryReasonName(runtime_.recoveryReason))
+    << ",\"failureCount\":" << unsigned(runtime_.recoveryHistory.failures)
+    << ",\"failureLimit\":" << unsigned(RecoveryHistory::Limit)
+    << ",\"failureResetMs\":" << RecoveryHistory::StableMs
+    << ",\"lastFailure\":" << jsonQuoted(recoveryReasonName(runtime_.recoveryHistory.last))
     << ",\"ready\":" << (ready ? "true" : "false")
     << ",\"remainingMs\":" << (runtime_.hardwareTrial && elapsed < MemoryGuard::TrialMs ? MemoryGuard::TrialMs-elapsed : 0u)
     << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMaxBlock\":" << heapMaxBlockBytes()

@@ -8,6 +8,7 @@ namespace forkrot {
 struct Runtime {
   Controller controller;
   HardwareRecord hardwareRecord;
+  RecoveryHistory recoveryHistory;
   MemoryGuard memoryGuard;
   bool recovery = false, hardwareTrial = false, hardwareProbe = false;
   bool hardwareHudUart = false;

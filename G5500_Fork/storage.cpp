@@ -49,23 +49,41 @@ bool Storage::writeHardware(const HardwareRecord &record) {
       prefs_.getBytes("config1", verified.data(), verified.size()) == verified.size() && verified == bytes;
   prefs_.end(); return ok;
 }
+bool Storage::writeRecovery(const RecoveryHistory &history) {
+  const auto bytes=encodeRecovery(history);
+  if (!prefs_.begin("hardware",false)) { prefs_.end(); return false; }
+  prefs_.putBytes("recovery1",bytes.data(),bytes.size());
+  RecoveryBytes verified{};
+  const bool ok=prefs_.getBytesLength("recovery1")==verified.size() &&
+      prefs_.getBytes("recovery1",verified.data(),verified.size())==verified.size() && verified==bytes;
+  prefs_.end();return ok;
+}
 void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
   runtime.hardwareHudUart = runtime.hud.config.uart;
   HardwareRecord record;
+  RecoveryHistory history;
   bool readable = prefs_.begin("hardware", false);
-  bool valid = true;
+  bool valid = true, historyValid = true;
   const bool fresh = readable && !prefs_.isKey("config1");
   if (readable && !fresh) {
     HardwareBytes bytes{};
     valid = prefs_.getBytesLength("config1") == bytes.size() &&
         prefs_.getBytes("config1", bytes.data(), bytes.size()) == bytes.size() && decodeHardware(bytes, record);
   }
+  if (readable && prefs_.isKey("recovery1")) {
+    RecoveryBytes bytes{};
+    historyValid=prefs_.getBytesLength("recovery1")==bytes.size() &&
+        prefs_.getBytes("recovery1",bytes.data(),bytes.size())==bytes.size() && decodeRecovery(bytes,history);
+  }
   prefs_.end();
+  const auto savedHistory=history;
   if (!readable || !valid || validateHardware(record.good, runtime.hud.config.uart) ||
       validateHardware(record.candidate, runtime.hud.config.uart)) {
     record = {};
     record.phase = ConfigPhase::Recovery;
     record.reason = !readable ? RecoveryReason::Storage : RecoveryReason::Invalid;
+  } else if (!historyValid) {
+    record.phase=ConfigPhase::Recovery;record.reason=RecoveryReason::Storage;
   } else if (fresh || (!record.hasConfirmed && record.phase == ConfigPhase::Recovery &&
                        record.reason == RecoveryReason::Initial)) {
     // A fresh board starts with this build's hardware defaults. Only later
@@ -73,17 +91,29 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
     record = {};
     record.hasConfirmed = true; record.phase = ConfigPhase::Starting;
     record.reason = RecoveryReason::None;
-  } else if (forceRecovery || record.phase == ConfigPhase::Testing || record.phase == ConfigPhase::Starting) {
-    if (record.phase != ConfigPhase::Recovery) record.reason = RecoveryReason::Unconfirmed;
-    record.phase = ConfigPhase::Recovery;
+    history={};
+  } else if ((record.phase != ConfigPhase::Recovery || automaticRecoveryReason(record.reason)) &&
+             (forceRecovery || history.pending || record.phase == ConfigPhase::Testing ||
+              record.phase == ConfigPhase::Starting || record.phase == ConfigPhase::Recovery)) {
+    // Retry only known-good hardware. A failed candidate is never enabled.
+    // The pending marker prevents a detected fault and its reboot counting twice.
+    if (!history.pending && !(record.phase==ConfigPhase::Recovery && history.due()))
+      history.record(record.phase==ConfigPhase::Recovery?record.reason:RecoveryReason::Unconfirmed);
+    history.pending=false;
+    record.phase=history.due() || !record.hasConfirmed ? ConfigPhase::Recovery : ConfigPhase::Starting;
+    record.reason=record.phase==ConfigPhase::Recovery?history.last:RecoveryReason::None;
   } else if (record.phase == ConfigPhase::Pending) {
     record.phase = ConfigPhase::Testing;
   } else if (record.phase == ConfigPhase::Confirmed) {
     record.phase = record.hasConfirmed ? ConfigPhase::Starting : ConfigPhase::Recovery;
     if (!record.hasConfirmed) record.reason = RecoveryReason::Initial;
   }
-  if (!writeHardware(record)) { record.phase = ConfigPhase::Recovery; record.reason = RecoveryReason::Storage; }
+  if (!writeHardware(record) || (!(history==savedHistory) && !writeRecovery(history))) {
+    record.phase = ConfigPhase::Recovery; record.reason = RecoveryReason::Storage;
+    writeHardware(record);
+  }
   runtime.hardwareRecord = record;
+  runtime.recoveryHistory = history;
   runtime.recovery = record.phase == ConfigPhase::Recovery;
   runtime.recoveryReason = record.reason;
   runtime.hardwareTrial = record.phase == ConfigPhase::Testing;
@@ -97,7 +127,11 @@ bool Storage::stageHardware(Runtime &runtime, const HardwareConfig &config) {
   auto next = runtime.hardwareRecord;
   next.candidate = config; next.phase = ConfigPhase::Pending; next.reason = RecoveryReason::None;
   if (!++next.generation) ++next.generation;
+  // An explicit retry from recovery starts a new series. Ordinary settings
+  // edits and successful short boots do not erase accumulated runtime faults.
+  if (runtime.recovery && !writeRecovery({})) return false;
   if (!writeHardware(next)) return false;
+  if (runtime.recovery) runtime.recoveryHistory={};
   runtime.hardwareRecord = next; return true;
 }
 bool Storage::confirmHardware(Runtime &runtime) {
@@ -112,17 +146,30 @@ bool Storage::confirmHardware(Runtime &runtime) {
 }
 bool Storage::enterRecovery(Runtime &runtime, RecoveryReason reason) {
   auto next = runtime.hardwareRecord;
-  next.phase = ConfigPhase::Recovery; next.reason = reason;
+  auto history=runtime.recoveryHistory;
+  const bool automatic=automaticRecoveryReason(reason) && next.hasConfirmed;
+  if (automatic) history.record(reason);
+  else history.pending=false;
+  if (!(history==runtime.recoveryHistory) && !writeRecovery(history)) return false;
+  next.phase=automatic && !history.due()?ConfigPhase::Confirmed:ConfigPhase::Recovery;
+  next.reason=next.phase==ConfigPhase::Recovery?reason:RecoveryReason::None;
   // Keep last confirmed settings and the failed candidate for inspection/editing.
   runtime.recoveryReason = reason;
   if (!writeHardware(next)) return false;
-  runtime.hardwareRecord = next; return true;
+  runtime.hardwareRecord = next; runtime.recoveryHistory=history; return true;
 }
-bool Storage::finishHardwareBoot(Runtime &runtime) {
-  if (runtime.hardwareRecord.phase != ConfigPhase::Starting) return true;
-  auto next = runtime.hardwareRecord; next.phase = ConfigPhase::Confirmed;
-  if (!writeHardware(next)) return false;
-  runtime.hardwareRecord = next; return true;
+bool Storage::finishHardwareBoot(Runtime &runtime, uint32_t uptime) {
+  if (runtime.hardwareRecord.phase == ConfigPhase::Starting) {
+    auto next = runtime.hardwareRecord; next.phase = ConfigPhase::Confirmed;
+    if (!writeHardware(next)) return false;
+    runtime.hardwareRecord = next;
+  }
+  if (runtime.hardwareRecord.phase==ConfigPhase::Confirmed && runtime.recoveryHistory.failures &&
+      uptime>=RecoveryHistory::StableMs) {
+    if (!writeRecovery({})) return false;
+    runtime.recoveryHistory={};
+  }
+  return true;
 }
 bool Storage::probeHardwareStorage(Runtime &runtime) {
   // Verify the same persistent record using a separate transaction, without

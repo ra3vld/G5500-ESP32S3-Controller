@@ -61,6 +61,7 @@ python3 tools/build_platformio.py --env esp32s2_mini --display lcd --bluetooth 0
 - [Конфигурация, профили плат и распиновки](docs/configuration.md)
 - [Классический ESP32: подключение, Bluetooth и диагностика](docs/classic-esp32.md)
 - [Режимы, логгеры, протоколы и API](docs/usage.md)
+- [Порядок настройки регуляторов, автотюн и его ограничения](docs/regulator-tuning.md)
 - [Силовые интерфейсы и схемы](docs/hardware.md)
 - [Yaesu G-800DXA: общая земля, ADuM1201 и оптоканал с изолированным питанием](docs/hardware/g800dxa-guide.md)
 - [Два BTS7960 / IBT-2: прямое подключение, 74HCT245 и оптопары PC817C](docs/hardware/independent-pwm-bts7960.md)

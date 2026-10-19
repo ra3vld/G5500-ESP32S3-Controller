@@ -16,7 +16,7 @@ public:
   bool stageHardware(Runtime &runtime, const HardwareConfig &config);
   bool confirmHardware(Runtime &runtime);
   bool enterRecovery(Runtime &runtime, RecoveryReason reason);
-  bool finishHardwareBoot(Runtime &runtime);
+  bool finishHardwareBoot(Runtime &runtime, uint32_t uptime = 0);
   bool probeHardwareStorage(Runtime &runtime);
   void loadHud(Runtime &runtime, bool peers = true);
   bool saveHudConfig(const HudConfig &config);
@@ -43,6 +43,7 @@ public:
 
 private:
   bool writeHardware(const HardwareRecord &record);
+  bool writeRecovery(const RecoveryHistory &history);
   const char *calNamespace(const Runtime &runtime);
   const char *presetNamespace(const Runtime &runtime);
   static constexpr uint8_t RESET_HISTORY_MAX = 20;

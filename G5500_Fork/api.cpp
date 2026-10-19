@@ -440,7 +440,10 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
   } else if (path == "/api/motion/autotune") {
     if(controller.remote)return {409,"{\"ok\":false,\"result\":\"controller_settings_only\"}"};
     const auto action=get(form,"action");
-    if(action=="cancel")result=controller.cancelAutoTune(now);
+    if(action=="center") {
+      const auto axis=get(form,"axis");
+      if(axis=="az" || axis=="el")result=controller.centerForAutoTune(axis=="az"?0:1,now);
+    } else if(action=="cancel")result=controller.cancelAutoTune(now);
     else if(action=="apply") {
       uint32_t id;
       if(requestGeneration(get(form,"id"),id)) result=controller.applyAutoTune(id,now);
