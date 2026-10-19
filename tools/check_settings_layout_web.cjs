@@ -19,6 +19,8 @@ const request=async(route,body)=>{const r=await fetch(base+route,{method:'POST',
   for(const id of ids){
    const section=page.locator('#'+id),summary=section.locator(':scope > details > summary');
    assert.equal(await summary.locator('h2').count(),1);assert.equal(await summary.locator('.section-caption').count(),1);
+   assert.equal(await section.locator(':scope > details').evaluate(e=>e.open),id==='networkSettings','Only network settings open by default');
+   await section.locator(':scope > details').evaluate(e=>e.open=false);
    await summary.click();assert(await section.locator('.settings-content').isVisible());
    await summary.focus();await page.keyboard.press('Space');assert(!await section.locator('.settings-content').isVisible());
   }
@@ -58,7 +60,7 @@ const request=async(route,body)=>{const r=await fetch(base+route,{method:'POST',
    await page.waitForFunction(()=>{const c=document.getElementById('rchart');return c.clientWidth>0&&c.width===Math.round(c.clientWidth*devicePixelRatio);});
    assert(await page.locator('.period-options .btn').evaluateAll(nodes=>nodes.every(n=>n.getBoundingClientRect().height===44)),'Period names must fit on one line');
    await check();
-   for(const [name,selector] of [['drive','#coastSettings'],['range','#azRangeForm'],['endpoints','#b2_elo'],['presets','#presetEditor'],['hud','#hudConfig'],['network','#wifiSaveButton'],['ota','#otaFile'],['signal','#rchart']]){
+   for(const [name,selector] of [['drive','#coastDegrees'],['range','#azRangeForm'],['endpoints','#b2_elo'],['presets','#presetEditor'],['hud','#hudConfig'],['network','#wifiSaveButton'],['ota','#otaFile'],['signal','#rchart']]){
     await page.locator(selector).scrollIntoViewIfNeeded();
     if([320,390,1100].includes(width))await page.screenshot({path:path.join(out,`${name}-${width}.png`)});
    }

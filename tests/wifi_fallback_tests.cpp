@@ -1,10 +1,25 @@
 #include "wifi_fallback.hpp"
+#include "network_addresses.hpp"
 #include "runtime_metrics.hpp"
 #include <cassert>
 #include <iostream>
 #include <thread>
 using namespace forkrot;
 int main() {
+  char addresses[64];
+  formatNetworkAddresses(addresses, sizeof addresses, "10.20.30.40", "192.168.4.1");
+  assert(std::strcmp(addresses, "STA: 10.20.30.40\nAP: 192.168.4.1") == 0);
+  formatNetworkAddresses(addresses, sizeof addresses, "255.255.255.255", "255.255.255.255", "  ");
+  assert(std::strcmp(addresses, "STA: 255.255.255.255  AP: 255.255.255.255") == 0);
+  formatNetworkAddresses(addresses, sizeof addresses, "10.0.0.2", "-");
+  assert(std::strcmp(addresses, "STA: 10.0.0.2") == 0);
+  formatNetworkAddresses(addresses, sizeof addresses, "0.0.0.0", "192.168.4.1");
+  assert(std::strcmp(addresses, "AP: 192.168.4.1") == 0);
+  formatNetworkAddresses(addresses, sizeof addresses, nullptr, "");
+  assert(std::strcmp(addresses, "IP: -") == 0);
+  char bounded[8] = "1234567";
+  formatNetworkAddresses(bounded + 1, 6, "10.0.0.2", "192.168.4.1");
+  assert(bounded[0] == '1' && bounded[6] == 0 && bounded[7] == 0);
   assert(serviceApAddress(0, 0) == 0x0104a8c0u);
   assert(serviceApAddress(0x6304a8c0u, 0x00ffffffu) == 0x01ff1facu);
   assert(serviceApAddress(0x6303a8c0u, 0x0000ffffu) == 0x01ff1facu);
@@ -48,6 +63,17 @@ int main() {
   assert(policy.update(128001, true, false, true, true) == WifiAction::StartSta);
   assert(policy.update(136001, true, false, true, true) == WifiAction::StartAp);
   assert(policy.update(136002, true, true, true, true) == WifiAction::None);
+  // Saving credentials starts immediately and retains AP through success,
+  // a failed attempt, and subsequent automatic retries.
+  policy.beginAttempt(200000);
+  assert(policy.trying());
+  assert(policy.update(207999, true, false, true, true) == WifiAction::None);
+  assert(policy.update(208000, true, false, true, true) == WifiAction::StartAp);
+  assert(!policy.trying());
+  assert(policy.update(238000, true, false, true, true) == WifiAction::StartSta);
+  assert(policy.trying());
+  assert(policy.update(238001, true, true, true, true) == WifiAction::None);
+  assert(!policy.trying());
   uint32_t recoveryWord = 0;
   beginRuntimeMetrics(&recoveryWord, 0x52335648u); assert(runtimeMetrics.hookReady && fakeAllocFailureHook);
   fakeAllocFailureHook(2308, 3, "heap_caps_malloc");

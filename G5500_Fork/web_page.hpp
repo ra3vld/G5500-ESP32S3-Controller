@@ -14,7 +14,7 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 *{box-sizing:border-box}body{margin:0;background:linear-gradient(#081018,#0b1721);color:var(--t);font-family:Arial,sans-serif}
 .wrap{max-width:980px;margin:auto;padding:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}h1{font-size:26px;margin:8px 0 10px}
 .page-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 20px;margin:8px 0 16px}.page-header h1{flex:1 1 350px;min-width:0;margin:0;line-height:1.3;overflow-wrap:anywhere}
-.connection-status{display:inline-flex;align-items:center;gap:8px;max-width:100%;padding:9px 12px;border:1px solid #3b5365;border-radius:999px;background:#101c27;font-size:13px;line-height:1.4;color:#c9d8e3}.connection-status::before{content:'';flex:none;width:8px;height:8px;border-radius:50%;background:currentColor}.connection-status[data-state=online]{color:#62dfa9;border-color:#316b56}.connection-status[data-state=offline]{color:#ff9690;border-color:#814b4b}.connection-status[data-state=unselected]{color:#efc07a;border-color:#78603d}
+.connection-status{overflow-wrap:anywhere;min-width:0;display:inline-flex;align-items:center;gap:8px;max-width:100%;padding:9px 12px;border:1px solid #3b5365;border-radius:999px;background:#101c27;font-size:13px;line-height:1.4;color:#c9d8e3}.connection-status::before{content:'';flex:none;width:8px;height:8px;border-radius:50%;background:currentColor}.connection-status[data-state=online]{color:#62dfa9;border-color:#316b56}.connection-status[data-state=offline]{color:#ff9690;border-color:#814b4b}.connection-status[data-state=unselected]{color:#efc07a;border-color:#78603d}
 .drive-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.motion-fault{color:#ff9690;white-space:pre-line;overflow-wrap:anywhere}
 .page-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 20px;margin-top:24px;padding:16px 0 4px;border-top:1px solid #294153;color:var(--m);font-size:13px;line-height:1.6}.footer-links{display:flex;flex-wrap:wrap;gap:4px 20px}.page-footer a{display:inline-flex;align-items:center;min-height:44px;color:#acd3e8;text-underline-offset:3px}.page-footer a:hover{color:#fff}.page-footer a:focus-visible{outline:2px solid var(--a);outline-offset:3px}
 
@@ -323,13 +323,13 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <div class="field"><label for="devicePort">UDP-порт HUD</label><input aria-describedby="devicePort-help" id="devicePort" max="65535" min="1" name="port" required="" type="number" value="4534"/><p class="field-help" id="devicePort-help">Порт обмена между пультом и контроллерами. Используйте одинаковый порт на связанных устройствах, отличный от портов логгеров.</p></div>
 </div><p class="hint">Для общей сети одно устройство создаёт точку доступа, остальные подключаются к ней через настройки Wi-Fi ниже. UART HUD занимает существующие провода GS-232.</p>
 <div class="form-actions"><button class="btn good" type="submit">Сохранить и перезагрузить</button></div></form>
-</section></div></details></section><section class="card settings-section" id="networkSettings"><details class="settings-details"><summary><h2>Сеть и подключение<span class="section-caption">Домашний Wi-Fi, точка доступа и Bluetooth</span></h2></summary><div class="settings-content"><h3>Текущее подключение</h3><div class="kv">
-<div>IP в сети: <b id="ip">-</b></div><div>IP точки доступа: <b id="apip">-</b></div><div>TCP rotctld: <b>4533</b></div><div>Режим: <b id="mode">-</b></div><div>Уровень Wi-Fi: <b id="rssi">-</b></div><div>Качество: <b id="sig">-</b></div>
+</section></div></details></section><section class="card settings-section" id="networkSettings"><details class="settings-details" open><summary><h2>Сеть и подключение<span class="section-caption">Домашний Wi-Fi, точка доступа и Bluetooth</span></h2></summary><div class="settings-content"><h3>Текущее подключение</h3><div class="kv">
+<div>IP клиента (STA): <b id="ip">-</b></div><div>IP точки доступа: <b id="apip">-</b></div><div>TCP rotctld: <b>4533</b></div><div>Режим: <b id="mode">-</b></div><div>Уровень Wi-Fi: <b id="rssi">-</b></div><div>Качество: <b id="sig">-</b></div>
 <div class="hide" id="btlinkrow">Bluetooth-соединение: <b id="btlinkstate" role="status">-</b></div>
 <div><span id="btlabel">Bluetooth</span>: <b id="btstate" role="status">-</b></div><div id="bttransport">-</div>
 <div class="hide" id="btmacrow">Bluetooth MAC: <b class="mono" id="btmac">-</b></div></div><div class="hint hide" id="bthelp">Этот MAC нужен в Look4Sat. Подключение видно и без передачи команд; сопряжение в Android само по себе не означает активное соединение.</div>
-<section class="settings-group"><h3>Домашняя сеть Wi-Fi</h3><div class="row"><div class="field"><label for="ssid">Имя сети (SSID)</label><input autocomplete="off" aria-describedby="ssid-help" id="ssid"/><p class="field-help" id="ssid-help">Точное имя сети Wi-Fi, к которой подключится устройство после сохранения и перезагрузки.</p></div><div class="field"><label for="pass">Пароль сети</label><input autocomplete="new-password" aria-describedby="pass-help" id="pass" type="password"/><p class="field-help" id="pass-help">Пароль выбранной сети Wi-Fi. Для открытой сети оставьте пустым. Сохранённый пароль не отображается в этом поле.</p></div></div>
-<div class="form-actions"><button class="btn good" id="wifiSaveButton" onclick="wifi()">Сохранить Wi-Fi</button><span class="hint">Устройство перезагрузится.</span></div><div aria-live="polite" class="inline-message" id="wifiMessage" role="status"></div></section>
+<section class="settings-group"><h3>Домашняя сеть Wi-Fi</h3><div class="row"><div class="field"><label for="ssid">Имя сети (SSID)</label><input autocomplete="off" aria-describedby="ssid-help" id="ssid"/><p class="field-help" id="ssid-help">Точное имя сети Wi-Fi, к которой подключится устройство после сохранения.</p></div><div class="field"><label for="pass">Пароль сети</label><input autocomplete="new-password" aria-describedby="pass-help" id="pass" type="password"/><p class="field-help" id="pass-help">Пароль выбранной сети Wi-Fi. Для открытой сети оставьте пустым. Сохранённый пароль не отображается в этом поле.</p></div></div>
+<div class="form-actions"><button class="btn good" id="wifiSaveButton" onclick="wifi()">Сохранить и подключиться</button><span class="hint">Полученный IP появится ниже. Точка доступа останется доступной до следующей перезагрузки.</span></div><div aria-live="polite" class="inline-message" id="wifiMessage" role="status"></div><a id="wifiClientLink" class="hint" hidden target="_blank" rel="noopener noreferrer"></a></section>
 <section class="settings-group"><h3>Точка доступа устройства</h3><div class="field"><label for="appass">Пароль точки доступа</label><input autocomplete="new-password" aria-describedby="appass-help" id="appass" maxlength="63" minlength="8" placeholder="Пустое поле — открытая сеть" type="password"/><p class="field-help" id="appass-help">Пароль собственной точки доступа устройства: 8–63 символа. Пустое поле отключает защиту паролем. Изменение применяется после перезагрузки.</p></div><p class="hint">От 8 до 63 символов. Оставьте поле пустым, чтобы открыть сеть без пароля.</p><div class="form-actions"><button class="btn good" id="apSaveButton" onclick="saveAp()">Сохранить точку доступа</button><span class="hint">Устройство перезагрузится.</span></div></section></div></details></section><section class="card settings-section" id="otaSettings"><details class="settings-details" ontoggle="if(this.open)loadOta()"><summary><h2>Обновление прошивки<span class="section-caption">OTA через браузер или Arduino IDE</span></h2></summary><div class="settings-content">
 <p id="otaCapacity" role="status">Откройте раздел, чтобы проверить доступность OTA.</p><div class="kv"><div>Flash: <b id="otaFlash">—</b></div><div>Текущая прошивка: <b id="otaImage">—</b></div><div>Раздел OTA: <b id="otaSlot">—</b></div></div>
 <p class="field-help">Выберите файл приложения .bin для той же платы и подключения. Настройки и калибровки сохраняются. Во время обновления движение будет остановлено; не отключайте питание.</p>
@@ -503,10 +503,15 @@ function cancelOta(){otaCancelled=true;document.getElementById('otaCancel').disa
 async function rebootOta(){try{await otaPost('/api/ota/reboot');otaMessage('Устройство перезагружается. После подключения обновите страницу.');document.getElementById('otaReboot').hidden=true;}catch(e){otaMessage(e.message);}}
 async function armArduinoOta(){try{await otaPost('/api/ota/arduino');await loadOta();}catch(e){otaMessage(e.message);}}
 
+function networkAddresses(j){
+ const valid=ip=>typeof ip==='string'&&/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)&&ip!=='0.0.0.0';
+ const sta=j?.staIp??(Number.isFinite(j?.rssi)?j.ip:null),ap=j?.apIp??(j?.wifiMode==='Access Point'?j.ip:null);
+ return [valid(sta)?'STA: '+sta:'',valid(ap)?'AP: '+ap:''].filter(Boolean);
+}
 function compactStatus(j){
  const wifi=document.getElementById('statusWifi'),bt=document.getElementById('statusBt');
  const wifiModes={'Wi-Fi Client':'Подключён','AP + Wi-Fi Client':'Подключён + AP','Access Point':'Точка доступа','Disconnected':'Нет подключения'};
- wifi.textContent=wifiModes[j.wifiMode]||j.wifiMode||'—';wifi.title=j.ssid||'';
+ wifi.textContent=[wifiModes[j.wifiMode]||j.wifiMode||'—',...networkAddresses(j)].join('\n');wifi.style.whiteSpace='pre-line';wifi.title=j.ssid||'';
  wifi.className=Number.isFinite(j.rssi)?'online':'offline';
  const btEnabled=j.build?.bluetooth!==false&&j.build?.bluetoothBackend!=='NONE';
  bt.textContent=!btEnabled?'Отключён':j.btConnected?'Подключён':j.btLinkConnected?'Связь без SPP':'Нет подключения';
@@ -539,6 +544,8 @@ function updateConnection(){
   else if(hud&&!j.hudOnline){state='offline';text='Нет связи с повороткой';hint='Пульт на связи, но выбранная поворотка '+(j.hudName||j.hudSelected)+' недоступна.';}
   else{state='online';text='Поворотка на связи';hint=hud?'Выбрана '+(j.hudName||j.hudSelected)+' · '+(j.hudTransport==='uart'?'UART':'Wi-Fi'):'Браузер получает состояние контроллера поворотки.';}
  }else if(connection.httpOnline!==null){state='offline';text='Нет связи с устройством';hint='Браузер не получает актуальное состояние '+(j?.deviceRole==='hud'?'пульта.':'контроллера поворотки.');}
+ const addresses=networkAddresses(j);
+ if(addresses.length)text+=' · '+(reachable?'':'Последние адреса: ')+addresses.join(' · ');
  node.dataset.state=state;node.title=hint;setText(node,text);
  updateConnectionFavicon(state==='online');
 }
@@ -987,18 +994,33 @@ async function elPost(path,body){return axisCalibrationPost('el',path,body)}
 async function saveElRange(e){e.preventDefault();const f=e.target;await elPost('/api/elrange',{profile:'custom',start:f.elements.start.value,span:f.elements.span.value})}
 async function useCustomElRange(){return useCustomAxisRange('el')}
 async function addElPoint(e){e.preventDefault();if(await elPost('/api/elcal',{op:'add_capture',angle:elPointAngle.value}))elPointAngle.value=''}
+let wifiSetup=null;
+function updateWifiSetup(j){
+ const link=document.getElementById('wifiClientLink'),sta=networkAddresses(j).find(ip=>ip.startsWith('STA: '));
+ link.hidden=!sta;
+ if(sta){link.href='http://'+sta.slice(5)+'/';link.textContent='Открыть устройство: '+link.href;}
+ if(!wifiSetup)return;
+ const message=document.getElementById('wifiMessage');
+ if(!j.wifiConnecting&&sta&&j.connectedSsid===wifiSetup){
+  const text='Подключено к «'+wifiSetup+'». Полученный IP: '+sta.slice(5)+'.'+(j.apIp&&j.apIp!=='-'?' Точка доступа: '+j.apIp+'.':'');
+  setText(message,text);settingsFeedback(text,'success');wifiSetup=null;
+ }else if(j.ssid===wifiSetup&&j.wifiConnecting===false&&!sta){
+  setText(message,'Подключиться к «'+wifiSetup+'» пока не удалось. Проверьте SSID и пароль. Повторная попытка выполняется автоматически; точка доступа остаётся доступной.');
+ }
+}
 async function wifi(){
  const message=document.getElementById('wifiMessage');
  const network=document.getElementById('ssid').value,password=document.getElementById('pass').value;
  if(!network){setText(message,'Укажите SSID сети Wi-Fi.');settingsFeedback(message.textContent);return;}
- if(!confirm('Сохранить Wi‑Fi и перезагрузить контроллер?'))return;
+ if(!confirm('Сохранить настройки и подключиться к Wi-Fi?'))return;
  const notice=beginSettingsAction('Сохранение настроек Wi-Fi…','wifi');if(!notice)return;
  setText(message,'Сохранение настроек Wi-Fi…');
  try{
   const response=await settingsRequest('/api/wifi',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({ssid:network,pass:password})});
-  const text=response.ok?'Настройки Wi-Fi сохранены. Устройство перезагружается.':'Не удалось сохранить Wi-Fi. Проверьте SSID и пароль.';
+  const detail=response.text;
+  const text=response.ok?'Настройки Wi-Fi сохранены. Подключаемся к «'+network+'»… Полученный IP появится здесь.':'Не удалось сохранить Wi-Fi. '+(detail||'Проверьте SSID и пароль.');
   setText(message,text);notice.finish(response.ok,text);
-  if(response.ok)document.getElementById('pass').value='';
+  if(response.ok){document.getElementById('pass').value='';wifiSetup=network;void upd(true);}
  }catch(e){const text='Подтверждение не получено. Проверьте адрес контроллера в домашней сети. Если подключения нет, подключитесь к сервисной сети G5500-HUD-… или G5500-Rotator-… и проверьте SSID.';setText(message,text);notice.finish(false,text);}
 }
 async function saveAp(){
@@ -1023,7 +1045,7 @@ httpState=j;connectLive(j.livePort);queueLiveRender();
 if(document.querySelector('#calibrationSettings details').open){loadAzCalibration();loadElCalibration();}
 }catch(e){
  connection.httpOnline=false;updateConnection();
- const wifi=document.getElementById('statusWifi');setText(wifi,'Нет связи');wifi.className='offline';wifi.title='Не удалось обновить статус устройства';
+ const wifi=document.getElementById('statusWifi'),addresses=networkAddresses(httpState);setText(wifi,['Нет связи',...(addresses.length?['Последние адреса:',...addresses]:[])].join('\n'));wifi.className='offline';wifi.title='Не удалось обновить статус устройства';
  for(const id of ['statusBt','statusSignal','statusMemory','statusUptime']){const node=document.getElementById(id);setText(node,'—');node.className='';}
 }finally{clearTimeout(timeout);statusPending=false;if(statusRefreshQueued){statusRefreshQueued=false;queueMicrotask(()=>upd(true));}}}
 function currentPosition(j,axis){
@@ -1053,7 +1075,7 @@ const elCustom=j.elProfile==='custom';setText(elrange,(elCustom?'Произво�
 customElPoints.classList.toggle('hide',!elCustom);elPointAngle.min=elmn;elPointAngle.max=elmx;
 for(const axis of ['az','el']){const key=calibrationContext(axis);if(window['_'+axis+'CalKey']!==key){window['_'+axis+'CalKey']=key;loadAxisCalibration(axis)}renderAxisCalibration(axis,j)}
 panel2.classList.toggle('hide',j.calMode!=='2');panelm.classList.toggle('hide',j.calMode!=='multi');multiCalHint.classList.toggle('hide',j.calMode!=='multi');
-setText(ip,j.ip);setText(document.getElementById('apip'),j.apIp||'-');setText(mode,j.wifiMode);
+setText(ip,j.staIp??(Number.isFinite(j.rssi)?j.ip:'-'));setText(document.getElementById('apip'),j.apIp||'-');setText(mode,j.wifiMode);
 setText(rssi,(j.rssi===null?'-':j.rssi+' dBm'));
 setText(sig,j.signal||'-');
 setText(btstate,j.build?.bluetooth===false?'Выключен в настройках':j.btConnected?'CONNECTED':'DISCONNECTED');
@@ -1061,6 +1083,7 @@ btstate.style.color=j.btConnected?'#24d18d':'#e5a94f';
 if(document.activeElement!==ssid && !ssid.dataset.dirty) ssid.value=j.ssid||'';
 updateHud(j);
 compactStatus(j);
+updateWifiSetup(j);
 }
 let rrange='hour',rssiData=null;
 function drawRssi(j){
@@ -1090,7 +1113,7 @@ document.querySelectorAll('[role=tab]').forEach(tab=>tab.addEventListener('keydo
 }));
 selectTab(location.hash.slice(1),false);
 setInterval(loadRssi,30000);
-setInterval(upd,1000);setInterval(()=>upd(true),15000);upd();
+setInterval(()=>upd(!!wifiSetup),1000);setInterval(()=>upd(true),15000);upd();
 
 ssid.addEventListener('input',function(){ssid.dataset.dirty='1';});
 for(const id of ['forkSettings','hudConfig'])document.getElementById(id).addEventListener('input',event=>{event.currentTarget.dataset.dirty='1';});

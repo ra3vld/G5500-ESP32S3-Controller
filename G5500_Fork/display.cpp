@@ -179,7 +179,11 @@ void Display::updateDashboard() {
       tft.fillRect(12,150,int(runtime_.controller.axes[0].speedOutputPercent*2.96f),5,TFT_AZ);
       field(5,220,136,80,14,1,TFT_AZ,speed);
     }
-    field(6,130,187,185,18,1,TFT_TEXT,WiFi.status()==WL_CONNECTED?WiFi.localIP().toString():WiFi.softAPIP().toString());
+    char addresses[64]; network_.formatAddresses(addresses, sizeof addresses);
+    const String addressText(addresses);
+    const int split = addressText.indexOf('\n');
+    field(6,130,183,185,9,1,TFT_TEXT,split < 0 ? addressText : addressText.substring(0, split));
+    field(7,130,193,185,9,1,TFT_TEXT,split < 0 ? "" : addressText.substring(split + 1));
     return;
   }
   // Cached fields bound SPI writes; service live state every 20 ms.
@@ -354,12 +358,15 @@ void Display::updateDashboard() {
     dashLastBt = btText;
   }
 
-  String ip =
-      (WiFi.status() == WL_CONNECTED) ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
+  char addresses[64]; network_.formatAddresses(addresses, sizeof addresses);
+  const String ip(addresses);
   bool tcpConnected = (network_.tcpConnected());
   if (ip != dashLastIp || tcpConnected != dashLastTcpConnected) {
     tft.fillRect(34, 213, 160, 20, TFT_BG);
-    tftText(36, 216, 2, tcpConnected ? TFT_OK : TFT_TEXT, TFT_BG, ip);
+    const int split = ip.indexOf('\n');
+    tftText(36, 214, 1, tcpConnected ? TFT_OK : TFT_TEXT, TFT_BG,
+            split < 0 ? ip : ip.substring(0, split));
+    if (split >= 0) tftText(36, 224, 1, TFT_TEXT, TFT_BG, ip.substring(split + 1));
     dashLastIp = ip;
     dashLastTcpConnected = tcpConnected;
   }

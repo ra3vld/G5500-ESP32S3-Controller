@@ -21,7 +21,7 @@ struct CrowPanelView {
   bool wifiConnected = false, wifiAp = false;
   int wifiRssi = -127;
   bool bluetoothEnabled = false, bluetoothConnected = false;
-  char ip[40] = "IP: —", heap[48] = "Heap: —";
+  char ip[64] = "IP: —", heap[48] = "Heap: —";
   bool statusFault = false;
   char status[384] = "Привод не подключён";
 };

@@ -251,7 +251,7 @@ void CrowPanelUi::create() {
   wifiAp_ = label(442, LV_SIZE_CONTENT, &crowpanel_font_11, muted);
   lv_obj_align(wifiAp_, LV_ALIGN_TOP_MID, 27, 442);
   bluetooth_ = label(378, 340, &crowpanel_font_11, muted);
-  ip_ = label(393, 300, &crowpanel_font_11, text);
+  ip_ = label(393, 340, &crowpanel_font_11, text);
   heap_ = label(408, 220, &crowpanel_font_11, muted);
   currentMarker_ = marker(currentMarkerSize, text, false);
   targetMarker_ = marker(targetMarkerSize, targetColor, true);

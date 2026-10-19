@@ -353,8 +353,7 @@ void Display::updateLocalDisplay() {
     view.wifiConnected = connected;
     view.wifiAp = ap;
     view.wifiRssi = connected ? int(WiFi.RSSI()) : -127;
-    const auto address = connected ? WiFi.localIP() : ap ? WiFi.softAPIP() : IPAddress();
-    if (connected || ap) std::snprintf(view.ip, sizeof view.ip, "%s: %u.%u.%u.%u", connected ? "IP" : "AP", address[0], address[1], address[2], address[3]);
+    network_.formatAddresses(view.ip, sizeof view.ip, "  ");
     view.bluetoothEnabled = runtime_.controller.hardware.bluetooth;
     view.bluetoothConnected = view.bluetoothEnabled && network_.bluetoothConnected();
     std::snprintf(view.heap, sizeof view.heap, "Heap: %lu КБ", static_cast<unsigned long>(heapFreeBytes() / 1024));

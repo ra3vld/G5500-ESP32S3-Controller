@@ -34,7 +34,7 @@ public:
   void updateLocalDisplay();
 
 private:
-  String hudFields_[7];
+  String hudFields_[8];
   void tftText(int16_t x, int16_t y, uint8_t size, uint16_t fg, uint16_t bg, const String &txt);
   void tftButton(int x, int y, int w, int h, const String &label, bool active = false,
                  bool saved = false);

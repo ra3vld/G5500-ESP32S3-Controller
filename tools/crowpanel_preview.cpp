@@ -1,5 +1,6 @@
 // Render the actual firmware dashboard off-device; no mock HTML or screenshots.
 #include "crowpanel_ui.hpp"
+#include "network_addresses.hpp"
 #include <array>
 #include <cassert>
 #include <cstdio>
@@ -119,7 +120,7 @@ int main(int argc, char **argv) {
   view.dualAxis = true;
   view.targetValid = true; view.target = 210;
   view.wifiConnected = true; view.wifiAp = true; view.wifiRssi = -58;
-  std::strcpy(view.ip, "IP: 192.168.3.234");
+  forkrot::formatNetworkAddresses(view.ip, sizeof view.ip, "192.168.3.234", "192.168.4.1", "  ");
   std::strcpy(view.heap, "Heap: 123 КБ");
   ui.update(view); settle(d);
   char path[1024]; std::snprintf(path, sizeof path, "%s/no-drive.ppm", argv[1]); save(path);
@@ -604,6 +605,25 @@ int main(int argc, char **argv) {
     view.feedback = view.secondaryFeedback = true;
     ui.update(view); settle(d); assert(findLabel("0°"));
   }
+  // Both network addresses must fit without scrolling, even in the lowest
+  // dual-axis confirmation layout and with maximum-length IPv4 addresses.
+  view.feedback = view.secondaryFeedback = true;
+  view.wifiConnected = view.wifiAp = true;
+  forkrot::formatNetworkAddresses(view.ip, sizeof view.ip, "255.255.255.255", "255.255.255.255", "  ");
+  for (bool dual : {false, true}) for (bool pending : {false, true}) {
+    view.dualAxis = dual; view.elevation = false; view.targetValid = true;
+    view.pending = pending; view.autoMode = false;
+    ui.update(view); settle(d);
+    auto *addresses = findLabel(view.ip);
+    assert(addresses);
+    lv_point_t measured;
+    lv_text_get_size(&measured, view.ip, &crowpanel_font_11, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    assert(measured.x <= lv_obj_get_width(addresses));
+    assert(lv_obj_get_y(addresses) + measured.y < 480);
+    std::snprintf(path, sizeof path, "%s/network-%s-%s.ppm", argv[1], dual ? "dual" : "single", pending ? "pending" : "normal");
+    save(path);
+  }
+  std::puts("PASS: simultaneous STA/AP IPv4 addresses fit all dashboard layouts");
   std::puts("PASS: NC glyphs, independent axes, offline dash, calibration restored, targets unchanged and layout");
   std::puts("PASS: LVGL marker animation/wrap/reset, independent current/target limit tails, confirmation hit/restoration, Wi-Fi, arrows, markers and idle redraw");
 }

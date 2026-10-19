@@ -23,6 +23,11 @@ public:
     changedMs_ = now;
     apStopAttemptMs_ = now - 1000;
   }
+  void beginAttempt(uint32_t now) {
+    phase_ = Phase::Trying;
+    changedMs_ = now;
+  }
+  bool trying() const { return phase_ == Phase::Trying; }
   WifiAction update(uint32_t now, bool configured, bool connected, bool apEnabled,
                     bool keepAp = false) {
     if (connected) {

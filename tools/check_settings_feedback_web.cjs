@@ -51,7 +51,7 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   await page.locator('#presetEditor [type=submit]').click();await result('success','Предустановка сохранена');await dismiss();
   // Network writes are stubbed: the UI must acknowledge the server reply, without restarting anything.
   await page.route('**/api/wifi',async r=>{await delay(300);await r.fulfill({status:200,body:'SAVED'});});
-  await page.locator('#networkSettings > details > summary').click();
+  await page.locator('#networkSettings > details').evaluate(e=>e.open=true);
   await page.locator('#ssid').fill('Test network');await page.locator('#pass').fill('test password');
   await page.locator('#wifiSaveButton').click();await result('pending','Wi-Fi');assert(await page.locator('#wifiSaveButton').isDisabled());
   await result('success','Настройки Wi-Fi сохранены');assert.equal(await page.locator('#pass').inputValue(),'');await dismiss();

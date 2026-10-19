@@ -31,7 +31,7 @@ public:
   void selectionChanged() override { resetHudInputs(); }
   bool hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned report) const;
   bool apAlwaysOn() const {
-    return runtime_.recovery || runtime_.hud.config.wifi == HudWifi::Host ||
+    return wifiSetupAp_ || runtime_.recovery || runtime_.hud.config.wifi == HudWifi::Host ||
            (runtime_.hud.config.wifi == HudWifi::Existing && (SELECTED_BOARD != BOARD_ESP32 || runtime_.controller.hardware.forceAp));
   }
 
@@ -52,6 +52,9 @@ public:
   void serviceHeapDiagnostics();
   void handleRotctldTcp();
   bool startWifi();
+  void connectWifi(const String &ssid, const String &password);
+  bool wifiConnecting() const { return wifiConnectPending_ || (wifiFallback_.trying() && WiFi.status() != WL_CONNECTED); }
+  void formatAddresses(char *text, size_t capacity, const char *separator = "\n") const;
   void serviceWifiReconnect();
   void setupLoggerUdp();
   void serviceLoggerUdp();
@@ -101,6 +104,8 @@ private:
   enum GsReplyPort : uint8_t { GS_REPLY_USB = 0, GS_REPLY_BLUETOOTH = 1, GS_REPLY_NATIVE_USB = 2 };
   GsReplyPort gsReplyPort = GS_REPLY_USB;
   WifiFallback wifiFallback_;
+  bool wifiSetupAp_ = false, wifiConnectPending_ = false;
+  uint32_t wifiConnectRequestedMs_ = 0;
   DiagnosticStream heapDiagnostics_;
   struct ReportPeer {
     IPAddress address;

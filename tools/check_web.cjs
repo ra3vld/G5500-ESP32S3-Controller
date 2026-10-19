@@ -195,7 +195,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   await route.fulfill({contentType:'application/json',body:JSON.stringify(j)});
  });
  await page.reload();await page.waitForFunction(()=>window._forkState?.build?.bluetoothBackend==='ESP32_SPP');
- await page.locator('#networkSettings > details > summary').click();
+ await page.locator('#networkSettings > details').evaluate(e=>e.open=true);
  assert.equal(await page.locator('#btlabel').textContent(),'Канал SPP');
  assert.match(await page.locator('#bttransport').textContent(),/G5500-Rotator.*виртуальный COM/);
  assert.equal(await page.locator('#btmac').textContent(),'02:0A:B0:C1:00:FF');

@@ -284,6 +284,10 @@ void WebInterface::setupWeb() {
     web_.send(saved?200:503,"text/plain",saved?"RESET OK":"CALIBRATION SAVE FAILED");
   });
   const auto saveWifi = [this] {
+    if (runtime_.hud.config.wifi == HudWifi::Host) {
+      web_.send(409, "text/plain; charset=utf-8", "Для подключения к роутеру выберите обычный режим Wi-Fi в разделе «Пульт и связь».");
+      return;
+    }
     const String ssid = web_.arg("ssid"), password = web_.arg("pass");
     const auto result = storage_.saveWifi(ssid, password);
     if (result != WifiSaveResult::Ok) {
@@ -295,15 +299,13 @@ void WebInterface::setupWeb() {
       const bool invalid = result == WifiSaveResult::InvalidSsid || result == WifiSaveResult::InvalidPassword;
       const char *message = result == WifiSaveResult::InvalidSsid ? "SSID должен содержать от 1 до 32 байт." :
                             result == WifiSaveResult::InvalidPassword ? "Пароль должен содержать 8–63 символа, 64 шестнадцатеричные цифры или быть пустым для открытой сети." :
-                            "Не удалось сохранить настройки Wi-Fi. Перезагрузка отменена.";
+                            "Не удалось сохранить настройки Wi-Fi. Подключение не изменено.";
       web_.send(invalid ? 400 : 500, "text/plain; charset=utf-8", message);
       return;
     }
-    diagnostics_.dbgPrintln("[WIFI NVS] credentials saved and verified; restarting");
-    web_.send(200, "text/plain; charset=utf-8", network_.apAlwaysOn()
-        ? "Настройки Wi-Fi сохранены. После перезагрузки снова подключитесь к G5500-Rotator или откройте адрес контроллера в домашней сети."
-        : "Настройки Wi-Fi сохранены. После перезагрузки откройте адрес контроллера в домашней сети. Если подключение не удалось, появится G5500-Rotator.");
-    restart_.request(millis());
+    diagnostics_.dbgPrintln("[WIFI NVS] credentials saved and verified; connecting with setup AP retained");
+    network_.connectWifi(ssid, password);
+    web_.send(200, "text/plain; charset=utf-8", "Настройки Wi-Fi сохранены. Подключаемся к сети; полученный IP появится на этой странице.");
   };
   web_.on("/api/wifi", HTTP_POST, saveWifi);
   web_.on("/api/wifi", HTTP_GET, saveWifi);
@@ -404,6 +406,8 @@ void WebInterface::setupWeb() {
       << ",\"elp135\":" << calibrationState.elCalMv[3] << ",\"elp180\":" << calibrationState.elCalMv[4]
       << ",\"ip\":" << jsonQuoted(ip.c_str()) << ",\"apIp\":" << jsonQuoted(apIp.c_str())
       << ",\"staIp\":" << jsonQuoted(staIp.c_str()) << ",\"wifiMode\":" << jsonQuoted(mode)
+      << ",\"connectedSsid\":" << jsonQuoted(staOk ? WiFi.SSID().c_str() : "")
+      << ",\"wifiConnecting\":" << (network_.wifiConnecting() ? "true" : "false")
       << ",\"ssid\":" << jsonQuoted(network_.credentials().wifiSsid.c_str())
       << ",\"rssi\":" << rssiJson.c_str() << ",\"signal\":" << jsonQuoted(signal.c_str())
       << ",\"btConnected\":" << (network_.bluetoothConnected() ? "true" : "false")

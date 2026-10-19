@@ -1,5 +1,6 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "network.hpp"
+#include "network_addresses.hpp"
 #include "wifi_memory.hpp"
 #include "tcp_memory.hpp"
 #include "runtime_metrics.hpp"
@@ -520,6 +521,8 @@ bool Network::startWifi() {
 }
 
 void Network::restoreApOnlyAfterReconnectFail() {
+  const IPAddress apIP = wifiSetupAp_ && (WiFi.getMode() & WIFI_AP)
+                             ? WiFi.softAPIP() : IPAddress(192, 168, 4, 1);
   // No driver deinit/reinit: keep the compact buffer configuration. The mode
   // transition stops the failed STA and releases its connection state.
   if (WiFi.getMode() & WIFI_STA) WiFi.disconnect(false, false);
@@ -527,7 +530,6 @@ void Network::restoreApOnlyAfterReconnectFail() {
     diagnostics_.dbgPrintln("[WIFI] AP mode failed");
     return;
   }
-  IPAddress apIP(192, 168, 4, 1);
   const IPAddress apMask(255, 255, 255, 0);
   char apName[33];
   std::snprintf(apName, sizeof apName, "G5500-%s-%06llX", runtime_.hud.isHud() ? "HUD" : "Rotator",
@@ -536,12 +538,14 @@ void Network::restoreApOnlyAfterReconnectFail() {
   const bool started = credentials_.apPass.length() >= 8 ? WiFi.softAP(apName, credentials_.apPass.c_str())
                                                          : WiFi.softAP(apName);
   heapAfterAp_ = heapFreeBytes(); // zero means AP has not been started this boot
-  diagnostics_.dbgPrintln(configured && started ? "[WIFI] AP ready at 192.168.4.1"
-                                               : "[WIFI] AP start failed");
+  diagnostics_.dbgPrintln(configured && started ? String("[WIFI] AP ready at ") + apIP.toString()
+                                               : String("[WIFI] AP start failed"));
 }
 
 void Network::serviceApSubnet() {
-  if (WiFi.status() != WL_CONNECTED || !(WiFi.getMode() & WIFI_AP))
+  // The setup browser still uses the original AP address. Defer an overlap
+  // adjustment until reboot so DHCP success cannot move that page out of reach.
+  if (wifiSetupAp_ || WiFi.status() != WL_CONNECTED || !(WiFi.getMode() & WIFI_AP))
     return;
   const uint32_t sta = uint32_t(WiFi.localIP()), mask = uint32_t(WiFi.subnetMask());
   const uint32_t ap = uint32_t(WiFi.softAPIP()), commonMask = mask & 0x00ffffffu;
@@ -554,7 +558,38 @@ void Network::serviceApSubnet() {
   }
 }
 
+void Network::formatAddresses(char *text, size_t capacity, const char *separator) const {
+  char sta[16]{}, ap[16]{};
+  const auto address = [](char *out, const IPAddress &ip) {
+    std::snprintf(out, 16, "%u.%u.%u.%u", unsigned(ip[0]), unsigned(ip[1]),
+                  unsigned(ip[2]), unsigned(ip[3]));
+  };
+  if (WiFi.status() == WL_CONNECTED) address(sta, WiFi.localIP());
+  if (WiFi.getMode() & WIFI_AP) address(ap, WiFi.softAPIP());
+  formatNetworkAddresses(text, capacity, sta, ap, separator);
+}
+
+void Network::connectWifi(const String &ssid, const String &password) {
+  credentials_.wifiSsid = ssid;
+  credentials_.wifiPass = password;
+  // Keep the setup browser reachable until the next reboot, including on ESP32.
+  wifiSetupAp_ = true;
+  wifiConnectPending_ = true;
+  wifiConnectRequestedMs_ = millis();
+}
+
 void Network::serviceWifiReconnect() {
+  if (wifiConnectPending_) {
+    // Finish sending the save response before changing the radio channel.
+    if (uint32_t(millis() - wifiConnectRequestedMs_) < 250) return;
+    wifiConnectPending_ = false;
+    if (!(WiFi.getMode() & WIFI_AP)) restoreApOnlyAfterReconnectFail();
+    WiFi.disconnect(false, false);
+    if (WiFi.mode(WIFI_AP_STA))
+      WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
+    wifiFallback_.beginAttempt(millis());
+    return;
+  }
   serviceApSubnet();
   if (runtime_.hud.config.wifi == HudWifi::Host)
     return;
