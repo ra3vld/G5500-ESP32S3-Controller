@@ -17,16 +17,25 @@ void WebInterface::sendHtml(const char *raw, size_t rawSize, const unsigned char
     web_.sendPage(200, "text/html; charset=utf-8", raw, rawSize);
   }
 }
-void WebInterface::serveApi(std::string_view method,std::string_view path,FormView arguments) {
+void WebInterface::serveApi(std::string_view method,std::string_view path,FormView arguments,bool fixed) {
   JsonWriter j(statusBuffer_,sizeof statusBuffer_);
   int status=200;const char *type="application/json";
   actions_.deviceRequest(method,path,arguments,j,status,type);
-  if(!j.good()) {web_.send(503,"application/json","{\"error\":\"response_too_large\"}");return;}
-  web_.sendBuffer(status,type,j.data(),j.size());
+  if(!j.good()) {
+    static constexpr char error[]="{\"error\":\"response_too_large\"}";
+    web_.sendFixed(503,"application/json",error,sizeof error-1);return;
+  }
+  if(fixed)web_.sendFixed(status,type,j.data(),j.size(),true);
+  else web_.sendBuffer(status,type,j.data(),j.size());
 }
 void WebInterface::setupWeb() {
   web_.setRequestHandler([](void *context,std::string_view request) {
     auto &self=*static_cast<WebInterface *>(context);
+    // The frequent polling request needs no decoded arguments or String
+    // headers. Use literals: the response overwrites the raw request buffer.
+    if(!self.runtime_.recovery && request.substr(0,16)=="GET /api/status ") {
+      self.serveApi("GET","/api/status",{},true);return true;
+    }
     return self.handleHardwareRequest(request) || (!self.runtime_.recovery && self.handleOtaRequest(request));
   },this);
   if(runtime_.recovery) {web_.begin();return;}

@@ -63,7 +63,7 @@ private:
     if (!j.good()) { web_.send(503, "application/json", "{\"error\":\"response_too_large\"}"); return; }
     web_.sendBuffer(200, "application/json", j.data(), j.size());
   }
-  void serveApi(std::string_view method, std::string_view path, FormView arguments);
+  void serveApi(std::string_view method, std::string_view path, FormView arguments, bool fixed = false);
   Runtime &runtime_;
   DeviceActions &actions_;
   Calibration &calibration_;

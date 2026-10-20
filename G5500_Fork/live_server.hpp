@@ -17,13 +17,17 @@ class LiveServer {
   struct Message { char data[LIVE_INPUT_CAPACITY+1]{}; size_t size=0; };
   struct Reply { char data[192]{}; size_t size=0; };
   struct Pending { uint32_t cid=0, request=0; };
-  struct Client {
-    int fd=-1; uint32_t generation=0, lastId=0, revision=0;
-    bool closing=false;
+  struct ClientBuffers {
     Message command, stop;
     Reply replies[4]; unsigned head=0, count=0;
     Pending pending[4];
     uint32_t cancelledFrom=0, cancelledThrough=0;
+  };
+  struct Client {
+    int fd=-1; uint32_t generation=0, lastId=0, revision=0;
+    bool closing=false;
+    // Stable slot metadata survives disconnects; queues exist only while used.
+    std::unique_ptr<ClientBuffers> buffers;
   };
   using Clients = std::array<Client,4>;
   std::unique_ptr<Clients> clients_;

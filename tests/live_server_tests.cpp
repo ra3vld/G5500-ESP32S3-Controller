@@ -3,6 +3,25 @@
 #include <cassert>
 #include <iostream>
 #include <cmath>
+#include <cstdlib>
+#include <new>
+#include <esp_heap_caps.h>
+static size_t allocationCalls=0, releasedCalls=0, allocatedBytes=0;
+void *operator new(size_t size) {
+  if(void *p=std::malloc(size?size:1)){++allocationCalls;allocatedBytes+=size;return p;}
+  throw std::bad_alloc();
+}
+void *operator new[](size_t size) {return ::operator new(size);}
+void *operator new(size_t size,const std::nothrow_t &) noexcept {
+  try {return ::operator new(size);} catch(...) {return nullptr;}
+}
+void *operator new[](size_t size,const std::nothrow_t &tag) noexcept {return ::operator new(size,tag);}
+void operator delete(void *p) noexcept {if(p)++releasedCalls;std::free(p);}
+void operator delete[](void *p) noexcept {::operator delete(p);}
+void operator delete(void *p,size_t) noexcept {::operator delete(p);}
+void operator delete[](void *p,size_t) noexcept {::operator delete(p);}
+void operator delete(void *p,const std::nothrow_t &) noexcept {::operator delete(p);}
+void operator delete[](void *p,const std::nothrow_t &) noexcept {::operator delete(p);}
 using namespace forkrot;
 // IDF 5.5.5 performs the handshake without invoking the URI handler.
 static int connect(int fd){const int rc=fakeServer.cfg.open_fn(&fakeServer,fd);if(rc==ESP_OK)fakeServer.websocketFds.insert(fd);return rc;}
@@ -10,7 +29,22 @@ static int command(int fd,const std::string &data){httpd_req_t r{fakeServer.uri.
 static std::string packet(unsigned id,const char *path,const char *args=""){return "v=1&boot=a&selection=0&cid="+std::to_string(id)+"&path="+path+args;}
 int main(){
  MotionTestRuntime runtime;runtime.hud.begin(1,10);runtime.controller.feedback(20,30,true,true);
- LiveServer server(runtime);assert(server.begin());assert(fakeServer.cfg.max_open_sockets==4);
+ LiveServer server(runtime);const auto beforeBegin=allocatedBytes;
+ assert(server.begin());assert(fakeServer.cfg.max_open_sockets==4);
+ assert(allocatedBytes-beforeBegin<=4096); // idle server holds no per-client queues
+ const auto beforeLowHeap=allocationCalls;
+ fakeHeapFree=MemoryGuard::CriticalFree;
+ assert(connect(999)==ESP_FAIL && allocationCalls==beforeLowHeap);
+ fakeHeapFree=65536;fakeHeapBlock=MemoryGuard::CriticalBlock;
+ assert(connect(999)==ESP_FAIL && allocationCalls==beforeLowHeap);
+ fakeHeapBlock=32768;
+ for(unsigned i=0;i<10000;++i) {
+   const auto allocations=allocationCalls, releases=releasedCalls, bytes=allocatedBytes;
+   assert(fakeServer.cfg.open_fn(&fakeServer,999)==ESP_OK);
+   assert(allocationCalls==allocations+1 && allocatedBytes-bytes<=2048);
+   fakeServer.cfg.close_fn(&fakeServer,999);
+   assert(releasedCalls==releases+1);
+ }
  assert(fakeServer.cfg.open_fn(&fakeServer,999)==ESP_OK);
  server.publish(5);pumpLive();assert(fakeServer.sent.empty()); // no frame before upgrade
  fakeServer.websocketFds.insert(999);server.publish(10);pumpLive();
@@ -26,7 +60,9 @@ int main(){
  assert(!fakeServer.sent.empty());
  assert(command(1000,packet(2,"/api/target","&az=200"))==ESP_OK);
  assert(command(1000,packet(3,"/api/move","&d=S"))==ESP_OK);
+ fakeHeapFree=1024;fakeHeapBlock=256; // admitted client's STOP needs no new queue
  server.commands(15);assert(!runtime.controller.moving()&&runtime.controller.axes[0].target==90);
+ fakeHeapFree=65536;fakeHeapBlock=32768;
  server.publish(15);pumpLive();server.publish(20);pumpLive();
  assert(command(1000,packet(2,"/api/target","&az=300"))==ESP_OK);
  server.commands(25);assert(runtime.controller.axes[0].target==90);
@@ -90,4 +126,5 @@ int main(){
  assert(command(1002,packet(502,"/api/target","&az=40"))==ESP_OK);server.commands(2540);
  assert(c.axes[0].direction); // A new command may repeat the same coordinate.
  std::cout<<"PASS: actual HTTPD adapter: four clients, loop ownership, STOP priority, duplicate IDs, bounded backpressure, reconnect\n";
+ std::cout<<"PASS: idle live storage <=4 KiB, 10000 queue allocations/releases, low-memory admission and existing STOP\n";
 }

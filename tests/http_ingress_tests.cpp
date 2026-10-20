@@ -308,7 +308,45 @@ int main() {
   assert(testSocket.parsed==0 && testSocket.heapBufferReads==0);
   assert(testSocket.output.find("{\"ok\":true}")!=std::string::npos);
   assert(testSocket.output.find("Cache-Control: no-store")!=std::string::npos);
+  // Status bypasses the allocating parser and reuses one TCP connection even
+  // when the largest free block is smaller than a browser's Cookie header.
+  web.setRequestHandler([](void *context,std::string_view raw) {
+    if(raw.substr(0,16)!="GET /api/status ")return false;
+    auto &server=*static_cast<BoundedWebServer *>(context);
+    server.sendFixed(200,"application/json","{}",2,true);return true;
+  },&web);
+  const std::string fixedPoll="GET /api/status HTTP/1.1\r\nCookie: "+std::string(800,'x')+"\r\n\r\n";
+  connect(fixedPoll);fakeHeapFree=3000;fakeHeapBlock=512;
+  web.handleClient();const auto fixedAccepted=web.acceptedRequests();
+  for(unsigned i=0;i<10000;++i) {
+    assert(testSocket.open && testSocket.parsed==0 && !testSocket.reset);
+    assert(testSocket.output.find("Connection: keep-alive")!=std::string::npos);
+    testSocket.input=fixedPoll;testSocket.consumed=0;testSocket.output.clear();
+    fakeHardware.now+=1000;web.handleClient();
+  }
+  assert(web.acceptedRequests()==fixedAccepted && testSocket.heapBufferReads==0);
+  testSocket.peerClosed=true;web.handleClient();
+  for(const std::string &closePoll:{request,std::string("GET /api/status HTTP/1.0\r\n\r\n"),fixedPoll+fixedPoll}) {
+    connect(closePoll);web.handleClient();assert(!testSocket.open && !testSocket.parsed);
+    assert(testSocket.output.find("Connection: close")!=std::string::npos);
+  }
+  // Raising throughput must not raise the per-loop send size or block control.
+  web.setRequestHandler(nullptr,nullptr);
+  auto transferTime=[&](size_t heap) {
+    connect(request);fakeHeapFree=heap;
+    testSocket.handler=[&] {web.sendBuffer(200,"text/html",WEB_PAGE,8192);};
+    const auto start=fakeHardware.now;web.handleClient();
+    for(unsigned i=0;testSocket.open && i<1000;++i) {
+      const auto bytes=testSocket.output.size();fakeHardware.now+=5;
+      const auto now=fakeHardware.now;web.handleClient();
+      assert(fakeHardware.now==now && testSocket.output.size()-bytes<=512);
+    }
+    assert(!testSocket.open && !testSocket.reset);return uint32_t(fakeHardware.now-start);
+  };
+  const auto slow=transferTime(16384),fast=transferTime(65536);
+  assert(fast*4==slow);
   std::cout<<"PASS: recovery POST remains writable with free=3000/max=512 while normal settings require larger blocks\n";
+  std::cout<<"PASS: 10000 parser-free persistent status polls at free=3000/max=512; healthy page pacing 4x faster, one nonblocking 512-byte send per loop\n";
   std::cout<<"PASS: complete 35KB page over slow socket with device heap 8172/1524, per-loop control progress, transfer deadlines and recovery\n";
   std::cout<<"PASS: gzip bytes through 1KB queue with repeated ENOMEM/ACKs, paced JSON, encoding negotiation and failure diagnostics\n";
   std::cout<<"PASS: HTTP fragments, complete POST body, low heap, timeouts, socket failures and 10000 requests without NetworkClient RX allocations\n";

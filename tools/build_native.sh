@@ -76,6 +76,8 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_F
 ./build/diagnostic_stream_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I tests/http_fakes -I tests/fakes -I G5500_Fork tests/http_ingress_tests.cpp -o build/http_ingress_tests
 ./build/http_ingress_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -I tests/wifi_fakes -I G5500_Fork tests/wifi_memory_tests.cpp -o build/wifi_memory_tests
+./build/wifi_memory_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -pthread -I G5500_Fork G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp tests/datagram_socket_tests.cpp -Wl,--wrap=malloc -o build/datagram_socket_tests
 ./build/datagram_socket_tests
 for board in 1 4; do

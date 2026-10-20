@@ -51,7 +51,7 @@ int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
         diagnostics_.wifiCredentialsReadOk() ? "OK" : "unavailable",
         btReady_ ? "yes" : "no", bluetooth_.connected() ? "yes" : "no",
         bluetooth_.linkConnected() ? "yes" : "no",
-        compactWifi_ ? "compact" : bufferedWifi_ ? "buffered" : "standard");
+        compactWifi_ ? "compact" : bufferedWifi_ ? (SELECTED_BOARD == BOARD_ESP32 ? "controller" : "buffered") : "standard");
   case 2: {
     const IPAddress ap = (WiFi.getMode() & WIFI_AP) ? WiFi.softAPIP() : IPAddress();
     const IPAddress sta = WiFi.localIP();
@@ -465,7 +465,10 @@ bool Network::startWifi() {
   if (runtime_.recovery || (SELECTED_BOARD == BOARD_ESP32 && runtime_.controller.hardware.backend() == BT_ESP32_SPP)) {
     compactWifi_ = initCompactWifi() == ESP_OK;
     if (!compactWifi_) return false; // never fall back to a larger buffer profile on OOM
-  } else if (SELECTED_BOARD == BOARD_ESP32 || SELECTED_BOARD == BOARD_CROWPANEL_21) {
+  } else if (SELECTED_BOARD == BOARD_ESP32) {
+    bufferedWifi_ = initControllerWifi() == ESP_OK;
+    if (!bufferedWifi_) return false;
+  } else if (SELECTED_BOARD == BOARD_CROWPANEL_21) {
     bufferedWifi_ = initBufferedWifi() == ESP_OK;
     if (!bufferedWifi_) return false;
   }

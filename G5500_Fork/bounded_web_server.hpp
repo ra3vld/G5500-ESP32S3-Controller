@@ -126,7 +126,8 @@ public:
         return;
       }
       if (requestHandler_) {
-        persistentCandidate_ = persistentOtaRequest({requestBuffer_, requestUsed_}, requestSize);
+        persistentCandidate_ = persistentOtaRequest({requestBuffer_, requestUsed_}, requestSize) ||
+                               persistentStatusRequest({requestBuffer_, requestUsed_}, requestSize);
         keepAliveResponse_ = false;
         _contentLength = CONTENT_LENGTH_NOT_SET;
         _responseCode = 0;
@@ -171,13 +172,14 @@ public:
   }
   // Recovery must not depend on String header allocation or the normal parser.
   // Payload is flash or the existing status buffer, valid across service calls.
-  void sendFixed(int code, const char *type, const char *data, size_t size) {
+  void sendFixed(int code, const char *type, const char *data, size_t size, bool allowKeepAlive = false) {
     char header[256];
+    keepAliveResponse_ = allowKeepAlive && persistentCandidate_ && code == 200;
     const int count = std::snprintf(header, sizeof header,
         "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %u\r\n"
-        "Cache-Control: no-store\r\nConnection: close\r\n\r\n",
-        code, code == 200 ? "OK" : "Error", type, unsigned(size));
-    keepAliveResponse_ = persistentCandidate_ = false;
+        "Cache-Control: no-store\r\nConnection: %s\r\n\r\n",
+        code, code == 200 ? "OK" : "Error", type, unsigned(size),
+        keepAliveResponse_ ? "keep-alive" : "close");
     if (count <= 0 || size_t(count) >= sizeof header ||
         _currentClientWrite(header, size_t(count)) != size_t(count)) return;
     page_ = data; pageSize_ = size; pageSent_ = 0;
@@ -242,7 +244,10 @@ private:
                 pageRetryErrno_ ? pageRetryErrno_ : ETIMEDOUT, pageSent_, pageSize_);
       releaseClient(); return;
     }
-    if (uint32_t(now - pageAttemptMs_) < 20) return;
+    // A healthy heap can drain at loop speed. Retain conservative pacing when
+    // radio/BT traffic leaves little RAM, and never spin waiting for TCP space.
+    const uint32_t interval = heapFreeBytes() >= 32768 && heapMaxBlockBytes() >= 6144 ? 5 : 20;
+    if (uint32_t(now - pageAttemptMs_) < interval) return;
     pageAttemptMs_ = now;
     const size_t chunk = std::min(pageSize_ - pageSent_, size_t(512));
     const int count = ::send(client().fd(), page_ + pageSent_, chunk, MSG_DONTWAIT);

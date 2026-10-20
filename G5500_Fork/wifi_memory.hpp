@@ -37,4 +37,20 @@ inline esp_err_t initBufferedWifi() {
   cfg.cache_tx_buf_num = 16;
   return esp_wifi_init(&cfg);
 }
+inline esp_err_t initControllerWifi() {
+  if (!::Network.begin()) return ESP_FAIL;
+  wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+  cfg.nvs_enable = 0;
+  // Keep bursts bounded on classic ESP32 without PSRAM. Both directions count:
+  // 64 RX + 64 TX buffers can otherwise consume nearly 200 KiB at packet MTU.
+  cfg.static_rx_buf_num = 4;
+  cfg.dynamic_rx_buf_num = 8;
+  cfg.tx_buf_type = 1;
+  cfg.static_tx_buf_num = 0;
+  cfg.dynamic_tx_buf_num = 8;
+  cfg.cache_tx_buf_num = 4;
+  cfg.rx_ba_win = 4; // no larger than either RX buffer pool
+  cfg.amsdu_tx_enable = 0;
+  return esp_wifi_init(&cfg);
+}
 } // namespace forkrot

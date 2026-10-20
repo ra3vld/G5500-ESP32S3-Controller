@@ -1,6 +1,7 @@
 #include "live_server.hpp"
 #include "network_timing.hpp"
 #if defined(ARDUINO_ARCH_ESP32) && WEB_INTERFACE_ENABLED
+#include "heap_metrics.hpp"
 #include <lwip/sockets.h>
 #include <lwip/tcp.h>
 #include <cstring>
@@ -35,7 +36,16 @@ esp_err_t LiveServer::opened(httpd_handle_t server,int fd) {
   // publishing. This also bounds clients that have not finished upgrading.
   auto &self=*static_cast<LiveServer *>(httpd_get_global_user_ctx(server));
   Guard lock(self.mutex_);
-  for(auto &c:*self.clients_)if(c.fd<0){const auto gen=c.generation+1;c=Client{};c.fd=fd;c.generation=gen;return ESP_OK;}
+  for(auto &c:*self.clients_)if(c.fd<0){
+    // Decline a new browser before it eats the control/recovery headroom.
+    // Existing clients, including their STOP queue, keep their buffers.
+    if(heapFreeBytes()<sizeof(ClientBuffers)+MemoryGuard::CriticalFree ||
+       heapMaxBlockBytes()<sizeof(ClientBuffers)+MemoryGuard::CriticalBlock)return ESP_FAIL;
+    std::unique_ptr<ClientBuffers> buffers(new(std::nothrow) ClientBuffers{});
+    if(!buffers)return ESP_FAIL;
+    const auto gen=c.generation+1;c=Client{};c.buffers=std::move(buffers);
+    c.fd=fd;c.generation=gen;return ESP_OK;
+  }
   return ESP_FAIL;
 }
 void LiveServer::closed(httpd_handle_t server,int fd) {
@@ -44,16 +54,16 @@ void LiveServer::closed(httpd_handle_t server,int fd) {
   ::close(fd);
 }
 void LiveServer::reply(Client &c,uint32_t id,const char *body) {
-  if(c.count==4){c.closing=true;return;}
-  auto &r=c.replies[(c.head+c.count)%4];
+  if(c.buffers->count==4){c.closing=true;return;}
+  auto &r=c.buffers->replies[(c.buffers->head+c.buffers->count)%4];
 
   const int n=std::snprintf(r.data,sizeof r.data,"{\"v\":1,\"type\":\"result\",\"boot\":\"%s\",\"id\":%lu,\"result\":%s}",boot_,static_cast<unsigned long>(id),body);
   if(n<0||size_t(n)>=sizeof r.data){c.closing=true;return;}
-  r.size=size_t(n);++c.count;
+  r.size=size_t(n);++c.buffers->count;
 }
 void LiveServer::cancelTarget(Client &c,uint32_t id) {
-  if(!c.cancelledFrom) c.cancelledFrom=c.cancelledThrough=id;
-  else if(id==c.cancelledThrough+1) c.cancelledThrough=id;
+  if(!c.buffers->cancelledFrom) c.buffers->cancelledFrom=c.buffers->cancelledThrough=id;
+  else if(id==c.buffers->cancelledThrough+1) c.buffers->cancelledThrough=id;
   else reply(c,id,"{\"ok\":false,\"result\":\"cancelled\",\"superseded\":true}");
 }
 esp_err_t LiveServer::handler(httpd_req_t *req) {
@@ -75,7 +85,7 @@ esp_err_t LiveServer::handler(httpd_req_t *req) {
   for(auto &c:*self.clients_)if(c.fd==fd&&(!c.closing||request.stop())) {
     if(request.id<=c.lastId){self.reply(c,request.id,"{\"ok\":false,\"result\":\"cancelled\"}");return ESP_OK;}
     c.lastId=request.id;
-    auto &slot=request.stop()?c.stop:c.command;
+    auto &slot=request.stop()?c.buffers->stop:c.buffers->command;
     if(slot.size) {
       LiveRequest old;
       bool replace=!request.stop() && old.parse({slot.data,slot.size}) &&
@@ -91,7 +101,7 @@ esp_err_t LiveServer::handler(httpd_req_t *req) {
       }
       if(replace) {
         bool barrier=false; LiveRequest stop;
-        if(c.stop.size && stop.parse({c.stop.data,c.stop.size})) barrier=old.id<stop.id && stop.id<request.id;
+        if(c.buffers->stop.size && stop.parse({c.buffers->stop.data,c.buffers->stop.size})) barrier=old.id<stop.id && stop.id<request.id;
         if(!barrier) for(const char *key:{"az","el"}) if(request.get(key).empty() && !old.get(key).empty()) {
           float angle; if(!number(old.get(key),angle)) { replace=false; break; }
           const int added=std::snprintf(input.data+input.size,sizeof input.data-input.size,"&%s=%.9g",key,double(angle));
@@ -111,12 +121,12 @@ void LiveServer::commands(uint32_t now) {
   // older work on that connection; unrelated clients retain controller semantics.
   for(unsigned pass=0;pass<2;++pass)for(auto &client:*clients_) {
     Message input;uint32_t generation;int fd;
-    { Guard lock(mutex_); if(client.fd<0||(client.closing&&(pass||!client.stop.size)))continue;
-      auto &slot=pass?client.command:client.stop;if(!slot.size)continue;
+    { Guard lock(mutex_); if(client.fd<0||(client.closing&&(pass||!client.buffers->stop.size)))continue;
+      auto &slot=pass?client.buffers->command:client.buffers->stop;if(!slot.size)continue;
       input=slot;slot.size=0;generation=client.generation;fd=client.fd;
-      if(!pass&&client.command.size){LiveRequest old,stop;
-        if(old.parse({client.command.data,client.command.size})&&stop.parse({input.data,input.size})&&old.id<stop.id){
-          reply(client,old.id,"{\"ok\":false,\"result\":\"cancelled\"}");client.command.size=0;
+      if(!pass&&client.buffers->command.size){LiveRequest old,stop;
+        if(old.parse({client.buffers->command.data,client.buffers->command.size})&&stop.parse({input.data,input.size})&&old.id<stop.id){
+          reply(client,old.id,"{\"ok\":false,\"result\":\"cancelled\"}");client.buffers->command.size=0;
         }
       }
     }
@@ -125,11 +135,11 @@ void LiveServer::commands(uint32_t now) {
     const auto response=executeLive(request,runtime_.controller,runtime_.protocol,runtime_.loggerSettings,runtime_.hud,now);
     Guard lock(mutex_);if(client.fd!=fd||client.generation!=generation)continue;
     reply(client,request.id,response.body.c_str());
-    if(response.status==202){bool saved=false;for(auto &p:client.pending)if(!p.cid){p={request.id,runtime_.hud.requestId()};saved=true;break;}if(!saved)client.closing=true;}
+    if(response.status==202){bool saved=false;for(auto &p:client.buffers->pending)if(!p.cid){p={request.id,runtime_.hud.requestId()};saved=true;break;}if(!saved)client.closing=true;}
   }
   for(auto &client:*clients_) {
     Guard lock(mutex_);if(client.fd<0||client.closing)continue;
-    for(auto &p:client.pending)if(p.cid){const auto result=runtime_.hud.result(p.request).result;if(result!=Result::Deferred){
+    for(auto &p:client.buffers->pending)if(p.cid){const auto result=runtime_.hud.result(p.request).result;if(result!=Result::Deferred){
       char body[80];std::snprintf(body,sizeof body,"{\"ok\":%s,\"result\":\"%s\"}",result==Result::Ok||result==Result::Pending?"true":"false",Controller::resultName(result));
       reply(client,p.cid,body);p={};
     }}
@@ -159,7 +169,7 @@ void LiveServer::publish(uint32_t now) {
   }
   bool queue=false;
   {Guard lock(mutex_);
-    bool needed=false;for(const auto &c:*clients_)needed|=c.fd>=0&&(c.closing||c.count||c.cancelledFrom||c.revision!=revision_);
+    bool needed=false;for(const auto &c:*clients_)needed|=c.fd>=0&&(c.closing||c.buffers->count||c.buffers->cancelledFrom||c.revision!=revision_);
     if(needed&&!workPending_&&uint32_t(now-wakeAt_)>=5){workPending_=true;wakeAt_=now;queue=true;}
   }
   if(queue&&httpd_queue_work(server_,sendWork,this)!=ESP_OK){Guard lock(mutex_);workPending_=false;++queueErrors_;}
@@ -180,13 +190,13 @@ void LiveServer::sendWork(void *context) {
     size_t n=0;int fd;bool close=false;
     {Guard lock(self.mutex_);fd=client.fd;if(fd<0)continue;
       if(httpd_ws_get_fd_info(self.server_,fd)!=HTTPD_WS_CLIENT_WEBSOCKET)continue;
-      close=client.closing&&!client.stop.size;
-      if(!close&&client.cancelledFrom){
-        const int size=std::snprintf(data,sizeof data,"{\"v\":1,\"type\":\"result\",\"boot\":\"%s\",\"id\":%lu,\"cancelledFrom\":%lu,\"cancelledThrough\":%lu,\"result\":{\"ok\":false,\"result\":\"cancelled\",\"superseded\":true}}",self.boot_,(unsigned long)client.cancelledThrough,(unsigned long)client.cancelledFrom,(unsigned long)client.cancelledThrough);
+      close=client.closing&&!client.buffers->stop.size;
+      if(!close&&client.buffers->cancelledFrom){
+        const int size=std::snprintf(data,sizeof data,"{\"v\":1,\"type\":\"result\",\"boot\":\"%s\",\"id\":%lu,\"cancelledFrom\":%lu,\"cancelledThrough\":%lu,\"result\":{\"ok\":false,\"result\":\"cancelled\",\"superseded\":true}}",self.boot_,(unsigned long)client.buffers->cancelledThrough,(unsigned long)client.buffers->cancelledFrom,(unsigned long)client.buffers->cancelledThrough);
         if(size>0 && size_t(size)<sizeof data)n=size_t(size);
-        client.cancelledFrom=client.cancelledThrough=0;
+        client.buffers->cancelledFrom=client.buffers->cancelledThrough=0;
       }
-      else if(!close&&client.count){auto &r=client.replies[client.head];n=r.size;std::memcpy(data,r.data,n);client.head=(client.head+1)%4;--client.count;}
+      else if(!close&&client.buffers->count){auto &r=client.buffers->replies[client.buffers->head];n=r.size;std::memcpy(data,r.data,n);client.buffers->head=(client.buffers->head+1)%4;--client.buffers->count;}
       else if(!close&&client.revision!=self.revision_&&self.stateSize_){n=self.stateSize_;std::memcpy(data,self.state_->data(),n);client.revision=self.revision_;}
     }
     if(n){httpd_ws_frame_t frame{};frame.type=HTTPD_WS_TYPE_TEXT;frame.final=true;frame.payload=reinterpret_cast<uint8_t *>(data);frame.len=n;
