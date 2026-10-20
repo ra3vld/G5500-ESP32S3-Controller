@@ -345,5 +345,57 @@ void Hardware::crowpanelFault() {
 void Hardware::beginInputs() {
   const auto &c = runtime_.controller.hardware;
   if (!runtime_.recovery && c.buttonGpio >= 0) pinMode(c.buttonGpio, c.buttonPullup ? INPUT_PULLUP : INPUT);
+#if LOCAL_INPUT_MODE != LOCAL_INPUT_NONE
+  if (runtime_.hud.isHud() || runtime_.recovery || board::validateHardware(c, runtime_.hud.config.uart)) return;
+  for (int pin : board::localInputPins) if (pin >= 0) {
+#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+    pinMode(pin, INPUT_PULLUP);
+#else
+    pinMode(pin, INPUT);
+    analogReadResolution(12);
+    analogSetPinAttenuation(pin, ADC_11db);
+#endif
+  }
+  localInputsStarted_ = true;
+#endif
+}
+void Hardware::serviceLocalInputs() {
+#if LOCAL_INPUT_MODE != LOCAL_INPUT_NONE
+  const uint32_t now = millis();
+  if (!localInputsStarted_) return;
+  if (runtime_.hud.isHud() || runtime_.recovery || runtime_.controller.configurationLocked) {
+    localInput_.sample(0, 0, 0, false, now);
+    return;
+  }
+  if (localSampled_ && uint32_t(now - localSampleAt_) < 10) return;
+  localSampled_ = true; localSampleAt_ = now;
+  float values[2]{};
+  uint8_t neutralMask = 0;
+#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+  constexpr int negative[] = {LOCAL_AZ_NEG_GPIO, LOCAL_EL_NEG_GPIO};
+  constexpr int positive[] = {LOCAL_AZ_POS_GPIO, LOCAL_EL_POS_GPIO};
+#else
+  constexpr int pins[] = {LOCAL_AZ_ADC_GPIO, LOCAL_EL_ADC_GPIO};
+#endif
+  for (unsigned i = 0; i < 2; ++i) {
+    if (!(LocalMask & (1u << i)) || (i == 1 && runtime_.controller.model == Model::G800DXA)) {
+      neutralMask |= 1u << i;
+      continue;
+    }
+#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+    values[i] = localButtons_[i].sample(digitalRead(negative[i]) == LOW, digitalRead(positive[i]) == LOW, now);
+    if (localButtons_[i].neutral()) neutralMask |= 1u << i;
+    if (i ? LOCAL_EL_INVERT : LOCAL_AZ_INVERT) values[i] = -values[i];
+#else
+    // Median of five conversions rejects isolated spikes without a blocking delay.
+    int samples[5];
+    for (int &value : samples) value = analogRead(pins[i]);
+    std::sort(samples, samples + 5);
+    values[i] = localJoystick_[i].sample(samples[2]);
+    if (localJoystick_[i].neutral(samples[2])) neutralMask |= 1u << i;
+#endif
+  }
+  localInput_.sample(values[0], values[1], neutralMask, true, now);
+#endif
 }
 } // namespace forkrot

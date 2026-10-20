@@ -14,6 +14,7 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/ota_fakes -I G5500_For
 sh tools/build_ruckig_native.sh
 MOTION_SOURCES="G5500_Fork/motion.cpp build/motion/libruckig.a"
 CORE_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp"
+sh tools/test_local_controls.sh
 
 # Persisted GPIO ownership and adapters on every board, including both CrowPanel profiles.
 for board in 1 2 3 4 5; do

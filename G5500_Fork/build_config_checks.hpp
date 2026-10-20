@@ -86,3 +86,22 @@ static_assert(BOARD_PROFILE >= BOARD_AUTO && BOARD_PROFILE <= BOARD_CROWPANEL_21
 #endif
 static_assert(AZ_STOP_TOLERANCE_DEG > 0 && AZ_STOP_TOLERANCE_DEG <= 90, "Invalid AZ tolerance");
 static_assert(EL_STOP_TOLERANCE_DEG > 0 && EL_STOP_TOLERANCE_DEG <= 90, "Invalid EL tolerance");
+static_assert(LOCAL_INPUT_MODE >= LOCAL_INPUT_NONE && LOCAL_INPUT_MODE <= LOCAL_INPUT_JOYSTICK,
+              "Invalid LOCAL_INPUT_MODE");
+#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+static_assert((LOCAL_AZ_NEG_GPIO == -1) == (LOCAL_AZ_POS_GPIO == -1) &&
+              (LOCAL_EL_NEG_GPIO == -1) == (LOCAL_EL_POS_GPIO == -1), "Configure both buttons of each axis");
+static_assert(LOCAL_AZ_NEG_GPIO >= 0 || LOCAL_EL_NEG_GPIO >= 0, "Configure at least one local button pair");
+#elif LOCAL_INPUT_MODE == LOCAL_INPUT_JOYSTICK
+static_assert(LOCAL_AZ_ADC_GPIO >= 0 || LOCAL_EL_ADC_GPIO >= 0, "Configure at least one joystick ADC");
+static_assert(LOCAL_ADC_DEADZONE > 0 && LOCAL_ADC_HYSTERESIS >= 0, "Invalid joystick dead zone/hysteresis");
+static_assert(LOCAL_AZ_ADC_MIN >= 0 && LOCAL_AZ_ADC_MAX <= 4095 &&
+              LOCAL_AZ_ADC_CENTER - LOCAL_AZ_ADC_MIN > LOCAL_ADC_DEADZONE + LOCAL_ADC_HYSTERESIS &&
+              LOCAL_AZ_ADC_MAX - LOCAL_AZ_ADC_CENTER > LOCAL_ADC_DEADZONE + LOCAL_ADC_HYSTERESIS &&
+              LOCAL_EL_ADC_MIN >= 0 && LOCAL_EL_ADC_MAX <= 4095 &&
+              LOCAL_EL_ADC_CENTER - LOCAL_EL_ADC_MIN > LOCAL_ADC_DEADZONE + LOCAL_ADC_HYSTERESIS &&
+              LOCAL_EL_ADC_MAX - LOCAL_EL_ADC_CENTER > LOCAL_ADC_DEADZONE + LOCAL_ADC_HYSTERESIS,
+              "Invalid joystick ADC calibration");
+#endif
+static_assert((LOCAL_AZ_INVERT == 0 || LOCAL_AZ_INVERT == 1) &&
+              (LOCAL_EL_INVERT == 0 || LOCAL_EL_INVERT == 1), "Local axis inversion must be 0 or 1");

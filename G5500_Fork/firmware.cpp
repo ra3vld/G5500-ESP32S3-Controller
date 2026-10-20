@@ -263,6 +263,7 @@ void Application::controllerLoop() {
   network_.serviceHud();
   updatePosition();
   runtime_.controller.tick(millis()); // expire the hour before accepting any external command
+  hardware_.serviceLocalInputs();
   if (runtime_.controller.hardware.buttonGpio >= 0 && confirmButton.sample(hardware_.buttonReleased(), millis())) {
     runtime_.controller.execute(millis());
   }

@@ -53,6 +53,36 @@ constexpr bool gpio(int n) {
 constexpr bool output(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n < 34 : (SELECTED_BOARD == BOARD_S3 || SELECTED_BOARD == BOARD_CROWPANEL_21) || n != 46); }
 constexpr bool pullup(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n < 34 : (SELECTED_BOARD == BOARD_S3 || SELECTED_BOARD == BOARD_CROWPANEL_21) || n != 46); }
 constexpr bool adc(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n >= 32 : n >= 1 && n <= 10); }
+inline constexpr int localInputPins[] = {
+#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+ LOCAL_AZ_NEG_GPIO, LOCAL_AZ_POS_GPIO, LOCAL_EL_NEG_GPIO, LOCAL_EL_POS_GPIO,
+#elif LOCAL_INPUT_MODE == LOCAL_INPUT_JOYSTICK
+ LOCAL_AZ_ADC_GPIO, LOCAL_EL_ADC_GPIO,
+#endif
+ -1
+};
+constexpr bool validLocalInputs() {
+ for (int pin : localInputPins) {
+  if (pin < -1) return false;
+  if (pin == -1) continue;
+  if (LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS ? !pullup(pin) : !adc(pin)) return false;
+ }
+ return true;
+}
+static_assert(validLocalInputs(), "Local controls require pullup-capable GPIO / ADC1 inputs");
+inline const char *localPinOwner(int pin) {
+  if (pin < 0) return nullptr;
+#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+  if (pin == LOCAL_AZ_NEG_GPIO) return "local.azNegative";
+  if (pin == LOCAL_AZ_POS_GPIO) return "local.azPositive";
+  if (pin == LOCAL_EL_NEG_GPIO) return "local.elNegative";
+  if (pin == LOCAL_EL_POS_GPIO) return "local.elPositive";
+#elif LOCAL_INPUT_MODE == LOCAL_INPUT_JOYSTICK
+  if (pin == LOCAL_AZ_ADC_GPIO) return "local.azJoystick";
+  if (pin == LOCAL_EL_ADC_GPIO) return "local.elJoystick";
+#endif
+  return nullptr;
+}
 // One owner per active wire; shared TFT/touch SPI wires appear only once here.
 inline constexpr int activePins[] = {
  PIN_AZ_ADC, PIN_EL_ADC, PIN_LEFT, PIN_RIGHT, PIN_DOWN, PIN_UP, PIN_SPEED,
@@ -61,6 +91,11 @@ inline constexpr int activePins[] = {
 #endif
  (SELECTED_BOARD == BOARD_CROWPANEL_21 && BLUETOOTH_BACKEND == BT_HC05) ? -1 : PIN_UART_RX,
  (SELECTED_BOARD == BOARD_CROWPANEL_21 && BLUETOOTH_BACKEND == BT_HC05) ? -1 : PIN_UART_TX, PIN_CONFIRM, PIN_RGB, PIN_LED,
+#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+ LOCAL_AZ_NEG_GPIO, LOCAL_AZ_POS_GPIO, LOCAL_EL_NEG_GPIO, LOCAL_EL_POS_GPIO,
+#elif LOCAL_INPUT_MODE == LOCAL_INPUT_JOYSTICK
+ LOCAL_AZ_ADC_GPIO, LOCAL_EL_ADC_GPIO,
+#endif
 #if BLUETOOTH_BACKEND == BT_HC05
  PIN_HC05_STATE, PIN_HC05_RX, PIN_HC05_TX,
 #endif
@@ -130,7 +165,10 @@ inline const char *fixedPinOwner(int n) {
   return nullptr;
 }
 inline const char *unavailablePinOwner(int n) {
-  if(gpio(n)) return fixedPinOwner(n);
+  if(gpio(n)) {
+    if(const auto *owner=fixedPinOwner(n)) return owner;
+    return localPinOwner(n);
+  }
   if((SELECTED_BOARD==BOARD_ESP32 && ((n>=6 && n<=11) || n==16 || n==17)) ||
       ((SELECTED_BOARD==BOARD_S3 || SELECTED_BOARD==BOARD_CROWPANEL_21) && n>=26 && n<=37) ||
       ((SELECTED_BOARD==BOARD_S2_LEGACY || SELECTED_BOARD==BOARD_S2_MINI) && n>=22 && n<=32)) return "flash_psram";
@@ -181,6 +219,7 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
     if(kind==PinKind::Output && !output(pin)) return {"input_only_gpio",field,"",pin};
     if(needsPullup && !pullup(pin)) return {"invalid_pullup",field,"",pin};
     if(const auto *owner=fixedPinOwner(pin)) return {"gpio_conflict",field,owner,pin};
+    if(const auto *owner=localPinOwner(pin)) return {"gpio_conflict",field,owner,pin};
     if(owners[pin]) return {"gpio_conflict",field,owners[pin],pin};
     owners[pin]=field; return {};
   };

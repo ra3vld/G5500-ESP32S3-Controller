@@ -46,4 +46,61 @@
 // Начальные значения и совместимость прежних -D — в runtime_defaults.hpp.
 #include "runtime_defaults.hpp"
 
+// 3. ЛОКАЛЬНОЕ УПРАВЛЕНИЕ ОСЯМИ (параметры сборки, не NVS).
+// NONE — отключено; BUTTONS — четыре кнопки на GND; JOYSTICK — два ADC1.
+// -1 отключает пару кнопок / аналоговый вход соответствующей оси.
+// Подключение и примеры: docs/local-controls.md.
+#ifndef LOCAL_INPUT_MODE
+#define LOCAL_INPUT_MODE LOCAL_INPUT_NONE
+#endif
+#ifndef LOCAL_AZ_NEG_GPIO
+#define LOCAL_AZ_NEG_GPIO -1
+#endif
+#ifndef LOCAL_AZ_POS_GPIO
+#define LOCAL_AZ_POS_GPIO -1
+#endif
+#ifndef LOCAL_EL_NEG_GPIO
+#define LOCAL_EL_NEG_GPIO -1
+#endif
+#ifndef LOCAL_EL_POS_GPIO
+#define LOCAL_EL_POS_GPIO -1
+#endif
+#ifndef LOCAL_AZ_ADC_GPIO
+#define LOCAL_AZ_ADC_GPIO -1
+#endif
+#ifndef LOCAL_EL_ADC_GPIO
+#define LOCAL_EL_ADC_GPIO -1
+#endif
+// Калибровка джойстика: отсчёты analogRead(), 12 бит, 0..4095.
+#ifndef LOCAL_AZ_ADC_MIN
+#define LOCAL_AZ_ADC_MIN 0
+#endif
+#ifndef LOCAL_AZ_ADC_CENTER
+#define LOCAL_AZ_ADC_CENTER 2048
+#endif
+#ifndef LOCAL_AZ_ADC_MAX
+#define LOCAL_AZ_ADC_MAX 4095
+#endif
+#ifndef LOCAL_EL_ADC_MIN
+#define LOCAL_EL_ADC_MIN 0
+#endif
+#ifndef LOCAL_EL_ADC_CENTER
+#define LOCAL_EL_ADC_CENTER 2048
+#endif
+#ifndef LOCAL_EL_ADC_MAX
+#define LOCAL_EL_ADC_MAX 4095
+#endif
+#ifndef LOCAL_AZ_INVERT
+#define LOCAL_AZ_INVERT 0
+#endif
+#ifndef LOCAL_EL_INVERT
+#define LOCAL_EL_INVERT 0
+#endif
+#ifndef LOCAL_ADC_DEADZONE
+#define LOCAL_ADC_DEADZONE 200
+#endif
+#ifndef LOCAL_ADC_HYSTERESIS
+#define LOCAL_ADC_HYSTERESIS 50
+#endif
+
 #include "build_config_checks.hpp"
