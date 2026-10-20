@@ -5,6 +5,7 @@
 #include "position_filter.hpp"
 #include "runtime.hpp"
 #include "crowpanel_drive.hpp"
+#include "rgb_indicator.hpp"
 namespace forkrot {
 
 enum RgbState : uint8_t { RGB_IDLE, RGB_RX, RGB_TX, RGB_HEARTBEAT };
@@ -38,6 +39,7 @@ public:
 private:
   void rgbStart(RgbState s);
   Runtime &runtime_;
+  RgbIndicator rgb_;
   bool pwmReady = false, pwmFailed = false, directionsStarted_ = false;
   bool attached_[4] = {};
   PositionFilter filters_[2];

@@ -15,6 +15,7 @@ class String {
 public:
   String() = default;
   String(const char *value) : value_(value ? value : "") {}
+  String(const char *value, size_t length) : value_(value ? std::string(value,length) : "") {}
   String(std::string value) : value_(std::move(value)) {}
   template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
   String(T value) {
@@ -31,6 +32,10 @@ public:
   }
   const char *c_str() const { return value_.c_str(); }
   size_t length() const { return value_.size(); }
+  bool startsWith(const char *prefix) const { return value_.find(prefix)==0; }
+  long toInt() const { return std::strtol(value_.c_str(),nullptr,10); }
+  void toUpperCase() { for(auto &c:value_)c=std::toupper(static_cast<unsigned char>(c)); }
+  void toLowerCase() { for(auto &c:value_)c=std::tolower(static_cast<unsigned char>(c)); }
   void replace(const char *from, const char *to) {
     const size_t length = std::strlen(from);
     if (!length) return;

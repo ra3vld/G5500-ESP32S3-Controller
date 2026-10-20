@@ -59,3 +59,7 @@ python3 tools/build_platformio.py --env esp32_8mb_ota --bluetooth 1 --bluetooth-
 - `POST /api/ota/arduino` — включить ArduinoOTA на 10 минут. Имя и временный пароль возвращаются последующим `GET /api/ota`.
 
 Кроме `/write`, POST-запросы имеют пустое тело. Успех возвращает `{"ok":true}`, ошибка — JSON с `error`. Во время обновления обычные команды и изменение настроек через HTTP возвращают 503 `update_locked`.
+
+## ArduinoOTA без браузера
+
+Активация и получение временного пароля доступны через [командный API](command-api.md#обновление-по-сети) в обычных сборках и профиле `esp32_4mb_noweb`.

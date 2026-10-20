@@ -16,16 +16,17 @@ uint32_t Hardware::motorPwmDuty(uint32_t duty) const {
   return c.drive == DRIVE_BTS7960 && c.pwmInverted ? 1023u-duty : duty;
 }
 int Hardware::idleOutputLevel(int pin) const {
+  const auto &p=runtime_.controller.hardware.pins;
   const auto &c = runtime_.controller.hardware;
   return c.drive == DRIVE_BTS7960 && c.pwmInverted &&
-      (pin == PIN_LEFT || pin == PIN_RIGHT || pin == PIN_UP || pin == PIN_DOWN) ? HIGH : LOW;
+      (pin == p.azNegative || pin == p.azPositive || pin == p.elPositive || pin == p.elNegative) ? HIGH : LOW;
 }
 int Hardware::adcAvgMv(int pin) {
-  if (runtime_.hud.isHud())
+  if (runtime_.hud.isHud() || runtime_.recovery)
     return 0;
-  if (runtime_.controller.hardware.simulation || (SELECTED_BOARD == BOARD_CROWPANEL_21 && !CROWPANEL_LOCAL_DRIVE) || !board::adc(pin)) {
+  if (runtime_.controller.hardware.simulation || !board::adc(pin)) {
   (void)pin;
-  return 0; // No feedback adapter in this CrowPanel profile.
+  return 0;
   } else {
   uint32_t s = 0;
   for (int i = 0; i < 25; i++) {
@@ -37,22 +38,23 @@ int Hardware::adcAvgMv(int pin) {
 }
 
 int Hardware::filteredMv(unsigned axis) {
-  if (runtime_.hud.isHud())
+  const auto &p=runtime_.controller.hardware.pins;
+  if (runtime_.hud.isHud() || runtime_.recovery)
     return 0;
   auto &filter = filters_[axis];
   const uint32_t now = millis();
-  return filter.due(now) ? filter.sample(adcAvgMv(axis ? PIN_EL_ADC : PIN_AZ_ADC), now) : filter.value();
+  return filter.due(now) ? filter.sample(adcAvgMv(axis ? p.elAdc : p.azAdc), now) : filter.value();
 }
 bool Hardware::buttonReleased() const {
   if (runtime_.controller.hardware.buttonGpio < 0) return true;
   return digitalRead(runtime_.controller.hardware.buttonGpio) == (runtime_.controller.hardware.buttonLow ? HIGH : LOW);
 }
 void Hardware::adcDiagRead(int pin, int &raw, int &mv) {
-  if (runtime_.hud.isHud()) {
+  if (runtime_.hud.isHud() || runtime_.recovery) {
     raw = mv = 0;
     return;
   }
-  if (runtime_.controller.hardware.simulation || (SELECTED_BOARD == BOARD_CROWPANEL_21 && !CROWPANEL_LOCAL_DRIVE) || !board::adc(pin)) {
+  if (runtime_.controller.hardware.simulation || !board::adc(pin)) {
   mv = adcAvgMv(pin);
   raw = 0;
   } else {
@@ -68,9 +70,11 @@ void Hardware::adcDiagRead(int pin, int &raw, int &mv) {
 }
 
 void Hardware::rgbSet(uint8_t r, uint8_t g, uint8_t b) {
-  if (PIN_LED >= 0) digitalWrite(PIN_LED, (r || g || b) ? HIGH : LOW);
-  if (PIN_RGB >= 0) {
-    rgbLedWrite(PIN_RGB, r, g, b);
+  const auto &p=runtime_.controller.hardware.pins;
+  if(runtime_.recovery) return;
+  if (p.led >= 0) digitalWrite(p.led, (r || g || b) ? HIGH : LOW);
+  if (p.rgb >= 0) {
+    rgb_.write(p.rgb, r, g, b);
   }
 }
 
@@ -185,34 +189,37 @@ void Hardware::controlRotator() {
 }
 
 void Hardware::outputsOff() {
+  const auto &p=runtime_.controller.hardware.pins;
   const auto &c = runtime_.controller.hardware;
 #if CROWPANEL_LOCAL_DRIVE
   if (directionsStarted_ && !c.simulation && !runtime_.hud.isHud() && !crowpanelDrive_.stop()) crowpanelFault();
   return;
 #endif
-  if (!directionsStarted_ || c.simulation || SELECTED_BOARD == BOARD_CROWPANEL_21 || runtime_.hud.isHud()) return;
+  if (!directionsStarted_ || c.simulation || runtime_.hud.isHud()) return;
   if (c.drive == DRIVE_BTS7960) {
-    preloadLevel(PIN_SPEED, LOW); preloadLevel(PIN_EL_SPEED, LOW);
+    preloadLevel(p.azSpeedEnable, LOW);
+    if(!c.pins.singleAxis()) preloadLevel(p.elSpeedEnable, LOW);
   }
-  const int pins[] = {PIN_LEFT, PIN_RIGHT, PIN_DOWN, PIN_UP, PIN_SPEED, c.drive != DRIVE_YAESU ? PIN_EL_SPEED : -1};
-  const int pwm[] = {c.drive == DRIVE_BTS7960 ? PIN_LEFT : PIN_SPEED,
-                    c.drive == DRIVE_BTS7960 ? PIN_RIGHT : PIN_EL_SPEED,
-                    c.drive == DRIVE_BTS7960 ? PIN_DOWN : -1,
-                    c.drive == DRIVE_BTS7960 ? PIN_UP : -1};
+  const int pins[] = {p.azNegative, p.azPositive, p.elNegative, p.elPositive, p.azSpeedEnable, c.drive != DRIVE_YAESU ? p.elSpeedEnable : -1};
+  const int pwm[] = {c.drive == DRIVE_BTS7960 ? p.azNegative : p.azSpeedEnable,
+                    c.drive == DRIVE_BTS7960 ? p.azPositive : p.elSpeedEnable,
+                    c.drive == DRIVE_BTS7960 ? p.elNegative : -1,
+                    c.drive == DRIVE_BTS7960 ? p.elPositive : -1};
   for (unsigned i=0; i<4; ++i) if (attached_[i]) ledcWrite(pwm[i], motorPwmDuty(0));
   for (int pin : pins) if (pin >= 0) preloadLevel(pin, idleOutputLevel(pin));
 }
 bool Hardware::preparePwm(bool enable) {
+  const auto &p=runtime_.controller.hardware.pins;
   const auto &c = runtime_.controller.hardware;
-  if (runtime_.hud.isHud() || runtime_.controller.configurationLocked || c.simulation || SELECTED_BOARD == BOARD_CROWPANEL_21) return false;
-  const int pins[] = {c.drive == DRIVE_BTS7960 ? PIN_LEFT : PIN_SPEED,
-                      c.drive == DRIVE_BTS7960 ? PIN_RIGHT : PIN_EL_SPEED,
-                      c.drive == DRIVE_BTS7960 ? PIN_DOWN : -1,
-                      c.drive == DRIVE_BTS7960 ? PIN_UP : -1};
+  if (runtime_.hud.isHud() || runtime_.controller.configurationLocked || c.simulation) return false;
+  const int pins[] = {c.drive == DRIVE_BTS7960 ? p.azNegative : p.azSpeedEnable,
+                      c.drive == DRIVE_BTS7960 ? p.azPositive : p.elSpeedEnable,
+                      c.drive == DRIVE_BTS7960 ? p.elNegative : -1,
+                      c.drive == DRIVE_BTS7960 ? p.elPositive : -1};
   if (pwmFailed) return false;
   if (enable && !pwmReady) {
     outputsOff();
-    const unsigned count = c.drive == DRIVE_BTS7960 ? 4 : c.drive == DRIVE_SEPARATE_PWM ? 2 : 1;
+    const unsigned count = c.drive == DRIVE_BTS7960 ? (c.pins.singleAxis()?2:4) : c.drive == DRIVE_SEPARATE_PWM ? (c.pins.singleAxis()?1:2) : 1;
     for (unsigned i=0; i<count; ++i) {
       attached_[i] = ledcAttach(pins[i], c.drive == DRIVE_YAESU ? 20000 : 1000, 10);
       if (!attached_[i]) {
@@ -259,19 +266,17 @@ void Hardware::applyOutputs() {
           controller.variableSpeed(0))) crowpanelFault();
   }
 #else
-  else if (SELECTED_BOARD == BOARD_CROWPANEL_21) {
-    if (runtime_.controller.moving() || runtime_.controller.axes[0].wanted || runtime_.controller.axes[1].wanted)
-      runtime_.controller.stopNow(-1, millis());
-    runtime_.controller.driveFault = true; runtime_.controller.fault = "crowpanel_no_drive";
-  } else {
+  else {
+    const auto &p=c.pins;
+    if(!directionsStarted_) return;
     const bool ready = preparePwm(c.drive != DRIVE_YAESU || runtime_.controller.variableSpeed(0));
-    const int neg[2] = {PIN_LEFT, PIN_DOWN}, pos[2] = {PIN_RIGHT, PIN_UP}, speed[2] = {PIN_SPEED, PIN_EL_SPEED};
+    const int neg[2] = {p.azNegative, p.elNegative}, pos[2] = {p.azPositive, p.elPositive}, speed[2] = {p.azSpeedEnable, p.elSpeedEnable};
     if (c.drive == DRIVE_BTS7960) {
-      for (unsigned i=0; i<2; ++i)
+      for (unsigned i=0; i<(c.pins.singleAxis()?1u:2u); ++i)
         if (!ready || !runtime_.controller.axes[i].direction || runtime_.controller.axes[i].speedOutputPercent <= 0)
           digitalWrite(speed[i], LOW);
     }
-    for (unsigned i=0; i<2; ++i) {
+    for (unsigned i=0; i<(c.pins.singleAxis()?1u:2u); ++i) {
       const auto &axis = runtime_.controller.axes[i];
       const int d = ready ? axis.direction : 0;
       const uint32_t duty = d ? uint32_t(lroundf(axis.speedOutputPercent*1023.f/100.f)) : 0;
@@ -297,36 +302,36 @@ void Hardware::applyOutputs() {
   runtime_.azTrack = runtime_.controller.axes[0].tracking; runtime_.elTrack = runtime_.controller.axes[1].tracking;
 }
 void Hardware::beginDirections() {
-  const auto &c = runtime_.controller.hardware;
+  const auto &c=runtime_.controller.hardware;
+  if(runtime_.recovery) return;
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   crowpanel::beginBus();
-#if CROWPANEL_LOCAL_DRIVE
-  if (!c.simulation && !runtime_.hud.isHud()) {
-    directionsStarted_ = true;
-    if (!crowpanelDrive_.begin(c)) crowpanelFault();
-  }
-#else
-  if (!c.simulation && !runtime_.hud.isHud()) {
-    runtime_.controller.driveFault = true; runtime_.controller.fault = "crowpanel_no_drive";
-  }
 #endif
-#else
-  if (PIN_LED >= 0) { preloadLevel(PIN_LED, LOW); pinMode(PIN_LED, OUTPUT); }
-  if (runtime_.hud.isHud() || c.simulation) return;
-  if (c.drive == DRIVE_BTS7960) {
-    preloadLevel(PIN_SPEED, LOW); pinMode(PIN_SPEED, OUTPUT);
-    preloadLevel(PIN_EL_SPEED, LOW); pinMode(PIN_EL_SPEED, OUTPUT);
+  if(c.pins.led>=0) { preloadLevel(c.pins.led,LOW); pinMode(c.pins.led,OUTPUT); }
+  if(runtime_.hud.isHud() || c.simulation) return;
+  if(board::validateHardware(c)) {
+    runtime_.controller.driveFault=true; runtime_.controller.fault="pin_configuration_invalid"; return;
   }
-  const int pins[] = {PIN_LEFT, PIN_RIGHT, PIN_UP, PIN_DOWN, PIN_SPEED, c.drive != DRIVE_YAESU ? PIN_EL_SPEED : -1};
-  for (int pin : pins) if (pin >= 0) { preloadLevel(pin, idleOutputLevel(pin)); pinMode(pin, OUTPUT); }
-  directionsStarted_ = true;
+#if CROWPANEL_LOCAL_DRIVE
+  directionsStarted_=true;
+  if(!crowpanelDrive_.begin(c)) crowpanelFault();
+#else
+  if(c.drive==DRIVE_BTS7960) {
+    preloadLevel(c.pins.azSpeedEnable,LOW); pinMode(c.pins.azSpeedEnable,OUTPUT);
+    if(!c.pins.singleAxis()) { preloadLevel(c.pins.elSpeedEnable,LOW); pinMode(c.pins.elSpeedEnable,OUTPUT); }
+  }
+  const int motorPins[]={c.pins.azNegative,c.pins.azPositive,c.pins.elPositive,c.pins.elNegative,
+      c.pins.azSpeedEnable,c.drive!=DRIVE_YAESU?c.pins.elSpeedEnable:-1};
+  for(int pin:motorPins) if(pin>=0) { preloadLevel(pin,idleOutputLevel(pin)); pinMode(pin,OUTPUT); }
+  directionsStarted_=true;
 #endif
 }
 void Hardware::beginAdc() {
-  if (runtime_.hud.isHud() || runtime_.controller.hardware.simulation || (SELECTED_BOARD == BOARD_CROWPANEL_21 && !CROWPANEL_LOCAL_DRIVE)) return;
+  const auto &p=runtime_.controller.hardware.pins;
+  if (runtime_.hud.isHud() || runtime_.recovery || runtime_.controller.hardware.simulation || board::validateHardware(runtime_.controller.hardware)) return;
   analogReadResolution(12);
-  analogSetPinAttenuation(PIN_AZ_ADC, ADC_11db); analogRead(PIN_AZ_ADC);
-  if (board::adc(PIN_EL_ADC)) { analogSetPinAttenuation(PIN_EL_ADC, ADC_11db); analogRead(PIN_EL_ADC); }
+  analogSetPinAttenuation(p.azAdc, ADC_11db); analogRead(p.azAdc);
+  if (board::adc(p.elAdc)) { analogSetPinAttenuation(p.elAdc, ADC_11db); analogRead(p.elAdc); }
 }
 #if CROWPANEL_LOCAL_DRIVE
 void Hardware::crowpanelFault() {
@@ -339,6 +344,6 @@ void Hardware::crowpanelFault() {
 #endif
 void Hardware::beginInputs() {
   const auto &c = runtime_.controller.hardware;
-  if (c.buttonGpio >= 0) pinMode(c.buttonGpio, c.buttonPullup ? INPUT_PULLUP : INPUT);
+  if (!runtime_.recovery && c.buttonGpio >= 0) pinMode(c.buttonGpio, c.buttonPullup ? INPUT_PULLUP : INPUT);
 }
 } // namespace forkrot

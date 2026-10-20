@@ -11,8 +11,8 @@ class Button {
 public:
   bool sample(bool released, uint32_t now);
 };
-class LineBuffer {
-  char buffer_[512];
+template<size_t Capacity> class BasicLineBuffer {
+  char buffer_[Capacity];
   size_t size_ = 0;
   bool discardingLine_ = false;
 
@@ -31,7 +31,18 @@ public:
     std::string_view ignored;
     feed(byte, ignored);
   }
-  bool feed(char byte, std::string_view &line);
+  bool feed(char byte, std::string_view &line) {
+    if (byte == '\r' || byte == '\n') {
+      const bool ready = !discardingLine_ && size_ != 0;
+      if (ready) line = {buffer_, size_};
+      clear(); return ready;
+    }
+    if (discardingLine_) return false;
+    if ((byte < 32 && byte != '\t') || byte > 126 || size_ >= sizeof buffer_) {
+      size_ = 0; discardingLine_ = true; return false;
+    }
+    buffer_[size_++] = byte; return false;
+  }
   bool feed(char byte, std::string &line) {
     std::string_view view;
     if (!feed(byte, view)) return false;
@@ -40,11 +51,14 @@ public:
   }
 };
 
+using LineBuffer = BasicLineBuffer<512>;
+using ApiLineBuffer = BasicLineBuffer<1024>;
+
 // Keep a stream connected across selection changes. Freeze the number of bytes
 // already queued at the boundary; consume them within the usual receive budget.
 // A trailing fragment stays cancelled until its delimiter, even across reads.
-class SelectionLineBuffer {
-  LineBuffer line_;
+template<class Buffer> class BasicSelectionLineBuffer {
+  Buffer line_;
   size_t staleBytes_ = 0;
 
 public:
@@ -65,4 +79,6 @@ public:
     return line_.feed(byte, line);
   }
 };
+using SelectionLineBuffer = BasicSelectionLineBuffer<LineBuffer>;
+using SelectionApiLineBuffer = BasicSelectionLineBuffer<ApiLineBuffer>;
 } // namespace forkrot

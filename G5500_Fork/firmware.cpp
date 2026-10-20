@@ -22,6 +22,7 @@
 #include "firmware.hpp"
 #include "application.hpp"
 #include "runtime_metrics.hpp"
+#include <new>
 #if SELECTED_BOARD == BOARD_ESP32
 #include <esp_log.h>
 #endif
@@ -39,7 +40,7 @@ void Application::failConfiguration(RecoveryReason reason) {
   runtime_.controller.configurationLocked = true;
   __atomic_store_n(&recoveryLatch, RecoveryCookie, __ATOMIC_RELAXED);
   if (recoveryReserve_) { heap_caps_free(recoveryReserve_); recoveryReserve_ = nullptr; }
-  web_server_.abortForRecovery();
+  ota_.cancel();
   storage_.enterRecovery(runtime_, reason);
   delay(100);
   ESP.restart();
@@ -87,6 +88,12 @@ void Application::controllerSetup() {
     }
   }
   network_.beginHud();
+  ota_.begin([](void *context) {
+    auto &self=*static_cast<Application *>(context);
+    self.runtime_.controller.stopNow(-1,millis());self.hardware_.applyOutputs();
+    if(self.runtime_.hud.isHud())self.network_.serviceHud();
+    self.runtime_.controller.configurationLocked=true;
+  },this);
   if (!runtime_.recovery) hardware_.beginDirections();
   if (!runtime_.hud.isHud())
     hardware_.allStop();
@@ -97,6 +104,9 @@ void Application::controllerSetup() {
 #endif
   if (!network_.beginSerial() && !runtime_.recovery) { failConfiguration(RecoveryReason::Radio); return; }
   diagnostics_.beginNativeUsb();
+  // Reserve the essential console before Wi-Fi can consume memory or fail.
+  // Ordinary web builds allocate command sessions on first use instead.
+  if (runtime_.recovery || !WEB_INTERFACE_ENABLED) network_.beginCommandApi();
   if (!runtime_.recovery) hardware_.beginAdc();
 
   if (!runtime_.recovery) display_.initLocalDisplay();
@@ -121,7 +131,7 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrint(" | drive=");
   diagnostics_.dbgPrintln(runtime_.hud.isHud() ? "HUD remote drive"
                           : runtime_.controller.hardware.simulation ? "SIMULATED 13.4 deg/s"
-                          : SELECTED_BOARD == BOARD_CROWPANEL_21 ? "NONE"
+                          : runtime_.controller.hardware.pins.azAdc < 0 ? "NONE"
                           : runtime_.controller.hardware.drive == DRIVE_YAESU   ? "YAESU"
                           : runtime_.controller.hardware.drive == DRIVE_BTS7960 ? "BTS7960"
                                                              : "SEPARATE_PWM");
@@ -160,7 +170,7 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln("=== G5500 " FORK_CHIP_NAME " v1.6.23 WEB ===");
 #endif
   diagnostics_.dbgPrintln("Copyright (c) UA1CFM");
-  diagnostics_.dbgPrintln(runtime_.hud.config.uart
+  diagnostics_.dbgPrintln(runtime_.controller.hardware.pins.uartRx < 0 ? "UART: disabled" : runtime_.hud.config.uart
                               ? "UART0: HUD/1, 115200 8N1; GS-232 disabled on these pins"
                               : "UART0 USB: PSTROTATOR GS-232, 9600 baud (COM number assigned by Windows)");
 #if FORK_NATIVE_USB
@@ -194,9 +204,10 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln(
       "Calibration data stored separately; separate reset for each mode and axis");
 #if TFT_DISPLAY_ENABLED
-  diagnostics_.dbgPrintln(
-      "TFT SPI: MOSI GPIO10, SCK GPIO11, MISO GPIO2, TFT_CS GPIO12, DC GPIO13, RST GPIO14");
-  diagnostics_.dbgPrintln("XPT2046: TOUCH_CS GPIO8, TOUCH_IRQ GPIO9; shared SPI bus");
+  const auto &pins=runtime_.controller.hardware.pins;
+  diagnostics_.dbgPrintln(String("TFT SPI: MOSI=")+pins.tftMosi+", SCK="+pins.tftSck+", MISO="+pins.tftMiso+
+      ", CS="+pins.tftCs+", DC="+pins.tftDc+", RST="+pins.tftRst);
+  diagnostics_.dbgPrintln(String("XPT2046: CS=")+pins.touchCs+", IRQ="+pins.touchIrq+"; shared SPI bus");
 #endif
   diagnostics_.dbgPrintln("Fork control: calibrated target movement, 300ms reverse dead-time");
   diagnostics_.dbgPrintln("Web main cards: current / target shown inline for AZ and EL");
@@ -206,7 +217,7 @@ void Application::controllerSetup() {
 #elif DISPLAY_KIND == DISPLAY_LCD1602
   diagnostics_.dbgPrintln("LCD1602: current/target, mode/wait and PWM output bars; touch disabled");
 #elif DISPLAY_KIND == DISPLAY_CROWPANEL_21
-  diagnostics_.dbgPrintln("CrowPanel 2.1: RGB dashboard, encoder 20 deg, touch mode/STOP; no motor GPIO");
+  diagnostics_.dbgPrintln("CrowPanel 2.1: RGB dashboard, encoder 20 deg, touch mode/STOP");
 #else
   diagnostics_.dbgPrintln("Display and touch: disabled; Web control and calibration available");
 #endif
@@ -225,11 +236,22 @@ void Application::controllerSetup() {
 }
 void Application::controllerLoop() {
   const uint32_t startedUs = micros();
-  if (runtime_.recovery) { web_server_.service(); delay(5); return; }
+  ota_.service();
+  network_.serviceCommandReplies();
+  if(restart_.consume(millis()) || ota_.readyToRestart()) {
+    if(storage_.finishHardwareBoot(runtime_))ESP.restart();
+  }
+  if (runtime_.recovery) {
+    network_.handlePstRotatorSerial();network_.serviceCommandUdp();
+    network_.serviceCommandReplies();network_.serviceHeapDiagnostics();
+    web_server_.service();delay(5);return;
+  }
   serviceConfigurationSafety();
   // Once an update starts, keep outputs stopped even after an upload error.
   // Only reboot can resume input processing, so buffered commands cannot replay.
-  if (web_server_.otaLocked()) {
+  if (ota_.locked()) {
+    network_.handlePstRotatorSerial();network_.serviceCommandUdp();network_.handleRotctldTcp();
+    network_.serviceCommandReplies();
     web_server_.service();
     network_.serviceWifiReconnect();
     hardware_.updateRgb();
@@ -244,6 +266,7 @@ void Application::controllerLoop() {
   if (runtime_.controller.hardware.buttonGpio >= 0 && confirmButton.sample(hardware_.buttonReleased(), millis())) {
     runtime_.controller.execute(millis());
   }
+  network_.serviceCommandUdp();
   network_.serviceLoggerUdp();
   network_.handlePstRotatorSerial(); // UART0 USB / PSTROTATOR / GS-232
   network_.handleBluetoothSerial(); // selected Bluetooth transport / GS-232B
@@ -254,9 +277,10 @@ void Application::controllerLoop() {
   network_.serviceHud();
   hardware_.controlRotator();
   web_server_.publishLive();
+  network_.serviceCommandReplies();
   network_.serviceHeapDiagnostics();
   web_server_.service();
-  if (web_server_.otaLocked()) return;
+  if (ota_.locked()) return;
   network_.serviceWifiReconnect();
   diagnostics_.serviceRssiHistory();
   if (runtime_.hud.settingsDirty) {
@@ -280,11 +304,26 @@ void Application::controllerLoop() {
 }
 } // namespace forkrot
 namespace {
-forkrot::Application application;
+#if SELECTED_BOARD == BOARD_S2_LEGACY || SELECTED_BOARD == BOARD_S2_MINI
+// S2's static DRAM region overlaps IRAM. Its internal byte-addressable heap
+// includes additional regions; allocate once before any application GPIO setup.
+forkrot::Application *application=nullptr;
+#else
+forkrot::Application applicationStorage;
+forkrot::Application *const application=&applicationStorage;
+#endif
 }
 void controllerSetup() {
-  application.controllerSetup();
+#if SELECTED_BOARD == BOARD_S2_LEGACY || SELECTED_BOARD == BOARD_S2_MINI
+  void *memory=heap_caps_malloc(sizeof(forkrot::Application),MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+  if(!memory) {
+    __atomic_store_n(&forkrot::recoveryLatch,forkrot::RecoveryCookie,__ATOMIC_RELAXED);
+    delay(100); ESP.restart(); return;
+  }
+  application=new(memory) forkrot::Application;
+#endif
+  application->controllerSetup();
 }
 void controllerLoop() {
-  application.controllerLoop();
+  if(application) application->controllerLoop();
 }

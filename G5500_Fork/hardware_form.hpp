@@ -16,11 +16,11 @@ inline bool hardwareUnsigned(std::string_view text, uint32_t &out) {
   }
   out = value; return true;
 }
-inline bool parseHardwareForm(std::string_view body, HardwareForm &out, bool settings) {
+inline bool parseHardwareForm(std::string_view body, HardwareForm &out, bool settings, const HardwareConfig &base = HardwareConfig{}) {
   constexpr std::string_view names[] = {"token","generation","driveInterface","simulation","bluetoothEnabled",
     "bluetoothMode","forceApSta","buttonGpio","buttonActiveLow","buttonPullup","pwmInverted"};
-  if (body.empty() || body.size() > 512) return false;
-  HardwareForm next; unsigned seen = 0;
+  if (body.empty() || body.size() > 1024) return false;
+  HardwareForm next; next.config=base; uint64_t seen = 0;
   for (;;) {
     const auto end = body.find('&');
     const auto part = body.substr(0,end);
@@ -29,8 +29,21 @@ inline bool parseHardwareForm(std::string_view body, HardwareForm &out, bool set
     const auto name = part.substr(0,equal), text = part.substr(equal+1);
     unsigned key = 0;
     while (key < 11 && names[key] != name) ++key;
-    if (key == 11 || (!settings && key > 1) || (seen & (1u<<key))) return false;
-    seen |= 1u<<key;
+    const auto *pin=pinDefinition(name);
+    if(key==11) {
+      if(!pin) return false;
+      key=11+unsigned(pin-pinDefinitions.data());
+    }
+    if ((!settings && key > 1) || (seen & (uint64_t(1)<<key))) return false;
+    seen |= uint64_t(1)<<key;
+    if(pin) {
+      uint32_t value=0;
+      if(text=="-1") next.config.pins.*pin->member=-1;
+      else if(!hardwareUnsigned(text,value) || value>48) return false;
+      else next.config.pins.*pin->member=int8_t(value);
+      if(end==body.npos) break;
+      body.remove_prefix(end+1); continue;
+    }
     uint32_t value = 0;
     if (key == 7 && text == "-1") next.config.buttonGpio = -1;
     else {
@@ -54,7 +67,7 @@ inline bool parseHardwareForm(std::string_view body, HardwareForm &out, bool set
     if (end == body.npos) break;
     body.remove_prefix(end+1);
   }
-  if (seen != (settings ? 2047u : 3u) || !next.token || !next.generation) return false;
+  if ((seen & 3u)!=3u || (settings ? seen==3u : seen!=3u) || !next.token || !next.generation) return false;
   out=next; return true;
 }
 } // namespace forkrot

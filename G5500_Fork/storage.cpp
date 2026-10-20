@@ -67,7 +67,10 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
   const bool fresh = readable && !prefs_.isKey("config1");
   if (readable && !fresh) {
     HardwareBytes bytes{};
-    valid = prefs_.getBytesLength("config1") == bytes.size() &&
+    if(prefs_.getBytesLength("config1")==LegacyHardwareBytes{}.size()) {
+      LegacyHardwareBytes legacy{};
+      valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
+    } else valid = prefs_.getBytesLength("config1") == bytes.size() &&
         prefs_.getBytes("config1", bytes.data(), bytes.size()) == bytes.size() && decodeHardware(bytes, record);
   }
   if (readable && prefs_.isKey("recovery1")) {
@@ -77,13 +80,24 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
   }
   prefs_.end();
   const auto savedHistory=history;
-  if (!readable || !valid || validateHardware(record.good, runtime.hud.config.uart) ||
-      validateHardware(record.candidate, runtime.hud.config.uart)) {
+  // A capability removed by this image must not erase the last known drive
+  // configuration. Validate its physical fields with the unavailable radio off.
+  auto invalidStored = [&](HardwareConfig config) {
+    if (!BLUETOOTH_SUPPORT) config.bluetooth = false;
+    return validateHardware(config, runtime.hud.config.uart);
+  };
+  const bool candidateBoot = record.phase == ConfigPhase::Pending || record.phase == ConfigPhase::Testing;
+  const bool unsupportedRadio = !BLUETOOTH_SUPPORT &&
+      (candidateBoot ? record.candidate.bluetooth : record.good.bluetooth);
+  if (!readable || !valid || invalidStored(record.good) || invalidStored(record.candidate)) {
     record = {};
     record.phase = ConfigPhase::Recovery;
     record.reason = !readable ? RecoveryReason::Storage : RecoveryReason::Invalid;
   } else if (!historyValid) {
     record.phase=ConfigPhase::Recovery;record.reason=RecoveryReason::Storage;
+  } else if (unsupportedRadio) {
+    record.phase = ConfigPhase::Recovery;
+    record.reason = RecoveryReason::Invalid;
   } else if (fresh || (!record.hasConfirmed && record.phase == ConfigPhase::Recovery &&
                        record.reason == RecoveryReason::Initial)) {
     // A fresh board starts with this build's hardware defaults. Only later
@@ -118,7 +132,7 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
   runtime.recoveryReason = record.reason;
   runtime.hardwareTrial = record.phase == ConfigPhase::Testing;
   HardwareConfig effective = runtime.hardwareTrial ? record.candidate : record.good;
-  if (runtime.recovery) { effective.bluetooth = false; effective.forceAp = false; }
+  if (runtime.recovery) effective=recoveryHardware(record);
   runtime.controller.configureHardware(effective);
   runtime.controller.configurationLocked = runtime.recovery || runtime.hardwareTrial;
 }
@@ -515,9 +529,7 @@ void Storage::loadForkSettings(Runtime &runtime) {
   prefs_.begin("forkcfg", true);
   runtime.controller.model =
       prefs_.getUChar("model", 0) == 1 ? forkrot::Model::G800DXA : forkrot::Model::G5500;
-#if CROWPANEL_LOCAL_DRIVE
-  if (!runtime.hud.isHud() && !runtime.controller.hardware.simulation) runtime.controller.model = Model::G800DXA;
-#endif
+  if (!runtime.hud.isHud() && !runtime.controller.hardware.simulation && runtime.controller.hardware.pins.singleAxis()) runtime.controller.model = Model::G800DXA;
   runtime.controller.restoreMode(prefs_.getUChar("mode", 0) == 1 ? forkrot::Mode::Auto
                                                                  : forkrot::Mode::Manual);
   if (runtime.controller.hardware.drive == DRIVE_YAESU) {
@@ -545,6 +557,7 @@ void Storage::loadForkSettings(Runtime &runtime) {
   runtime.loggerSettings.n1mmPort = prefs_.getUShort("nport", 12040);
   runtime.loggerSettings.pstPort = prefs_.getUShort("pport", 1234);
   runtime.loggerSettings.reportPort = prefs_.getUShort("rport", 13010);
+  runtime.loggerSettings.commandPort = prefs_.getUShort("cmdport", 4535);
   runtime.loggerSettings.reportHost = prefs_.getString("rhost", "").c_str();
   runtime.protocol.manualFollow.n1mm = prefs_.getBool("nmanual", false);
   runtime.protocol.manualFollow.pst = prefs_.getBool("pmanual", false);
@@ -633,6 +646,7 @@ bool Storage::saveForkSettings(const Runtime &runtime) {
   prefs_.putUShort("nport", runtime.loggerSettings.n1mmPort);
   prefs_.putUShort("pport", runtime.loggerSettings.pstPort);
   prefs_.putUShort("rport", runtime.loggerSettings.reportPort);
+  prefs_.putUShort("cmdport", runtime.loggerSettings.commandPort);
   prefs_.putString("rhost", runtime.loggerSettings.reportHost.c_str());
   prefs_.putBool("nmanual", runtime.protocol.manualFollow.n1mm);
   prefs_.putBool("pmanual", runtime.protocol.manualFollow.pst);

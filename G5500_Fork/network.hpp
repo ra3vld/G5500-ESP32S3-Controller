@@ -13,6 +13,7 @@
 #include "datagram_socket.hpp"
 #include "wifi_fallback.hpp"
 #include "diagnostic_stream.hpp"
+#include "command_api.hpp"
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include "hud_uart_tx.hpp"
@@ -50,6 +51,15 @@ public:
   bool bluetoothMac(char (&address)[18]) const { return bluetooth_.macAddress(address); }
   void handleBluetoothSerial();
   void serviceHeapDiagnostics();
+  bool beginCommandApi();
+  void setupCommandUdp();
+  void serviceCommandUdp();
+  void serviceCommandReplies();
+  bool portsValid(unsigned hud, unsigned n1mm, unsigned pst, unsigned report, unsigned command) const {
+    return commandPortAllowed(command) && command!=hud && command!=n1mm && command!=pst &&
+        command!=pst+1 && command!=report && hud && hud<=65535 && hud!=n1mm &&
+        hud!=pst && hud!=pst+1 && hud!=report;
+  }
   void handleRotctldTcp();
   bool startWifi();
   void connectWifi(const String &ssid, const String &password);
@@ -60,10 +70,13 @@ public:
   void serviceLoggerUdp();
   void captureSetupHeap() { heapAfterSetup_ = heapFreeBytes(); }
   void setHttpDiagnostics(const HttpDiagnostics &state) { http_ = state; }
+  const HttpDiagnostics &httpDiagnostics() const { return http_; }
 
 private:
   void sendReply(const String &s);
   void processGs232Command(std::string_view input);
+  bool processCommandApi(std::string_view input, uint8_t port);
+  size_t runCommandApi(uint64_t peer, std::string_view input, char *reply, size_t capacity);
   void rotctldSend(const String &s);
   void processRotctldCommand(std::string_view input);
   void restoreApOnlyAfterReconnectFail();
@@ -94,7 +107,16 @@ private:
   WifiCredentials credentials_;
   WiFiServer tcpServer_{board::TCP_PORT};
   WiFiClient rotctldClient_;
-  SelectionLineBuffer tcpReceiver_;
+  SelectionApiLineBuffer tcpReceiver_;
+  std::unique_ptr<CommandServer> commandApi_;
+  DatagramSocket commandUdp_;
+  char commandReply_[COMMAND_REPLY_MAX + 5]{};
+  size_t commandReplySize_ = 0, commandReplySent_ = 0;
+  uint32_t commandReplyAt_ = 0, commandReplySession_ = 0;
+  uint8_t commandReplyPort_ = 0;
+  uint8_t commandInterruptedPorts_ = 0;
+  bool commandRebind_ = false;
+  uint32_t commandRebindAt_ = 0;
   Bluetooth bluetooth_;
   uint32_t lastBtDropped_ = 0;
   bool btReady_ = false;

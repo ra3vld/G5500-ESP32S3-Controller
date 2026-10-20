@@ -1,5 +1,11 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
+#if (WEB_INTERFACE_ENABLED != 0 && WEB_INTERFACE_ENABLED != 1) || (BLUETOOTH_SUPPORT != 0 && BLUETOOTH_SUPPORT != 1)
+#error "Service capabilities must be 0 or 1"
+#endif
+#if !BLUETOOTH_SUPPORT && BLUETOOTH_ENABLED
+#error "Bluetooth is not included in this build"
+#endif
 
 // Служебная логика. Подключается после настроек из build_config.hpp.
 #ifndef TFT_DISPLAY_ENABLED

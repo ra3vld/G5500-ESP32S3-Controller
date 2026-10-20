@@ -7,14 +7,15 @@
 #include <HardwareSerial.h>
 #include <memory>
 #include <atomic>
-#if SELECTED_BOARD == BOARD_ESP32
+#if SELECTED_BOARD == BOARD_ESP32 && BLUETOOTH_SUPPORT
 #include <esp_spp_api.h>
 #include <esp_gap_bt_api.h>
 #endif
 namespace forkrot {
+#if BLUETOOTH_SUPPORT
 class Bluetooth {
 public:
-  bool begin(uint8_t backend = HardwareConfig{}.backend());
+  bool begin(uint8_t backend = HardwareConfig{}.backend(), const PinMap &pins = PinMap{});
   void end();
   bool connected();
   bool linkConnected();
@@ -35,9 +36,9 @@ public:
 private:
   uint8_t backend_ = BT_NONE;
   uint32_t inputSession_ = 0;
-  struct HcState { HardwareSerial serial{1}; LineBuffer receiver; };
+  struct HcState { HardwareSerial serial{1}; LineBuffer receiver; int8_t statePin=-1; };
   std::unique_ptr<HcState> hc_;
-#if SELECTED_BOARD == BOARD_ESP32
+#if SELECTED_BOARD == BOARD_ESP32 && BLUETOOTH_SUPPORT
   static Bluetooth *owner_;
   static void onEvent(esp_spp_cb_event_t event, esp_spp_cb_param_t *param);
   static void onGapEvent(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
@@ -62,4 +63,20 @@ private:
   std::unique_ptr<SppState> spp_;
 #endif
 };
+#else
+class Bluetooth {
+public:
+  bool begin(uint8_t backend = BT_NONE, const PinMap & = PinMap{}) { return backend == BT_NONE; }
+  void end() {}
+  bool connected() { return false; }
+  bool linkConnected() { return false; }
+  bool macAddress(char (&address)[18]) const { address[0] = 0; return false; }
+  bool receive(char *, size_t, size_t &) { return false; }
+  template<class T> bool send(const T &) { return false; }
+  void service() {}
+  void discardInput() {}
+  uint32_t sessionId() const { return 0; }
+  uint32_t droppedCommands() const { return 0; }
+};
+#endif
 }

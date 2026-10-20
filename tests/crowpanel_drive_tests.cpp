@@ -133,6 +133,17 @@ int main() {
     Hardware ih(isolated);ih.beginDirections();ih.beginAdc();ih.applyOutputs();ih.allStop();ih.filteredMv(0);
     assert(fakeHardware.events.empty() && fakeHardware.readsMv==0 && fakeHardware.readsRaw==0);
   }
+  reset();MotionTestRuntime remapped;
+  auto map=remapped.controller.hardware;
+  std::swap(map.pins.azNegative,map.pins.azPositive);
+  assert(!validateHardware(map)); remapped.controller.configureHardware(map);
+  Hardware moved(remapped);moved.beginDirections();run(remapped,moved);
+  if(DRIVE_INTERFACE==DRIVE_YAESU) {
+    assert(fakeHardware.levels[map.pins.azPositive]==HIGH && fakeHardware.levels[map.pins.azNegative]==LOW);
+  } else {
+    assert(moduleDuty(duties()[map.pins.azPositive])>0 && moduleDuty(duties()[map.pins.azNegative])==0);
+  }
+  moved.allStop();
   std::cout<<"PASS: CrowPanel GPIO0 driver="<<DRIVE_INTERFACE<<" inverted="<<BTS7960_PWM_INVERTED
     <<" ADC6, open-drain BOOT, PWM/EN polarity, STOP/reverse, attach/held-BOOT faults, model, storage, HUD and simulation\n";
 }

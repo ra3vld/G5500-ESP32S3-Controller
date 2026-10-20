@@ -123,7 +123,7 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"rotctldManualFollow\":" << (protocol.manualFollow.rotctld ? "true" : "false")
        << ",\"externalAzMode\":\""
        << (protocol.externalAzMode == ExternalAzMode::Mechanical ? "mechanical" : "shortest") << '"'
-       << ",\"reportPort\":" << settings.reportPort
+       << ",\"reportPort\":" << settings.reportPort << ",\"commandPort\":" << settings.commandPort
        << ",\"reportHost\":" << jsonQuoted(settings.reportHost) << ",\"n1mmReport\":\""
        << jsonEscaped(protocol.rotorName) << '@'
        << int(std::lround(heading(controller.axes[0].current) * 10)) % 3600 << '"'
@@ -147,18 +147,19 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"bluetoothBackend\":" << jsonQuoted(controller.hardware.backendName()) << ",\"drive\":"
        << jsonQuoted(controller.remote                      ? "HUD"
                      : controller.hardware.simulation                     ? "SIMULATED"
-                     : SELECTED_BOARD == BOARD_CROWPANEL_21 && !CROWPANEL_LOCAL_DRIVE ? "NONE"
+                     : controller.hardware.pins.azAdc<0 || controller.hardware.pins.azNegative<0 ||
+                       controller.hardware.pins.azPositive<0 || controller.hardware.pins.azSpeedEnable<0 ? "NONE"
                      : controller.hardware.drive == DRIVE_YAESU       ? "YAESU"
                      : controller.hardware.drive == DRIVE_BTS7960     ? "BTS7960"
                                                             : "SEPARATE_PWM")
-       << ",\"singleAxis\":" << (CROWPANEL_LOCAL_DRIVE && !controller.remote && !controller.hardware.simulation ? "true" : "false")
+       << ",\"singleAxis\":" << (controller.hardware.pins.singleAxis() && !controller.remote && !controller.hardware.simulation ? "true" : "false")
        << ",\"userButtonGpio\":" << int(controller.hardware.buttonGpio)
        << ",\"userButtonActiveLow\":" << (controller.hardware.buttonLow ? "true" : "false")
        << ",\"userButtonPullup\":" << (controller.hardware.buttonPullup ? "true" : "false")
-       << ",\"pins\":{\"azAdc\":" << board::PIN_AZ_ADC << ",\"elAdc\":" << board::PIN_EL_ADC
-       << ",\"azNegative\":" << board::PIN_LEFT << ",\"azPositive\":" << board::PIN_RIGHT
-       << ",\"elNegative\":" << board::PIN_DOWN << ",\"elPositive\":" << board::PIN_UP
-       << ",\"azSpeedEnable\":" << board::PIN_SPEED << ",\"elSpeedEnable\":" << board::PIN_EL_SPEED
+       << ",\"pins\":{\"azAdc\":" << controller.hardware.pins.azAdc << ",\"elAdc\":" << controller.hardware.pins.elAdc
+       << ",\"azNegative\":" << controller.hardware.pins.azNegative << ",\"azPositive\":" << controller.hardware.pins.azPositive
+       << ",\"elNegative\":" << controller.hardware.pins.elNegative << ",\"elPositive\":" << controller.hardware.pins.elPositive
+       << ",\"azSpeedEnable\":" << controller.hardware.pins.azSpeedEnable << ",\"elSpeedEnable\":" << controller.hardware.pins.elSpeedEnable
        << "}},\"axes\":[";
   for (unsigned i=0; i<2; ++i) {
     if (i) json << ',';
@@ -232,6 +233,8 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
         ok = integer(value, next.n1mmPort, 1, 65535);
       else if (key == "pstPort")
         ok = integer(value, next.pstPort, 1, 65534);
+      else if (key == "commandPort")
+        ok = integer(value, next.commandPort, 1, 65535);
       else if (key == "reportPort")
         ok = integer(value, next.reportPort, 1, 65535);
       else if (key == "reportHost") {
@@ -252,7 +255,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       if (!ok)
         return {400, "{\"ok\":false,\"result\":\"controller_settings_only\"}"};
     }
-    if(next.n1mmPort==next.pstPort)return {400,"{\"ok\":false,\"result\":\"invalid\"}"};
+    if(!commandPortAllowed(next.commandPort) || next.n1mmPort==next.pstPort || next.commandPort==next.n1mmPort || next.commandPort==next.pstPort || next.commandPort==next.pstPort+1 || next.commandPort==next.reportPort)return {400,"{\"ok\":false,\"result\":\"invalid\"}"};
     settings = next;
     protocol.rotorName = name;
     protocol.manualFollow = follow;
@@ -298,15 +301,15 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     for (const auto &entry : form) {
       if (entry.first == "drive" || entry.first == "display" || entry.first == "bluetooth" || entry.first == "bluetoothBackend" || entry.first == "pins" || entry.first == "build" || entry.first == "board" || entry.first == "boardProfile" ||
           entry.first == "displayKind" || entry.first == "bluetoothEnabled" || entry.first == "driveInterface" ||
-          entry.first.find("userButton") == 0 || entry.first.find("build.") == 0) valid = false;
+          entry.first.find("userButton") == 0 || entry.first.find("build.") == 0 || entry.first.find("pin.") == 0 ||
+          entry.first == "buttonGpio" || entry.first == "buttonActiveLow" || entry.first == "buttonPullup" ||
+          entry.first == "simulation" || entry.first == "bluetoothMode" || entry.first == "forceApSta" || entry.first == "pwmInverted") valid = false;
     }
     if (has(form, "model")) {
       auto m = get(form, "model");
       valid = (m == "G5500" || m == "G800DXA") && valid;
       model = m == "G800DXA" ? Model::G800DXA : Model::G5500;
-#if CROWPANEL_LOCAL_DRIVE
-      if (!controller.remote && !controller.hardware.simulation && model != Model::G800DXA) valid = false;
-#endif
+      if (!controller.remote && !controller.hardware.simulation && controller.hardware.pins.singleAxis() && model != Model::G800DXA) valid = false;
     }
     if (has(form, "rotorName")) {
       name = get(form, "rotorName");
@@ -321,6 +324,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     if (has(form, "pstPort")) {
       valid = integer(get(form, "pstPort"), next.pstPort, 1, 65534) && valid;
     }
+    if (has(form, "commandPort")) valid = integer(get(form, "commandPort"), next.commandPort, 1, 65535) && valid;
     if (has(form, "reportPort")) {
       valid = integer(get(form, "reportPort"), next.reportPort, 1, 65535) && valid;
     }
@@ -414,7 +418,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       if(motionTouched[i] && m.mode==RegulatorMode::Cascade && !variable) valid=false;
 
     }
-    valid = valid && next.n1mmPort != next.pstPort;
+    valid = valid && commandPortAllowed(next.commandPort) && next.n1mmPort != next.pstPort && next.commandPort != next.n1mmPort && next.commandPort != next.pstPort && next.commandPort != next.pstPort+1 && next.commandPort != next.reportPort;
     if(model!=controller.model && (motionTouched[0] || motionTouched[1])) valid=false;
     if(valid && (motion[0].ready || motion[1].ready) && !prepareMotionPlanner())
       return {503,"{\"ok\":false,\"result\":\"unavailable\"}"};

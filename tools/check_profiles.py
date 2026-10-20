@@ -62,4 +62,7 @@ for flags in [
 for board in range(1, 6):
     for simulation in (0, 1):
         compile_case((crow if board == 5 else [f'BOARD_PROFILE={board}']) + [f'DRIVE_SIMULATION={simulation}'], True)
+compile_case(['BOARD_PROFILE=1','USER_BUTTON_GPIO=46'],True)
+compile_case(['BOARD_PROFILE=2','USER_BUTTON_GPIO=46'],False)
+compile_case(['BOARD_PROFILE=2','USER_BUTTON_GPIO=46','USER_BUTTON_PULLUP=0'],True)
 print(f'PASS: {checks} board/display/BT/drive ownership and negative compile checks')

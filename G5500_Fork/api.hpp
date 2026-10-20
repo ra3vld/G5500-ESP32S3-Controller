@@ -5,10 +5,15 @@
 #include <map>
 namespace forkrot {
 struct Settings {
-  unsigned n1mmPort = 12040, pstPort = 1234, reportPort = 13010;
+  unsigned n1mmPort = 12040, pstPort = 1234, reportPort = 13010, commandPort = 4535;
   std::string reportHost;
   bool encoderInverted = true;
 };
+inline bool commandPortAllowed(unsigned port) {
+  // ArduinoOTA, mDNS and (when enabled) the live HTTPD control socket.
+  return port && port<=65535 && port!=3232 && port!=5353 &&
+      (!WEB_INTERFACE_ENABLED || port!=32769);
+}
 struct Response {
   int status = 200;
   std::string body;

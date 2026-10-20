@@ -22,6 +22,7 @@ size_t writeWithinBudget(const char *data, size_t size, uint32_t started, uint32
 class RestartDelay {
 public:
   void request(uint32_t now) { if (!pending_) { started_ = now; pending_ = true; } }
+  bool pending() const { return pending_; }
   bool consume(uint32_t now) {
     if (!pending_ || uint32_t(now - started_) < 1500) return false;
     pending_ = false;

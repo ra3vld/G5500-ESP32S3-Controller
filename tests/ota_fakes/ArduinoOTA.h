@@ -3,8 +3,13 @@
 #include <cstddef>
 #include <functional>
 #include <cstring>
+#ifdef DEVICE_API_TEST
+#include "Arduino.h"
+inline auto &otaNow = fakeHardware.now;
+#else
 inline uint32_t otaNow = 0;
 inline uint32_t millis() { return otaNow; }
+#endif
 inline constexpr int U_FLASH = 0, U_SPIFFS = 100;
 struct FakeESP {
   uint32_t flash = 4 << 20, image = 1500000;

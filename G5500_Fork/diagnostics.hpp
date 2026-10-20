@@ -12,6 +12,11 @@ public:
   explicit Diagnostics(Storage &storage) : storage_(storage) {}
   bool wifiCredentialsReadOk() const { return storage_.wifiCredentialsReadOk(); }
   void beginNativeUsb();
+  void nativeCommandMode() { nativeCommandMode_ = true; }
+  int nativeAvailable();
+  int nativeRead();
+  size_t nativeWrite(const uint8_t *data, size_t size);
+  void writeLog(JsonWriter &out) const;
   void readBootReason();
   int bootReasonCode() const {
     return (int)bootResetReason;
@@ -46,6 +51,7 @@ private:
   bool rssiHistoryJson(JsonWriter &j, const int8_t *buf, uint16_t size, uint16_t pos, uint16_t count,
                          const char *range);
   Storage &storage_;
+  bool nativeCommandMode_ = false;
   RssiHistory rssi_;
   esp_reset_reason_t bootResetReason = ESP_RST_UNKNOWN;
   String bootResetReasonText = "UNKNOWN";

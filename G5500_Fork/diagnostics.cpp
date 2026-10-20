@@ -101,7 +101,7 @@ void Diagnostics::dbgView(std::string_view text, bool newline) {
     diagMirror(line, newline);
   }
 #if FORK_NATIVE_USB
-  if (HWCDCSerial) {
+  if (!nativeCommandMode_ && HWCDCSerial) {
     HWCDCSerial.write(reinterpret_cast<const uint8_t *>(text.data()), text.size());
     if (newline) HWCDCSerial.println();
   }
@@ -111,7 +111,7 @@ void Diagnostics::dbgView(std::string_view text, bool newline) {
 void Diagnostics::dbgPrint(const String &s) {
   diagMirror(s, false);
 #if FORK_NATIVE_USB
-  if (HWCDCSerial) {
+  if (!nativeCommandMode_ && HWCDCSerial) {
     HWCDCSerial.print(s);
   }
 #endif
@@ -120,7 +120,7 @@ void Diagnostics::dbgPrint(const String &s) {
 void Diagnostics::dbgPrintln(const String &s) {
   diagMirror(s, true);
 #if FORK_NATIVE_USB
-  if (HWCDCSerial) {
+  if (!nativeCommandMode_ && HWCDCSerial) {
     HWCDCSerial.println(s);
   }
 #endif
@@ -338,3 +338,41 @@ bool Diagnostics::writeHistoryJson(JsonWriter &j, RssiPeriod period) {
 }
 
 } // namespace forkrot
+
+namespace forkrot {
+void Diagnostics::writeLog(JsonWriter &out) const {
+#if SELECTED_BOARD == BOARD_ESP32
+  struct Sink { JsonWriter &writer; void operator+=(char c) { writer << c; } } sink{out};
+  diagLog_.copyTo(sink);
+#else
+  const unsigned first=(diagHead+DIAG_MAX_LINES-diagCount)%DIAG_MAX_LINES;
+  for(unsigned i=0;i<diagCount;++i) out << diagLines[(first+i)%DIAG_MAX_LINES].c_str() << '\n';
+  out << diagPending.c_str();
+#endif
+}
+}
+
+namespace forkrot {
+int Diagnostics::nativeAvailable() {
+#if FORK_NATIVE_USB
+  return HWCDCSerial.available();
+#else
+  return 0;
+#endif
+}
+int Diagnostics::nativeRead() {
+#if FORK_NATIVE_USB
+  return HWCDCSerial.read();
+#else
+  return -1;
+#endif
+}
+size_t Diagnostics::nativeWrite(const uint8_t *data, size_t size) {
+#if FORK_NATIVE_USB
+  const int available=HWCDCSerial.availableForWrite();
+  return available>0?HWCDCSerial.write(data,std::min(size,size_t(available))):0;
+#else
+  (void)data;(void)size;return 0;
+#endif
+}
+}

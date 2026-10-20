@@ -3,16 +3,16 @@
 
 #if TFT_DISPLAY_ENABLED
 #include "display.hpp"
-#include "cat_image.h"
+#include "tft_image_rows.hpp"
 namespace forkrot {
 using namespace board;
 void Display::tftText(int16_t x, int16_t y, uint8_t size, uint16_t fg, uint16_t bg,
                       const String &txt) {
-  tft.setTextWrap(false);
-  tft.setTextSize(size);
-  tft.setTextColor(fg, bg);
-  tft.setCursor(x, y);
-  tft.print(txt);
+  tft->setTextWrap(false);
+  tft->setTextSize(size);
+  tft->setTextColor(fg, bg);
+  tft->setCursor(x, y);
+  tft->print(txt);
 }
 
 void Display::tftButton(int x, int y, int w, int h, const String &label, bool active, bool saved) {
@@ -27,12 +27,12 @@ void Display::tftButton(int x, int y, int w, int h, const String &label, bool ac
     frame = TFT_OK; // captured calibration point: green frame
   }
 
-  tft.fillRoundRect(x, y, w, h, 5, fill);
+  tft->fillRoundRect(x, y, w, h, 5, fill);
 
   // Two-pixel frame so it is clearly visible on the 2.4" TFT.
-  tft.drawRoundRect(x, y, w, h, 5, frame);
+  tft->drawRoundRect(x, y, w, h, 5, frame);
   if (w > 4 && h > 4) {
-    tft.drawRoundRect(x + 1, y + 1, w - 2, h - 2, 4, frame);
+    tft->drawRoundRect(x + 1, y + 1, w - 2, h - 2, 4, frame);
   }
 
   const int fontSize=label.length()*12>unsigned(w-8)?1:2;
@@ -72,9 +72,9 @@ void Display::resetDashboardCache() {
 }
 
 void Display::drawDashboardStatic() {
-  tft.fillScreen(TFT_BG);
+  tft->fillScreen(TFT_BG);
   resetDashboardCache();
-  tft.fillRoundRect(3, 3, 314, 29, 5, TFT_BLUE);
+  tft->fillRoundRect(3, 3, 314, 29, 5, TFT_BLUE);
   if (runtime_.hud.isHud())
     tftText(10, 9, 2, TFT_TEXT, TFT_BLUE,
             runtime_.hud.active() ? String(runtime_.hud.active()->label).substring(0, 24)
@@ -84,10 +84,10 @@ void Display::drawDashboardStatic() {
     tftText(190, 9, 2, TFT_TEXT, TFT_BLUE, "(c)UA1CFM");
   }
 
-  tft.drawRoundRect(3, 36, 154, 139, 6, TFT_BORDER);
-  tft.drawRoundRect(163, 36, 154, 139, 6, TFT_BORDER);
-  tft.fillRect(4, 37, 152, 21, TFT_PANEL);
-  tft.fillRect(164, 37, 152, 21, TFT_PANEL);
+  tft->drawRoundRect(3, 36, 154, 139, 6, TFT_BORDER);
+  tft->drawRoundRect(163, 36, 154, 139, 6, TFT_BORDER);
+  tft->fillRect(4, 37, 152, 21, TFT_PANEL);
+  tft->fillRect(164, 37, 152, 21, TFT_PANEL);
   tftText(39, 42, 2, TFT_TEXT, TFT_PANEL, "AZIMUTH");
   tftText(188, 42, 2, TFT_TEXT, TFT_PANEL, "ELEVATION");
 
@@ -96,21 +96,21 @@ void Display::drawDashboardStatic() {
   tftText(8, 112, 2, TFT_MUTED, TFT_BG, "TARGET ");
   tftText(168, 112, 2, TFT_MUTED, TFT_BG, "TARGET ");
 
-  tft.drawRoundRect(11, 143, 138, 12, 3, TFT_BORDER);
-  tft.drawRoundRect(171, 143, 138, 12, 3, TFT_BORDER);
+  tft->drawRoundRect(11, 143, 138, 12, 3, TFT_BORDER);
+  tft->drawRoundRect(171, 143, 138, 12, 3, TFT_BORDER);
 
   // Short large range labels.
   tftText(12, 160, 1, TFT_MUTED, TFT_BG, String(runtime_.controller.minimum,1)+".."+String(runtime_.controller.maximum,1));
   tftText(172, 160, 2, TFT_MUTED, TFT_BG, "EL");
 
   // Bottom controls/status. All visible labels are size 2.
-  tft.drawRoundRect(3, 180, 118, 26, 4, TFT_WARN);
-  tft.drawRoundRect(4, 181, 116, 24, 3, TFT_WARN);
-  tft.drawRoundRect(126, 180, 103, 26, 4, TFT_BORDER);
-  tft.drawRoundRect(234, 180, 83, 26, 4, TFT_BORDER);
-  tft.drawRoundRect(3, 210, 194, 26, 4, TFT_BORDER);
-  tft.drawRoundRect(202, 210, 115, 26, 4, TFT_WARN);
-  tft.drawRoundRect(203, 211, 113, 24, 3, TFT_WARN);
+  tft->drawRoundRect(3, 180, 118, 26, 4, TFT_WARN);
+  tft->drawRoundRect(4, 181, 116, 24, 3, TFT_WARN);
+  tft->drawRoundRect(126, 180, 103, 26, 4, TFT_BORDER);
+  tft->drawRoundRect(234, 180, 83, 26, 4, TFT_BORDER);
+  tft->drawRoundRect(3, 210, 194, 26, 4, TFT_BORDER);
+  tft->drawRoundRect(202, 210, 115, 26, 4, TFT_WARN);
+  tft->drawRoundRect(203, 211, 113, 24, 3, TFT_WARN);
 
   tftText(8, 186, 2, TFT_MUTED, TFT_BG, "CAL");
   tftText(131, 186, 2, TFT_MUTED, TFT_BG, "WIFI");
@@ -125,7 +125,7 @@ void Display::updateDashboard() {
     if (!tftNeedsRedraw && uint32_t(now - lastDisplayMs) < 20) return;
     lastDisplayMs = now;
     if (tftNeedsRedraw) {
-      tft.fillScreen(TFT_BG);
+      tft->fillScreen(TFT_BG);
       for (auto &field : hudFields_) field = "\1";
       tftText(12,45,2,TFT_MUTED,TFT_BG,"AZ");tftText(170,45,2,TFT_MUTED,TFT_BG,"EL");
       tftButton(110,170,100,36,"STOP");tftButton(216,170,100,36,"EXEC");
@@ -137,7 +137,7 @@ void Display::updateDashboard() {
     const bool online = runtime_.hud.available();
     const auto field = [&](unsigned i,int x,int y,int w,int h,int size,uint16_t color,const String &text) {
       if (hudFields_[i] == text) return;
-      hudFields_[i] = text;tft.fillRect(x,y,w,h,TFT_BG);tftText(x,y,size,color,TFT_BG,text);
+      hudFields_[i] = text;tft->fillRect(x,y,w,h,TFT_BG);tftText(x,y,size,color,TFT_BG,text);
     };
     field(0,10,9,300,22,2,TFT_TEXT,p ? String(p->label).substring(0,24) : "HUD: select rotator");
     field(1,12,70,150,36,4,TFT_AZ,online ? (c.axes[0].calibrated ? String(c.axes[0].current,0) : "NC") : "---");
@@ -155,8 +155,8 @@ void Display::updateDashboard() {
     }
     lastDisplayMs = millis();
     if (tftNeedsRedraw) {
-      tft.fillScreen(TFT_BG);
-      tft.fillRoundRect(3, 3, 314, 29, 5, TFT_BLUE);
+      tft->fillScreen(TFT_BG);
+      tft->fillRoundRect(3, 3, 314, 29, 5, TFT_BLUE);
       tftText(10, 9, 2, TFT_TEXT, TFT_BLUE, "G-800DXA / UA1CFM");
       for(auto &field:hudFields_)field="\1";
       tftButton(3, 180, 118, 26, "CAL");
@@ -165,7 +165,7 @@ void Display::updateDashboard() {
     }
     const auto field = [&](unsigned i,int x,int y,int w,int h,int size,uint16_t color,const String &text) {
       if(hudFields_[i]==text)return;
-      hudFields_[i]=text;tft.fillRect(x,y,w,h,TFT_BG);tftText(x,y,size,color,TFT_BG,text);
+      hudFields_[i]=text;tft->fillRect(x,y,w,h,TFT_BG);tftText(x,y,size,color,TFT_BG,text);
     };
     field(0,12,40,290,18,1,TFT_MUTED,String("AZIMUTH ")+String(runtime_.controller.minimum,1)+".."+String(runtime_.controller.maximum,1));
     field(1,12,62,290,42,5,TFT_AZ,runtime_.controller.axes[0].calibrated ? String(runtime_.currentAz,1) : "NC");
@@ -175,8 +175,8 @@ void Display::updateDashboard() {
     field(4,12,160,300,14,1,TFT_TEXT,String(calibrationState.gsAzMode==0?"CUSTOM ":calibrationState.gsAzMode==36?"P36 ":"P45 ")+hardware_.motion()+" "+tftCalibrationText());
     const String speed=String(runtime_.controller.axes[0].speedOutputPercent,0)+"%";
     if(hudFields_[5]!=speed){
-      tft.fillRect(12,150,296,5,TFT_PANEL);
-      tft.fillRect(12,150,int(runtime_.controller.axes[0].speedOutputPercent*2.96f),5,TFT_AZ);
+      tft->fillRect(12,150,296,5,TFT_PANEL);
+      tft->fillRect(12,150,int(runtime_.controller.axes[0].speedOutputPercent*2.96f),5,TFT_AZ);
       field(5,220,136,80,14,1,TFT_AZ,speed);
     }
     char addresses[64]; network_.formatAddresses(addresses, sizeof addresses);
@@ -204,28 +204,28 @@ void Display::updateDashboard() {
   int elShown = elCalibrated ? (int)lroundf(runtime_.currentEl) : -10000;
 
   if ((int)dashLastAz != azShown) {
-    tft.fillRect(10, 63, 140, 37, TFT_BG);
-    tft.setTextSize(4);
-    tft.setTextColor(TFT_AZ, TFT_BG);
-    tft.setCursor(16, 67);
+    tft->fillRect(10, 63, 140, 37, TFT_BG);
+    tft->setTextSize(4);
+    tft->setTextColor(TFT_AZ, TFT_BG);
+    tft->setCursor(16, 67);
     if (azCalibrated) {
-      tft.print(azShown);
-      tft.setTextSize(2);
-      tft.print((char)247);
-    } else tft.print("NC");
+      tft->print(azShown);
+      tft->setTextSize(2);
+      tft->print((char)247);
+    } else tft->print("NC");
     dashLastAz = (float)azShown;
   }
 
   if ((int)dashLastEl != elShown) {
-    tft.fillRect(170, 63, 140, 37, TFT_BG);
-    tft.setTextSize(4);
-    tft.setTextColor(TFT_EL, TFT_BG);
-    tft.setCursor(176, 67);
+    tft->fillRect(170, 63, 140, 37, TFT_BG);
+    tft->setTextSize(4);
+    tft->setTextColor(TFT_EL, TFT_BG);
+    tft->setCursor(176, 67);
     if (elCalibrated) {
-      tft.print(elShown);
-      tft.setTextSize(2);
-      tft.print((char)247);
-    } else tft.print("NC");
+      tft->print(elShown);
+      tft->setTextSize(2);
+      tft->print((char)247);
+    } else tft->print("NC");
     dashLastEl = (float)elShown;
   }
 
@@ -238,8 +238,8 @@ void Display::updateDashboard() {
                      ((int)dashLastTargetAz != taShown || (int)dashLastTargetEl != teShown));
 
   if (needTarget) {
-    tft.fillRect(100, 109, 50, 24, TFT_BG);
-    tft.fillRect(260, 109, 50, 24, TFT_BG);
+    tft->fillRect(100, 109, 50, 24, TFT_BG);
+    tft->fillRect(260, 109, 50, 24, TFT_BG);
 
     if (runtime_.targetValid) {
       tftText(100, 112, taShown < 0 || taShown >= 1000 ? 1 : 2, TFT_TARGET, TFT_BG, String(taShown) + String((char)247));
@@ -262,28 +262,28 @@ void Display::updateDashboard() {
   if (azw != dashLastAzBar) {
     // Instead of clearing the whole bar every time, change only the difference.
     if (dashLastAzBar < 0) {
-      tft.fillRect(13, 145, 134, 8, TFT_BG);
+      tft->fillRect(13, 145, 134, 8, TFT_BG);
       if (azw > 0) {
-        tft.fillRect(13, 145, azw, 8, TFT_AZ);
+        tft->fillRect(13, 145, azw, 8, TFT_AZ);
       }
     } else if (azw > dashLastAzBar) {
-      tft.fillRect(13 + dashLastAzBar, 145, azw - dashLastAzBar, 8, TFT_AZ);
+      tft->fillRect(13 + dashLastAzBar, 145, azw - dashLastAzBar, 8, TFT_AZ);
     } else if (azw < dashLastAzBar) {
-      tft.fillRect(13 + azw, 145, dashLastAzBar - azw, 8, TFT_BG);
+      tft->fillRect(13 + azw, 145, dashLastAzBar - azw, 8, TFT_BG);
     }
     dashLastAzBar = azw;
   }
 
   if (elw != dashLastElBar) {
     if (dashLastElBar < 0) {
-      tft.fillRect(173, 145, 134, 8, TFT_BG);
+      tft->fillRect(173, 145, 134, 8, TFT_BG);
       if (elw > 0) {
-        tft.fillRect(173, 145, elw, 8, TFT_EL);
+        tft->fillRect(173, 145, elw, 8, TFT_EL);
       }
     } else if (elw > dashLastElBar) {
-      tft.fillRect(173 + dashLastElBar, 145, elw - dashLastElBar, 8, TFT_EL);
+      tft->fillRect(173 + dashLastElBar, 145, elw - dashLastElBar, 8, TFT_EL);
     } else if (elw < dashLastElBar) {
-      tft.fillRect(173 + elw, 145, dashLastElBar - elw, 8, TFT_BG);
+      tft->fillRect(173 + elw, 145, dashLastElBar - elw, 8, TFT_BG);
     }
     dashLastElBar = elw;
   }
@@ -292,9 +292,9 @@ void Display::updateDashboard() {
     const int percent = int(lroundf(runtime_.controller.axes[i].speedOutputPercent));
     if (percent != dashLastSpeed[i]) {
       const int x = i ? 173 : 13;
-      tft.fillRect(x, 132, 90, 4, TFT_PANEL);
-      tft.fillRect(x, 132, percent*90/100, 4, i ? TFT_EL : TFT_AZ);
-      tft.fillRect(x+92, 129, 42, 9, TFT_BG);
+      tft->fillRect(x, 132, 90, 4, TFT_PANEL);
+      tft->fillRect(x, 132, percent*90/100, 4, i ? TFT_EL : TFT_AZ);
+      tft->fillRect(x+92, 129, 42, 9, TFT_BG);
       tftText(x+92, 129, 1, TFT_MUTED, TFT_BG, String(percent) + "%");
       dashLastSpeed[i] = percent;
     }
@@ -315,13 +315,13 @@ void Display::updateDashboard() {
   String elState = up ? "UP" : down ? "DOWN" : "STOP";
 
   if (azState != dashLastAzState) {
-    tft.fillRect(60, 158, 90, 17, TFT_BG);
+    tft->fillRect(60, 158, 90, 17, TFT_BG);
     tftText(64, 160, 2, azMoving ? TFT_OK : TFT_STOP, TFT_BG, azState);
     dashLastAzState = azState;
   }
 
   if (elState != dashLastElState) {
-    tft.fillRect(218, 158, 92, 17, TFT_BG);
+    tft->fillRect(218, 158, 92, 17, TFT_BG);
     tftText(222, 160, 2, elMoving ? TFT_OK : TFT_STOP, TFT_BG, elState);
     dashLastElState = elState;
   }
@@ -329,7 +329,7 @@ void Display::updateDashboard() {
   // Bottom status fields: repaint only when text changes.
   String calText = (calibrationState.calibrationMode == CAL_MULTI_POINT) ? "MULTI" : "2PT";
   if (calText != dashLastCal) {
-    tft.fillRect(48, 183, 68, 20, TFT_BG);
+    tft->fillRect(48, 183, 68, 20, TFT_BG);
     tftText(50, 186, 2, calibration_.selectedCalibrationValid() ? TFT_OK : TFT_WARN, TFT_BG,
             calText);
     dashLastCal = calText;
@@ -345,7 +345,7 @@ void Display::updateDashboard() {
     wifiColor = TFT_WARN;
   }
   if (wifiText != dashLastWifi) {
-    tft.fillRect(183, 183, 40, 20, TFT_BG);
+    tft->fillRect(183, 183, 40, 20, TFT_BG);
     tftText(184, 186, 2, wifiColor, TFT_BG, wifiText);
     dashLastWifi = wifiText;
   }
@@ -353,7 +353,7 @@ void Display::updateDashboard() {
   bool bt = network_.bluetoothConnected();
   String btText = runtime_.controller.hardware.bluetooth ? (bt ? "ON" : "OFF") : "N/A";
   if (btText != dashLastBt) {
-    tft.fillRect(271, 183, 40, 20, TFT_BG);
+    tft->fillRect(271, 183, 40, 20, TFT_BG);
     tftText(272, 186, 2, bt ? TFT_OK : TFT_MUTED, TFT_BG, btText);
     dashLastBt = btText;
   }
@@ -362,7 +362,7 @@ void Display::updateDashboard() {
   const String ip(addresses);
   bool tcpConnected = (network_.tcpConnected());
   if (ip != dashLastIp || tcpConnected != dashLastTcpConnected) {
-    tft.fillRect(34, 213, 160, 20, TFT_BG);
+    tft->fillRect(34, 213, 160, 20, TFT_BG);
     const int split = ip.indexOf('\n');
     tftText(36, 214, 1, tcpConnected ? TFT_OK : TFT_TEXT, TFT_BG,
             split < 0 ? ip : ip.substring(0, split));
@@ -373,15 +373,15 @@ void Display::updateDashboard() {
 
   String touchText = touchCalibration_.touchCalValid ? "OK" : "CAL";
   if (touchText != dashLastTouch) {
-    tft.fillRect(273, 213, 39, 20, TFT_BG);
+    tft->fillRect(273, 213, 39, 20, TFT_BG);
     tftText(274, 216, 2, touchCalibration_.touchCalValid ? TFT_OK : TFT_WARN, TFT_BG, touchText);
     dashLastTouch = touchText;
   }
 }
 
 void Display::drawCalHeader(const String &title) {
-  tft.fillScreen(TFT_BG);
-  tft.fillRoundRect(3, 3, 314, 29, 5, TFT_BLUE);
+  tft->fillScreen(TFT_BG);
+  tft->fillRoundRect(3, 3, 314, 29, 5, TFT_BLUE);
   tftText(10, 9, 2, TFT_TEXT, TFT_BLUE, title);
   tftButton(252, 5, 63, 25, "BACK");
 }
@@ -402,9 +402,9 @@ void Display::drawCalHome() {
   }
 
   tftText(8, 223, 2, TFT_MUTED, TFT_BG,
-          String("A") + String(hardware_.adcAvgMv(PIN_AZ_ADC)) +
+          String("A") + String(hardware_.adcAvgMv(runtime_.controller.hardware.pins.azAdc)) +
               (runtime_.controller.model == forkrot::Model::G5500
-                   ? String(" E") + String(hardware_.adcAvgMv(PIN_EL_ADC))
+                   ? String(" E") + String(hardware_.adcAvgMv(runtime_.controller.hardware.pins.elAdc))
                    : String("")) +
               " mV");
 }
@@ -456,8 +456,8 @@ void Display::drawCalAxis(bool az) {
 }
 
 void Display::drawTouchCalibration() {
-  tft.fillScreen(TFT_BG);
-  tft.fillRoundRect(3, 3, 314, 29, 5, TFT_BLUE);
+  tft->fillScreen(TFT_BG);
+  tft->fillRoundRect(3, 3, 314, 29, 5, TFT_BLUE);
   tftText(10, 9, 2, TFT_TEXT, TFT_BLUE, "TOUCH CALIBRATION");
 
   if (touchCalStep >= 4) {
@@ -488,9 +488,9 @@ void Display::drawTouchCalibration() {
           String(touchCalStep + 1) + "/4  " + String(names[touchCalStep]));
 
   int x = px[touchCalStep], y = py[touchCalStep];
-  tft.drawCircle(x, y, 10, TFT_WARN);
-  tft.drawFastHLine(x - 15, y, 31, TFT_WARN);
-  tft.drawFastVLine(x, y - 15, 31, TFT_WARN);
+  tft->drawCircle(x, y, 10, TFT_WARN);
+  tft->drawFastHLine(x - 15, y, 31, TFT_WARN);
+  tft->drawFastVLine(x, y - 15, 31, TFT_WARN);
 }
 
 void Display::startTouchCalibration() {
@@ -506,14 +506,14 @@ void Display::startTouchCalibration() {
 }
 
 bool Display::readTouchRawAverage(int &rx, int &ry) {
-  if (!touch.touched()) {
+  if (!touch->touched()) {
     return false;
   }
   long sx = 0, sy = 0;
   int n = 0;
   for (int i = 0; i < 12; i++) {
-    if (touch.touched()) {
-      TS_Point p = touch.getPoint();
+    if (touch->touched()) {
+      TS_Point p = touch->getPoint();
       if (p.z == 0 || p.z >= 150) {
         sx += p.x;
         sy += p.y;
@@ -563,7 +563,7 @@ void Display::serviceTouchCalibration() {
   }
 
   if (touchCalStep >= 4) {
-    if (!touch.touched()) {
+    if (!touch->touched()) {
       touchWaitRelease = false;
       return;
     }
@@ -593,7 +593,7 @@ void Display::serviceTouchCalibration() {
     return;
   }
 
-  if (!touch.touched()) {
+  if (!touch->touched()) {
     touchWaitRelease = false;
     return;
   }
@@ -620,8 +620,11 @@ void Display::serviceTouchCalibration() {
 
 void Display::showHeaderImage() {
   // Full-screen image, but controller logic keeps running normally.
-  tft.fillScreen(TFT_BG);
-  tft.drawRGBBitmap(0, 0, catImage, CAT_IMAGE_W, CAT_IMAGE_H);
+  tft->fillScreen(TFT_BG);
+  tft->startWrite();
+  tft->setAddrWindow(0,0,CAT_IMAGE_W,CAT_IMAGE_H);
+  drawTftImageRows([&](unsigned,uint16_t *row) { tft->writePixels(row,CAT_IMAGE_W); });
+  tft->endWrite();
   imagePageStartedMs = millis();
   tftPage = TFT_PAGE_IMAGE;
   tftNeedsRedraw = false;
@@ -664,10 +667,10 @@ bool Display::hit(int x, int y, int bx, int by, int bw, int bh) {
 }
 
 bool Display::readTouchXY(int &x, int &y) {
-  if (!touch.touched()) {
+  if (!touch->touched()) {
     return false;
   }
-  TS_Point p = touch.getPoint();
+  TS_Point p = touch->getPoint();
 
   // Ignore extremely weak/noisy contacts.
   if (p.z > 0 && p.z < 150) {
@@ -706,7 +709,7 @@ void Display::resetTouchCalAxis(bool az) {
 
 void Display::captureTouchMultiAz(uint8_t idx) {
   auto &calibrationState = calibration_.state();
-  int mv = hardware_.adcAvgMv(PIN_AZ_ADC);
+  int mv = hardware_.adcAvgMv(runtime_.controller.hardware.pins.azAdc);
   if (calibrationState.gsAzMode == AZ_CUSTOM) {
     if (idx < calibrationState.custom.count) actions_.editAzPoint("capture", calibrationState.custom.range.start+calibrationState.custom.degrees[idx]);
     tftNeedsRedraw=true; return;
@@ -737,7 +740,7 @@ void Display::captureTouchMultiEl(uint8_t idx) {
   if (idx >= EL_CAL_N) {
     return;
   }
-  calibration_.state().elCalMv[idx] = hardware_.adcAvgMv(PIN_EL_ADC);
+  calibration_.state().elCalMv[idx] = hardware_.adcAvgMv(runtime_.controller.hardware.pins.elAdc);
   calibration_.refreshMultiCalValidity();
   actions_.saveCal();
   tftNeedsRedraw = true;
@@ -750,7 +753,7 @@ void Display::serviceTouchRecoveryHold() {
     return;
   }
 
-  if (touch.touched()) {
+  if (touch->touched()) {
     if (!touchHoldArmed) {
       touchHoldArmed = true;
       touchHoldStartMs = millis();
@@ -766,7 +769,7 @@ void Display::serviceTouchRecoveryHold() {
 }
 
 void Display::drawHudList() {
-  tft.fillScreen(TFT_BG);
+  tft->fillScreen(TFT_BG);
   tftText(12, 8, 2, TFT_TEXT, TFT_BG, "HUD: select / back");
   size_t index = 0, shown = 0;
   for (auto *p = runtime_.hud.peers(); p; p = p->next.get())
@@ -955,19 +958,22 @@ void Display::serviceTouch() {
 }
 
 void Display::initLocalDisplay() {
-  pinMode(PIN_TFT_CS, OUTPUT);
-  pinMode(PIN_TOUCH_CS, OUTPUT);
-  digitalWrite(PIN_TFT_CS, HIGH);
-  digitalWrite(PIN_TOUCH_CS, HIGH);
+  const auto &p=runtime_.controller.hardware.pins;
+  tft.emplace(&SPI,p.tftDc,p.tftCs,p.tftRst);
+  touch.emplace(p.touchCs,p.touchIrq);
+  pinMode(runtime_.controller.hardware.pins.tftCs, OUTPUT);
+  pinMode(runtime_.controller.hardware.pins.touchCs, OUTPUT);
+  digitalWrite(runtime_.controller.hardware.pins.tftCs, HIGH);
+  digitalWrite(runtime_.controller.hardware.pins.touchCs, HIGH);
 
-  SPI.begin(PIN_TFT_SCK, PIN_TFT_MISO, PIN_TFT_MOSI, PIN_TFT_CS);
-  tft.begin();
-  tft.setRotation(1);
+  SPI.begin(runtime_.controller.hardware.pins.tftSck, runtime_.controller.hardware.pins.tftMiso, runtime_.controller.hardware.pins.tftMosi, runtime_.controller.hardware.pins.tftCs);
+  tft->begin();
+  tft->setRotation(1);
 
-  touch.begin(SPI);
-  touch.setRotation(1);
+  touch->begin(SPI);
+  touch->setRotation(1);
 
-  tft.fillScreen(TFT_BG);
+  tft->fillScreen(TFT_BG);
   tftText(23, 62, 2, TFT_TEXT, TFT_BG, "G-5500 " FORK_CHIP_NAME);
   tftText(40, 92, 2, TFT_TARGET, TFT_BG, "TFT + TOUCH");
   tftText(72, 122, 2, TFT_OK, TFT_BG, "UA1CFM");
@@ -1011,11 +1017,13 @@ void Display::startAfterCalibrationLoad() {
 #include <cstring>
 namespace forkrot {
 void Display::initLocalDisplay() {
-  lcd_.begin(16, 2);
+  const auto &p=runtime_.controller.hardware.pins;
+  lcd_.emplace(p.lcdRs,p.lcdE,p.lcdD4,p.lcdD5,p.lcdD6,p.lcdD7);
+  lcd_->begin(16, 2);
   for (uint8_t width=1; width<=5; ++width) {
     uint8_t pixels[8];
     for (auto &row : pixels) row = uint8_t(0x1f << (5-width)) & 0x1f;
-    lcd_.createChar(width, pixels);
+    lcd_->createChar(width, pixels);
   }
 }
 void Display::updateLocalDisplay() {
@@ -1053,7 +1061,7 @@ void Display::updateLocalDisplay() {
         const uint8_t width=uint8_t(lroundf(axis.speedOutputPercent*5.f/100.f));
         value = width ? width : uint8_t(' ');
       } else value = col < std::strlen(text) ? text[col] : ' ';
-      if(force || value!=lcdPrevious_[i][col]){lcd_.setCursor(col,i);lcd_.write(value);lcdPrevious_[i][col]=value;}
+      if(force || value!=lcdPrevious_[i][col]){lcd_->setCursor(col,i);lcd_->write(value);lcdPrevious_[i][col]=value;}
     }
   }
 }

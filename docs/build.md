@@ -38,6 +38,8 @@ Arduino-ESP32 генерирует бинарную таблицу из выбр
 
 Для отдельной Arduino-копии с таблицей разделов проекта используйте `tools/prepare_sketch.py --target esp32|s3|s2-mini|s2` и откройте подготовленную копию. Скрипт копирует выбранный CSV под именем `partitions.csv`: ESP32 — `partitions_esp32.csv` (3 МБ), S3 — `partitions_s3.csv` (6 553 600 байт на слот), S2 — `partitions_s2.csv` (1 966 080 байт на слот). В подготовленной копии `partitions.csv` имеет приоритет над меню Partition Scheme. PlatformIO и CLI-скрипты также используют таблицы проекта.
 
+Для S2 с TFT и OTA используйте Arduino CLI через `build_arduino.sh` либо PlatformIO: эти способы включают оптимизацию LTO, необходимую для размещения приложения в OTA-разделе. При собственной команде Arduino CLI добавьте `-flto` в `compiler.c.extra_flags`, `compiler.cpp.extra_flags` и `compiler.c.elf.extra_flags`.
+
 Нажмите **Verify**; COM-порт для этого не нужен. При сборке в Arduino IDE из исходной папки завершите PlatformIO и удалите оставшийся `G5500_Fork.ino.cpp`, если IDE сообщает о повторных `setup()/loop()`. Для отдельной копии используйте `prepare_sketch.py`: он исключает этот временный файл.
 
 ## Arduino CLI
@@ -52,6 +54,7 @@ arduino-cli lib install 'LiquidCrystal@1.0.7'
 ./tools/build_arduino.sh s3
 ./tools/build_arduino.sh s2
 DISPLAY_KIND=2 ./tools/build_arduino.sh s2-mini
+DISPLAY_KIND=1 ./tools/build_arduino.sh s2-mini
 ```
 
 `DISPLAY_KIND`: 0 NONE, 1 TFT, 2 LCD. Старый `DISPLAY_ENABLED=0/1` остаётся алиасом NONE/TFT; несовместимые флаги отклоняются. Привод, Bluetooth и кнопка выбираются в вебе после сборки. Скрипт допускает `ARDUINO_CLI`, `ARDUINO_CONFIG_FILE`, `FQBN`, `BUILD_JOBS`; исходники и результаты изолированы в `build/arduino-<target>` и `artifacts/arduino-<target>`. Прежние аппаратные `-D` задают только начальные значения нового устройства; сохранённая конфигурация имеет приоритет.
@@ -66,12 +69,13 @@ python3 tools/build_platformio.py --env esp32s2_mini --display lcd
 python3 tools/build_platformio.py --env esp32s2_mini --display none
 ```
 
-Выберите окружение своей платы: `esp32_4mb`, `esp32s3_n16r8`, `esp32s2_mini` или `esp32s2_4mb` для прежней проводки S2. Для ESP32, S3 и S2 Mini доступны варианты `_tft` и `_lcd`. Профиль обычной CrowPanel — `crowpanel_21`, переделанной платы с локальным AZ — `crowpanel_21_az`. Суффикс `_headless` у S2/S3 выбирает сборку без дисплея.
+Выберите окружение своей платы: `esp32_4mb`, `esp32s3_n16r8`, `esp32s2_mini` или `esp32s2_4mb` для прежней проводки S2. Для ESP32, S3 и S2 Mini доступны варианты `_tft` и `_lcd`. Профиль обычной CrowPanel — `crowpanel_21`, переделанной платы с локальным AZ — `crowpanel_21_az`. Суффикс `_headless` у S2/S3 выбирает сборку без дисплея; веб в этих вариантах включён. `esp32_4mb_noweb` — классический ESP32 без PSRAM, дисплея, HTTP/WebSocket и Bluetooth, с двумя OTA-разделами и [командным API](command-api.md).
 
 ```sh
 pio run -e esp32s3_n16r8_tft -j4
 pio run -e esp32s2_mini_lcd -j4
 pio run -e esp32s2_4mb_headless -j4
+pio run -e esp32_4mb_noweb -j4
 ```
 
 При изменении DISPLAY_KIND в заголовке используйте `build_platformio.py`, который добавит только выбранные зависимости. Прямое `pio run` использует `lib_deps` выбранного окружения.
@@ -87,7 +91,7 @@ python3 tools/build_platformio.py --env esp32_4mb --display tft
 python3 tools/prepare_sketch.py --target esp32
 ```
 
-Arduino IDE: открыть исходный `G5500_Fork/G5500_Fork.ino`, выбрать ESP32 Dev Module, Flash 4 MB, DIO 40 MHz, PSRAM Disabled, Core Debug Level None и Partition Scheme **Huge APP (3MB No OTA/1MB SPIFFS)**. Отдельная копия не требуется. Распиновка одинакова для WROOM и WROVER; PSRAM не требуется. Для универсального ESP32-образа используйте раздел приложения 3 MB. Скрипты и PlatformIO используют `partitions_esp32.csv`: один factory-раздел приложения 3 MB, без второго OTA-слота; NVS начинается с `0x9000`.
+Arduino IDE: открыть исходный `G5500_Fork/G5500_Fork.ino`, выбрать ESP32 Dev Module, Flash 4 MB, DIO 40 MHz, PSRAM Disabled, Core Debug Level None и Partition Scheme **Huge APP (3MB No OTA/1MB SPIFFS)**. Отдельная копия не требуется. Распиновка одинакова для WROOM и WROVER; PSRAM не требуется. Для универсального ESP32-образа используйте раздел приложения 3 MB. Для профиля `esp32_4mb_noweb` PlatformIO выбирает `partitions_s2.csv`: два OTA-слота по 1 966 080 байт, NVS остаётся на `0x9000`. Первую установку этого профиля с таблицей разделов выполняйте через USB. Скрипты и PlatformIO используют `partitions_esp32.csv`: один factory-раздел приложения 3 MB, без второго OTA-слота; NVS начинается с `0x9000`.
 
 Для универсальной прошивки обычного ESP32 с OTA используйте `esp32_8mb_ota` при физических 8 МиБ Flash. Профиль `esp32_4mb_ota` имеет меньшие разделы и для этого образа не подходит. Arduino-копия для 8 МиБ: `python3 tools/prepare_sketch.py --target esp32-8mb`, CLI-сборка: `./tools/build_arduino.sh esp32-8mb`. [Выбор разделов и обновление](ota.md).
 

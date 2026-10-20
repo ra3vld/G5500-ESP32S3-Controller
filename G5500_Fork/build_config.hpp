@@ -2,10 +2,18 @@
 #pragma once
 #include "build_config_options.hpp"
 
+// Compile-time capabilities. Unlike runtime defaults these remove services.
+#ifndef WEB_INTERFACE_ENABLED
+#define WEB_INTERFACE_ENABLED 1
+#endif
+#ifndef BLUETOOTH_SUPPORT
+#define BLUETOOTH_SUPPORT 1
+#endif
+
 // НАСТРОЙКИ СБОРКИ — редактируйте значения справа от #define.
 // Флаги -D из Arduino CLI / PlatformIO имеют приоритет над этим файлом.
 // Сохраняйте строки #ifndef / #endif: они позволяют переопределять настройки.
-// Распиновка — в board_*.hpp; параметры оборудования — в веб-интерфейсе.
+// Начальная распиновка — в board_*.hpp; GPIO и оборудование меняются через веб/API.
 
 // 1. ПЛАТА
 // BOARD_AUTO      — по плате, выбранной в Arduino IDE / PlatformIO (рекомендуется).

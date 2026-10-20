@@ -26,6 +26,8 @@ int main() {
   assert(std::strstr(status, "AZ: неверные параметры движения"));
   assert(writeDriveFault(status, sizeof status, MotionError::None, MotionError::None, "future_fault"));
   assert(std::strstr(status, "future_fault"));
+  assert(writeDriveFault(status, sizeof status, MotionError::None, MotionError::None, "pin_configuration_invalid"));
+  assert(std::strstr(status, "распиновка GPIO"));
   char tiny[8];
   assert(writeDriveFault(tiny, sizeof tiny, MotionError::Stalled, MotionError::Planner, ""));
   assert(tiny[sizeof tiny - 1] == 0);

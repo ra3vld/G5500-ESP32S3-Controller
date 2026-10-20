@@ -24,9 +24,7 @@ void Controller::configureHardware(const HardwareConfig &config) {
   autoTune.phase = AutoTunePhase::Idle;
   prepareMotionPlanner();
   hardware = config;
-#if CROWPANEL_LOCAL_DRIVE
-  if (!hardware.simulation && !remote) { model = Model::G800DXA; axes[1] = {}; }
-#endif
+  if (!hardware.simulation && !remote && hardware.pins.singleAxis()) { model = Model::G800DXA; axes[1] = {}; }
   speeds = {};
   motionSettings = {};
   motion_ = {};
@@ -535,9 +533,7 @@ void Controller::restoreMode(Mode savedMode) {
 void Controller::setModel(Model nextModel) {
   if (remote)
     return;
-#if CROWPANEL_LOCAL_DRIVE
-  if (!hardware.simulation && nextModel != Model::G800DXA) return;
-#endif
+  if (!hardware.simulation && hardware.pins.singleAxis() && nextModel != Model::G800DXA) return;
   stop();
   model = nextModel;
   if (model == Model::G800DXA) {

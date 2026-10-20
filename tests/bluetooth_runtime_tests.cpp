@@ -14,6 +14,12 @@ int main() {
   fakeHardware.levels[board::PIN_HC05_STATE]=HIGH; assert(hc.connected());
   for(char c : std::string("C2\r")) fakeUart.rx.push_back(c);
   std::string line; assert(hc.receive(line) && line=="C2");
+  hc.end();
+  PinMap remapped; remapped.hc05Rx=34; remapped.hc05Tx=23; remapped.hc05State=22;
+  assert(hc.begin(BT_HC05,remapped));
+  assert(fakeUart.rxPin==34 && fakeUart.txPin==23);
+  fakeHardware.levels[board::PIN_HC05_STATE]=LOW;
+  fakeHardware.levels[22]=HIGH; assert(hc.connected());
   // Fresh objects model separate boots. The real SDK's released SPP memory is
   // intentionally not reacquired without rebooting.
   Bluetooth spp;
