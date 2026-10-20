@@ -238,6 +238,7 @@ JSON: `ok`, `result`; 200 успешно/ожидание, 400 неверно/н
 |---|---|
 | `KickEnabled`, `HoldEnabled` | Логические `true` / `false` |
 | `OutputLimitPercent`, `KickPercent`, `MovementDegrees` | Общий предел, пусковой выход, угол подтверждения движения |
+| `SustainingPercent` | Минимальный выход движения каскада, целый процент 0…100; 0 отключает ограничение снизу. Не выше `OutputLimitPercent`. Не действует при торможении, достижении позиции, STOP и защите. |
 | `Velocity`, `Acceleration`, `Deceleration`, `Jerk` | Ограничения профиля: °/с, °/с², °/с², °/с³ |
 | `PositionKp`, `PositionKi`, `PositionKd` | ПИД положения: 1/с, 1/с², безразмерный D |
 | `VelocityKp`, `VelocityKi`, `VelocityKd`, `Feedforward` | ПИД скорости и упреждение выхода |
@@ -247,6 +248,8 @@ JSON: `ok`, `result`; 200 успешно/ожидание, 400 неверно/н
 | `SettleMs`, `StallMs` | Подтверждение позиции и контроль заклинивания |
 
 `axes[]` в `/api/status` и live-состоянии содержит `regulatorMode`, `motionReady`, `motionPhase`, `motionFault`, `measuredVelocity`, `requestedVelocity`, `profileAcceleration`, `holdEnabled`, `holdArmed`. Фазы: `idle`, `kick`, `run`, `braking`, `holding`, `fault`. Ошибки: `kick_start_timeout`, `feedback_stale`, `feedback_invalid`, `stalled`, `planner_error`.
+
+Для проверки задержек `GET /api/status` возвращает `localFeedback` в порядке AZ, EL: `ageMs` — возраст последнего отсчёта АЦП, `maxIntervalMs` — наибольший интервал между отсчётами с запуска. Для отсутствующей локальной обратной связи передаётся `null`. Эти значения позволяют отделить задержку получения показаний от задержки передачи статуса по сети. При реверсе каскад ожидает остановки по измеренной скорости и выдерживает паузу направлений 300 мс; неподвижный привод не ждёт дополнительного торможения расчётного профиля.
 
 `POST /api/motion/reset` с `axis=az`, `el` или `all` снимает ошибку и останавливает выбранные оси; наведение не возобновляет. Настройки выполняются на контроллере поворотки. HUD передаёт сброс выбранной поворотке; для этого обе прошивки должны поддерживать сброс через HUD. Старый контроллер отклоняет неизвестную команду без запуска движения.
 

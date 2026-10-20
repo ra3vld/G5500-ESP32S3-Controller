@@ -7,14 +7,16 @@ namespace forkrot {
 class PositionFilter {
   std::array<int, 5> values_{};
   unsigned count_ = 0, index_ = 0;
-  uint32_t at_ = 0;
+  uint32_t at_ = 0, maxIntervalMs_ = 0;
   int result_ = 0;
 public:
   bool due(uint32_t now) const { return !count_ || uint32_t(now-at_) >= 20; }
   int value() const { return result_; }
   uint32_t sampledAt() const { return at_; }
+  uint32_t maxIntervalMs() const { return maxIntervalMs_; }
   int sample(int mv, uint32_t now) {
     if (!due(now)) return result_;
+    if (count_) maxIntervalMs_ = std::max(maxIntervalMs_, uint32_t(now-at_));
     values_[index_] = mv;
     index_ = (index_+1)%5;
     count_ = std::min(5u, count_+1);

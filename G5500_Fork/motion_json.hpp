@@ -28,7 +28,8 @@ inline bool writeAutoTune(JsonWriter &j, const Controller &c, bool full=false) {
   }
   if(full && t.id) {
     j << ",\"origin\":" << t.origin << ",\"lower\":" << t.lower << ",\"upper\":" << t.upper
-      << ",\"probeOutput\":" << t.level << ",\"relocations\":" << t.relocations << ",\"measurements\":[";
+      << ",\"probeOutput\":" << t.level << ",\"relocations\":" << t.relocations
+      << ",\"peakVelocity\":" << t.peakVelocity << ",\"stoppingDistance\":" << t.stoppingDistance << ",\"measurements\":[";
     for(unsigned i=0;i<2;++i) {
       if(i)j << ',';
       const auto &v=t.measurements[i];

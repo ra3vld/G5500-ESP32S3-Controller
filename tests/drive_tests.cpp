@@ -76,6 +76,10 @@ void filters() {
   CHECK(f.sample(1000,now+20)==1000);
   PositionFilter wrap; wrap.sample(10,0xfffffff0u);
   CHECK(!wrap.due(3)); CHECK(wrap.due(4));
+  CHECK(wrap.maxIntervalMs()==0);
+  wrap.sample(20,4); CHECK(wrap.maxIntervalMs()==20);
+  wrap.sample(30,2004); CHECK(wrap.maxIntervalMs()==2000);
+  wrap.sample(40,2024); CHECK(wrap.maxIntervalMs()==2000);
   fakeHardware = {}; MotionTestRuntime r; Hardware h(r);
   fakeHardware.millivolts[PIN_AZ_ADC]=1200;
   CHECK(h.filteredMv(0)==1200); CHECK(fakeHardware.readsMv==25);

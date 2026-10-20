@@ -24,6 +24,7 @@ struct MotionSettings {
   float positionTolerance = .5f, holdResumeDegrees = 1, stoppedVelocity = .1f;
   unsigned kickMs = 500, kickReleaseMs = 100, velocityWindowMs = 200;
   unsigned derivativeFilterMs = 100, feedbackTimeoutMs = 500, settleMs = 300, stallMs = 3000;
+  unsigned sustainingPercent = 0;
   bool valid() const;
   bool operator==(const MotionSettings &) const;
   bool operator!=(const MotionSettings &o) const { return !(*this == o); }
@@ -50,6 +51,7 @@ inline constexpr MotionRealField motionRealFields[] = {
 };
 struct MotionIntField { const char *name; unsigned MotionSettings::*member; unsigned lo, hi; };
 inline constexpr MotionIntField motionIntFields[] = {
+  {"SustainingPercent", &MotionSettings::sustainingPercent, 0, 100},
   {"KickMs", &MotionSettings::kickMs, 20, 10000},
   {"KickReleaseMs", &MotionSettings::kickReleaseMs, 20, 2000},
   {"VelocityWindowMs", &MotionSettings::velocityWindowMs, 40, 600},
@@ -58,7 +60,9 @@ inline constexpr MotionIntField motionIntFields[] = {
   {"SettleMs", &MotionSettings::settleMs, 20, 5000},
   {"StallMs", &MotionSettings::stallMs, 500, 30000}
 };
-inline constexpr size_t MotionRecordSize = 12 + 4 * (std::size(motionRealFields) + std::size(motionIntFields));
+// SustainingPercent fits in a reserved header byte. Keep the legacy record
+// length and field offsets, including inside the combined drive NVS value.
+inline constexpr size_t MotionRecordSize = 12 + 4 * (std::size(motionRealFields) + std::size(motionIntFields) - 1);
 using MotionRecord = std::array<uint8_t, MotionRecordSize>;
 MotionRecord encodeMotionSettings(const MotionSettings &);
 bool decodeMotionSettings(const MotionRecord &, MotionSettings &);
@@ -78,16 +82,23 @@ struct MotionFeedback {
   bool timed = false, valid = false;
   uint32_t at = 0, rejectedAt = 0;
   float velocity = 0;
+  float coastSeconds = 0, coastPosition = 0, coastVelocity = 0;
+  uint32_t coastAt = 0;
+  int coastDirection = 0;
+  bool powered = false, coastTracking = false;
   void sample(float position, bool calibrated, uint32_t stamp, unsigned window);
+  bool progressed(int direction, float degrees, unsigned window) const;
 };
 struct MotionRuntime {
   MotionFeedback feedback;
   MotionPid positionPid, velocityPid;
-  bool started = false, profileValid = false, settling = false, releasing = false;
-  bool progressValid = false, kickDone = false;
+  bool started = false, profileValid = false, settling = false, releasing = false, arriving = false;
+  bool progressValid = false, kickDone = false, streamingTarget = false;
+  uint32_t targetChangedAt = 0;
   uint32_t at = 0, kickAt = 0, releaseAt = 0, settledAt = 0, progressAt = 0;
   float referencePosition = 0, referenceVelocity = 0, referenceAcceleration = 0;
   float ramp = 0, rampRate = 0, kickPosition = 0, progressPosition = 0;
+  float kickBase = 0, kickPeak = 0, releaseOutput = 0;
   float commandVelocity = 0, commandAcceleration = 0;
   int kickDirection = 0;
   void cancel();

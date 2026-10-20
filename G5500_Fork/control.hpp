@@ -120,6 +120,9 @@ struct AutoTuneState {
   float origin = 0, otherPosition = 0, lower = 0, upper = 0, limit = 0, level = 0;
   float phasePosition = 0, noiseLow = 0, noiseHigh = 0, noiseVelocity = 0, threshold = 0;
   float peakVelocity = 0, validationError = 0, validationTarget = 0;
+  float validationOrigin = 0;
+  unsigned validationPass = 0, validationReversals = 0;
+  int validationLastDirection = 0;
   float nextLevel = 0, searchLevel = 0, minimumLevel = 0;
   float lastPosition = 0, sampleVelocity = 0, stoppingDistance = 0;
   float plateauVelocity = 0;
@@ -131,6 +134,8 @@ struct AutoTuneState {
   SpeedSettings originalSpeed{}, proposedSpeed{};
   MotionSettings originalMotion{}, proposedMotion{};
   std::array<AutoTuneMeasurement, 2> measurements{};
+  struct Plateau { float output = 0, velocity = 0, responseSeconds = 0; };
+  std::array<Plateau, 2> confirmedHigh{};
   bool active() const { return phase >= AutoTunePhase::Quiet && phase <= AutoTunePhase::Validate; }
 };
 struct Preset {

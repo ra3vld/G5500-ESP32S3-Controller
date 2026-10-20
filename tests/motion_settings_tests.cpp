@@ -19,11 +19,11 @@ int main(){
   assert(c.motionSettings[0].ready);
   assert(api(c,p,s,"/api/settings",{{"azMotionReady","true"},{"azMotionKickEnabled","true"},{"azMotionKickPercent","50"},{"azSpeedPercent","5"}},0).status==200);
   assert(c.motionSettings[0].ready&&c.motionSettings[0].kickEnabled&&c.speedPercent==5);
-  assert(api(c,p,s,"/api/target",{{"az","90"}},0).status==200);c.tick(0);assert(c.axes[0].speedOutputPercent==50);
-  assert(api(c,p,s,"/api/settings",{{"azMotionVelocity","2.5"},{"azRegulatorMode","cascade"},{"azMotionHoldEnabled","true"}},20).status==200);
+  assert(api(c,p,s,"/api/target",{{"az","90"}},0).status==200);c.tick(0);assert(c.axes[0].speedOutputPercent==5);
+  assert(api(c,p,s,"/api/settings",{{"azMotionVelocity","2.5"},{"azRegulatorMode","cascade"},{"azMotionHoldEnabled","true"},{"azMotionSustainingPercent","16"}},20).status==200);
   assert(!c.axes[0].direction&&!c.axes[0].tracking&&!c.axes[0].holdArmed);assert(c.motionSettings[0].mode==RegulatorMode::Cascade);
   const auto before=c.motionSettings;
-  for(const auto &bad:{Form{{"azRegulatorMode","pid"}},Form{{"azMotionVelocity","nan"}},Form{{"azMotionReady","true"},{"azMotionKickPercent","101"}},Form{{"azMotionPositionTolerance","2"},{"azMotionHoldResumeDegrees","1"}},Form{{"azMotionFeedbackTimeoutMs","100"},{"azMotionVelocityWindowMs","600"}}}) {
+  for(const auto &bad:{Form{{"azRegulatorMode","pid"}},Form{{"azMotionSustainingPercent","101"}},Form{{"azMotionSustainingPercent","16.5"}},Form{{"azMotionOutputLimitPercent","10"},{"azMotionKickEnabled","false"}},Form{{"azMotionVelocity","nan"}},Form{{"azMotionReady","true"},{"azMotionKickPercent","101"}},Form{{"azMotionPositionTolerance","2"},{"azMotionHoldResumeDegrees","1"}},Form{{"azMotionFeedbackTimeoutMs","100"},{"azMotionVelocityWindowMs","600"}}}) {
     assert(api(c,p,s,"/api/settings",bad,20).status==400);assert(c.motionSettings==before);
   }
   assert(storage.saveForkSettings(runtime));

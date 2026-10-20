@@ -426,6 +426,17 @@ void WebInterface::setupWeb() {
     j << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load()
       << ",\"maxFailedAllocation\":" << runtimeMetrics.largestFailedAllocation.load()
       << ",\"loopMaxUs\":" << runtimeMetrics.loopMaxUs << ",\"loopsOver20ms\":" << runtimeMetrics.loopsOver20ms;
+    const uint32_t feedbackNow = millis();
+    j << ",\"localFeedback\":[";
+    for (unsigned i=0; i<2; ++i) {
+      if(i) j << ',';
+      const bool available = !runtime_.hud.isHud() && !runtime_.controller.hardware.simulation &&
+          (i==0 || runtime_.controller.model==Model::G5500) && hardware_.sampleMaxIntervalMs(i)>0;
+      if(!available) j << "null";
+      else j << "{\"ageMs\":" << uint32_t(feedbackNow-hardware_.sampledAt(i))
+             << ",\"maxIntervalMs\":" << hardware_.sampleMaxIntervalMs(i) << '}';
+    }
+    j << ']';
     runtime_.hud.writeStatus(j);
     if (!writeStateJson(j, runtime_.controller, runtime_.protocol, runtime_.loggerSettings, millis(), true)) {
       web_.send(503, "application/json", "{\"error\":\"status_too_large\"}");

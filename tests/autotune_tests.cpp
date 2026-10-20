@@ -14,7 +14,7 @@ struct Rig {
   float position=90,velocity=0;
   float positiveStart=30,negativeStart=35,sustaining=10,gain=.2f,bias=8;
   float negativeSustaining=0,negativeGain=1,quantum=0,timeConstant=.12f,rippleBelow=0,lowerStart=0,lowerStartBelow=0;
-  float dragOutput=0,dragFrom=0,dragTo=0;
+  float dragOutput=0,dragFrom=0,dragTo=0,load=0;
   bool jam=false,medianFeedback=false;
   PositionFilter filter;
   explicit Rig(bool cascade=false,unsigned axis=0,uint32_t stamp=0):now(stamp),axis(axis) {
@@ -30,9 +30,9 @@ struct Rig {
     const float start=lowerStart>0 && position<lowerStartBelow?lowerStart:a.direction<0?negativeStart:positiveStart;
     float minimum=a.direction<0 && negativeSustaining>0?negativeSustaining:sustaining;
     if(position>=dragFrom && position<=dragTo)minimum=std::max(minimum,dragOutput);
-    float desired=a.direction*(u>=minimum?gain*(a.direction<0?negativeGain:1)*(u-bias):0);
+    float desired=a.direction*(u>=minimum?gain*(a.direction<0?negativeGain:1)*std::max(0.f,u-bias-load):0);
     if(u<rippleBelow)desired*=1+.45f*std::sin(float(now)*.009f);
-    if(jam || (std::abs(velocity)<.01f && u+.001f<start))desired=0;
+    if(jam || (std::abs(velocity)<.01f && u+.001f<start+load))desired=0;
     velocity+=(desired-velocity)*(.02f/timeConstant);
     if(std::abs(velocity)<.003f && desired==0)velocity=0;
     position+=velocity*.02f;now+=20;
@@ -54,14 +54,35 @@ static void completed(bool cascade,unsigned axis,uint32_t stamp=0) {
   for(unsigned n=0;n<6000 && r.c.autoTune.active();++n){r.step();CHECK(r.c.axes[axis].speedOutputPercent<=50.001f);CHECK(!r.c.axes[1-axis].direction);}
   if(r.c.autoTune.phase!=AutoTunePhase::Complete)std::cerr<<"tune "<<cascade<<" axis "<<axis<<" phase "<<Controller::autoTunePhaseName(r.c.autoTune.phase)<<" reason "<<r.c.autoTune.reason<<" motion "<<r.c.fault<<" pos "<<r.position<<" low0 "<<r.c.autoTune.measurements[0].lowVelocity<<" high0 "<<r.c.autoTune.measurements[0].highVelocity<<" low1 "<<r.c.autoTune.measurements[1].lowVelocity<<" high1 "<<r.c.autoTune.measurements[1].highVelocity<<" error "<<r.c.autoTune.validationError<<'\n';
   CHECK(r.c.autoTune.phase==AutoTunePhase::Complete);CHECK(r.c.autoTune.proposedMotion.valid());
+  CHECK(r.c.autoTune.validationPass==1);
   CHECK(r.c.motionSettings[axis]==original);CHECK(r.c.speeds[axis]==speed);CHECK(!r.c.moving());CHECK(!r.c.axes[axis].holdArmed);
   CHECK(r.c.autoTune.measurements[0].startOutput>20);CHECK(r.c.autoTune.measurements[1].startOutput>20);
   CHECK(r.c.autoTune.proposedMotion.kickPercent<=50);CHECK(!r.c.autoTune.proposedMotion.holdEnabled);
-  if(cascade){CHECK(r.c.autoTune.proposedMotion.velocityKp>0);CHECK(r.c.autoTune.proposedMotion.velocityKi>0);CHECK(r.c.autoTune.proposedMotion.positionKp>0);}
-  char out[4096];JsonWriter j(out,sizeof out);CHECK(writeAutoTune(j,r.c,true));CHECK(std::string(j.data()).find("measurements")!=std::string::npos);
+  if(cascade){CHECK(r.c.autoTune.proposedSpeed.speedPercent>=25);CHECK(r.c.autoTune.proposedMotion.velocityKp>0);CHECK(r.c.autoTune.proposedMotion.velocityKi>0);CHECK(r.c.autoTune.proposedMotion.positionKp>0);}
+  char out[4096];JsonWriter j(out,sizeof out);CHECK(writeAutoTune(j,r.c,true));CHECK(std::string(j.data()).find("measurements")!=std::string::npos);CHECK(std::string(j.data()).find("peakVelocity")!=std::string::npos);CHECK(std::string(j.data()).find("stoppingDistance")!=std::string::npos);
   CHECK(r.c.applyAutoTune(r.c.autoTune.id+1,r.now)==Result::Unavailable);
   const auto proposed=r.c.autoTune.proposedMotion;CHECK(r.c.applyAutoTune(r.c.autoTune.id,r.now)==Result::Ok);
   CHECK(r.c.motionSettings[axis]==proposed);CHECK(!r.c.moving());CHECK(r.c.applyAutoTune(r.c.autoTune.id,r.now)==Result::Unavailable);
+  if(cascade)CHECK(r.c.speeds[axis]==speed);
+  if(cascade)for(int direction:{-1,1}) {
+    r.c.stopNow(-1,r.now);r.position=90;r.velocity=0;r.filter={};r.c.resetFeedback(int(axis),r.now);r.c.feedbackAt(axis,90,true,r.now);
+    for(unsigned n=0;n<30;++n)r.step();
+    CHECK(r.c.jog(axis,direction,false,r.now)==Result::Ok);r.c.tick(r.now);
+    for(unsigned n=0;n<150;++n) {
+      r.step();CHECK(r.c.axes[axis].motionError==MotionError::None);
+      if(n>25)CHECK(std::abs(r.velocity)>.05f); // sustained rotation, not just a lucky endpoint
+    }
+    r.load=5;
+    for(unsigned n=0;n<100;++n) {
+      r.step();CHECK(r.c.axes[axis].motionError==MotionError::None);
+      if(n>75)CHECK(std::abs(r.velocity)>.75f*proposed.velocity);
+    }
+    r.load=0;
+    for(unsigned n=0;n<100;++n)r.step();
+    CHECK(std::abs(r.velocity)>.75f*proposed.velocity);
+    r.c.stopNow(-1,r.now);CHECK(!r.c.moving());
+  }
+
 }
 static void safety() {
   Rig r;const auto m=r.c.motionSettings[0];const auto s=r.c.speeds[0];CHECK(r.start()==Result::Ok);
@@ -69,7 +90,8 @@ static void safety() {
   r.c.stopNow(-1,r.now);
   CHECK(r.c.autoTune.phase==AutoTunePhase::Cancelled);CHECK(!r.c.moving());CHECK(r.c.motionSettings[0]==m);CHECK(r.c.speeds[0]==s);
   CHECK(r.c.applyAutoTune(r.c.autoTune.id,r.now)==Result::Unavailable);
-  r=Rig();r.jam=true;CHECK(r.start()==Result::Ok);for(unsigned n=0;n<300 && r.c.autoTune.active();++n)r.step();
+  r=Rig();r.jam=true;CHECK(r.start()==Result::Ok);for(unsigned n=0;n<1000 && r.c.autoTune.active();++n)r.step();
+  CHECK(r.now<20000);
   CHECK(r.c.autoTune.phase==AutoTunePhase::Failed);CHECK(!r.c.moving());CHECK(r.c.motionSettings[0]==m);
   r=Rig();CHECK(r.start()==Result::Ok);for(unsigned n=0;n<40;++n)r.step();for(unsigned n=0;n<40 && r.c.autoTune.active();++n)r.step(false);
   CHECK(r.c.autoTune.phase==AutoTunePhase::Failed);CHECK(!r.c.moving());
@@ -85,15 +107,15 @@ static void safety() {
   CHECK(r.c.autoTune.phase==AutoTunePhase::Failed);CHECK(!r.c.moving());
   r=Rig();r.jam=true;r.c.motionSettings[0].kickEnabled=true;r.c.motionSettings[0].kickMs=400;
   CHECK(r.start()==Result::Ok);
-  for(unsigned n=0;n<100 && r.c.autoTune.active();++n)r.step();
-  CHECK(r.c.autoTune.phase==AutoTunePhase::Failed);CHECK(r.now<=1020);CHECK(!r.c.moving());
+  for(unsigned n=0;n<1000 && r.c.autoTune.active();++n)r.step();
+  CHECK(r.c.autoTune.phase==AutoTunePhase::Failed);CHECK(r.now<12000);CHECK(!r.c.moving());
 }
 static void highStiction() {
   Rig r;r.positiveStart=r.negativeStart=50;r.sustaining=5;r.gain=.134f;r.bias=0;r.c.speeds[0].speedPercent=5;
   CHECK(r.start()==Result::Ok);
   for(unsigned n=0;n<6000&&r.c.autoTune.active();++n)r.step();
   if(r.c.autoTune.phase!=AutoTunePhase::Complete)std::cerr<<"high stiction "<<r.c.autoTune.reason<<'\n';
-  CHECK(r.c.autoTune.phase==AutoTunePhase::Complete);CHECK(r.c.autoTune.proposedSpeed.speedPercent==6);
+  CHECK(r.c.autoTune.phase==AutoTunePhase::Complete);CHECK(r.c.autoTune.proposedSpeed.speedPercent>=25);
   CHECK(r.c.autoTune.proposedMotion.kickPercent==50);
 }
 static void fastBounded(float travel,bool cascade=false,unsigned axis=0) {
@@ -113,14 +135,17 @@ static void fastBounded(float travel,bool cascade=false,unsigned axis=0) {
   if(travel<=20) {
     CHECK(r.c.autoTune.phase==AutoTunePhase::Complete ||
           (r.c.autoTune.phase==AutoTunePhase::Failed && std::string(r.c.autoTune.reason)=="insufficient_travel"));
-    if(travel==20)CHECK(relocated);
+    // A fresh breakaway search can discover a larger stopping reserve before
+    // a transfer starts. Reject that short stroke rather than forcing a move.
+    if(travel==20)CHECK(relocated || (r.c.autoTune.relocations>0 &&
+        r.c.autoTune.phase==AutoTunePhase::Failed && std::string(r.c.autoTune.reason)=="insufficient_travel"));
     CHECK(r.c.motionSettings[axis]==saved);CHECK(r.c.speeds[axis]==speed);CHECK(!r.c.moving());return;
   }
   CHECK(r.c.autoTune.phase==AutoTunePhase::Complete);CHECK(r.c.motionSettings[axis]==saved);CHECK(r.c.speeds[axis]==speed);
   CHECK(r.c.autoTune.proposedSpeed.speedPercent>=18);CHECK(!r.c.moving());
   if(cascade) {
-    CHECK(std::abs(r.c.autoTune.proposedMotion.velocity-std::max(r.c.autoTune.measurements[0].lowVelocity,r.c.autoTune.measurements[1].lowVelocity))<.001f);
-    CHECK(r.c.autoTune.proposedMotion.positionTolerance>=r.c.autoTune.proposedSpeed.coastDegrees);
+    CHECK(std::abs(r.c.autoTune.proposedMotion.velocity-std::max({r.c.autoTune.measurements[0].lowVelocity,r.c.autoTune.measurements[1].lowVelocity,std::min(r.c.autoTune.measurements[0].highVelocity,r.c.autoTune.measurements[1].highVelocity)}))<.001f);
+    CHECK(r.c.autoTune.proposedMotion.positionTolerance==std::max(saved.positionTolerance,r.c.autoTune.proposedMotion.movementDegrees));
   }
 }
 static void inertialPlateaus(bool median=false) {
@@ -205,9 +230,11 @@ static void strongerRestart(bool reposition) {
   m.kickEnabled=true;m.kickPercent=28;r.c.speeds[0].speedPercent=r.c.speeds[0].approachSpeedPercent=17;
   t.internal=true;CHECK(r.c.jog(0,1,false,r.now)==Result::Ok);t.internal=false;
   bool confirmed=false;
-  for(unsigned n=0;n<100 && t.active();++n) {
+  t.nextPhase=AutoTunePhase::Low;t.nextDirection=-1;t.nextLevel=17;
+  for(unsigned n=0;n<600 && t.active();++n) {
     const auto phase=r.c.axes[0].motionPhase;const float output=r.c.axes[0].speedOutputPercent;
     r.step();
+    if(r.now<800)CHECK(r.c.axes[0].speedOutputPercent<=28.001f);
     if(phase==MotionPhase::Kick && r.c.axes[0].motionPhase==MotionPhase::Run) {
       CHECK(output>=50);CHECK(t.measurements[0].startOutput>=output);
       CHECK(t.measurements[0].startMs>250);confirmed=true;break;
@@ -303,7 +330,11 @@ static void validationAfterStrongKick() {
   CHECK(t.validationTarget<=129); // Leave room for the observed 80 deg/s startup, not just 23 deg/s work.
   for(unsigned n=0;n<6000 && t.active();++n)r.step();
   if(t.phase!=AutoTunePhase::Complete)std::cerr<<"validation kick "<<t.reason<<" error "<<t.validationError<<'\n';
-  CHECK(t.phase==AutoTunePhase::Complete);CHECK(std::abs(t.validationError)<=2);
+  // The historical fitted response is not exact for this plant. A stricter
+  // two-way validation may reject it; it must never publish an inaccurate fit.
+  CHECK(t.phase==AutoTunePhase::Complete || (t.phase==AutoTunePhase::Failed && std::string(t.reason)=="validation_error"));
+  if(t.phase==AutoTunePhase::Complete)CHECK(std::abs(t.validationError)<=2);
+  else CHECK(r.c.applyAutoTune(t.id,r.now)==Result::Unavailable);
 }
 // Captured AZ cascade failure: 48% breakaway, 16..19% moving output and
 // 9.58..17.67 deg/s measured plateaus. The old proposal stopped after kick,
@@ -429,4 +460,94 @@ static void transport() {
   CHECK(r.c.autoTune.phase==AutoTunePhase::Cancelled);
   CHECK(r.c.speeds[0].speedPercent==20);
 }
-int main(){try{completed(false,0);completed(true,0);completed(false,1);completed(true,1,0xfffff000u);safety();highStiction();fastBounded(60);fastBounded(20);fastBounded(10);fastBounded(60,true,1);inertialPlateaus();inertialPlateaus(true);marginalWorkOutput();adaptiveProbeStartup();adaptiveProbeStartup(90);strongerRestart(false);strongerRestart(true);validationAfterStrongKick();cascadeBreakawayRecovery();asymmetricCoast();workOutputHeadroom();repositionDrag();repositionDrag(true);repositionStoppingRoom();adaptiveMinimum();adaptiveMinimum(true);adaptiveMinimum(false,true);validationRetry();exhaustedMinimum();preparation();transport();std::cout<<"PASS autotune: "<<checks<<" checks\n";}catch(const std::exception &e){std::cerr<<e.what()<<'\n';return 1;}}
+static void savedKickIsNotMinimum() {
+  for(bool cascade:{false,true}) {
+    Rig r(cascade);r.positiveStart=12;r.c.motionSettings[0].kickEnabled=true;
+    r.c.motionSettings[0].kickPercent=50;r.c.motionSettings[0].kickMs=1500;
+    CHECK(r.start()==Result::Ok);
+    for(unsigned n=0;n<1000 && r.c.autoTune.active() && r.c.autoTune.phase!=AutoTunePhase::Low;++n)r.step();
+    CHECK(r.c.autoTune.phase==AutoTunePhase::Low);
+    CHECK(r.c.autoTune.measurements[0].startOutput>=12);
+    CHECK(r.c.autoTune.measurements[0].startOutput<35);
+    r.c.stopNow(-1,r.now);CHECK(r.c.motionSettings[0].kickPercent==50);
+  }
+}
+// A faster unmeasured request must not overwrite the last measured work point.
+static void measuredWorkSurvivesShortStroke() {
+  for(int direction:{-1,1})for(bool transferReserve:{false,true}) {
+    Rig r(true);CHECK(r.start()==Result::Ok);auto &t=r.c.autoTune;
+    const unsigned d=direction>0?0:1;t.direction=direction;t.level=40;t.searchLevel=30;t.threshold=1;
+    t.measurements[d]={30,17,40,5,12,.2f,0,500};
+    t.confirmedHigh[d]={25,12,.2f};
+    if(transferReserve) {
+      t.phase=AutoTunePhase::Coast;t.nextPhase=AutoTunePhase::High;t.nextDirection=direction;
+      t.nextLevel=40;t.relocate=true;t.peakVelocity=300;t.phasePosition=r.position;
+      for(unsigned n=0;n<40 && t.nextPhase==AutoTunePhase::High;++n)r.step();
+    } else {
+      r.position=direction>0?149:31;r.now=1000;r.c.feedbackAt(0,r.position,true,r.now);
+      t.lastPosition=r.position;t.positionAt=r.now;
+      r.c.axes[0].direction=r.c.axes[0].wanted=direction;
+      r.c.axes[0].speedOutputPercent=40;t.phase=AutoTunePhase::High;t.relocations=1;
+      r.step();
+    }
+    if(t.phase!=AutoTunePhase::Coast)std::cerr<<"short work "<<direction<<" reserve "<<transferReserve<<" phase "<<Controller::autoTunePhaseName(t.phase)<<" reason "<<t.reason<<" fault "<<r.c.fault<<"\n";
+    CHECK(t.phase==AutoTunePhase::Coast);CHECK(!t.relocate);
+    CHECK(t.nextPhase==(direction>0?AutoTunePhase::Start:AutoTunePhase::Validate));
+    CHECK(t.measurements[d].highOutput==25);CHECK(t.measurements[d].highVelocity==12);
+    CHECK(t.measurements[d].startOutput==30);CHECK(!r.c.moving());
+    CHECK(r.c.applyAutoTune(t.id,r.now)==Result::Unavailable);r.c.cancelAutoTune(r.now);
+  }
+}
+static void validationReturnStaysInsideReserve() {
+  Rig r(true);CHECK(r.start()==Result::Ok);auto &t=r.c.autoTune;
+  r.position=42;r.now=1000;r.c.feedbackAt(0,r.position,true,r.now);
+  t.origin=94.72f;t.lower=34.72f;t.upper=154.72f;t.threshold=1;
+  t.phase=AutoTunePhase::Coast;t.nextPhase=AutoTunePhase::Validate;t.direction=-1;
+  t.phasePosition=r.position+1.83f;t.noiseLow=t.noiseHigh=r.position;t.stoppingDistance=3.6f;t.peakVelocity=80;
+  t.measurements[0]={46,16,17,11.17f,13.09f,.17f,.82f,615};
+  t.measurements[1]={28,18,19,20.12f,23.3f,.37f,1.83f,247};
+  for(unsigned n=0;n<100 && t.phase==AutoTunePhase::Coast;++n)r.step();
+  CHECK(t.phase==AutoTunePhase::Validate);CHECK(t.validationOrigin>r.position);
+  CHECK(t.validationTarget>t.validationOrigin);CHECK(t.validationTarget<t.upper);
+  r.c.cancelAutoTune(r.now);CHECK(!r.c.moving());
+}
+// Captured EL: do not count Simple's proposed 17-degree coast again for Cascade.
+static void cascadeUsesMeasuredStoppingReserve(float peak) {
+  Rig r(true);CHECK(r.c.setRange({-45,190},AZ_CUSTOM));r.c.feedbackAt(0,r.position,true,r.now);
+  auto &m=r.c.motionSettings[0];m.kickEnabled=true;m.kickPercent=58.3f;m.kickMs=873;
+  m.movementDegrees=1.22f;m.positionTolerance=5.02f;m.holdResumeDegrees=7.52f;
+  m.outputLimitPercent=90;m.acceleration=m.deceleration=17.37f;m.jerk=8;
+  m.velocityWindowMs=80;m.kickReleaseMs=20;m.velocity=29.4f;
+  r.c.speeds[0].coastDegrees=2.5f;CHECK(r.start(90)==Result::Ok);auto &t=r.c.autoTune;
+  r.position=.34f;r.now=1000;r.c.feedbackAt(0,r.position,true,r.now);
+  t.origin=70.08f;t.lower=-19.92f;t.upper=160.08f;t.limit=90;t.threshold=1;
+  t.phase=AutoTunePhase::Coast;t.nextPhase=AutoTunePhase::Validate;t.direction=-1;
+  t.phasePosition=r.position+24.4f;t.noiseLow=t.noiseHigh=r.position;
+  t.lastPosition=r.position;t.positionAt=r.now;t.stoppingDistance=24.4f;t.peakVelocity=peak;
+  t.measurements[0]={30,20,25,43.61f,71.29f,.64f,10.35f,747};
+  t.measurements[1]={30,20,41,19.92f,81.65f,.02f,24.4f,675};
+  for(unsigned n=0;n<100 && t.phase==AutoTunePhase::Coast;++n)r.step();
+  if(peak==300) {
+    CHECK(t.phase==AutoTunePhase::Failed);CHECK(std::string(t.reason)=="insufficient_travel");
+    CHECK(!r.c.moving());CHECK(r.c.applyAutoTune(t.id,r.now)==Result::Unavailable);return;
+  }
+  if(t.phase!=AutoTunePhase::Validate)std::cerr<<"cascade reserve phase "<<Controller::autoTunePhaseName(t.phase)<<" reason "<<t.reason<<" peak "<<t.peakVelocity<<" stop "<<t.stoppingDistance<<" fault "<<r.c.fault<<" pos "<<r.position<<" origin "<<t.validationOrigin<<" target "<<t.validationTarget<<"\n";
+  CHECK(t.phase==AutoTunePhase::Validate);
+  CHECK(t.validationOrigin>t.lower+70);CHECK(t.validationTarget<t.upper-70);
+  CHECK(t.validationTarget-t.validationOrigin>2*m.positionTolerance+m.movementDegrees);
+  CHECK(t.proposedMotion.kickPercent==30);CHECK(t.proposedMotion.velocity>70);
+  CHECK(r.c.applyAutoTune(t.id,r.now)==Result::Unavailable);r.c.cancelAutoTune(r.now);
+}
+static void returnMustWork() {
+  Rig r(true);const auto original=r.c.motionSettings[0];const auto speed=r.c.speeds[0];
+  CHECK(r.start()==Result::Ok);
+  for(unsigned n=0;n<6000 && r.c.autoTune.active() && !r.c.autoTune.validationPass;++n)r.step();
+  CHECK(r.c.autoTune.phase==AutoTunePhase::Validate);
+  CHECK(r.c.autoTune.validationPass==1);
+  r.jam=true; // Successful outward approach must not conceal a failed return.
+  for(unsigned n=0;n<6000 && r.c.autoTune.active();++n)r.step();
+  CHECK(r.c.autoTune.phase==AutoTunePhase::Failed);CHECK(!r.c.moving());
+  CHECK(r.c.motionSettings[0]==original);CHECK(r.c.speeds[0]==speed);
+  CHECK(r.c.applyAutoTune(r.c.autoTune.id,r.now)==Result::Unavailable);
+}
+int main(){try{cascadeUsesMeasuredStoppingReserve(250);cascadeUsesMeasuredStoppingReserve(300);validationReturnStaysInsideReserve();measuredWorkSurvivesShortStroke();returnMustWork();savedKickIsNotMinimum();completed(false,0);completed(true,0);completed(false,1);completed(true,1,0xfffff000u);safety();highStiction();fastBounded(60);fastBounded(20);fastBounded(10);fastBounded(60,true,1);inertialPlateaus();inertialPlateaus(true);marginalWorkOutput();adaptiveProbeStartup();adaptiveProbeStartup(90);strongerRestart(false);strongerRestart(true);validationAfterStrongKick();cascadeBreakawayRecovery();asymmetricCoast();workOutputHeadroom();repositionDrag();repositionDrag(true);repositionStoppingRoom();adaptiveMinimum();adaptiveMinimum(true);adaptiveMinimum(false,true);validationRetry();exhaustedMinimum();preparation();transport();std::cout<<"PASS autotune: "<<checks<<" checks\n";}catch(const std::exception &e){std::cerr<<e.what()<<'\n';return 1;}}

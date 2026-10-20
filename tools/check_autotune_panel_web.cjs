@@ -40,6 +40,17 @@ const motion={regulatorMode:'cascade',ready:true,kickEnabled:true,holdEnabled:tr
   await page.waitForFunction(()=>document.getElementById('azTuneCenter').textContent==='В середину (70°)'&&!document.getElementById('azTuneCenter').disabled);
   assert.equal(await page.locator('#azTunePosition').textContent(),'0.00°');assert.equal(await page.locator('#azTuneVelocity').textContent(),'0.00 °/с');
   assert.equal(await page.locator('#elTuneCenter').textContent(),'В середину (72.5°)');
+  // A legacy response has no sustaining field: show a safe zero default.
+  await page.waitForFunction(()=>document.getElementById('azMotionSustainingPercent').value==='0');
+  assert(await page.locator('#azMotionSustainingPercent').isVisible());
+  await page.locator('#azRegulatorMode').selectOption('simple');
+  assert.equal(await page.locator('#azMotionSustainingPercent').isVisible(),false);
+  await page.locator('#azRegulatorMode').selectOption('cascade');
+  await page.locator('#azMotionSustainingPercent').fill('16');
+  await page.locator('#azMotionForm button[type=submit]').click();
+  await page.waitForTimeout(150);
+  assert(posts.some(p=>p.path==='/api/settings'&&p.form.azMotionSustainingPercent==='16'));
+
   await page.locator('#elTuneCenter').click();assert.equal(posts.at(-1).form.axis,'el');assert.equal(posts.at(-1).form.action,'center');assert.equal(posts.at(-1).form.rangeRevision,'7');
   await page.waitForFunction(()=>document.getElementById('azTuneStart').disabled&&!document.getElementById('elTuneStop').disabled);
   await page.locator('#elTuneStop').click();await page.waitForFunction(()=>!window._forkState?.moving);
@@ -66,6 +77,7 @@ const motion={regulatorMode:'cascade',ready:true,kickEnabled:true,holdEnabled:tr
     for(const e of root.querySelectorAll('.kv>div'))if(e.scrollWidth>e.clientWidth+1)errors.push('clipped telemetry');
     return errors;
    });assert.deepEqual(issues,[]);
+   await page.locator('#azMotionSustainingPercent').locator('..').screenshot({path:path.join(out,`minimum-${width}.png`)});
    await page.locator('#autotune-preview').screenshot({path:path.join(out,`autotune-${width}.png`)});
   }
   state.autotune={phase:'failed',active:false,axis:0,id:1,reason:'feedback_stale'};state.moving=false;

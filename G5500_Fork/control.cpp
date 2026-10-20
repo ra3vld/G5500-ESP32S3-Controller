@@ -155,6 +155,11 @@ Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
       Axis &axis = axes[i];
       const float value = i ? nextTarget.el : nextTarget.az;
       const bool unchanged = axis.accepted && value == axis.target && (axis.tracking || axis.holdArmed);
+      if(!unchanged) {
+        motion_[i].arriving=motion_[i].settling=false;
+        motion_[i].streamingTarget=axis.tracking && axis.direction*(value-axis.target)>0;
+        motion_[i].targetChangedAt=now;
+      }
       accepted = true;
       axis.acceptedTarget = value;
       axis.accepted = true;
