@@ -3,13 +3,36 @@ set -eu
 cd "$(dirname "$0")/.."
 mkdir -p build
 python3 tools/generate_web_assets.py --check
+python3 tools/generate_tft_image.py --check
+python3 -m unittest discover -s tests -p test_tft_image.py
 python3 -m unittest discover -s tests -p web_assets_tests.py
 python3 -m unittest discover -s tests -p test_crowpanel_rgb.py
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DRGB_INDICATOR_TEST -I tests/rgb_fakes -I tests/fakes -I G5500_Fork tests/rgb_indicator_tests.cpp -o build/rgb_indicator_tests
+./build/rgb_indicator_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/ota_fakes -I G5500_Fork G5500_Fork/ota.cpp tests/ota_tests.cpp -o build/ota_tests
 ./build/ota_tests
 sh tools/build_ruckig_native.sh
 MOTION_SOURCES="G5500_Fork/motion.cpp build/motion/libruckig.a"
 CORE_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp"
+
+# Persisted GPIO ownership and adapters on every board, including both CrowPanel profiles.
+for board in 1 2 3 4 5; do
+  extra=""
+  if [ "$board" = 5 ]; then extra="-DDISPLAY_KIND=3 -DUSER_BUTTON_GPIO=-1"; fi
+  ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=$board $extra -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/pin_map_tests.cpp -o build/pin_map_tests_$board
+  ./build/pin_map_tests_$board
+  ./build/pin_map_tests_$board --describe > build/pin-map-$board.json
+done
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=5 -DDISPLAY_KIND=3 -DUSER_BUTTON_GPIO=-1 -DCROWPANEL_LOCAL_DRIVE=1 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/pin_map_tests.cpp -o build/pin_map_tests_az
+./build/pin_map_tests_az
+./build/pin_map_tests_az --describe > build/pin-map-az.json
+
+for board in 1 2 3 4; do
+  for display in 1 2; do
+    ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DPIN_MAP_DESCRIBE_ONLY -DBOARD_PROFILE=$board -DDISPLAY_KIND=$display -I G5500_Fork tests/pin_map_tests.cpp -o build/pin_map_describe
+    ./build/pin_map_describe --describe > build/pin-map-$board-d$display.json
+  done
+done
 
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork G5500_Fork/command_api.cpp tests/command_api_tests.cpp -o build/command_api_tests
 ./build/command_api_tests

@@ -129,7 +129,7 @@ size_t CommandServer::process(uint64_t peer, std::string_view request, uint32_t 
   if (!form.get("page").empty() && !integer(form.get("page"),offset)) return error(400,"invalid_page");
   if (method == "POST" && offset) return error(400,"invalid_page");
   // Strip protocol metadata: applications see exactly the original API fields.
-  std::array<FormArgument,32> arguments;
+  std::array<FormArgument,40> arguments;
   size_t count = 0;
   for (auto entry : form.view()) {
     const auto key = entry.first;

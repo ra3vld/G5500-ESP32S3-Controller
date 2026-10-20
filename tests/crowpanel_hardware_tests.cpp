@@ -15,7 +15,7 @@ int main() {
   int raw, mv; hw.adcDiagRead(forkrot::board::PIN_AZ_ADC, raw, mv);
   hw.rgbSet(5, 5, 5); hw.allStop();
   assert(fakeHardware.events.empty() && fakeHardware.readsRaw == 0 && fakeHardware.readsMv == 0);
-  assert(!runtime.controller.moving() && runtime.controller.fault == "crowpanel_no_drive");
+  assert(!runtime.controller.moving() && runtime.controller.fault == "pin_configuration_invalid");
   // Pending targets and local drafts must not be discarded by an idle output pass.
   assert(runtime.controller.target({200, 0, true, false}, true, 0) == forkrot::Result::Pending);
   const auto epoch = runtime.controller.stopEpoch;

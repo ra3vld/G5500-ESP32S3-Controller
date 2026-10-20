@@ -162,6 +162,25 @@ class CommandApiTests(unittest.TestCase):
         self.assertEqual(client.request('POST', '/api/settings', {'speedPercent': '60'})['status'], 200)
         self.assertEqual(client.request('GET', '/api/config')['body']['speedPercent'], 60)
 
+    def test_pin_configuration_and_capability_pages(self):
+        for kind in ('serial', 'tcp', 'udp'):
+            with self.subTest(transport=kind):
+                bridge = self.bridge(kind)
+                link = api.SerialTransport(bridge.address, 9600) if kind == 'serial' else api.SocketTransport(bridge.address, kind == 'udp', 1)
+                self.addCleanup(link.close)
+                client = api.Client(link, timeout=1)
+                hardware = client.request('GET', '/api/hardware')['body']
+                caps = client.request('GET', '/api/hardware/pins')['body']
+                self.assertEqual(len(caps['roles']), 29)
+                self.assertEqual(len(caps['gpios']), 49)
+                fields = dict(token=hardware['token'], generation=hardware['generation'])
+                fields['pin.azAdc'] = 36
+                self.assertEqual(client.request('POST', '/api/hardware', fields)['status'], 200)
+                configured = client.request('GET', '/api/hardware')['body']
+                self.assertEqual(configured['configured']['pins']['azAdc'], 36)
+                self.assertEqual(client.request('GET', '/api/hardware', {'view': 'confirmed'})['body']['configured']['pins']['azAdc'], 34)
+                self.assertTrue(all(len(reply) <= 1200 for reply in bridge.responses))
+
     def test_wifi_unicode_response(self):
         bridge = self.bridge('udp')
         link = api.SocketTransport(bridge.address, True, 1)

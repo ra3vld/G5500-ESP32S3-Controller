@@ -1,6 +1,7 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
 #include "build_config.hpp"
+#include <optional>
 
 #if TFT_DISPLAY_ENABLED
 #include <SPI.h>
@@ -70,8 +71,8 @@ private:
   Network &network_;
   Storage &storage_;
   TouchCalibration touchCalibration_;
-  Adafruit_ILI9341 tft{&SPI, board::PIN_TFT_DC, board::PIN_TFT_CS, board::PIN_TFT_RST};
-  XPT2046_Touchscreen touch{board::PIN_TOUCH_CS, board::PIN_TOUCH_IRQ};
+  std::optional<Adafruit_ILI9341> tft;
+  std::optional<XPT2046_Touchscreen> touch;
   uint32_t lastDisplayMs = 0;
   enum TftPage : uint8_t {
     TFT_PAGE_DASH = 0,
@@ -181,8 +182,7 @@ namespace forkrot {
 class DeviceActions; class Calibration; class Hardware; class Diagnostics; class Network; class Storage;
 class Display {
   Runtime &runtime_;
-  LiquidCrystal lcd_{board::PIN_LCD_RS, board::PIN_LCD_E, board::PIN_LCD_D4,
-                     board::PIN_LCD_D5, board::PIN_LCD_D6, board::PIN_LCD_D7};
+  std::optional<LiquidCrystal> lcd_;
   uint32_t updatedAt_ = 0;
   uint8_t lcdPrevious_[2][16]{};
   bool redraw_ = true;

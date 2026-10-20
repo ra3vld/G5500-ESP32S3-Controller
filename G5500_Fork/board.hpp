@@ -9,19 +9,6 @@
 #error "Only ESP32, ESP32-S2 and ESP32-S3 are supported"
 #endif
 #endif
-#if SELECTED_BOARD == BOARD_S3
-#include "board_s3.hpp"
-#elif SELECTED_BOARD == BOARD_S2_LEGACY
-#include "board_s2_legacy.hpp"
-#elif SELECTED_BOARD == BOARD_S2_MINI
-#include "board_s2_mini.hpp"
-#elif SELECTED_BOARD == BOARD_ESP32
-#include "board_esp32.hpp"
-#elif SELECTED_BOARD == BOARD_CROWPANEL_21
-#include "board_crowpanel_21.hpp"
-#else
-#error "Unknown board profile"
-#endif
 #if ((CONFIG_IDF_TARGET_ESP32S2 && SELECTED_BOARD != BOARD_S2_LEGACY && SELECTED_BOARD != BOARD_S2_MINI) || (CONFIG_IDF_TARGET_ESP32S3 && SELECTED_BOARD != BOARD_S3 && SELECTED_BOARD != BOARD_CROWPANEL_21) || (CONFIG_IDF_TARGET_ESP32 && SELECTED_BOARD != BOARD_ESP32))
 #error "Board profile does not match the chip"
 #endif
@@ -63,8 +50,8 @@ constexpr bool gpio(int n) {
   if (SELECTED_BOARD == BOARD_S2_MINI) return (n <= 18 || n == 21 || (n >= 33 && n <= 40));
   return n <= 46 && !(n >= 22 && n <= 32) && n != 19 && n != 20;
 }
-constexpr bool output(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n < 34 : SELECTED_BOARD == BOARD_CROWPANEL_21 || n != 46); }
-constexpr bool pullup(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n < 34 : n != 46); }
+constexpr bool output(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n < 34 : (SELECTED_BOARD == BOARD_S3 || SELECTED_BOARD == BOARD_CROWPANEL_21) || n != 46); }
+constexpr bool pullup(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n < 34 : (SELECTED_BOARD == BOARD_S3 || SELECTED_BOARD == BOARD_CROWPANEL_21) || n != 46); }
 constexpr bool adc(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n >= 32 : n >= 1 && n <= 10); }
 // One owner per active wire; shared TFT/touch SPI wires appear only once here.
 inline constexpr int activePins[] = {
@@ -129,54 +116,106 @@ static_assert(output(PIN_EL_SPEED), "Independent drive requires two speed/enable
 #if defined(SOC_LEDC_CHANNEL_NUM)
 static_assert(SOC_LEDC_CHANNEL_NUM >= (CROWPANEL_LOCAL_DRIVE ? 2 : DRIVE_INTERFACE == DRIVE_BTS7960 ? 4 : DRIVE_INTERFACE == DRIVE_SEPARATE_PWM ? 2 : 1), "Insufficient LEDC channels");
 #endif
-// Runtime ownership validation uses the same physical board/display map. Motor
-// and Bluetooth selections no longer remove code or make unsafe pins available.
-inline const char *validateHardware(const HardwareConfig &c, bool hudUart = false) {
-  if (!BLUETOOTH_SUPPORT && c.bluetooth) return "bluetooth_not_supported";
-  if (c.drive > DRIVE_BTS7960 || c.bluetoothMode < BT_HC05 || c.bluetoothMode > BT_AUTO ||
-      (c.pwmInverted && c.drive != DRIVE_BTS7960)) return "invalid_hardware";
-  if (c.backend() == BT_ESP32_SPP && SELECTED_BOARD != BOARD_ESP32) return "spp_not_supported";
-  if (SELECTED_BOARD == BOARD_CROWPANEL_21 && (c.buttonGpio != -1 ||
-      (CROWPANEL_LOCAL_DRIVE ? c.drive == DRIVE_SEPARATE_PWM : c.drive != DRIVE_YAESU)))
-    return "crowpanel_hardware_fixed";
-  if (CROWPANEL_LOCAL_DRIVE && c.bluetooth) return "crowpanel_uart_is_drive";
-  if (CROWPANEL_LOCAL_DRIVE && hudUart) return "crowpanel_uart_is_drive";
-  if (!CROWPANEL_LOCAL_DRIVE && c.drive != DRIVE_YAESU && !output(PIN_EL_SPEED)) return "drive_not_supported";
-#if defined(SOC_LEDC_CHANNEL_NUM)
-  if (SOC_LEDC_CHANNEL_NUM < (CROWPANEL_LOCAL_DRIVE ? 2 : c.drive == DRIVE_BTS7960 ? 4 : c.drive == DRIVE_SEPARATE_PWM ? 2 : 1))
-    return "drive_not_supported";
-#endif
-  if (c.buttonGpio < -1 || (c.buttonGpio >= 0 && (!gpio(c.buttonGpio) ||
-      (c.buttonPullup && !pullup(c.buttonGpio))))) return "invalid_button_gpio";
-  if (hudUart && c.backend() == BT_HC05 && SELECTED_BOARD == BOARD_CROWPANEL_21) return "uart_in_use_by_hc05";
-  int pins[64]; unsigned count = 0;
-  auto add = [&](int pin) {
-    if (pin < 0) return true;
-    if (!gpio(pin)) return false;
-    for (unsigned i=0; i<count; ++i) if (pins[i] == pin) return false;
-    pins[count++] = pin; return true;
-  };
-  if (!c.simulation && (SELECTED_BOARD != BOARD_CROWPANEL_21 || CROWPANEL_LOCAL_DRIVE)) {
-    for (int pin : {PIN_AZ_ADC, PIN_EL_ADC, PIN_LEFT, PIN_RIGHT, PIN_DOWN, PIN_UP, PIN_SPEED})
-      if (!add(pin)) return "gpio_conflict";
-    if (c.drive != DRIVE_YAESU && !add(PIN_EL_SPEED)) return "gpio_conflict";
-  }
-  if (!(SELECTED_BOARD == BOARD_CROWPANEL_21 && c.backend() == BT_HC05))
-    if (!add(PIN_UART_RX) || !add(PIN_UART_TX)) return "gpio_conflict";
-  for (int pin : {int(c.buttonGpio), PIN_RGB, PIN_LED}) if (!add(pin)) return "gpio_conflict";
-  if (c.backend() == BT_HC05)
-    for (int pin : {PIN_HC05_STATE, PIN_HC05_RX, PIN_HC05_TX}) if (!add(pin)) return "gpio_conflict";
-#if DISPLAY_KIND == DISPLAY_ILI9341
-  for (int pin : {PIN_TFT_MOSI, PIN_TFT_SCK, PIN_TFT_MISO, PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_RST, PIN_TOUCH_CS, PIN_TOUCH_IRQ})
-    if (!add(pin)) return "gpio_conflict";
-#elif DISPLAY_KIND == DISPLAY_LCD1602
-  for (int pin : {PIN_LCD_RS, PIN_LCD_E, PIN_LCD_D4, PIN_LCD_D5, PIN_LCD_D6, PIN_LCD_D7})
-    if (!add(pin)) return "gpio_conflict";
-#elif DISPLAY_KIND == DISPLAY_CROWPANEL_21
-  for (int pin : {PIN_I2C_SDA, PIN_I2C_SCL, PIN_ENCODER_A, PIN_ENCODER_B, PIN_BACKLIGHT,
-       16,2,1,40,7,15,41,46,3,8,18,17,14,13,12,11,10,9,5,45,48,47,21})
-    if (!add(pin)) return "gpio_conflict";
+// Physical connections on CrowPanel cannot be freed by software switches.
+inline const char *fixedPinOwner(int n) {
+#if DISPLAY_KIND == DISPLAY_CROWPANEL_21
+  if(n==PIN_I2C_SDA || n==PIN_I2C_SCL) return "crowpanel.i2c";
+  if(n==PIN_ENCODER_A || n==PIN_ENCODER_B) return "crowpanel.encoder";
+  if(n>=0 && n==PIN_BACKLIGHT) return "crowpanel.backlight";
+  for(int pin:{16,2,1,40,7,15,41,46,3,8,18,17,14,13,12,11,10,9,5,45,48,47,21})
+    if(n==pin) return "crowpanel.display";
+#else
+  (void)n;
 #endif
   return nullptr;
+}
+inline const char *unavailablePinOwner(int n) {
+  if(gpio(n)) return fixedPinOwner(n);
+  if((SELECTED_BOARD==BOARD_ESP32 && ((n>=6 && n<=11) || n==16 || n==17)) ||
+      ((SELECTED_BOARD==BOARD_S3 || SELECTED_BOARD==BOARD_CROWPANEL_21) && n>=26 && n<=37) ||
+      ((SELECTED_BOARD==BOARD_S2_LEGACY || SELECTED_BOARD==BOARD_S2_MINI) && n>=22 && n<=32)) return "flash_psram";
+  if(SELECTED_BOARD!=BOARD_ESP32 && (n==19 || n==20)) return "usb";
+  return "unavailable";
+}
+struct HardwareValidation {
+  const char *error=nullptr, *field="", *owner="";
+  int pin=-1;
+  explicit operator bool() const { return error!=nullptr; }
+};
+inline bool pinActive(const HardwareConfig &c,const PinDefinition &d) {
+  switch(d.group) {
+  case PinGroup::Drive:
+    if(c.simulation) return false;
+    if(c.pins.singleAxis() && (d.member==&PinMap::elAdc || d.member==&PinMap::elNegative ||
+        d.member==&PinMap::elPositive || d.member==&PinMap::elSpeedEnable)) return false;
+    return d.member!=&PinMap::elSpeedEnable || c.drive!=DRIVE_YAESU;
+  case PinGroup::Uart:return true;
+  case PinGroup::Hc05:return c.backend()==BT_HC05;
+  case PinGroup::Indicator:return true;
+  case PinGroup::Tft:return DISPLAY_KIND==DISPLAY_ILI9341;
+  case PinGroup::Lcd:return DISPLAY_KIND==DISPLAY_LCD1602;
+  }
+  return false;
+}
+inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool hudUart=false) {
+  if(!BLUETOOTH_SUPPORT && c.bluetooth) return {"bluetooth_not_supported","bluetoothEnabled"};
+  if(c.drive>DRIVE_BTS7960 || c.bluetoothMode<BT_HC05 || c.bluetoothMode>BT_AUTO ||
+      (c.pwmInverted && c.drive!=DRIVE_BTS7960)) return {"invalid_hardware"};
+  if(c.backend()==BT_ESP32_SPP && SELECTED_BOARD!=BOARD_ESP32) return {"spp_not_supported","bluetoothMode"};
+  // The modified adapter has an active-LOW, open-drain speed/enable stage.
+  if(CROWPANEL_LOCAL_DRIVE && !c.simulation && (!c.pins.singleAxis() || c.drive==DRIVE_SEPARATE_PWM))
+    return {"drive_not_supported","driveInterface"};
+#if defined(SOC_LEDC_CHANNEL_NUM)
+  const unsigned channels=CROWPANEL_LOCAL_DRIVE?2:c.drive==DRIVE_BTS7960?(c.pins.singleAxis()?2:4):
+      c.drive==DRIVE_SEPARATE_PWM?(c.pins.singleAxis()?1:2):1;
+  if(!c.simulation && SOC_LEDC_CHANNEL_NUM<channels) return {"drive_not_supported","driveInterface"};
+#endif
+  if((c.pins.uartRx<0)!=(c.pins.uartTx<0) || (hudUart && c.pins.uartRx<0))
+    return {"incomplete_uart","pin.uartRx"};
+  const char *owners[49]{};
+  auto add=[&](int pin,const char *field,PinKind kind,bool required,bool needsPullup=false)->HardwareValidation {
+    if(pin < -1 || pin>48) return {"invalid_gpio",field,"",pin};
+    if(pin<0) return required?HardwareValidation{"missing_pin",field,"",pin}:HardwareValidation{};
+    if(!gpio(pin)) return {"invalid_gpio",field,unavailablePinOwner(pin),pin};
+    if(kind==PinKind::Adc && !adc(pin)) return {"invalid_adc_gpio",field,"",pin};
+    if(kind==PinKind::Output && !output(pin)) return {"input_only_gpio",field,"",pin};
+    if(needsPullup && !pullup(pin)) return {"invalid_pullup",field,"",pin};
+    if(const auto *owner=fixedPinOwner(pin)) return {"gpio_conflict",field,owner,pin};
+    if(owners[pin]) return {"gpio_conflict",field,owners[pin],pin};
+    owners[pin]=field; return {};
+  };
+  for(const auto &d:pinDefinitions) {
+    const int pin=c.pins.*d.member;
+    if(pin < -1 || pin>48) return {"invalid_gpio",d.field,"",pin};
+    // Inactive roles do not acquire a wire, but an assigned number must still
+    // describe a usable signal; simulation cannot make Flash or built-in wiring available.
+    if(pin>=0) {
+      if(!gpio(pin)) return {"invalid_gpio",d.field,unavailablePinOwner(pin),pin};
+      if(d.kind==PinKind::Adc && !adc(pin)) return {"invalid_adc_gpio",d.field,"",pin};
+      if(d.kind==PinKind::Output && !output(pin)) return {"input_only_gpio",d.field,"",pin};
+      if(const auto *owner=fixedPinOwner(pin)) return {"gpio_conflict",d.field,owner,pin};
+    }
+    if(!pinActive(c,d)) continue;
+    if(auto error=add(pin,d.field,d.kind,!d.optional)) return error;
+  }
+  if(auto error=add(c.buttonGpio,"buttonGpio",PinKind::Input,false,c.buttonPullup)) return error;
+  return {};
+}
+inline const char *validateHardware(const HardwareConfig &c,bool hudUart=false) {
+  return validateHardwareDetailed(c,hudUart).error;
+}
+// Recovery may expose a confirmed console only when neither saved wiring map
+// assigns its wires to a motor. Never fall back to arbitrary default GPIOs.
+inline HardwareConfig recoveryHardware(const HardwareRecord &r) {
+  auto c=r.good; c.bluetooth=false; c.forceAp=false; c.buttonGpio=-1;
+  c.pins.rgb=c.pins.led=-1;
+  bool uart=r.hasConfirmed && gpio(c.pins.uartRx) && output(c.pins.uartTx);
+  for(const auto *map:{&r.good.pins,&r.candidate.pins})
+    for(size_t i=0;i<8;++i) {
+      const int pin=map->*pinDefinitions[i].member;
+      if(pin>=0 && (pin==c.pins.uartRx || pin==c.pins.uartTx)) uart=false;
+    }
+  if(!uart) c.pins.uartRx=c.pins.uartTx=-1;
+  return c;
 }
 } }

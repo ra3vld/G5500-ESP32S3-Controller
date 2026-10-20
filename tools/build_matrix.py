@@ -56,6 +56,7 @@ def build(tool,board,display,bt,drive):
     name=f'{tool}-{board}-d{display}-b{bt}-m{drive}'
     work=work_root/name;work.mkdir(parents=True,exist_ok=True)
     flags=f'-DBOARD_PROFILE={dict(s3=1,s2=2,**{"s2-mini":3,"esp32":4})[board]} -DDISPLAY_KIND={display} -DTFT_DISPLAY_ENABLED={int(display==1)} -DBLUETOOTH_ENABLED={bt} -DDRIVE_INTERFACE={drive}'
+    if board in ('s2', 's2-mini'): flags += ' -flto'
     if a.simulation is not None: flags += ' -DDRIVE_SIMULATION='+a.simulation
     app_size = 0x640000 if board=='s3' else 0x300000 if board=='esp32' else 0x1e0000
     partition_file = 'partitions_s3.csv' if board=='s3' else 'partitions_esp32.csv' if board=='esp32' else 'partitions_s2.csv'
@@ -68,6 +69,8 @@ def build(tool,board,display,bt,drive):
         cmd=[a.arduino_cli]
         if a.arduino_config:cmd+=['--config-file',a.arduino_config]
         cmd+=['compile','--jobs',str(a.jobs),'--fqbn',fqbn,'--build-property','compiler.cpp.extra_flags='+flags,'--build-property','upload.maximum_size='+str(app_size),'--build-path',str(work/'objects'),'--output-dir',str(work/'output'),str(sketch)]
+        if board in ('s2', 's2-mini'):
+            cmd+=['--build-property','compiler.c.extra_flags=-flto','--build-property','compiler.c.elf.extra_flags=-flto']
         for cache in (work/'objects').glob('*.cache'):
             if cache.stat().st_size == 0: cache.unlink()
         binary=work/'output/G5500_Fork.ino.bin'
@@ -78,6 +81,7 @@ def build(tool,board,display,bt,drive):
         config=work/'platformio.ini'
         extra='-DBOARD_HAS_PSRAM -DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=1' if board=='s3' else '-DARDUINO_USB_MODE=0 -DARDUINO_USB_CDC_ON_BOOT='+('0' if board=='esp32' else '1')+(' -DBOARD_HAS_PSRAM' if board=='s2-mini' else '')
         memory='board_build.arduino.memory_type = qio_opi\nboard_build.psram_type = opi\n' if board=='s3' else ''
+        if board in ('s2', 's2-mini'): memory += f'extra_scripts = post:{ROOT}/tools/platformio_lto.py\n'
         deps=''
         if display:
             if a.library_dir:deps='lib_extra_dirs = '+str(a.library_dir.resolve())+'\n'

@@ -33,13 +33,9 @@ void Application::updatePosition() {
   }
   for (unsigned i=0; i<2; ++i) runtime_.controller.feedbackAt(
       i, i ? runtime_.currentEl : runtime_.currentAz,
-#if SELECTED_BOARD == BOARD_CROWPANEL_21 && !CROWPANEL_LOCAL_DRIVE
-      false,
-#else
       calibrationState.calibrationMode == CAL_MULTI_POINT
           ? (i ? calibration_.activeElMultiValid() : calibration_.activeAzMultiValid())
           : (i ? calibration_.activeElLinearValid() : calibration_.activeAzLinearValid()),
-#endif
       hardware_.sampledAt(i));
   }
 }
@@ -125,14 +121,14 @@ void Application::setGsAzMode(uint8_t m) {
 bool Application::editAzPoint(const char *op, float angle) {
   if (runtime_.hud.isHud()) return false;
   const auto old = calibration_.state();
-  if (!calibration_.editAzPoint(op, angle, hardware_.adcAvgMv(PIN_AZ_ADC))) return false;
+  if (!calibration_.editAzPoint(op, angle, hardware_.adcAvgMv(runtime_.controller.hardware.pins.azAdc))) return false;
   if (!saveCal()) { calibration_.state() = old; return false; }
   return true;
 }
 bool Application::editElPoint(const char *op, float angle) {
   if (runtime_.hud.isHud()) return false;
   const auto old = calibration_.state();
-  if (!calibration_.editElPoint(op, angle, hardware_.adcAvgMv(PIN_EL_ADC))) return false;
+  if (!calibration_.editElPoint(op, angle, hardware_.adcAvgMv(runtime_.controller.hardware.pins.elAdc))) return false;
   if (!saveCal()) { calibration_.state() = old; return false; }
   return true;
 }
@@ -145,8 +141,8 @@ void Application::captureGs232Cal(const String &cmd) {
     return;
   }
 
-  int az = hardware_.adcAvgMv(PIN_AZ_ADC);
-  int el = hardware_.adcAvgMv(PIN_EL_ADC);
+  int az = hardware_.adcAvgMv(runtime_.controller.hardware.pins.azAdc);
+  int el = hardware_.adcAvgMv(runtime_.controller.hardware.pins.elAdc);
 
   if (cmd == "O" || cmd == "F") {
     calibration_.captureAzEndpoint(cmd == "F", az);

@@ -54,7 +54,7 @@ inline bool persistentOtaRequest(std::string_view request, size_t completeSize) 
        line.substr(line.size() - 9) == " HTTP/1.1");
   return route && requestKeepsConnection(request, completeSize);
 }
-inline constexpr size_t HTTP_MAX_ARGUMENTS = 32;
+inline constexpr size_t HTTP_MAX_ARGUMENTS = 40;
 inline bool boundedForm(std::string_view text, size_t &arguments) {
   auto decodedSize = [](std::string_view value, size_t limit) {
     size_t length = 0;

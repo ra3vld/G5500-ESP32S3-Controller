@@ -132,6 +132,7 @@ void gpioOrdering() {
   Hardware failingHardware(failingRuntime);
   failingRuntime.controller.model = Model::G800DXA;
   failingRuntime.controller.speedEnabled = true;
+  failingHardware.beginDirections();
   fakeHardware.attachSucceeds = false;
   failingHardware.applyOutputs();
   CHECK(failingRuntime.controller.driveFault);

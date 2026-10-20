@@ -88,7 +88,7 @@ void Bluetooth::onData(const uint8_t *bytes, size_t size) {
   }
 }
 #endif
-bool Bluetooth::begin(uint8_t backend) {
+bool Bluetooth::begin(uint8_t backend, const PinMap &pins) {
   backend_ = BT_NONE;
 #if SELECTED_BOARD == BOARD_ESP32
   if (backend != BT_ESP32_SPP) {
@@ -126,8 +126,10 @@ bool Bluetooth::begin(uint8_t backend) {
   if (backend == BT_HC05) {
     hc_.reset(new (std::nothrow) HcState);
     if (!hc_) return false;
-    pinMode(board::PIN_HC05_STATE, INPUT);
-    hc_->serial.begin(board::HC05_BAUD, SERIAL_8N1, board::PIN_HC05_RX, board::PIN_HC05_TX);
+    if(!board::gpio(pins.hc05State) || !board::gpio(pins.hc05Rx) || !board::output(pins.hc05Tx)) { end(); return false; }
+    hc_->statePin=pins.hc05State;
+    pinMode(hc_->statePin, INPUT);
+    hc_->serial.begin(board::HC05_BAUD, SERIAL_8N1, pins.hc05Rx, pins.hc05Tx);
     backend_ = backend; return true;
   }
   return backend == BT_NONE;
@@ -152,7 +154,7 @@ bool Bluetooth::connected() {
 #if SELECTED_BOARD == BOARD_ESP32
   if (spp_) return spp_->ready_.load() && spp_->client_.load() != 0;
 #endif
-  return hc_ && digitalRead(board::PIN_HC05_STATE) == HIGH;
+  return hc_ && digitalRead(hc_->statePin) == HIGH;
 }
 bool Bluetooth::linkConnected() {
 #if SELECTED_BOARD == BOARD_ESP32

@@ -125,5 +125,9 @@ int main() {
   assert(!parseHardwareForm("token=1&generation=1&simulation=1",form,false));
   assert(!parseHardwareForm(body+"&unknown=1",form,true));
   assert(!parseHardwareForm("token=1",form,false));
+  assert(parseHardwareForm("token=1&generation=1&pin.azAdc=1",form,true,candidate));
+  assert(form.config.pins.azAdc==1 && form.config.drive==candidate.drive);
+  assert(!parseHardwareForm("token=1&generation=1",form,true));
+  assert(!parseHardwareForm("token=1&generation=1&pin.azAdc=1&pin.azAdc=2",form,true));
   std::cout<<"PASS: runtime driver selection, startup lock, verified NVS, trial rollback, recovery, memory guard and strict forms\n";
 }

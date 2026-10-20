@@ -91,6 +91,7 @@ void Network::serviceCommandReplies() {
   size_t sent=0;
   if(commandReplyPort_==2)sent=diagnostics_.nativeWrite(data,count);
   else if(commandReplyPort_==0) {
+    if(runtime_.controller.hardware.pins.uartTx<0) {commandReplySize_=0;return;}
     const int available=Serial0.availableForWrite();
     if(available>0)sent=Serial0.write(data,std::min(count,size_t(available)));
   } else if(commandReplyPort_==3) {

@@ -57,7 +57,10 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
   const bool fresh = readable && !prefs_.isKey("config1");
   if (readable && !fresh) {
     HardwareBytes bytes{};
-    valid = prefs_.getBytesLength("config1") == bytes.size() &&
+    if(prefs_.getBytesLength("config1")==LegacyHardwareBytes{}.size()) {
+      LegacyHardwareBytes legacy{};
+      valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
+    } else valid = prefs_.getBytesLength("config1") == bytes.size() &&
         prefs_.getBytes("config1", bytes.data(), bytes.size()) == bytes.size() && decodeHardware(bytes, record);
   }
   prefs_.end();
@@ -99,7 +102,7 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
   runtime.recoveryReason = record.reason;
   runtime.hardwareTrial = record.phase == ConfigPhase::Testing;
   HardwareConfig effective = runtime.hardwareTrial ? record.candidate : record.good;
-  if (runtime.recovery) { effective.bluetooth = false; effective.forceAp = false; }
+  if (runtime.recovery) effective=recoveryHardware(record);
   runtime.controller.configureHardware(effective);
   runtime.controller.configurationLocked = runtime.recovery || runtime.hardwareTrial;
 }
@@ -479,9 +482,7 @@ void Storage::loadForkSettings(Runtime &runtime) {
   prefs_.begin("forkcfg", true);
   runtime.controller.model =
       prefs_.getUChar("model", 0) == 1 ? forkrot::Model::G800DXA : forkrot::Model::G5500;
-#if CROWPANEL_LOCAL_DRIVE
-  if (!runtime.hud.isHud() && !runtime.controller.hardware.simulation) runtime.controller.model = Model::G800DXA;
-#endif
+  if (!runtime.hud.isHud() && !runtime.controller.hardware.simulation && runtime.controller.hardware.pins.singleAxis()) runtime.controller.model = Model::G800DXA;
   runtime.controller.restoreMode(prefs_.getUChar("mode", 0) == 1 ? forkrot::Mode::Auto
                                                                  : forkrot::Mode::Manual);
   if (runtime.controller.hardware.drive == DRIVE_YAESU) {

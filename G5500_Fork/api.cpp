@@ -147,18 +147,19 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"bluetoothBackend\":" << jsonQuoted(controller.hardware.backendName()) << ",\"drive\":"
        << jsonQuoted(controller.remote                      ? "HUD"
                      : controller.hardware.simulation                     ? "SIMULATED"
-                     : SELECTED_BOARD == BOARD_CROWPANEL_21 && !CROWPANEL_LOCAL_DRIVE ? "NONE"
+                     : controller.hardware.pins.azAdc<0 || controller.hardware.pins.azNegative<0 ||
+                       controller.hardware.pins.azPositive<0 || controller.hardware.pins.azSpeedEnable<0 ? "NONE"
                      : controller.hardware.drive == DRIVE_YAESU       ? "YAESU"
                      : controller.hardware.drive == DRIVE_BTS7960     ? "BTS7960"
                                                             : "SEPARATE_PWM")
-       << ",\"singleAxis\":" << (CROWPANEL_LOCAL_DRIVE && !controller.remote && !controller.hardware.simulation ? "true" : "false")
+       << ",\"singleAxis\":" << (controller.hardware.pins.singleAxis() && !controller.remote && !controller.hardware.simulation ? "true" : "false")
        << ",\"userButtonGpio\":" << int(controller.hardware.buttonGpio)
        << ",\"userButtonActiveLow\":" << (controller.hardware.buttonLow ? "true" : "false")
        << ",\"userButtonPullup\":" << (controller.hardware.buttonPullup ? "true" : "false")
-       << ",\"pins\":{\"azAdc\":" << board::PIN_AZ_ADC << ",\"elAdc\":" << board::PIN_EL_ADC
-       << ",\"azNegative\":" << board::PIN_LEFT << ",\"azPositive\":" << board::PIN_RIGHT
-       << ",\"elNegative\":" << board::PIN_DOWN << ",\"elPositive\":" << board::PIN_UP
-       << ",\"azSpeedEnable\":" << board::PIN_SPEED << ",\"elSpeedEnable\":" << board::PIN_EL_SPEED
+       << ",\"pins\":{\"azAdc\":" << controller.hardware.pins.azAdc << ",\"elAdc\":" << controller.hardware.pins.elAdc
+       << ",\"azNegative\":" << controller.hardware.pins.azNegative << ",\"azPositive\":" << controller.hardware.pins.azPositive
+       << ",\"elNegative\":" << controller.hardware.pins.elNegative << ",\"elPositive\":" << controller.hardware.pins.elPositive
+       << ",\"azSpeedEnable\":" << controller.hardware.pins.azSpeedEnable << ",\"elSpeedEnable\":" << controller.hardware.pins.elSpeedEnable
        << "}},\"axes\":[";
   for (unsigned i=0; i<2; ++i) {
     if (i) json << ',';
@@ -300,15 +301,15 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     for (const auto &entry : form) {
       if (entry.first == "drive" || entry.first == "display" || entry.first == "bluetooth" || entry.first == "bluetoothBackend" || entry.first == "pins" || entry.first == "build" || entry.first == "board" || entry.first == "boardProfile" ||
           entry.first == "displayKind" || entry.first == "bluetoothEnabled" || entry.first == "driveInterface" ||
-          entry.first.find("userButton") == 0 || entry.first.find("build.") == 0) valid = false;
+          entry.first.find("userButton") == 0 || entry.first.find("build.") == 0 || entry.first.find("pin.") == 0 ||
+          entry.first == "buttonGpio" || entry.first == "buttonActiveLow" || entry.first == "buttonPullup" ||
+          entry.first == "simulation" || entry.first == "bluetoothMode" || entry.first == "forceApSta" || entry.first == "pwmInverted") valid = false;
     }
     if (has(form, "model")) {
       auto m = get(form, "model");
       valid = (m == "G5500" || m == "G800DXA") && valid;
       model = m == "G800DXA" ? Model::G800DXA : Model::G5500;
-#if CROWPANEL_LOCAL_DRIVE
-      if (!controller.remote && !controller.hardware.simulation && model != Model::G800DXA) valid = false;
-#endif
+      if (!controller.remote && !controller.hardware.simulation && controller.hardware.pins.singleAxis() && model != Model::G800DXA) valid = false;
     }
     if (has(form, "rotorName")) {
       name = get(form, "rotorName");

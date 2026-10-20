@@ -38,6 +38,8 @@ Arduino-ESP32 генерирует бинарную таблицу из выбр
 
 Для отдельной Arduino-копии с таблицей разделов проекта используйте `tools/prepare_sketch.py --target esp32|s3|s2-mini|s2` и откройте подготовленную копию. Скрипт копирует выбранный CSV под именем `partitions.csv`: ESP32 — `partitions_esp32.csv` (3 МБ), S3 — `partitions_s3.csv` (6 553 600 байт на слот), S2 — `partitions_s2.csv` (1 966 080 байт на слот). В подготовленной копии `partitions.csv` имеет приоритет над меню Partition Scheme. PlatformIO и CLI-скрипты также используют таблицы проекта.
 
+Для S2 с TFT и OTA используйте Arduino CLI через `build_arduino.sh` либо PlatformIO: эти способы включают оптимизацию LTO, необходимую для размещения приложения в OTA-разделе. При собственной команде Arduino CLI добавьте `-flto` в `compiler.c.extra_flags`, `compiler.cpp.extra_flags` и `compiler.c.elf.extra_flags`.
+
 Нажмите **Verify**; COM-порт для этого не нужен. При сборке в Arduino IDE из исходной папки завершите PlatformIO и удалите оставшийся `G5500_Fork.ino.cpp`, если IDE сообщает о повторных `setup()/loop()`. Для отдельной копии используйте `prepare_sketch.py`: он исключает этот временный файл.
 
 ## Arduino CLI
@@ -52,6 +54,7 @@ arduino-cli lib install 'LiquidCrystal@1.0.7'
 ./tools/build_arduino.sh s3
 ./tools/build_arduino.sh s2
 DISPLAY_KIND=2 ./tools/build_arduino.sh s2-mini
+DISPLAY_KIND=1 ./tools/build_arduino.sh s2-mini
 ```
 
 `DISPLAY_KIND`: 0 NONE, 1 TFT, 2 LCD. Старый `DISPLAY_ENABLED=0/1` остаётся алиасом NONE/TFT; несовместимые флаги отклоняются. Привод, Bluetooth и кнопка выбираются в вебе после сборки. Скрипт допускает `ARDUINO_CLI`, `ARDUINO_CONFIG_FILE`, `FQBN`, `BUILD_JOBS`; исходники и результаты изолированы в `build/arduino-<target>` и `artifacts/arduino-<target>`. Прежние аппаратные `-D` задают только начальные значения нового устройства; сохранённая конфигурация имеет приоритет.

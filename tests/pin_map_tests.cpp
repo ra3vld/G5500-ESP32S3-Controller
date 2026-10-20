@@ -1,0 +1,133 @@
+#ifndef PIN_MAP_DESCRIBE_ONLY
+#include "motion_fixture.hpp"
+#include "hardware.hpp"
+#include "storage.hpp"
+#include "hardware_form.hpp"
+#endif
+#include "pin_json.hpp"
+#include <cassert>
+#include <iostream>
+using namespace forkrot;
+namespace forkrot::crowpanel { bool beginBus() {return true;} }
+int main(int argc,char **argv) {
+  if(SELECTED_BOARD==BOARD_S3) {
+    HardwareConfig c; c.simulation=true; c.pins.led=46;
+    assert(board::output(46) && board::pullup(46) && !board::validateHardware(c));
+  }
+  if(argc==2 && std::string(argv[1])=="--describe") {
+    char data[STATUS_JSON_CAPACITY]; JsonWriter j(data,sizeof data);
+    j << "{\"metadata\":"; writePinCapabilities(j,false);
+    j << ",\"pins\":"; writePinMap(j,PinMap{});
+    j << ",\"classicEsp32\":" << unsigned(SELECTED_BOARD==BOARD_ESP32)
+      << ",\"crowpanel\":" << unsigned(SELECTED_BOARD==BOARD_CROWPANEL_21)
+      << ",\"buttonGpio\":" << USER_BUTTON_GPIO << '}';
+    assert(j.good()); std::cout << j.data() << '\n'; return 0;
+  }
+  #ifndef PIN_MAP_DESCRIBE_ONLY
+  if(SELECTED_BOARD==BOARD_S3) assert(board::output(46) && board::pullup(46));
+  if(SELECTED_BOARD==BOARD_S2_LEGACY) assert(!board::output(46) && !board::pullup(46));
+  HardwareConfig c; c.bluetooth=false; c.simulation=true;
+  for(const auto &d:pinDefinitions) if(d.group==PinGroup::Drive) c.pins.*d.member=-1;
+  assert(!board::validateHardware(c));
+  MotionTestRuntime sim; sim.controller.configureHardware(c); Hardware h(sim); fakeHardware={};
+  h.beginDirections(); h.beginAdc(); h.applyOutputs();
+  int raw=1,mv=1; h.adcDiagRead(4,raw,mv);
+  assert(raw==0 && mv==0 && fakeHardware.readsRaw==0 && fakeHardware.readsMv==0);
+  for(const auto &e:fakeHardware.events) assert(e.operation!="attach" && e.operation!="pwm");
+  c.pins.azAdc=21;
+  assert(std::string(board::validateHardware(c))=="invalid_adc_gpio");
+  c.pins.azAdc=-1;
+  if(SELECTED_BOARD!=BOARD_ESP32) {
+    c.pins.azNegative=19; assert(board::validateHardware(c)); c.pins.azNegative=-1;
+  }
+  c.simulation=false;
+  assert(std::string(board::validateHardware(c))=="missing_pin");
+  c.simulation=true; c.pins.uartRx=-1;
+  if(c.pins.uartTx>=0) assert(std::string(board::validateHardware(c))=="incomplete_uart");
+  c.pins.uartTx=-1; assert(!board::validateHardware(c));
+  assert(board::validateHardware(c,true));
+  c.buttonGpio=-1; c.pins.led=0; c.pins.rgb=0;
+  const auto conflict=board::validateHardwareDetailed(c);
+  assert(conflict && conflict.pin==0 && std::string(conflict.owner)=="pin.rgb");
+  c.pins.led=-1; assert(!board::validateHardware(c));
+  c.buttonGpio=0; assert(board::validateHardwareDetailed(c).pin==0);
+  c.buttonGpio=-1;
+  if(SELECTED_BOARD==BOARD_CROWPANEL_21) {
+    c.pins.led=1;
+    const auto error=board::validateHardwareDetailed(c);
+    assert(error && std::string(error.owner)=="crowpanel.display");
+    if(!CROWPANEL_LOCAL_DRIVE) assert(std::string(board::fixedPinOwner(6))=="crowpanel.backlight");
+    else assert(!board::fixedPinOwner(6));
+  } else {
+    c={}; c.bluetooth=false; c.simulation=false;
+    std::swap(c.pins.azAdc,c.pins.elAdc);
+    std::swap(c.pins.azNegative,c.pins.azPositive);
+    assert(!board::validateHardware(c));
+    MotionTestRuntime r; r.controller.configureHardware(c); Hardware motor(r); fakeHardware={};
+    motor.beginDirections(); motor.beginAdc();
+    fakeHardware.millivolts[c.pins.azAdc]=1550;
+    fakeHardware.millivolts[board::PIN_AZ_ADC]=700;
+    assert(motor.filteredMv(0)==1550);
+    r.controller.axes[0].direction=1;
+    motor.applyOutputs();
+    assert(fakeHardware.levels[c.pins.azPositive]==HIGH);
+    assert(fakeHardware.levels[c.pins.azNegative]==LOW);
+    c.pins.azAdc=c.pins.azNegative;
+    assert(std::string(board::validateHardware(c))=="invalid_adc_gpio");
+    c={}; c.simulation=false; c.pins.elAdc=c.pins.elNegative=c.pins.elPositive=c.pins.elSpeedEnable=-1;
+    assert(!board::validateHardware(c));
+    r.controller.configureHardware(c); assert(r.controller.model==Model::G800DXA);
+    Hardware az(r); fakeHardware={}; az.beginDirections(); az.applyOutputs();
+    for(const auto &e:fakeHardware.events) assert(e.pin>=0);
+  }
+  if(SELECTED_BOARD==BOARD_S2_LEGACY) {
+    HardwareConfig independent; independent.simulation=false; independent.drive=DRIVE_BTS7960;
+    independent.pins.elSpeedEnable=33;
+    assert(!board::validateHardware(independent));
+    MotionTestRuntime r;r.controller.configureHardware(independent);Hardware motor(r);fakeHardware={};
+    motor.beginDirections();motor.applyOutputs();
+    assert(fakeHardware.attachCalls==4 && fakeHardware.levels[33]==LOW && fakeHardware.levels[independent.pins.azSpeedEnable]==LOW);
+  }
+  // Both maps, CRC, legacy migration, and candidate/confirmed separation.
+  HardwareRecord record; record.hasConfirmed=true; record.phase=ConfigPhase::Confirmed;
+  record.good.simulation=record.candidate.simulation=true;
+  record.good.pins.led=-1; record.candidate.pins.led=0; record.candidate.buttonGpio=-1;
+  const auto bytes=encodeHardware(record); HardwareRecord decoded;
+  assert(bytes[2]==2 && decodeHardware(bytes,decoded));
+  assert(decoded.good==record.good && decoded.candidate==record.candidate);
+  auto broken=bytes; broken[36]^=1; assert(!decodeHardware(broken,decoded));
+  const auto legacy=encodeHardwareRecord<40>(record);
+  assert(legacy[2]==1 && decodeHardware(legacy,decoded));
+  assert(decoded.good.pins==PinMap{} && decoded.candidate.pins==PinMap{});
+  if(SELECTED_BOARD==BOARD_CROWPANEL_21) {
+    auto old=record; old.good.bluetooth=old.candidate.bluetooth=true;
+    old.good.bluetoothMode=old.candidate.bluetoothMode=BT_HC05;
+    assert(decodeHardware(encodeHardwareRecord<40>(old),decoded));
+    assert(decoded.good.pins.uartRx==-1 && decoded.good.pins.uartTx==-1);
+    assert(!board::validateHardware(decoded.good));
+  }
+  Preferences::database.clear(); Preferences::failedBytesKey.clear();
+  Preferences::database["hardware"]["config1"]=Preferences::Bytes(legacy.begin(),legacy.end());
+  Storage storage; MotionTestRuntime migrated; storage.loadHardware(migrated);
+  assert(!migrated.recovery && migrated.hardwareRecord.hasConfirmed);
+  assert(std::get<Preferences::Bytes>(Preferences::database["hardware"]["config1"]).size()==HardwareBytes{}.size());
+  assert(storage.finishHardwareBoot(migrated));
+  auto candidate=migrated.controller.hardware; candidate.buttonGpio=-1; candidate.pins.led=0;
+  assert(storage.stageHardware(migrated,candidate));
+  MotionTestRuntime trial; storage.loadHardware(trial);
+  assert(trial.hardwareTrial && trial.controller.hardware.pins.led==0 && trial.controller.configurationLocked);
+  assert(storage.confirmHardware(trial));
+  MotionTestRuntime confirmed; storage.loadHardware(confirmed);
+  assert(!confirmed.recovery && confirmed.controller.hardware.pins.led==0);
+  record.good.pins.uartRx=3; record.good.pins.uartTx=1;
+  record.candidate.pins.azPositive=1;
+  auto recovery=board::recoveryHardware(record);
+  assert(recovery.pins.uartRx==-1 && recovery.pins.uartTx==-1 && recovery.pins.rgb==-1 && recovery.pins.led==-1);
+  HardwareForm form;
+  assert(parseHardwareForm("token=1&generation=1&pin.led=-1",form,true,candidate));
+  assert(form.config.pins.led==-1 && form.config.pins.azAdc==candidate.pins.azAdc);
+  assert(!parseHardwareForm("token=1&generation=1&pin.led=0&pin.led=1",form,true));
+  assert(!parseHardwareForm("token=1&generation=1&pin.led=-2",form,true));
+  std::cout << "PASS: board " << SELECTED_BOARD << " runtime pins, simulation, ownership, axis completeness, v1/v2 NVS and recovery\n";
+  #endif
+}

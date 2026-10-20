@@ -2,6 +2,7 @@
 #include "device_api.hpp"
 #include "command_api.hpp"
 #include "hardware_form.hpp"
+#include "pin_json.hpp"
 #include "motion_json.hpp"
 #include "runtime_metrics.hpp"
 #include "tcp_memory.hpp"
@@ -64,7 +65,8 @@ void DeviceApi::writeHardwareStatus(JsonWriter &j, bool compact, std::string_vie
       << ",\"bluetoothEnabled\":" << unsigned(c.bluetooth) << ",\"bluetoothMode\":" << c.bluetoothMode
       << ",\"forceApSta\":" << unsigned(c.forceAp) << ",\"buttonGpio\":" << int(c.buttonGpio)
       << ",\"buttonActiveLow\":" << unsigned(c.buttonLow) << ",\"buttonPullup\":" << unsigned(c.buttonPullup)
-      << ",\"pwmInverted\":" << unsigned(c.pwmInverted) << '}';
+      << ",\"pwmInverted\":" << unsigned(c.pwmInverted) << ",\"pins\":";
+    writePinMap(j,c.pins); j << '}';
   };
   const auto &r = runtime_.hardwareRecord;
   const auto elapsed = uint32_t(millis()-runtime_.memoryGuard.started);
@@ -95,9 +97,8 @@ void DeviceApi::writeHardwareStatus(JsonWriter &j, bool compact, std::string_vie
     << ",\"classicEsp32\":" << (SELECTED_BOARD == BOARD_ESP32 ? "true" : "false")
     << ",\"crowpanel\":" << (SELECTED_BOARD == BOARD_CROWPANEL_21 ? "true" : "false")
     << ",\"crowpanelLocalDrive\":" << (CROWPANEL_LOCAL_DRIVE ? "true" : "false")
-    << ",\"separateDrive\":" << (SELECTED_BOARD != BOARD_CROWPANEL_21 && board::output(board::PIN_EL_SPEED) ? "true" : "false")
-    << ",\"btsDrive\":" << (CROWPANEL_LOCAL_DRIVE || (SELECTED_BOARD != BOARD_CROWPANEL_21 && board::output(board::PIN_EL_SPEED)) ? "true" : "false")
-    << ",\"independentDrive\":" << (SELECTED_BOARD != BOARD_CROWPANEL_21 && board::output(board::PIN_EL_SPEED) ? "true" : "false")
+    << ",\"separateDrive\":" << (CROWPANEL_LOCAL_DRIVE?"false":"true")
+    << ",\"btsDrive\":true,\"independentDrive\":true"
     << ",\"configured\":"; config(configured);
   j << ",\"effective\":"; config(runtime_.controller.hardware);
   j << ",\"confirmed\":"; config(r.good); j << '}';
@@ -173,33 +174,49 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
   if(ota_.locked() && !stop && path!="/api/status" && path!="/api/diaglog" && path!="/api/diagnostics" && path.substr(0,8)!="/api/ota") { reply(503,"update_locked"); return; }
   if(runtime_.recovery && !hardwarePath && path!="/api/status" && path!="/api/network" && path!="/api/diagnostics" && path!="/api/diaglog" && path!="/api/resetreason" && path!="/api/resethistory" && path!="/api/wifi" && path!="/api/ap") { reply(409,"recovery_only"); return; }
   if(hardwarePath) {
+    if(method=="GET" && path=="/api/hardware/pins") { writePinCapabilities(output,runtime_.hardwareHudUart); return; }
     if(method=="GET" && path=="/api/hardware") { writeHardwareStatus(output,command,web_.value("view")); return; }
     if(method!="POST") { reply(405,"method_not_allowed"); return; }
-    char encoded[513]; JsonWriter fields(encoded,sizeof encoded);
-    for(auto entry:arguments) { if(fields.size())fields << '&'; fields << entry.first << '=' << entry.second; }
+    char encoded[1025]; JsonWriter fields(encoded,sizeof encoded);
+    for(auto entry:arguments) {
+      if(entry.first.find_first_of("&=")!=entry.first.npos || entry.second.find_first_of("&=")!=entry.second.npos) { reply(400,"invalid_form"); return; }
+      if(fields.size())fields << '&';
+      fields << entry.first << '=' << entry.second;
+    }
     HardwareForm form;
-    if(!fields.good() || !parseHardwareForm({encoded,fields.size()},form,path=="/api/hardware")) { reply(400,"invalid_form"); return; }
+    const auto &r=runtime_.hardwareRecord;
+    const auto &base=r.phase==ConfigPhase::Testing || r.phase==ConfigPhase::Pending || runtime_.recovery?r.candidate:r.good;
+    if(!fields.good() || !parseHardwareForm({encoded,fields.size()},form,path=="/api/hardware",base)) { reply(400,"invalid_form"); return; }
     if(form.token!=runtime_.hardwareToken || form.generation!=runtime_.hardwareRecord.generation) { reply(409,"stale_configuration"); return; }
     bool saved=false;
     if(path=="/api/hardware/probe") {
       const bool ok=!runtime_.recovery && runtime_.hardwareTrial && runtime_.memoryGuard.ready(millis()) && storage_.probeHardwareStorage(runtime_);
       runtime_.hardwareProbe=ok; reply(ok?200:409,ok?"":"not_ready"); return;
     }
+    auto stopForConfiguration=[&] {
+      runtime_.controller.stopNow(-1,millis()); hardware_.applyOutputs(); runtime_.controller.configurationLocked=true;
+    };
     if(path=="/api/hardware") {
-      if(const char *error=board::validateHardware(form.config,runtime_.hardwareHudUart)) { reply(400,error); return; }
+      if(const auto error=board::validateHardwareDetailed(form.config,runtime_.hardwareHudUart)) {
+        status=400;
+        output << "{\"ok\":false,\"error\":" << jsonQuoted(error.error) << ",\"field\":" << jsonQuoted(error.field)
+          << ",\"gpio\":" << error.pin << ",\"owner\":" << jsonQuoted(error.owner) << '}'; return;
+      }
+      stopForConfiguration();
       saved=storage_.stageHardware(runtime_,form.config);
     } else if(path=="/api/hardware/confirm") {
       if(runtime_.recovery || !runtime_.hardwareTrial || !runtime_.hardwareProbe || !runtime_.memoryGuard.ready(millis()) || heapFreeBytes()<MemoryGuard::HealthyFree || heapMaxBlockBytes()<MemoryGuard::HealthyBlock || runtimeMetrics.allocationFailures.load()!=runtime_.memoryGuard.failures) { reply(409,"not_ready"); return; }
-      saved=storage_.confirmHardware(runtime_);
+      stopForConfiguration(); saved=storage_.confirmHardware(runtime_);
     } else if(path=="/api/hardware/rollback") {
       if(!runtime_.hardwareRecord.hasConfirmed) { reply(409,"no_confirmed_configuration"); return; }
       auto good=runtime_.hardwareRecord.good;
       if(!BLUETOOTH_SUPPORT)good.bluetooth=false;
-      saved=storage_.stageHardware(runtime_,good);
-    } else if(path=="/api/hardware/recovery") saved=storage_.enterRecovery(runtime_,RecoveryReason::Requested);
+      stopForConfiguration(); saved=storage_.stageHardware(runtime_,good);
+    } else if(path=="/api/hardware/recovery") {
+      stopForConfiguration(); saved=storage_.enterRecovery(runtime_,RecoveryReason::Requested);
+    }
     else { reply(404,"not_found"); return; }
     if(!saved) { reply(503,"storage_failed"); return; }
-    runtime_.controller.stopNow(-1,millis()); hardware_.applyOutputs(); runtime_.controller.configurationLocked=true;
     reply(200,""); restart_.request(millis()); return;
   }
   if(path=="/api/ota" && method=="GET") {
@@ -301,9 +318,9 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
       return;
     }
     int azRaw = 0, azMv = 0, elRaw = 0, elMv = 0;
-    hardware_.adcDiagRead(PIN_AZ_ADC, azRaw, azMv);
+    hardware_.adcDiagRead(runtime_.controller.hardware.pins.azAdc, azRaw, azMv);
     if (runtime_.controller.model == forkrot::Model::G5500) {
-      hardware_.adcDiagRead(PIN_EL_ADC, elRaw, elMv);
+      hardware_.adcDiagRead(runtime_.controller.hardware.pins.elAdc, elRaw, elMv);
     }
     String j = String("{\"hasEl\":") +
                (runtime_.controller.model == forkrot::Model::G5500 ? "true" : "false") +
@@ -413,7 +430,7 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
       web_.send(400, "text/plain", "NO EL AXIS");
       return;
     }
-    int a = hardware_.adcAvgMv(PIN_AZ_ADC), e = hardware_.adcAvgMv(PIN_EL_ADC);
+    int a = hardware_.adcAvgMv(runtime_.controller.hardware.pins.azAdc), e = hardware_.adcAvgMv(runtime_.controller.hardware.pins.elAdc);
     if (p.startsWith("el") && calibrationState.elProfile == EL_CUSTOM) { web_.send(400,"text/plain","USE /api/elcal"); return; }
     if (p.startsWith("az")) {
       if (calibrationState.gsAzMode == AZ_CUSTOM) { web_.send(400,"text/plain","USE /api/azcal"); return; }
@@ -718,9 +735,8 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
       web_.send(400, "application/json", "{\"ok\":false,\"result\":\"invalid_or_port_conflict\"}");
       return;
     }
-    if (uart == "1" && (board::PIN_UART_RX < 0 || board::PIN_UART_TX < 0 ||
-        (SELECTED_BOARD == BOARD_CROWPANEL_21 && runtime_.controller.hardware.backend() == BT_HC05))) {
-      web_.send(400, "application/json", "{\"ok\":false,\"result\":\"uart_in_use_by_hc05\"}");
+    if (uart == "1" && (runtime_.controller.hardware.pins.uartRx < 0 || runtime_.controller.hardware.pins.uartTx < 0)) {
+      web_.send(400, "application/json", "{\"ok\":false,\"result\":\"uart_disabled\"}");
       return;
     }
     config.role = role == "hud" ? DeviceRole::Hud : DeviceRole::Controller;

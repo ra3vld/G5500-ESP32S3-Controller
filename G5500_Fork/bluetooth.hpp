@@ -15,7 +15,7 @@ namespace forkrot {
 #if BLUETOOTH_SUPPORT
 class Bluetooth {
 public:
-  bool begin(uint8_t backend = HardwareConfig{}.backend());
+  bool begin(uint8_t backend = HardwareConfig{}.backend(), const PinMap &pins = PinMap{});
   void end();
   bool connected();
   bool linkConnected();
@@ -36,7 +36,7 @@ public:
 private:
   uint8_t backend_ = BT_NONE;
   uint32_t inputSession_ = 0;
-  struct HcState { HardwareSerial serial{1}; LineBuffer receiver; };
+  struct HcState { HardwareSerial serial{1}; LineBuffer receiver; int8_t statePin=-1; };
   std::unique_ptr<HcState> hc_;
 #if SELECTED_BOARD == BOARD_ESP32 && BLUETOOTH_SUPPORT
   static Bluetooth *owner_;
@@ -66,7 +66,7 @@ private:
 #else
 class Bluetooth {
 public:
-  bool begin(uint8_t backend = BT_NONE) { return backend == BT_NONE; }
+  bool begin(uint8_t backend = BT_NONE, const PinMap & = PinMap{}) { return backend == BT_NONE; }
   void end() {}
   bool connected() { return false; }
   bool linkConnected() { return false; }

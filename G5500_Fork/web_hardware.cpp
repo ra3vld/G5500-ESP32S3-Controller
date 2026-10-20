@@ -8,7 +8,9 @@ namespace forkrot {
 bool WebInterface::handleHardwareRequest(std::string_view request) {
   const auto space=request.find(' '),end=request.find(' ',space+1);
   if(space==request.npos || end==request.npos)return false;
-  const auto method=request.substr(0,space),path=request.substr(space+1,end-space-1);
+  const auto method=request.substr(0,space),target=request.substr(space+1,end-space-1);
+  const auto query=target.find('?');
+  const auto path=target.substr(0,query);
   if(method=="GET" && (path=="/hardware" || path=="/recovery" || (runtime_.recovery && path=="/"))) {
     web_.sendFixed(200,"text/html; charset=utf-8",HARDWARE_PAGE,sizeof HARDWARE_PAGE-1);return true;
   }
@@ -21,7 +23,8 @@ bool WebInterface::handleHardwareRequest(std::string_view request) {
     std::memcpy(savedPath,path.data(),path.size());savedPath[path.size()]=0;
     CommandForm form;
     const auto body=request.find("\r\n\r\n");
-    const bool valid=method=="GET" || (body!=request.npos && form.parse(request.substr(body+4)));
+    const bool valid=method=="GET" ? (query==target.npos || form.parse(target.substr(query+1))) :
+        (body!=request.npos && form.parse(request.substr(body+4)));
     if(!valid) {static constexpr char error[]="{\"error\":\"invalid_form\"}";web_.sendFixed(400,"application/json",error,sizeof error-1);return true;}
     JsonWriter j(statusBuffer_,sizeof statusBuffer_);int status=200;const char *type="application/json";
     actions_.deviceRequest(savedMethod,savedPath,form.view(),j,status,type);

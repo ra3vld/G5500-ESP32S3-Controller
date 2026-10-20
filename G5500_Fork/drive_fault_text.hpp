@@ -32,6 +32,7 @@ inline const char *driveFaultText(const char *code) {
     {"pwm_attach_failed", "не удалось включить PWM"},
     {"motion_storage_failed", "параметры движения не сохранены"},
     {"crowpanel_no_drive", "привод не подключён"},
+    {"pin_configuration_invalid", "неполная или конфликтующая распиновка GPIO"},
     {"crowpanel_drive_failed", "ошибка выходов привода CrowPanel"},
     {"hud_offline", "нет связи с повороткой"},
   };

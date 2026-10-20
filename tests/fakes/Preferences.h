@@ -2,6 +2,7 @@
 #include "Arduino.h"
 #include <stdexcept>
 #include <variant>
+#include <functional>
 
 class Preferences {
 public:
@@ -12,6 +13,7 @@ public:
   inline static std::vector<std::pair<std::string, bool>> opened;
   inline static bool beginSucceeds = true, readOnlyBeginSucceeds = true;
   inline static std::string failedStringKey, corruptStringKey, failedBytesKey;
+  inline static std::function<void(const char *)> beforeBytesWrite;
 
   bool begin(const char *name, bool readOnly = false) {
     if (active_) { throw std::runtime_error("nested NVS begin"); }
@@ -56,6 +58,7 @@ public:
     return length;
   }
   void putBytes(const char *key, const void *value, size_t length) {
+    if(beforeBytesWrite) beforeBytesWrite(key);
     if(failedBytesKey==key)return;
     const auto bytes = static_cast<const uint8_t *>(value);
     put(key, Bytes(bytes, bytes + length));

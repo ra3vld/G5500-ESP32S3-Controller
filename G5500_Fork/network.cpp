@@ -22,6 +22,7 @@ void Network::serviceHeapDiagnostics() {
 #if FORK_NATIVE_USB
         if(port==DiagnosticStream::Port::NativeUsb)return diagnostics_.nativeWrite(reinterpret_cast<const uint8_t *>(data),size);
 #endif
+        if(runtime_.controller.hardware.pins.uartTx<0) return 0;
         const int available = Serial0.availableForWrite();
         if (available <= 0) return 0;
         const size_t count = size_t(available) < size ? size_t(available) : size;
@@ -128,7 +129,7 @@ void Network::sendReply(const String &s) {
     diagnostics_.dbgPrint("[BT TX] ");
     diagnostics_.dbgPrintln(s);
   } else {
-    Serial0.print(s);
+    if(runtime_.controller.hardware.pins.uartTx>=0) Serial0.print(s);
     diagnostics_.dbgPstTx(s);
   }
   hardware_.flashTx();
@@ -253,8 +254,7 @@ void Network::handlePstRotatorSerial() {
     }
   }
 #endif
-  if (runtime_.hud.config.uart || PIN_UART_RX < 0 || PIN_UART_TX < 0 ||
-      (SELECTED_BOARD == BOARD_CROWPANEL_21 && runtime_.controller.hardware.backend() == BT_HC05))
+  if (runtime_.hud.config.uart || runtime_.controller.hardware.pins.uartRx < 0 || runtime_.controller.hardware.pins.uartTx < 0)
     return;
   static forkrot::ApiLineBuffer receiver;
   static uint32_t serialEpoch = 0;
@@ -637,13 +637,12 @@ void Network::serviceLoggerUdp() {
   }
 }
 bool Network::beginSerial() {
-  if (PIN_UART_RX >= 0 && PIN_UART_TX >= 0 &&
-      !(SELECTED_BOARD == BOARD_CROWPANEL_21 && runtime_.controller.hardware.backend() == BT_HC05))
-    Serial0.begin(runtime_.hud.config.uart ? 115200 : 9600, SERIAL_8N1, PIN_UART_RX, PIN_UART_TX);
+  if (runtime_.controller.hardware.pins.uartRx >= 0 && runtime_.controller.hardware.pins.uartTx >= 0)
+    Serial0.begin(runtime_.hud.config.uart ? 115200 : 9600, SERIAL_8N1, runtime_.controller.hardware.pins.uartRx, runtime_.controller.hardware.pins.uartTx);
   heapBeforeBt_ = heapFreeBytes();
   const auto backend = runtime_.recovery ? BT_NONE : runtime_.controller.hardware.backend();
   if (backend == BT_ESP32_SPP && (heapFreeBytes() < 98304 || heapMaxBlockBytes() < 32768)) return false;
-  btReady_ = bluetooth_.begin(backend);
+  btReady_ = bluetooth_.begin(backend,runtime_.controller.hardware.pins);
   if (!btReady_) diagnostics_.dbgPrintln("[BT] initialization failed; USB and network remain available");
   heapAfterBt_ = heapFreeBytes();
   return btReady_;
@@ -663,7 +662,7 @@ void Network::beginHud() {
     if (!hudUart_)
       runtime_.hud.catalogError = true;
   }
-  if (runtime_.hud.config.uart && (board::PIN_UART_RX < 0 || board::PIN_UART_TX < 0 || (SELECTED_BOARD == BOARD_CROWPANEL_21 && runtime_.controller.hardware.backend() == BT_HC05))) {
+  if (runtime_.hud.config.uart && (runtime_.controller.hardware.pins.uartRx < 0 || runtime_.controller.hardware.pins.uartTx < 0)) {
     runtime_.hud.config.uart = false;
     runtime_.hud.catalogError = true;
   }

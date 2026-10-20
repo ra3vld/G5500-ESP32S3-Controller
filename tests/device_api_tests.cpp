@@ -89,6 +89,59 @@ int main(int argc,char **argv) {
     migration.storage.loadHardware(runtime);
     assert(runtime.hardwareTrial && !runtime.recovery && runtime.controller.hardware.drive==DRIVE_BTS7960);
   }
+  {
+    Fixture pins;
+    const auto original=pins.runtime.hardwareRecord.good;
+    assert(pins.call("POST","/api/hardware","token=11&generation=1&pin.azAdc=36",false).status==200);
+    assert(pins.runtime.hardwareRecord.good==original);
+    assert(pins.runtime.hardwareRecord.candidate.pins.azAdc==36);
+    assert(pins.runtime.controller.hardware.pins.azAdc==original.pins.azAdc);
+    assert(pins.call("POST","/api/hardware","token=11&generation=1&pin.azAdc=39").status==409);
+    const auto bad=pins.call("POST","/api/hardware","token=11&generation=2&pin.azAdc=25");
+    assert(bad.status==400 && bad.body.find("invalid_adc_gpio")!=bad.body.npos && bad.body.find("pin.azAdc")!=bad.body.npos);
+    assert(pins.runtime.hardwareRecord.generation==2 && pins.runtime.hardwareRecord.candidate.pins.azAdc==36);
+    assert(pins.call("POST","/api/hardware","token=11&generation=2%26pin.led=0&simulation=1").status==400);
+    const auto conflict=pins.call("POST","/api/hardware","token=11&generation=2&pin.led=25");
+    assert(conflict.status==400 && conflict.body.find("pin.azNegative")!=conflict.body.npos);
+    pins.storage.loadHardware(pins.runtime);
+    assert(pins.runtime.hardwareTrial && pins.runtime.controller.hardware.pins.azAdc==36);
+    assert(pins.call("GET","/api/status","",false).body.find("\"azAdc\":36")!=std::string::npos);
+    assert(pins.call("GET","/api/hardware","view=confirmed").body.find("\"azAdc\":34")!=std::string::npos);
+  }
+  {
+    Fixture failure;auto &c=failure.runtime.controller;
+    assert(c.jog(0,1,false,fakeHardware.now)==Result::Ok);
+    c.tick(fakeHardware.now);assert(c.moving());
+    bool attempted=false;
+    Preferences::failedBytesKey="config1";
+    Preferences::beforeBytesWrite=[&](const char *key) {
+      if(std::string(key)=="config1") {attempted=true;assert(!c.moving() && c.configurationLocked);}
+    };
+    assert(failure.call("POST","/api/hardware","token=11&generation=1&pin.led=-1").status==503);
+    Preferences::beforeBytesWrite={};Preferences::failedBytesKey.clear();
+    assert(attempted && !c.moving() && c.configurationLocked);
+    assert(failure.runtime.hardwareRecord.generation==1 && !failure.restart.pending());
+  }
+  {
+    Fixture complete; CommandServer server;
+    server.begin(1,100,[](void *context,std::string_view method,std::string_view path,FormView form,JsonWriter &out,int &status,const char *&type) {
+      static_cast<Fixture *>(context)->api.execute(method,path,form,out,status,type,true);
+    },&complete);
+    char reply[COMMAND_REPLY_MAX+1];
+    server.process(1,"@v=1&cid=1&method=GET&path=/api/hello&client=1",0,reply,sizeof reply);
+    std::string request="@v=1&cid=2&sid=101&boot=0000000000000001&selection=0&page=0&method=POST&path=/api/hardware&token=11&generation=1&driveInterface=0&simulation=1&bluetoothEnabled=0&bluetoothMode=3&forceApSta=0&buttonGpio=0&buttonActiveLow=1&buttonPullup=1&pwmInverted=0";
+    for(const auto &d:pinDefinitions) request+='&'+std::string(d.field)+'='+std::to_string(PinMap{}.*d.member);
+    assert(request.size()<COMMAND_INPUT_MAX);
+    assert(server.process(1,request,1,reply,sizeof reply)>0);
+    assert(std::string(reply).find("\"status\":200")!=std::string::npos);
+    assert(complete.runtime.hardwareRecord.generation==2);
+  }
+  {
+    Fixture disabled;auto config=disabled.runtime.controller.hardware;
+    config.pins.uartRx=config.pins.uartTx=-1;disabled.runtime.controller.configureHardware(config);
+    const auto response=disabled.call("POST","/api/device","role=hud&wifi=existing&uart=1&port=4534");
+    assert(response.status==400 && response.body.find("uart_disabled")!=response.body.npos);
+  }
   Fixture f;auto &r=f.runtime;
   assert(f.call("GET","/api/status").body.size()<=COMMAND_PAGE_MAX);
   const auto axis=f.call("GET","/api/status","view=axis&axis=az");
@@ -96,7 +149,10 @@ int main(int argc,char **argv) {
   const auto configuration=f.call("GET","/api/config").body;
   r.controller.axes[0].current+=0.1f;r.controller.axes[0].speedOutputPercent=15;
   assert(f.call("GET","/api/config").body==configuration); // telemetry does not invalidate settings pages
-  assert(f.call("GET","/api/hardware").body.size()<=COMMAND_PAGE_MAX);
+  assert(f.call("GET","/api/hardware").body.find("\"pins\"")!=std::string::npos);
+  const auto capabilities=f.call("GET","/api/hardware/pins").body;
+  assert(capabilities.size()<STATUS_JSON_CAPACITY && capabilities.find("\"roles\"")!=capabilities.npos);
+  assert(f.call("GET","/api/hardware/pins","",false).body==capabilities);
   assert(f.call("GET","/api/network").body.size()<=COMMAND_PAGE_MAX);
   const auto http=f.call("GET","/api/status","",false);assert(http.status==200 && http.body.find("\"livePort\":0")!=http.body.npos);
   assert(f.call("POST","/api/mode","mode=auto").status==200 && r.controller.mode==Mode::Auto);
@@ -104,6 +160,7 @@ int main(int argc,char **argv) {
   assert(f.call("POST","/api/move","d=S").status==200 && !r.controller.moving());
   const auto speed=r.controller.speeds[0].speedPercent;
   assert(f.call("POST","/api/settings","speedPercent=101").status==400 && r.controller.speeds[0].speedPercent==speed);
+  assert(f.call("POST","/api/settings","pin.led=0").status==400);
   assert(f.call("POST","/api/settings","commandPort=4534").status==400);
   assert(f.call("POST","/api/settings","commandPort=3232").status==400);
   assert(f.call("POST","/api/settings","commandPort=5353").status==400);

@@ -33,6 +33,12 @@ if [ -n "${BLUETOOTH_ENABLED:-}" ]; then extra_flags="$extra_flags -DBLUETOOTH_E
 if [ -n "${DRIVE_INTERFACE:-}" ]; then extra_flags="$extra_flags -DDRIVE_INTERFACE=$DRIVE_INTERFACE"; fi
 case "$target" in s3) profile=1 ;; s2) profile=2 ;; s2-mini) profile=3 ;; esp32|esp32-8mb) profile=4 ;; crowpanel) profile=5 ;; esac
 extra_flags="$extra_flags -DBOARD_PROFILE=$profile"
+case "$target" in
+  s2|s2-mini)
+    extra_flags="$extra_flags -flto"
+    set -- "$@" --build-property "compiler.c.extra_flags=-flto" --build-property "compiler.c.elf.extra_flags=-flto"
+    ;;
+esac
 set -- "$@" --build-property "compiler.cpp.extra_flags=$extra_flags"
 if [ -n "${ARDUINO_CONFIG_FILE:-}" ]; then
   set -- --config-file "$ARDUINO_CONFIG_FILE" "$@"
