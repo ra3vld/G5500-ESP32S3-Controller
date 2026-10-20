@@ -1,6 +1,7 @@
 #pragma once
+#include "build_config.hpp"
 #include "live.hpp"
-#ifdef ARDUINO_ARCH_ESP32
+#if defined(ARDUINO_ARCH_ESP32) && WEB_INTERFACE_ENABLED
 // Arduino WebServer and IDF use different values for the HTTP_ANY macro.
 #pragma push_macro("HTTP_ANY")
 #undef HTTP_ANY

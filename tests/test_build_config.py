@@ -47,6 +47,19 @@ class BuildConfigTests(unittest.TestCase):
                                 input='#include "board.hpp"\n' + assertions, text=True, capture_output=True)
         self.assertEqual(result.returncode == 0, success, result.stderr)
 
+    def test_service_capabilities(self):
+        self.compile(dict(WEB_INTERFACE_ENABLED=1, BLUETOOTH_SUPPORT=1))
+        self.compile(dict(WEB_INTERFACE_ENABLED=0, BLUETOOTH_SUPPORT=0),
+                     ['WEB_INTERFACE_ENABLED=0', 'BLUETOOTH_SUPPORT=0'])
+        self.compile({}, ['BLUETOOTH_SUPPORT=0', 'BLUETOOTH_ENABLED=1'], success=False)
+        self.compile({}, ['WEB_INTERFACE_ENABLED=2'], success=False)
+        config = configparser.ConfigParser(interpolation=None)
+        config.read(ROOT / 'platformio.ini')
+        flags = config['env:esp32_4mb_noweb']['build_flags']
+        self.assertIn('-D WEB_INTERFACE_ENABLED=0', flags)
+        self.assertIn('-D BLUETOOTH_SUPPORT=0', flags)
+        self.assertIn('partitions_s2.csv', config['env:esp32_4mb_noweb']['board_build.partitions'])
+
     def test_defaults(self):
         self.compile(dict(BOARD_PROFILE=0, SELECTED_BOARD=1, DISPLAY_KIND=0, TFT_DISPLAY_ENABLED=0,
                           BLUETOOTH_ENABLED=0, BLUETOOTH_BACKEND=0, BLUETOOTH_MODE=3,

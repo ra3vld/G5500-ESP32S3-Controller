@@ -1,5 +1,6 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "bluetooth.hpp"
+#if BLUETOOTH_SUPPORT
 #include <cstring>
 #include <new>
 #if SELECTED_BOARD == BOARD_ESP32
@@ -244,3 +245,5 @@ uint32_t Bluetooth::droppedCommands() const {
   return 0;
 }
 } // namespace forkrot
+
+#endif

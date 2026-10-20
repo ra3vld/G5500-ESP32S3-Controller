@@ -1,6 +1,6 @@
 #include "live_server.hpp"
 #include "network_timing.hpp"
-#ifdef ARDUINO_ARCH_ESP32
+#if defined(ARDUINO_ARCH_ESP32) && WEB_INTERFACE_ENABLED
 #include <lwip/sockets.h>
 #include <lwip/tcp.h>
 #include <cstring>

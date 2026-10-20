@@ -132,6 +132,7 @@ static_assert(SOC_LEDC_CHANNEL_NUM >= (CROWPANEL_LOCAL_DRIVE ? 2 : DRIVE_INTERFA
 // Runtime ownership validation uses the same physical board/display map. Motor
 // and Bluetooth selections no longer remove code or make unsafe pins available.
 inline const char *validateHardware(const HardwareConfig &c, bool hudUart = false) {
+  if (!BLUETOOTH_SUPPORT && c.bluetooth) return "bluetooth_not_supported";
   if (c.drive > DRIVE_BTS7960 || c.bluetoothMode < BT_HC05 || c.bluetoothMode > BT_AUTO ||
       (c.pwmInverted && c.drive != DRIVE_BTS7960)) return "invalid_hardware";
   if (c.backend() == BT_ESP32_SPP && SELECTED_BOARD != BOARD_ESP32) return "spp_not_supported";

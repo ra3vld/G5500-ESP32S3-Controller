@@ -66,12 +66,13 @@ python3 tools/build_platformio.py --env esp32s2_mini --display lcd
 python3 tools/build_platformio.py --env esp32s2_mini --display none
 ```
 
-Выберите окружение своей платы: `esp32_4mb`, `esp32s3_n16r8`, `esp32s2_mini` или `esp32s2_4mb` для прежней проводки S2. Для ESP32, S3 и S2 Mini доступны варианты `_tft` и `_lcd`. Профиль обычной CrowPanel — `crowpanel_21`, переделанной платы с локальным AZ — `crowpanel_21_az`. Суффикс `_headless` у S2/S3 выбирает сборку без дисплея.
+Выберите окружение своей платы: `esp32_4mb`, `esp32s3_n16r8`, `esp32s2_mini` или `esp32s2_4mb` для прежней проводки S2. Для ESP32, S3 и S2 Mini доступны варианты `_tft` и `_lcd`. Профиль обычной CrowPanel — `crowpanel_21`, переделанной платы с локальным AZ — `crowpanel_21_az`. Суффикс `_headless` у S2/S3 выбирает сборку без дисплея; веб в этих вариантах включён. `esp32_4mb_noweb` — классический ESP32 без PSRAM, дисплея, HTTP/WebSocket и Bluetooth, с двумя OTA-разделами и [командным API](command-api.md).
 
 ```sh
 pio run -e esp32s3_n16r8_tft -j4
 pio run -e esp32s2_mini_lcd -j4
 pio run -e esp32s2_4mb_headless -j4
+pio run -e esp32_4mb_noweb -j4
 ```
 
 При изменении DISPLAY_KIND в заголовке используйте `build_platformio.py`, который добавит только выбранные зависимости. Прямое `pio run` использует `lib_deps` выбранного окружения.
@@ -87,7 +88,7 @@ python3 tools/build_platformio.py --env esp32_4mb --display tft
 python3 tools/prepare_sketch.py --target esp32
 ```
 
-Arduino IDE: открыть исходный `G5500_Fork/G5500_Fork.ino`, выбрать ESP32 Dev Module, Flash 4 MB, DIO 40 MHz, PSRAM Disabled, Core Debug Level None и Partition Scheme **Huge APP (3MB No OTA/1MB SPIFFS)**. Отдельная копия не требуется. Распиновка одинакова для WROOM и WROVER; PSRAM не требуется. Для универсального ESP32-образа используйте раздел приложения 3 MB. Скрипты и PlatformIO используют `partitions_esp32.csv`: один factory-раздел приложения 3 MB, без второго OTA-слота; NVS начинается с `0x9000`.
+Arduino IDE: открыть исходный `G5500_Fork/G5500_Fork.ino`, выбрать ESP32 Dev Module, Flash 4 MB, DIO 40 MHz, PSRAM Disabled, Core Debug Level None и Partition Scheme **Huge APP (3MB No OTA/1MB SPIFFS)**. Отдельная копия не требуется. Распиновка одинакова для WROOM и WROVER; PSRAM не требуется. Для универсального ESP32-образа используйте раздел приложения 3 MB. Для профиля `esp32_4mb_noweb` PlatformIO выбирает `partitions_s2.csv`: два OTA-слота по 1 966 080 байт, NVS остаётся на `0x9000`. Первую установку этого профиля с таблицей разделов выполняйте через USB. Скрипты и PlatformIO используют `partitions_esp32.csv`: один factory-раздел приложения 3 MB, без второго OTA-слота; NVS начинается с `0x9000`.
 
 Для универсальной прошивки обычного ESP32 с OTA используйте `esp32_8mb_ota` при физических 8 МиБ Flash. Профиль `esp32_4mb_ota` имеет меньшие разделы и для этого образа не подходит. Arduino-копия для 8 МиБ: `python3 tools/prepare_sketch.py --target esp32-8mb`, CLI-сборка: `./tools/build_arduino.sh esp32-8mb`. [Выбор разделов и обновление](ota.md).
 

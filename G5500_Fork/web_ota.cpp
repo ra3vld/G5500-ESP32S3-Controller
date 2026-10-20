@@ -1,3 +1,5 @@
+#include "build_config.hpp"
+#if WEB_INTERFACE_ENABLED
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "web_server.hpp"
 #include <cstdio>
@@ -47,3 +49,5 @@ bool WebInterface::handleOtaRequest(std::string_view request) {
   return true;
 }
 } // namespace forkrot
+
+#endif

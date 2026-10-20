@@ -1,5 +1,6 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "ota.hpp"
+#include <ArduinoOTA.h>
 #include <esp_ota_ops.h>
 #include <esp_system.h>
 #include <esp_app_format.h>

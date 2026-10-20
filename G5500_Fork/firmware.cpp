@@ -39,7 +39,7 @@ void Application::failConfiguration(RecoveryReason reason) {
   runtime_.controller.configurationLocked = true;
   __atomic_store_n(&recoveryLatch, RecoveryCookie, __ATOMIC_RELAXED);
   if (recoveryReserve_) { heap_caps_free(recoveryReserve_); recoveryReserve_ = nullptr; }
-  web_server_.abortForRecovery();
+  ota_.cancel();
   storage_.enterRecovery(runtime_, reason);
   delay(100);
   ESP.restart();
@@ -86,6 +86,12 @@ void Application::controllerSetup() {
     }
   }
   network_.beginHud();
+  ota_.begin([](void *context) {
+    auto &self=*static_cast<Application *>(context);
+    self.runtime_.controller.stopNow(-1,millis());self.hardware_.applyOutputs();
+    if(self.runtime_.hud.isHud())self.network_.serviceHud();
+    self.runtime_.controller.configurationLocked=true;
+  },this);
   if (!runtime_.recovery) hardware_.beginDirections();
   if (!runtime_.hud.isHud())
     hardware_.allStop();
@@ -96,6 +102,9 @@ void Application::controllerSetup() {
 #endif
   if (!network_.beginSerial() && !runtime_.recovery) { failConfiguration(RecoveryReason::Radio); return; }
   diagnostics_.beginNativeUsb();
+  // Reserve the essential console before Wi-Fi can consume memory or fail.
+  // Ordinary web builds allocate command sessions on first use instead.
+  if (runtime_.recovery || !WEB_INTERFACE_ENABLED) network_.beginCommandApi();
   if (!runtime_.recovery) hardware_.beginAdc();
 
   if (!runtime_.recovery) display_.initLocalDisplay();
@@ -224,11 +233,22 @@ void Application::controllerSetup() {
 }
 void Application::controllerLoop() {
   const uint32_t startedUs = micros();
-  if (runtime_.recovery) { web_server_.service(); delay(5); return; }
+  ota_.service();
+  network_.serviceCommandReplies();
+  if(restart_.consume(millis()) || ota_.readyToRestart()) {
+    if(storage_.finishHardwareBoot(runtime_))ESP.restart();
+  }
+  if (runtime_.recovery) {
+    network_.handlePstRotatorSerial();network_.serviceCommandUdp();
+    network_.serviceCommandReplies();network_.serviceHeapDiagnostics();
+    web_server_.service();delay(5);return;
+  }
   serviceConfigurationSafety();
   // Once an update starts, keep outputs stopped even after an upload error.
   // Only reboot can resume input processing, so buffered commands cannot replay.
-  if (web_server_.otaLocked()) {
+  if (ota_.locked()) {
+    network_.handlePstRotatorSerial();network_.serviceCommandUdp();network_.handleRotctldTcp();
+    network_.serviceCommandReplies();
     web_server_.service();
     network_.serviceWifiReconnect();
     hardware_.updateRgb();
@@ -243,6 +263,7 @@ void Application::controllerLoop() {
   if (runtime_.controller.hardware.buttonGpio >= 0 && confirmButton.sample(hardware_.buttonReleased(), millis())) {
     runtime_.controller.execute(millis());
   }
+  network_.serviceCommandUdp();
   network_.serviceLoggerUdp();
   network_.handlePstRotatorSerial(); // UART0 USB / PSTROTATOR / GS-232
   network_.handleBluetoothSerial(); // selected Bluetooth transport / GS-232B
@@ -253,9 +274,10 @@ void Application::controllerLoop() {
   network_.serviceHud();
   hardware_.controlRotator();
   web_server_.publishLive();
+  network_.serviceCommandReplies();
   network_.serviceHeapDiagnostics();
   web_server_.service();
-  if (web_server_.otaLocked()) return;
+  if (ota_.locked()) return;
   network_.serviceWifiReconnect();
   diagnostics_.serviceRssiHistory();
   if (runtime_.hud.settingsDirty) {

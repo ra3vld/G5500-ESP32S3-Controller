@@ -11,6 +11,7 @@
 - Четыре редактируемые предустановки для каждого профиля поворотки.
 - [OTA из браузера и Arduino IDE](docs/ota.md) с автоматической проверкой flash и разделов.
 - Веб-интерфейс, калибровка, диагностика и экран: ILI9341/XPT2046, параллельный LCD1602 или круглый сенсорный дисплей [CrowPanel 2.1](docs/crowpanel-21.md).
+- [Командный API UART/USB, UDP и TCP](docs/command-api.md): управление и настройка с компьютера во всех сборках, включая вариант ESP32 без веба и PSRAM.
 - GS-232 через UART0 и Bluetooth; rotctld и GS-232 через TCP 4533, в том числе для [SkyRoof и Gpredict](docs/usage.md#skyroof-и-gpredict).
 - Прямой UDP для N1MM Logger+, UR5EQF и 5MContest; PstRotator UDP с передачей числового азимута для TR4W, DXLog.net и Log4OM 2 — [настройка и ограничения](docs/usage.md#pstrotator-udp--ur5eqf-и-5mcontest).
 - [HUD](docs/hud.md): удалённые пульты и несколько повороток по Wi-Fi или UART.

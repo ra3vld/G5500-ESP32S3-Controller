@@ -2,6 +2,7 @@
 #pragma once
 #include <Arduino.h>
 #include "calibration.hpp"
+#include "api.hpp"
 namespace forkrot {
 // UI/transport callbacks into the application. No service locator or globals.
 class DeviceActions {
@@ -23,5 +24,10 @@ public:
   virtual void saveForkSettings() = 0;
   virtual void setupWeb() = 0;
   virtual void invalidateDisplay() = 0;
+  virtual void deviceRequest(std::string_view, std::string_view, FormView, JsonWriter &out,
+                             int &status, const char *&type, bool = false) {
+    status = 404; type = "application/json"; out << "{\"error\":\"not_found\"}";
+  }
+  virtual void writeWebDiagnostics(JsonWriter &out) { out << "\"livePort\":0"; }
 };
 } // namespace forkrot

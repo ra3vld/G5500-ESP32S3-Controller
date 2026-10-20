@@ -1,5 +1,7 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
+#include <algorithm>
+#include <cstdint>
 #include <cmath>
 #include <charconv>
 #include <cstdio>
@@ -23,6 +25,11 @@ public:
   bool good() const { return good_; }
   size_t size() const { return size_; }
   const char *data() const { return buffer_; }
+  // Capture one byte page while still counting/hashing the complete document.
+  // No full-document allocation, including for RSSI/history/configuration.
+  void page(size_t offset) { paging_ = true; offset_ = offset; }
+  size_t total() const { return total_; }
+  uint32_t fingerprint() const { return hash_; }
   JsonWriter &operator<<(std::string_view text) { return append(text); }
   JsonWriter &operator<<(const char *text) { return append(text); }
   JsonWriter &operator<<(char ch) { return append({&ch, 1}); }
@@ -65,6 +72,17 @@ private:
   JsonWriter &append(std::string_view text) {
     if (!good_) return *this;
     if (text.empty()) return *this;
+    for (unsigned char ch : text) hash_ = (hash_ ^ ch) * 16777619u;
+    if (paging_) {
+      const size_t start = total_ < offset_ ? std::min(text.size(), offset_ - total_) : 0;
+      total_ += text.size();
+      const size_t count = std::min(text.size() - start, capacity_ - size_ - 1);
+      std::memcpy(buffer_ + size_, text.data() + start, count);
+      size_ += count;
+      buffer_[size_] = 0;
+      return *this;
+    }
+    total_ += text.size();
     if (text.size() >= capacity_ - size_) { good_ = false; return *this; }
     std::memcpy(buffer_ + size_, text.data(), text.size());
     size_ += text.size();
@@ -73,6 +91,9 @@ private:
   }
   char *buffer_;
   size_t capacity_, size_ = 0;
+  size_t offset_ = 0, total_ = 0;
+  uint32_t hash_ = 2166136261u;
+  bool paging_ = false;
   bool good_ = true;
 };
 inline constexpr size_t STATUS_JSON_CAPACITY = 6400;

@@ -19,12 +19,8 @@ void Network::serviceHeapDiagnostics() {
       }, [this](DiagnosticStream::Port port, const char *data, size_t size) -> size_t {
         if (port == DiagnosticStream::Port::Bluetooth)
           return bluetooth_.send(std::string_view(data, size)) ? size : 0;
-#if SELECTED_BOARD == BOARD_CROWPANEL_21 && ARDUINO_USB_CDC_ON_BOOT
-        if (port == DiagnosticStream::Port::NativeUsb) {
-          const int available = Serial.availableForWrite();
-          return available > 0 ? Serial.write(reinterpret_cast<const uint8_t *>(data),
-              std::min(size, size_t(available))) : 0;
-        }
+#if FORK_NATIVE_USB
+        if(port==DiagnosticStream::Port::NativeUsb)return diagnostics_.nativeWrite(reinterpret_cast<const uint8_t *>(data),size);
 #endif
         const int available = Serial0.availableForWrite();
         if (available <= 0) return 0;
@@ -120,9 +116,9 @@ int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
   }
 }
 void Network::sendReply(const String &s) {
-#if SELECTED_BOARD == BOARD_CROWPANEL_21 && ARDUINO_USB_CDC_ON_BOOT
+#if FORK_NATIVE_USB
   if (gsReplyPort == GS_REPLY_NATIVE_USB) {
-    Serial.print(s);
+    diagnostics_.nativeWrite(reinterpret_cast<const uint8_t *>(s.c_str()),s.length());
     hardware_.flashTx();
     return;
   }
@@ -139,7 +135,8 @@ void Network::sendReply(const String &s) {
 }
 
 void Network::processGs232Command(std::string_view input) {
-  actions_.updatePosition();
+  if(processCommandApi(input,uint8_t(gsReplyPort)))return;
+  if(!runtime_.recovery)actions_.updatePosition();
   auto packet = runtime_.protocol.line(input, millis());
   if (packet.matched) {
     if (packet.result == forkrot::Result::Ok || packet.result == forkrot::Result::Pending) {
@@ -240,33 +237,26 @@ void Network::processGs232Command(std::string_view input) {
 }
 
 void Network::handlePstRotatorSerial() {
-#if SELECTED_BOARD == BOARD_CROWPANEL_21 && ARDUINO_USB_CDC_ON_BOOT
-  // Native USB allows memory/display diagnostics and the same simulated GS-232
-  // commands without changing the host's Wi-Fi connection to the panel's AP.
-  static forkrot::LineBuffer usbReceiver;
-  static uint32_t usbEpoch = 0;
-  if (usbEpoch != runtime_.hud.selectionEpoch) {
-    usbEpoch = runtime_.hud.selectionEpoch;
-    usbReceiver.cancelPending();
-    while (Serial.available())
-      usbReceiver.discard(char(Serial.read()));
+#if FORK_NATIVE_USB
+  static ApiLineBuffer usbReceiver;
+  static uint32_t usbEpoch=0;
+  if(usbEpoch!=runtime_.hud.selectionEpoch) {
+    usbEpoch=runtime_.hud.selectionEpoch;usbReceiver.cancelPending();
+    while(diagnostics_.nativeAvailable())usbReceiver.discard(char(diagnostics_.nativeRead()));
     usbReceiver.cancelPending();
   }
   std::string_view usbCommand;
-  const uint32_t usbStarted = millis();
-  unsigned usbCommands = 0;
-  for (unsigned bytes = 0; bytes < 128 && usbCommands < 4 && Serial.available() && uint32_t(millis() - usbStarted) < 2; ++bytes) {
-    if (usbReceiver.feed(char(Serial.read()), usbCommand)) {
-      ++usbCommands;
-      gsReplyPort = GS_REPLY_NATIVE_USB;
-      processGs232Command(usbCommand);
+  const uint32_t usbStarted=millis();unsigned usbCommands=0;
+  for(unsigned bytes=0;bytes<128 && usbCommands<4 && diagnostics_.nativeAvailable() && uint32_t(millis()-usbStarted)<2;++bytes) {
+    if(usbReceiver.feed(char(diagnostics_.nativeRead()),usbCommand)) {
+      ++usbCommands;gsReplyPort=GS_REPLY_NATIVE_USB;processGs232Command(usbCommand);
     }
   }
 #endif
   if (runtime_.hud.config.uart || PIN_UART_RX < 0 || PIN_UART_TX < 0 ||
       (SELECTED_BOARD == BOARD_CROWPANEL_21 && runtime_.controller.hardware.backend() == BT_HC05))
     return;
-  static forkrot::LineBuffer receiver;
+  static forkrot::ApiLineBuffer receiver;
   static uint32_t serialEpoch = 0;
   if (serialEpoch != runtime_.hud.selectionEpoch) {
     serialEpoch = runtime_.hud.selectionEpoch;
@@ -282,7 +272,7 @@ void Network::handlePstRotatorSerial() {
     if (receiver.feed((char)Serial0.read(), command)) {
       ++commands;
       gsReplyPort = GS_REPLY_USB;
-      diagnostics_.dbgView("[PST RX] "); diagnostics_.dbgView(command, true);
+      if(command.empty() || command.front()!='@') {diagnostics_.dbgView("[PST RX] "); diagnostics_.dbgView(command, true);}
       processGs232Command(command);
     }
   }
@@ -330,6 +320,7 @@ void Network::rotctldSend(const String &s) {
 }
 
 void Network::processRotctldCommand(std::string_view input) {
+  if(processCommandApi(input,3))return;
   actions_.updatePosition();
   auto packet = runtime_.protocol.line(input, millis(), true);
   if (packet.matched) {
@@ -503,6 +494,7 @@ bool Network::startWifi() {
   }
   serviceApSubnet();
   wifiFallback_.reset(millis(), connected);
+  setupCommandUdp();
   if (!runtime_.recovery) {
   if (!hudPortValid(runtime_.hud.config.port, runtime_.loggerSettings.n1mmPort,
                     runtime_.loggerSettings.pstPort, runtime_.loggerSettings.reportPort) ||
@@ -661,7 +653,7 @@ bool Network::beginSerial() {
 
 namespace forkrot {
 bool Network::hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned report) const {
-  return port && port <= 65535 && port != n1mm && port != pst && port != pst + 1 && port != report;
+  return portsValid(port,n1mm,pst,report,runtime_.loggerSettings.commandPort);
 }
 void Network::beginHud() {
   runtime_.hud.begin(ESP.getEfuseMac() & 0xffffffffffffULL, (uint64_t(esp_random()) << 32) | esp_random());

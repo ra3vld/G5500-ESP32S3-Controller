@@ -10,6 +10,7 @@
 #include "network.hpp"
 #include "display.hpp"
 #include "web_server.hpp"
+#include "device_api.hpp"
 namespace forkrot {
 class Application : public DeviceActions {
 public:
@@ -19,6 +20,11 @@ public:
   void captureGs232Cal(const String &cmd) override;
   void controllerSetup();
   void controllerLoop();
+  void deviceRequest(std::string_view method, std::string_view path, FormView form, JsonWriter &out,
+                     int &status, const char *&type, bool command = false) override {
+    device_api_.execute(method,path,form,out,status,type,command);
+  }
+  void writeWebDiagnostics(JsonWriter &j) override { web_server_.writeDiagnostics(j); }
   bool saveCal() override;
   bool configureAzRange(uint8_t profile, float start, float span) override;
   bool editAzPoint(const char *operation, float angle) override;
@@ -61,8 +67,11 @@ private:
   Diagnostics diagnostics_{storage_};
   Network network_{runtime_, *this, calibration_, hardware_, diagnostics_};
   Display display_{runtime_, *this, calibration_, hardware_, diagnostics_, network_, storage_};
+  Ota ota_;
+  RestartDelay restart_;
+  DeviceApi device_api_{runtime_, *this, calibration_, hardware_, diagnostics_, network_, storage_, ota_, restart_};
   WebInterface web_server_{runtime_,     *this,    calibration_, hardware_,
-                           diagnostics_, network_, storage_};
+                           diagnostics_, network_, storage_, ota_, restart_};
   Button confirmButton;
 };
 } // namespace forkrot

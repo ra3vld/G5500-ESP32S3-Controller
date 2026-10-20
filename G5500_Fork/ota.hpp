@@ -1,7 +1,6 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
 #include "ota_policy.hpp"
-#include <ArduinoOTA.h>
 namespace forkrot {
 class Ota {
 public:

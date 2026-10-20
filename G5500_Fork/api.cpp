@@ -123,7 +123,7 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"rotctldManualFollow\":" << (protocol.manualFollow.rotctld ? "true" : "false")
        << ",\"externalAzMode\":\""
        << (protocol.externalAzMode == ExternalAzMode::Mechanical ? "mechanical" : "shortest") << '"'
-       << ",\"reportPort\":" << settings.reportPort
+       << ",\"reportPort\":" << settings.reportPort << ",\"commandPort\":" << settings.commandPort
        << ",\"reportHost\":" << jsonQuoted(settings.reportHost) << ",\"n1mmReport\":\""
        << jsonEscaped(protocol.rotorName) << '@'
        << int(std::lround(heading(controller.axes[0].current) * 10)) % 3600 << '"'
@@ -232,6 +232,8 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
         ok = integer(value, next.n1mmPort, 1, 65535);
       else if (key == "pstPort")
         ok = integer(value, next.pstPort, 1, 65534);
+      else if (key == "commandPort")
+        ok = integer(value, next.commandPort, 1, 65535);
       else if (key == "reportPort")
         ok = integer(value, next.reportPort, 1, 65535);
       else if (key == "reportHost") {
@@ -252,7 +254,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       if (!ok)
         return {400, "{\"ok\":false,\"result\":\"controller_settings_only\"}"};
     }
-    if(next.n1mmPort==next.pstPort)return {400,"{\"ok\":false,\"result\":\"invalid\"}"};
+    if(!commandPortAllowed(next.commandPort) || next.n1mmPort==next.pstPort || next.commandPort==next.n1mmPort || next.commandPort==next.pstPort || next.commandPort==next.pstPort+1 || next.commandPort==next.reportPort)return {400,"{\"ok\":false,\"result\":\"invalid\"}"};
     settings = next;
     protocol.rotorName = name;
     protocol.manualFollow = follow;
@@ -321,6 +323,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     if (has(form, "pstPort")) {
       valid = integer(get(form, "pstPort"), next.pstPort, 1, 65534) && valid;
     }
+    if (has(form, "commandPort")) valid = integer(get(form, "commandPort"), next.commandPort, 1, 65535) && valid;
     if (has(form, "reportPort")) {
       valid = integer(get(form, "reportPort"), next.reportPort, 1, 65535) && valid;
     }
@@ -414,7 +417,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       if(motionTouched[i] && m.mode==RegulatorMode::Cascade && !variable) valid=false;
 
     }
-    valid = valid && next.n1mmPort != next.pstPort;
+    valid = valid && commandPortAllowed(next.commandPort) && next.n1mmPort != next.pstPort && next.commandPort != next.n1mmPort && next.commandPort != next.pstPort && next.commandPort != next.pstPort+1 && next.commandPort != next.reportPort;
     if(model!=controller.model && (motionTouched[0] || motionTouched[1])) valid=false;
     if(valid && (motion[0].ready || motion[1].ready) && !prepareMotionPlanner())
       return {503,"{\"ok\":false,\"result\":\"unavailable\"}"};
