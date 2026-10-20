@@ -73,9 +73,13 @@ pio run -e esp32s3_n16r8_tft -j4
 pio run -e esp32s2_mini_lcd -j4
 pio run -e esp32s2_4mb_headless -j4
 pio run -e esp32_4mb_noweb -j4
+pio run -e esp32s3_n16r8_buttons -j4
+pio run -e esp32s3_n16r8_joystick -j4
 ```
 
 При изменении DISPLAY_KIND в заголовке используйте `build_platformio.py`, который добавит только выбранные зависимости. Прямое `pio run` использует `lib_deps` выбранного окружения.
+
+Профили `_buttons` и `_joystick` включают [локальные кнопки или аналоговый джойстик](local-controls.md) с указанной в инструкции распиновкой ESP32-S3; дисплей по умолчанию отключён.
 
 ## Сборка классического ESP32
 

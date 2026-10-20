@@ -66,6 +66,23 @@ constexpr bool gpio(int n) {
 constexpr bool output(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n < 34 : SELECTED_BOARD == BOARD_CROWPANEL_21 || n != 46); }
 constexpr bool pullup(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n < 34 : n != 46); }
 constexpr bool adc(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n >= 32 : n >= 1 && n <= 10); }
+inline constexpr int localInputPins[] = {
+#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+ LOCAL_AZ_NEG_GPIO, LOCAL_AZ_POS_GPIO, LOCAL_EL_NEG_GPIO, LOCAL_EL_POS_GPIO,
+#elif LOCAL_INPUT_MODE == LOCAL_INPUT_JOYSTICK
+ LOCAL_AZ_ADC_GPIO, LOCAL_EL_ADC_GPIO,
+#endif
+ -1
+};
+constexpr bool validLocalInputs() {
+ for (int pin : localInputPins) {
+  if (pin < -1) return false;
+  if (pin == -1) continue;
+  if (LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS ? !pullup(pin) : !adc(pin)) return false;
+ }
+ return true;
+}
+static_assert(validLocalInputs(), "Local controls require pullup-capable GPIO / ADC1 inputs");
 // One owner per active wire; shared TFT/touch SPI wires appear only once here.
 inline constexpr int activePins[] = {
  PIN_AZ_ADC, PIN_EL_ADC, PIN_LEFT, PIN_RIGHT, PIN_DOWN, PIN_UP, PIN_SPEED,
@@ -74,6 +91,11 @@ inline constexpr int activePins[] = {
 #endif
  (SELECTED_BOARD == BOARD_CROWPANEL_21 && BLUETOOTH_BACKEND == BT_HC05) ? -1 : PIN_UART_RX,
  (SELECTED_BOARD == BOARD_CROWPANEL_21 && BLUETOOTH_BACKEND == BT_HC05) ? -1 : PIN_UART_TX, PIN_CONFIRM, PIN_RGB, PIN_LED,
+#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+ LOCAL_AZ_NEG_GPIO, LOCAL_AZ_POS_GPIO, LOCAL_EL_NEG_GPIO, LOCAL_EL_POS_GPIO,
+#elif LOCAL_INPUT_MODE == LOCAL_INPUT_JOYSTICK
+ LOCAL_AZ_ADC_GPIO, LOCAL_EL_ADC_GPIO,
+#endif
 #if BLUETOOTH_BACKEND == BT_HC05
  PIN_HC05_STATE, PIN_HC05_RX, PIN_HC05_TX,
 #endif
@@ -156,6 +178,7 @@ inline const char *validateHardware(const HardwareConfig &c, bool hudUart = fals
     for (unsigned i=0; i<count; ++i) if (pins[i] == pin) return false;
     pins[count++] = pin; return true;
   };
+  for (int pin : localInputPins) if (!add(pin)) return "gpio_conflict";
   if (!c.simulation && (SELECTED_BOARD != BOARD_CROWPANEL_21 || CROWPANEL_LOCAL_DRIVE)) {
     for (int pin : {PIN_AZ_ADC, PIN_EL_ADC, PIN_LEFT, PIN_RIGHT, PIN_DOWN, PIN_UP, PIN_SPEED})
       if (!add(pin)) return "gpio_conflict";

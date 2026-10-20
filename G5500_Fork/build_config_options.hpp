@@ -27,6 +27,10 @@
 #define BT_ESP32_SPP 2
 #define BT_AUTO 3
 
+#define LOCAL_INPUT_NONE 0
+#define LOCAL_INPUT_BUTTONS 1
+#define LOCAL_INPUT_JOYSTICK 2
+
 // Совместимость прежних CrowPanel-сборок; новый флаг -D имеет приоритет.
 #if !defined(DRIVE_SIMULATION) && defined(CROWPANEL_SIMULATION)
 #define DRIVE_SIMULATION CROWPANEL_SIMULATION

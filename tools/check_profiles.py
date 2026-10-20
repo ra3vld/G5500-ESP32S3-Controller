@@ -62,4 +62,35 @@ for flags in [
 for board in range(1, 6):
     for simulation in (0, 1):
         compile_case((crow if board == 5 else [f'BOARD_PROFILE={board}']) + [f'DRIVE_SIMULATION={simulation}'], True)
-print(f'PASS: {checks} board/display/BT/drive ownership and negative compile checks')
+buttons = ['LOCAL_INPUT_MODE=1', 'LOCAL_AZ_NEG_GPIO=38', 'LOCAL_AZ_POS_GPIO=39',
+           'LOCAL_EL_NEG_GPIO=40', 'LOCAL_EL_POS_GPIO=41']
+joystick = ['LOCAL_INPUT_MODE=2', 'LOCAL_AZ_ADC_GPIO=1', 'LOCAL_EL_ADC_GPIO=6']
+for display, drive in itertools.product(range(3), range(3)):
+    compile_case(['BOARD_PROFILE=1', f'DISPLAY_KIND={display}', f'DRIVE_INTERFACE={drive}'] + buttons, True)
+    compile_case(['BOARD_PROFILE=1', f'DISPLAY_KIND={display}', f'DRIVE_INTERFACE={drive}'] + joystick, True)
+compile_case(['BOARD_PROFILE=4', 'LOCAL_INPUT_MODE=2', 'LOCAL_AZ_ADC_GPIO=36', 'LOCAL_EL_ADC_GPIO=39'], True)
+compile_case(['BOARD_PROFILE=3', 'LOCAL_INPUT_MODE=2', 'LOCAL_AZ_ADC_GPIO=1'], True)
+compile_case(['BOARD_PROFILE=1', 'LOCAL_INPUT_MODE=1', 'LOCAL_AZ_NEG_GPIO=38', 'LOCAL_AZ_POS_GPIO=39'], True)
+for flags in [
+    ['LOCAL_INPUT_MODE=-1'], ['LOCAL_INPUT_MODE=3'],
+    ['LOCAL_INPUT_MODE=1'], ['LOCAL_INPUT_MODE=2'],
+    ['LOCAL_INPUT_MODE=1', 'LOCAL_AZ_NEG_GPIO=38'],
+    buttons + ['USER_BUTTON_GPIO=38'],
+    ['LOCAL_INPUT_MODE=1', 'LOCAL_AZ_NEG_GPIO=4', 'LOCAL_AZ_POS_GPIO=39'],
+    ['LOCAL_INPUT_MODE=1', 'LOCAL_AZ_NEG_GPIO=38', 'LOCAL_AZ_POS_GPIO=38'],
+    ['LOCAL_INPUT_MODE=1', 'LOCAL_AZ_NEG_GPIO=-2', 'LOCAL_AZ_POS_GPIO=38'],
+    ['BOARD_PROFILE=4', 'LOCAL_INPUT_MODE=1', 'LOCAL_AZ_NEG_GPIO=36', 'LOCAL_AZ_POS_GPIO=39'],
+    joystick + ['BLUETOOTH_ENABLED=1'],
+    ['LOCAL_INPUT_MODE=2', 'LOCAL_AZ_ADC_GPIO=4'],
+    ['LOCAL_INPUT_MODE=2', 'LOCAL_AZ_ADC_GPIO=11'],
+    ['LOCAL_INPUT_MODE=2', 'LOCAL_AZ_ADC_GPIO=19'],
+    ['LOCAL_INPUT_MODE=2', 'LOCAL_AZ_ADC_GPIO=1', 'LOCAL_EL_ADC_GPIO=1'],
+    ['LOCAL_INPUT_MODE=2', 'LOCAL_AZ_ADC_GPIO=1', 'LOCAL_EL_ADC_GPIO=-2'],
+    joystick + ['LOCAL_AZ_ADC_CENTER=100'],
+    joystick + ['LOCAL_EL_ADC_MIN=2100'],
+    joystick + ['LOCAL_EL_ADC_MAX=4096'],
+    joystick + ['LOCAL_ADC_DEADZONE=0'],
+    joystick + ['LOCAL_ADC_HYSTERESIS=-1'],
+    ['LOCAL_AZ_INVERT=2'],
+]: compile_case(flags, False)
+print(f'PASS: {checks} board/display/BT/drive/local-input ownership and negative compile checks')
