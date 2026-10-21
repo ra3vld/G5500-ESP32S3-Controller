@@ -6,7 +6,36 @@
 
 1. Выберите [плату, Flash и дисплей](configuration.md#выбор-конфигурации). Для проверки без механики можно включить имитацию на любой плате.
 2. Выберите [подключение привода](hardware.md). Монтируйте при выключенном питании; до проверки выходов оставьте силовое питание двигателей отключённым.
-3. [Соберите и запишите прошивку через USB](build.md). Профиль должен соответствовать физической плате. Для переделанной CrowPanel используйте только `crowpanel_21_az`.
+3. Установите [pioarduino / PlatformIO](#установка-pioarduino--platformio) либо используйте [Arduino IDE](build.md#arduino-ide-2x), затем [соберите и запишите прошивку через USB](build.md). Профиль должен соответствовать физической плате. Для переделанной CrowPanel используйте только `crowpanel_21_az`.
+
+## Установка pioarduino / PlatformIO
+
+1. Установите [Visual Studio Code](https://code.visualstudio.com/) и [Git](https://git-scm.com/downloads). В Linux также нужен пакет `python3-venv`.
+2. В VS Code откройте **Extensions** (`Ctrl+Shift+X`), установите одно расширение: [pioarduino IDE](https://marketplace.visualstudio.com/items?itemName=pioarduino.pioarduino-ide) или [PlatformIO IDE](https://marketplace.visualstudio.com/items?itemName=platformio.platformio-ide). Дождитесь установки компонентов и перезапустите VS Code. Команда `pio` входит в комплект расширения.
+3. Через **File → Open Folder** откройте корень этого проекта, где находится `platformio.ini`. Нужная версия платформы ESP32 от pioarduino уже задана в нём и загрузится при первой сборке.
+4. Откройте терминал расширения кнопкой **PlatformIO: New Terminal** на нижней панели VS Code и проверьте `pio --version`. Из этого терминала можно сразу выполнять [команды сборки](build.md#platformio).
+
+Без VS Code можно установить [PlatformIO Core по официальной инструкции](https://docs.platformio.org/en/latest/core/installation/methods/installer-script.html).
+
+### Команда pio в терминале Windows
+
+Чтобы `pio` работала в обычном PowerShell или cmd после установки расширения:
+
+1. В меню «Пуск» найдите **Изменение переменных среды текущего пользователя**. В пользовательских переменных выберите **Path → Изменить → Создать** и добавьте отдельной строкой:
+
+   ```text
+   %USERPROFILE%\.platformio\penv\Scripts
+   ```
+
+2. Сохраните изменения. Полностью закройте и заново откройте терминал; для встроенного терминала перезапустите весь VS Code.
+3. Проверьте доступность команды:
+
+   ```powershell
+   pio --version
+   where.exe pio
+   ```
+
+Если команда не найдена, проверьте наличие `pio.exe` в указанной папке и завершение установки расширения. При нестандартном расположении PlatformIO добавьте в `Path` фактическую папку с `pio.exe`. [Настройка терминала для Windows, Linux и macOS](https://docs.platformio.org/en/latest/core/installation/shell-commands.html).
 
 ## Первое подключение
 
