@@ -173,6 +173,17 @@ int main(){
  assert(command(1003,packet(1,"/api/speed","&axis=az&value=55"))==ESP_OK);
  assert(command(1003,packet(2,"/api/speed","&axis=az&value=101"))==ESP_OK);
  server.commands(2700);assert(c.runtimeSpeed(0)==55&&!c.moving()); // Invalid update keeps the queued valid value.
+ // A queued renewal cannot survive the matching keyboard release.
+ for(unsigned t=2720;t<=2780;t+=5){server.publish(t);pumpLive();}
+ auto hw=c.hardware;hw.drive=DRIVE_YAESU;hw.simulation=false;c.configureHardware(hw);c.feedback(90,90,true,true);
+ const std::string identity="&client=123&session=456&gesture=1&mask=3";
+ assert(command(1002,packet(900,"/api/move",("&d=H&az=1&el=-1&serial=1"+identity).c_str()))==ESP_OK);
+ server.commands(2800);assert(c.axes[0].wanted==1&&c.axes[1].wanted==-1);server.publish(2800);pumpLive();
+ assert(command(1002,packet(901,"/api/move",("&d=H&az=1&el=-1&serial=2"+identity).c_str()))==ESP_OK);
+ assert(command(1002,packet(902,"/api/move",("&d=S&az=0&el=0&serial=3"+identity).c_str()))==ESP_OK);
+ server.commands(2810);assert(!c.moving());server.publish(2810);pumpLive();
+ assert(command(1002,packet(903,"/api/move",("&d=H&az=1&el=-1&serial=2"+identity).c_str()))==ESP_OK);
+ server.commands(2820);assert(!c.moving());server.publish(2820);pumpLive();
  std::cout<<"PASS: actual HTTPD adapter: four clients, loop ownership, STOP priority, duplicate IDs, bounded backpressure, reconnect\n";
  std::cout<<"PASS: idle live storage <=4 KiB, 10000 queue allocations/releases, low-memory admission and existing STOP\n";
 }

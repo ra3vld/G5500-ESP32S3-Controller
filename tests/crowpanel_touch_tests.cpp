@@ -319,6 +319,36 @@ void Bus::tick(uint32_t at) {
     }
   }
 }
+static void webKeyboardLease() {
+  Bus bus;Node rotor(bus,1,false),panel(bus,2,true);panel.select(rotor);
+  for(unsigned t=0;t<=800;t+=10)bus.tick(t);
+  assert(panel.h.manualAvailable());
+  for(unsigned t=810;t<=1810;t+=10){
+    if((t-810)%200==0)assert(panel.c.manualDrive(7,8,1,t,3,1,-1,false,t,1000)==Result::Deferred);
+    bus.tick(t);assert(rotor.c.axes[0].wanted==1&&rotor.c.axes[1].wanted==-1);
+  }
+  // A web renewal is valid between 200 ms packets; touch still defaults to 100 ms.
+  for(unsigned t=1820;t<=2800;t+=10)bus.tick(t);
+  bus.tick(2810);assert(!rotor.c.moving());
+  // A reloaded browser starts its own gesture counter at one; the HUD maps it.
+  assert(panel.c.manualDrive(9,10,1,1,3,-1,0,false,2820,1000)==Result::Deferred);
+  bus.tick(2820);assert(rotor.c.axes[0].wanted==-1);
+  assert(panel.c.manualDrive(9,10,1,3,3,0,0,true,2830,1000)==Result::Deferred);
+  bus.tick(2830);assert(!rotor.c.moving());
+  assert(panel.c.manualDrive(9,10,1,2,3,-1,0,false,2840,1000)==Result::Cancelled);
+  assert(panel.c.manualDrive(11,12,1,1,3,1,0,false,2850,1000)==Result::Deferred);
+  bus.tick(2850);assert(rotor.c.axes[0].wanted==1);
+  assert(panel.c.manualDrive(13,14,1,1,3,-1,0,false,2860,1000)==Result::Deferred);
+  bus.tick(2860);assert(rotor.c.axes[0].wanted==-1);
+  assert(panel.c.manualDrive(11,12,1,2,3,0,0,true,2870,1000)==Result::Cancelled);
+  bus.tick(2870);assert(rotor.c.axes[0].wanted==-1); // Old page's release cannot stop its replacement.
+  assert(panel.c.manualDrive(13,14,1,2,3,0,0,true,2880,1000)==Result::Deferred);
+  bus.tick(2880);assert(!rotor.c.moving());
+  // Touch has a separate logical gesture namespace and keeps its 100 ms lease.
+  assert(panel.c.manualDrive(0,1,1,1,3,1,0,false,2890)==Result::Deferred);
+  bus.tick(2890);assert(rotor.c.axes[0].wanted==1);
+  bus.tick(2990);assert(!rotor.c.moving());
+}
 static void inputAfterRenderPause() {
   // A fresh physical sample must precede HUD expiry after a slow display frame.
   for (unsigned mask : {1u, 2u, 3u}) {
@@ -541,6 +571,7 @@ int main() {
   touch();
   fullscreenSwipe();
   idleTouchFrames();
+  webKeyboardLease();
   inputAfterRenderPause();
   fullscreenSwipeControl();
   ring();

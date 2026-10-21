@@ -16,6 +16,7 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 .page-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 20px;margin:8px 0 16px}.page-header h1{flex:1 1 350px;min-width:0;margin:0;line-height:1.3;overflow-wrap:anywhere}
 .connection-status{overflow-wrap:anywhere;min-width:0;display:inline-flex;align-items:center;gap:8px;max-width:100%;padding:9px 12px;border:1px solid #3b5365;border-radius:999px;background:#101c27;font-size:13px;line-height:1.4;color:#c9d8e3}.connection-status::before{content:'';flex:none;width:8px;height:8px;border-radius:50%;background:currentColor}.connection-status[data-state=online]{color:#62dfa9;border-color:#316b56}.connection-status[data-state=offline]{color:#ff9690;border-color:#814b4b}.connection-status[data-state=unselected]{color:#efc07a;border-color:#78603d}
 .drive-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.motion-fault{color:#ff9690;white-space:pre-line;overflow-wrap:anywhere}
+.aiming-header{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:16px}.aiming-header h2{margin:0;font-size:20px}.aiming-header #waitingTarget{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}.aiming-header .drive-status{flex-wrap:nowrap;gap:5px;font-size:14px}.drive-state-label{white-space:nowrap}.aiming-header #motion{font-size:20px;font-weight:700}.aiming-details{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:10px}.aiming-details #resetDriveError{margin-right:auto}.aiming-header:has(.motion-fault){grid-template-columns:auto minmax(0,1fr)}.aiming-header:has(.motion-fault) .drive-status{grid-column:1/-1;min-width:0}.aiming-header .motion-fault{min-width:0}@media(max-width:600px){.aiming-header{gap:6px}.aiming-header h2{font-size:14px}.aiming-header #waitingTarget,.aiming-header .drive-status{font-size:11px}.aiming-header #motion{font-size:14px}.aiming-header .drive-state-label{font-size:10px}}
 .page-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 20px;margin-top:24px;padding:16px 0 4px;border-top:1px solid #294153;color:var(--m);font-size:13px;line-height:1.6}.footer-links{display:flex;flex-wrap:wrap;gap:4px 20px}.page-footer a{display:inline-flex;align-items:center;min-height:44px;color:#acd3e8;text-underline-offset:3px}.page-footer a:hover{color:#fff}.page-footer a:focus-visible{outline:2px solid var(--a);outline-offset:3px}
 
 .nav{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px;padding:8px;background:#0b1720;border:1px solid #294153;border-radius:12px;position:sticky;top:0;z-index:20}
@@ -170,12 +171,10 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <div class="card"><div class="label">Элевация — текущее / задание</div><div><span id="el" class="big">--.-</span><span class="sep"> / </span><span id="elt" class="targetbig">---</span><span class="unit">°</span></div><div class="bar"><div id="elbar" class="fill"></div></div><div><span id="elminlabel">0°</span> <span id="elmaxlabel" style="float:right">180°</span></div></div>
 </div>
 
-<div class="card command-card"><h2>Наведение</h2>
-<div id="waitingTarget" style="margin-bottom:16px">Нет ожидающей цели</div>
-
-<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-<div><div class="label">Состояние привода</div><div class="drive-status"><div id="motion" role="status" aria-live="polite" style="font-size:23px;font-weight:700">STOP</div><button id="resetDriveError" class="btn hide" type="button" onclick="resetMotion('all')">Сбросить ошибку</button></div></div>
-<div><span class="status"><span id="caldot" class="dot"></span><span id="caltxt">Calibration</span></span></div></div>
+<div class="card command-card"><div class="aiming-header"><h2>Наведение</h2>
+<div id="waitingTarget">Нет ожидающей цели</div>
+<div class="drive-status"><span class="drive-state-label">Состояние привода:</span><strong id="motion" role="status" aria-live="polite">STOP</strong></div></div>
+<div class="aiming-details"><button id="resetDriveError" class="btn hide" type="button" onclick="resetMotion('all')">Сбросить ошибку</button><span class="status"><span id="caldot" class="dot"></span><span id="caltxt">Calibration</span></span></div>
 <h3>Ручное вращение</h3>
 <div class="manual-drive">
 <div id="movementButtons" class="controls" style="margin-top:10px">
@@ -184,10 +183,9 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <button class="btn blank">-</button><button class="btn movebtn" data-dir="D"><span>▼ DOWN</span></button><button class="btn blank">-</button>
 </div>
 <div id="manualSpeeds" class="manual-speeds hide">
-<div id="azManualSpeedControl" class="manual-speed hide"><label for="azManualSpeed"><span>Скорость AZ</span><output id="azManualSpeedValue" for="azManualSpeed">—</output></label><input id="azManualSpeed" type="range" min="1" max="100" value="50" step="1" aria-describedby="manualSpeedHelp" oninput="queueManualSpeed('az',this.value)" onchange="flushManualSpeed('az')"></div>
-<div id="elManualSpeedControl" class="manual-speed hide"><label for="elManualSpeed"><span>Скорость EL</span><output id="elManualSpeedValue" for="elManualSpeed">—</output></label><input id="elManualSpeed" type="range" min="1" max="100" value="50" step="1" aria-describedby="manualSpeedHelp" oninput="queueManualSpeed('el',this.value)" onchange="flushManualSpeed('el')"></div>
+<div id="azManualSpeedControl" class="manual-speed hide"><label for="azManualSpeed"><span>Скорость AZ</span><output id="azManualSpeedValue" for="azManualSpeed">—</output></label><input id="azManualSpeed" type="range" min="1" max="100" value="50" step="1" oninput="queueManualSpeed('az',this.value)" onchange="flushManualSpeed('az')"></div>
+<div id="elManualSpeedControl" class="manual-speed hide"><label for="elManualSpeed"><span>Скорость EL</span><output id="elManualSpeedValue" for="elManualSpeed">—</output></label><input id="elManualSpeed" type="range" min="1" max="100" value="50" step="1" oninput="queueManualSpeed('el',this.value)" onchange="flushManualSpeed('el')"></div>
 </div>
-<p id="manualSpeedHelp" class="hint">Меняет скорость текущего и следующего движения. Сохраняется через 40 с после последнего изменения и перед штатной перезагрузкой.</p>
 </div>
 <div class="target-controls"><div class="label">Задать угол</div><div class="row" style="margin-top:8px">
 <div class="field"><label id="tazlbl">AZ 0..450°</label><input id="taz" type="number" step="0.1" min="0" max="450"></div>
@@ -388,7 +386,7 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 </ol>
 </section>
 <footer class="page-footer">
-<span>G5500 Fork 0.1.0 · оригинал &copy; UA1CFM</span>
+<span>G5500 Fork 1.0</span>
 <div class="footer-links"><a href="https://github.com/ra3vld/G5500-ESP32S3-Controller" target="_blank" rel="noopener noreferrer">Репозиторий RA3VLD</a><a href="https://github.com/ua1cfm/G5500-ESP32S3-Controller" target="_blank" rel="noopener noreferrer">Оригинал UA1CFM</a></div>
 </footer></div>
 <div id="settingsFeedback" class="action-feedback" hidden><div role="status" aria-live="polite" aria-atomic="true"><strong id="settingsFeedbackTitle"></strong><span id="settingsFeedbackText"></span></div><button type="button" aria-label="Закрыть уведомление" onclick="this.parentElement.hidden=true">×</button></div>
@@ -584,7 +582,7 @@ function connectLive(port){
  };
  socket.onclose=()=>{
   if(live.socket!==socket)return;
-  live.socket=null;live.ready=false;live.state=null;live.boot=null;live.revision=0;
+  live.socket=null;live.ready=false;releaseKeyboardAxes();live.state=null;live.boot=null;live.revision=0;
   updateConnection();
   for(const p of live.pending.values()){clearTimeout(p.timer);p.reject(new Error('disconnected'))}live.pending.clear();
   live.retry=setTimeout(()=>{live.retry=null;connectLive(port)},1000);upd(true);
@@ -646,7 +644,7 @@ function initMotionForms(){
  const root=document.getElementById('motionForms');
  for(const axis of ['az','el']){
   const f=document.createElement('form');f.id=axis+'MotionForm';f.className='settings-pane';f.dataset.axis=axis;
-  f.innerHTML=`<h3>${axis.toUpperCase()}</h3><div class="row" data-motion-group="variable"><div class="field"><label for="${axis}RegulatorMode">Регулятор</label><select id="${axis}RegulatorMode" name="${axis}RegulatorMode" aria-describedby="${axis}MotionModeHelp"><option value="simple">Простой · без ПИД</option><option value="cascade">Каскадный ПИД</option></select><p class="field-help" id="${axis}MotionModeHelp">Параметры простого режима находятся ниже: скорость, выбег и S-образный разгон/торможение.</p></div></div><label class="check-field" data-motion-group="variable"><input type="checkbox" name="${axis}MotionKickEnabled"> Пусковой импульс для страгивания</label><label class="check-field" data-motion-group="cascade"><input type="checkbox" name="${axis}MotionHoldEnabled"> Активно удерживать заданную позицию</label><div class="row motion-fields"></div><p class="hint motion-status" role="status"></p><div class="form-actions"><button class="btn good" type="submit">Сохранить ${axis.toUpperCase()}</button><button class="btn" type="button" onclick="resetMotion('${axis}')">Сбросить ошибку</button></div>`;
+  f.innerHTML=`<h3>${axis.toUpperCase()}</h3><div class="row" data-motion-group="variable"><div class="field"><label for="${axis}RegulatorMode">Регулятор</label><select id="${axis}RegulatorMode" name="${axis}RegulatorMode" aria-describedby="${axis}MotionModeHelp"><option value="simple">Простой · без ПИД</option><option value="cascade">Каскадный ПИД(эксперементальный)</option></select><p class="field-help" id="${axis}MotionModeHelp">Параметры простого режима находятся ниже: скорость, выбег и S-образный разгон/торможение.</p></div></div><label class="check-field" data-motion-group="variable"><input type="checkbox" name="${axis}MotionKickEnabled"> Пусковой импульс для страгивания</label><label class="check-field" data-motion-group="cascade"><input type="checkbox" name="${axis}MotionHoldEnabled"> Активно удерживать заданную позицию (серво режим)</label><div class="row motion-fields"></div><p class="hint motion-status" role="status"></p><div class="form-actions"><button class="btn good" type="submit">Сохранить ${axis.toUpperCase()}</button><button class="btn" type="button" onclick="resetMotion('${axis}')">Сбросить ошибку</button></div>`;
   const simple=document.createElement('div');simple.className='settings-group';simple.dataset.motionGroup='simpleSection';
   simple.innerHTML='<h4>Параметры простого режима</h4><p class="hint" data-motion-group="simple">Разгон и торможение S-образные. Их плавность задаётся временем перехода; коэффициент торможения изменяет темп замедления. STOP отключает выход сразу.</p><div class="row simple-motion-fields"></div>';
   for(const key of simpleMotionKeys){
@@ -885,6 +883,7 @@ function updateFork(j){
  document.getElementById('followMode').value=j.controlMode;
  setText(document.getElementById('hourLeft'),j.controlMode==='auto_1h'?'Осталось '+Math.ceil(j.remainingMs/60000)+' мин':'');
  setText(document.getElementById('waitingTarget'),j.pendingValid?'Ожидает: '+(j.pending.hasAz?'AZ '+j.pending.az.toFixed(1)+'° ':'')+(j.pending.hasEl&&!g800?'EL '+j.pending.el.toFixed(1)+'°':''):'Нет ожидающей цели');
+ document.getElementById('waitingTarget').title=document.getElementById('waitingTarget').textContent;
  updateTargetButton(j);
  renderManualSpeeds(j);
  const buttons=document.getElementById('presetButtons');
@@ -951,11 +950,57 @@ for(const id of ['taz','tel'])document.getElementById(id).addEventListener('keyd
 });
 const keyboardAxes={az:null,el:null};
 const arrowDirections={ArrowLeft:'L',ArrowRight:'R',ArrowUp:'U',ArrowDown:'D'};
-function releaseKeyboardAxis(axis){
- const held=keyboardAxes[axis];if(!held)return;
- keyboardAxes[axis]=null;stopAxis(held.direction,held.selection);
+function keyboardToken(){const n=new Uint32Array(1);crypto.getRandomValues(n);return n[0]||1;}
+const keyboardStream={client:keyboardToken(),session:keyboardToken(),gesture:0,serial:0,version:0,busy:null,timer:null,context:null};
+function keyboardContext(j){return [j?.deviceRole,j?.model,j?.hudSelectionEpoch,j?.azRangeRevision,live.boot].join(':');}
+function keyboardHeld(){return !!(keyboardAxes.az||keyboardAxes.el);}
+function keyboardPacket(d,mask,az=0,el=0){
+ const k=keyboardStream,c=k.context;
+ k.serial=(k.serial+1)>>>0||1;
+ return {d,client:k.client,session:k.session,gesture:k.gesture,serial:k.serial,mask,az,el,selection:c.selection,rangeRevision:c.range};
 }
-function releaseKeyboardAxes(){for(const axis of ['az','el'])releaseKeyboardAxis(axis);}
+async function keyboardReply(r){const j=await r.json();return r.status<300&&(j.ok||(r.status===202&&j.result==='deferred'));}
+async function transmitKeyboard(packet){
+ try{
+  if(live.ready)return await keyboardReply(await sendLive('/api/move',packet));
+  const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),400);
+  try{return await keyboardReply(await fetch('/api/move',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(packet),signal:abort.signal,keepalive:packet.d!=='H'}));}
+  finally{clearTimeout(timer);}
+ }catch(e){return false;}
+}
+async function sendKeyboardStop(d,mask){
+ const packet=keyboardPacket(d,mask);
+ // A closed gesture and the device lease also cover a lost STOP or late HOLD.
+ for(let attempt=0;attempt<3;++attempt){if(await transmitKeyboard(packet))return;await new Promise(resolve=>setTimeout(resolve,60));}
+}
+function releaseKeyboardAxis(axis){
+ if(!keyboardAxes[axis])return;
+ keyboardAxes[axis]=null;++keyboardStream.version;
+ if(!keyboardHeld()){clearInterval(keyboardStream.timer);keyboardStream.timer=null;sendKeyboardStop('S',keyboardStream.context.mask);}
+ else sendKeyboardStop(axis==='az'?'A':'E',axis==='az'?1:2);
+}
+function releaseKeyboardAxes(){
+ if(!keyboardHeld())return;
+ keyboardAxes.az=keyboardAxes.el=null;++keyboardStream.version;
+ clearInterval(keyboardStream.timer);keyboardStream.timer=null;
+ sendKeyboardStop('S',keyboardStream.context.mask);
+}
+async function sendKeyboardHold(){
+ const k=keyboardStream,j=window._forkState;
+ if(!keyboardHeld())return;
+ if(document.hidden||document.getElementById('controlPanel').hidden||j?.configurationLocked||j?.autotune?.active||k.context.key!==keyboardContext(j)){releaseKeyboardAxes();return;}
+ if(k.busy?.gesture===k.gesture)return;
+ const az=keyboardAxes.az?.direction==='L'?-1:keyboardAxes.az?1:0,el=keyboardAxes.el?.direction==='D'?-1:keyboardAxes.el?1:0;
+ const packet=keyboardPacket('H',k.context.mask,az,el),token={gesture:k.gesture,version:k.version};k.busy=token;
+ try{
+  if(!await transmitKeyboard(packet)&&token.gesture===k.gesture&&token.version===k.version&&keyboardHeld()){
+   releaseKeyboardAxes();document.getElementById('forkMessage').textContent='Управление стрелками остановлено: нет подтверждения команды.';
+  }
+ }finally{
+  if(k.busy===token)k.busy=null;
+  if(token.gesture===k.gesture&&token.version!==k.version&&keyboardHeld())sendKeyboardHold();
+ }
+}
 document.addEventListener('keydown',event=>{
  const direction=arrowDirections[event.key];
  if(!direction||event.defaultPrevented)return;
@@ -965,16 +1010,21 @@ document.addEventListener('keydown',event=>{
  if(target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="tab"]')||document.getElementById('controlPanel').hidden)return;
  const button=document.querySelector('.movebtn[data-dir="'+direction+'"]'),j=window._forkState;
  if(!j||j.configurationLocked||j.autotune?.active||!button||button.disabled||!button.getClientRects().length)return;
- event.preventDefault();const axis=direction==='L'||direction==='R'?'az':'el';
- releaseKeyboardAxis(axis);
- keyboardAxes[axis]={key:event.key,direction,selection:j.deviceRole==='hud'?j.hudSelectionEpoch:undefined};
- mv(direction);
+ event.preventDefault();const axis=direction==='L'||direction==='R'?'az':'el',k=keyboardStream;
+ if(keyboardAxes[axis]?.key===event.key)return; // Some platforms omit repeat=true.
+ if(!keyboardHeld()){
+  k.gesture=(k.gesture+1)>>>0||1;
+  k.context={key:keyboardContext(j),mask:j.model==='G800DXA'?1:3,selection:j.hudSelectionEpoch??0,range:j.azRangeRevision};
+  k.timer=setInterval(sendKeyboardHold,200);
+ }
+ keyboardAxes[axis]={key:event.key,direction};++k.version;sendKeyboardHold();
 });
-document.addEventListener('keyup',event=>{
+window.addEventListener('keyup',event=>{
  if(!arrowDirections[event.key])return;
  for(const axis of ['az','el'])if(keyboardAxes[axis]?.key===event.key){event.preventDefault();releaseKeyboardAxis(axis);}
-});
+},true);
 window.addEventListener('blur',releaseKeyboardAxes);
+window.addEventListener('pagehide',releaseKeyboardAxes);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseKeyboardAxes();});
 document.addEventListener('focusin',event=>{if(event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])'))releaseKeyboardAxes();});
 async function cal(p){await calibrationAction('/api/cal?p='+p,'Точка '+p.slice(0,2).toUpperCase()+' '+p.slice(2)+'° запомнена')}

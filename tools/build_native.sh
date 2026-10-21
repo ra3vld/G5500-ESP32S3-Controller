@@ -18,6 +18,8 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/socket_writ
 ./build/socket_write_tests
 MOTION_SOURCES="G5500_Fork/motion.cpp build/motion/libruckig.a"
 CORE_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp"
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/keyboard_hold_tests.cpp -o build/keyboard_hold_tests
+./build/keyboard_hold_tests
 sh tools/test_local_controls.sh
 
 # Persisted GPIO ownership and adapters on every board, including both CrowPanel profiles.

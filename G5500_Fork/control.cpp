@@ -66,6 +66,8 @@ Controller &Controller::operator=(const Controller &other) {
     manualScale_[i] = other.manualScale_[i];
   }
   runtimeSpeeds = other.runtimeSpeeds;
+  webManualGesture_ = other.webManualGesture_;
+  webManualOwner_ = other.webManualOwner_;
   presets = other.presets;
   pending = other.pending;
   lastTarget = other.lastTarget;
@@ -399,14 +401,15 @@ void Controller::closeManual(ManualSession &s, uint32_t now) {
 }
 Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t gesture,
                                uint32_t serial, uint8_t mask, float az, float el, bool release,
-                               uint32_t now) {
+                               uint32_t now, uint16_t inputLeaseMs) {
   if (autoTune.active() && !autoTune.internal && !release) return Result::Busy;
   if (configurationLocked) return Result::Unavailable;
   if (!gesture || !serial || mask > 3 || (!release && model == Model::G800DXA && (mask & 2)) ||
       !std::isfinite(az) || !std::isfinite(el) || std::abs(az) > 1 || std::abs(el) > 1) {
     return Result::Invalid;
   }
-  if (remote) {
+  if (remote && inputLeaseMs <= 100) {
+    if (!release) webManualOwner_=0;
     ControlCommand c;
     c.op = ControlOp::ManualDrive;
     c.gesture = gesture;
@@ -414,6 +417,7 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
     c.manual[0] = az;
     c.manual[1] = el;
     c.release = release;
+    c.inputLeaseMs = inputLeaseMs;
     return remote->submitAt(c, now);
   }
   ManualSession *s = nullptr, *free = nullptr;
@@ -447,7 +451,7 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
     s->claimed = s->blocked = 0;
     s->closed = false;
     for (unsigned i = 0; i < 2; ++i) {
-      s->epoch[i] = motionEpoch[i];
+      s->epoch[i] = remote ? 0 : motionEpoch[i];
     }
   }
   if (s->serial && int32_t(serial - s->serial) <= 0) {
@@ -462,6 +466,28 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
     return Result::Cancelled;
   }
   s->renewed = now;
+  if (remote) {
+    // Web sources have independent serials/tombstones even when a HUD relays
+    // them through its single manual-input stream. A reloaded page cannot
+    // reuse an older page's logical gesture or reorder its release.
+    if (!s->epoch[0] && (release || (az==0 && el==0))) {
+      if(release)s->closed=true;
+      return Result::Ok;
+    }
+    if (s->epoch[0] && s->epoch[0]!=webManualOwner_) {
+      s->closed=true;return Result::Cancelled;
+    }
+    if (!s->epoch[0]) {
+      if (!++webManualGesture_) ++webManualGesture_;
+      s->epoch[0] = webManualOwner_ = webManualGesture_;
+    }
+    ControlCommand c;
+    c.op=ControlOp::ManualDrive;c.gesture=s->epoch[0];c.axesMask=mask;
+    c.manual[0]=az;c.manual[1]=el;c.release=release;c.inputLeaseMs=inputLeaseMs;
+    s->claimed |= mask;
+    if(release)s->closed=true;
+    return remote->submitAt(c,now);
+  }
   if (release) {
     closeManual(*s, now);
     return Result::Ok;

@@ -499,7 +499,21 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     }
   } else if (path == "/api/move") {
     auto d = get(form, "d");
-    if (d == "S") {
+    const bool held = d == "H" || has(form,"client") || has(form,"session") ||
+        has(form,"gesture") || has(form,"serial") || has(form,"mask");
+    if (held) {
+      uint32_t client,session,gesture,serial,mask;float az,el;
+      if ((d=="H" || d=="A" || d=="E" || d=="S") &&
+          requestGeneration(get(form,"client"),client) && client &&
+          requestGeneration(get(form,"session"),session) && session &&
+          requestGeneration(get(form,"gesture"),gesture) && gesture &&
+          requestGeneration(get(form,"serial"),serial) && serial &&
+          requestGeneration(get(form,"mask"),mask) && mask>0 && mask<=3 &&
+          number(get(form,"az"),az) && number(get(form,"el"),el) &&
+          (d=="H" || (az==0 && el==0)) &&
+          (d!="A" || mask==1) && (d!="E" || mask==2))
+        result=controller.manualDrive(client,session,gesture,serial,uint8_t(mask),az,el,d=="S",now,1000);
+    } else if (d == "S") {
       controller.stop();
       result = Result::Ok;
     } else if (d == "A" || d == "E") {

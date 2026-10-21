@@ -63,6 +63,7 @@ struct ControlCommand {
   uint8_t axesMask = 0;
   float manual[2]{};
   bool release = false;
+  uint16_t inputLeaseMs = 100; // Local HUD input freshness; web holds renew more slowly.
 };
 class CommandSink {
 public:
@@ -257,7 +258,8 @@ public:
     return !remote || remote->manualAvailable();
   }
   Result manualDrive(uint64_t source, uint64_t boot, uint32_t gesture, uint32_t serial,
-                     uint8_t mask, float az, float el, bool release, uint32_t now);
+                     uint8_t mask, float az, float el, bool release, uint32_t now,
+                     uint16_t inputLeaseMs = 100);
   Result setMode(Mode m, uint32_t now);
   void restoreMode(Mode m); // An expired/nonpersistent hour always boots manual.
   void setModel(Model m);
@@ -288,6 +290,7 @@ private:
     bool used = false, closed = false;
   } manualSessions_[4];
   float manualScale_[2] = {1, 1};
+  uint32_t webManualGesture_ = 0, webManualOwner_ = 0;
   unsigned runtimeSpeedIndex(unsigned axis) const;
   void closeManual(ManualSession &, uint32_t now);
   uint32_t autoHourStartedAt_ = 0, sequenceAdvancedAt_ = 0, sequenceIntervalMs_ = 0;

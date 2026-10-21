@@ -688,14 +688,20 @@ Result Hud::submit(const ControlCommand &c) {
     if (!p->manual) {
       return lastResult_ = Result::Unavailable;
     }
-    if (!c.release && c.gesture == client_->closedGesture) {
+    const bool web=c.inputLeaseMs>100;
+    auto &closed=web?client_->closedWebGesture:client_->closedGesture;
+    if (!c.release && c.gesture == closed) {
       return lastResult_ = Result::Cancelled;
     }
     auto &j = client_->manual;
-    if (j.used && j.command.gesture != c.gesture) {
+    const bool sameInput=j.command.gesture==c.gesture && (j.command.inputLeaseMs>100)==web;
+    if(c.release && (!j.used || !sameInput)) {
+      closed=c.gesture;return lastResult_=Result::Ok;
+    }
+    if (j.used && !sameInput) {
       releaseManual();
     }
-    if (!j.used || j.command.gesture != c.gesture) {
+    if (!j.used || !sameInput) {
       j = {};
       j.used = true;
       j.peer = p->id;
@@ -703,6 +709,7 @@ Result Hud::submit(const ControlCommand &c) {
       j.endpoint = p->endpoint;
       j.selection = selectionEpoch;
       j.wireVersion = p->wireVersion; j.rangeRevision = p->state.rangeRevision;
+      j.manualGesture = nextSerial();
       j.sent = now - 50;
     }
     j.command = c;
@@ -711,7 +718,7 @@ Result Hud::submit(const ControlCommand &c) {
     j.started = now;
     client_->manualInputAt = now;
     if (c.release) {
-      client_->closedGesture = c.gesture;
+      closed = c.gesture;
       sendManual(j);
     }
     return lastResult_ = Result::Deferred;
@@ -804,7 +811,7 @@ bool Hud::sendManual(Job &j) {
     j.ticket = p->remoteTick;
   }
   header(w, {Kind::Manual, id, j.peer, boot, j.boot, j.id, j.ticket, j.wireVersion, j.rangeRevision});
-  w.u32(j.command.gesture);
+  w.u32(j.manualGesture);
   w.u8(j.command.axesMask);
   w.u8(j.command.release);
   w.real(j.command.manual[0]);
@@ -821,7 +828,7 @@ void Hud::releaseManual() {
   j.command.release = true;
   j.id = nextSerial();
   j.started = now;
-  client_->closedGesture = j.command.gesture;
+  (j.command.inputLeaseMs>100?client_->closedWebGesture:client_->closedGesture) = j.command.gesture;
   sendManual(j);
 }
 bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
@@ -1001,7 +1008,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     if (isHud() && client_ && r.done() && h.targetBoot == boot) {
       auto &j = client_->manual;
       if (j.used && j.peer == h.source && j.boot == h.boot && j.id == h.serial &&
-          j.command.gesture == gesture && j.command.release && result <= Result::Cancelled) {
+          j.manualGesture == gesture && j.command.release && result <= Result::Cancelled) {
         j.used = false;
       }
     }
@@ -1102,7 +1109,9 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       for (auto &j : client_->jobs) if (j.used && j.peer == p->id && j.command.op != ControlOp::Stop) finish(j,Result::Cancelled);
       for (auto &held : client_->held) if (held.peer == p->id) held.active=false;
       if (client_->manual.used && client_->manual.peer == p->id) {
-        client_->closedGesture=client_->manual.command.gesture; client_->manual.used=false;
+        auto &manual=client_->manual;
+        (manual.command.inputLeaseMs>100?client_->closedWebGesture:client_->closedGesture)=manual.command.gesture;
+        manual.used=false;
       }
       if (config.selected == p->id) { ++selectionEpoch; protocol_.resetSession(); }
     }
@@ -1401,7 +1410,7 @@ void Hud::service(uint32_t at) {
   auto &manual = client_->manual;
   if (manual.used) {
     if (!manual.command.release &&
-        (uint32_t(now - client_->manualInputAt) >= 100 || manual.selection != selectionEpoch)) {
+        (uint32_t(now - client_->manualInputAt) >= std::clamp<unsigned>(manual.command.inputLeaseMs,100,1000) || manual.selection != selectionEpoch)) {
 #if CROWPANEL_TOUCH_TRACE
       printf("[TouchLease] t=%lu gap=%lu gesture=%lu selection=%d\n", (unsigned long)now,
              (unsigned long)(now - client_->manualInputAt), (unsigned long)manual.command.gesture,

@@ -77,6 +77,19 @@ int main(int argc,char **argv) {
     return 0;
   }
   {
+    Fixture held;auto &c=held.runtime.controller;auto hw=c.hardware;
+    hw.drive=DRIVE_BTS7960;hw.simulation=false;c.configureHardware(hw);
+    held.hardware.beginDirections();c.feedback(90,45,true,true);
+    const std::string identity="&client=123&session=456&gesture=1&mask=3";
+    assert(held.call("POST","/api/move","d=H&az=-1&el=1&serial=1"+identity,false).status==200);
+    assert(c.axes[0].direction==-1&&c.axes[1].direction==1);
+    fakeHardware.now+=1000;c.tick(fakeHardware.now);held.hardware.applyOutputs();
+    assert(!c.moving()&&!c.axes[0].wanted&&!c.axes[1].wanted);
+    assert(fakeHardware.levels[c.hardware.pins.azSpeedEnable]==LOW&&fakeHardware.levels[c.hardware.pins.elSpeedEnable]==LOW);
+    assert(held.call("POST","/api/move","d=H&az=-1&el=1&serial=2"+identity,false).status==400);
+    assert(!c.moving()); // No release request arrived, but the expired press cannot restart.
+  }
+  {
     // Regression for the ESP32 panic: an HTTP speed/mode request performs a
     // position solve while the other axis is already running. STOP must still
     // reach both outputs before the request returns.

@@ -14,10 +14,13 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   const state={...sample,deviceRole:'controller',model:'G5500',configurationLocked:false,moving:true,
    build:{...sample.build,drive:'BTS7960'},autotune:{phase:'idle',active:false},
    axes:sample.axes.map((a,i)=>({...a,speedEnabled:true,speedAdjustable:true,regulatorMode:i?'cascade':'simple',speedSetpoint:i?24.5:50,speedLimit:i?37.26:90,direction:1,tracking:true,motionReady:true,motionPhase:'run'}))};
-  let release=null,blockNext=false,active=0,maxActive=0;const moves=[];
+  let release=null,blockNext=false,active=0,maxActive=0;const moves=[],moveBodies=[];let dropStops=false,dropHolds=false;
   await page.route('http://speed.test/**',async route=>{
    const request=route.request(),url=new URL(request.url());
-   if(url.pathname==='/api/move')moves.push(request.method()==='POST'?new URLSearchParams(request.postData()).get('d'):url.searchParams.get('d'));
+   if(url.pathname==='/api/move'){
+    const body=Object.fromEntries(request.method()==='POST'?new URLSearchParams(request.postData()):url.searchParams);moves.push(body.d);moveBodies.push(body);
+    if((body.d==='H'&&dropHolds)||(body.d!=='H'&&dropStops))return route.abort();
+   }
    if(request.method()==='POST'){
     const form=Object.fromEntries(new URLSearchParams(request.postData()));posts.push({path:url.pathname,form});
     if(url.pathname==='/api/speed'){
@@ -98,33 +101,63 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   assert.equal(posts.filter(p=>p.path==='/api/target').length,count,'Enter must validate ranges');
   await page.locator('#taz').fill('');await page.locator('#tel').fill('');await page.locator('#tel').press('Enter');
   assert.equal(posts.filter(p=>p.path==='/api/target').length,count,'Empty Enter must not send a target');
-  // Arrow keys leave fields alone, support both axes, and release only their own axis.
+  // Keyboard uses a sequenced lease, never an unbounded L/R/U/D command.
   await page.locator('#taz').press('ArrowUp');assert.deepEqual(moves,[]);
   const unfocus=()=>page.evaluate(()=>document.activeElement?.blur());await unfocus();
-  for(const [key,dir,stop] of [['ArrowLeft','L','A'],['ArrowRight','R','A'],['ArrowUp','U','E'],['ArrowDown','D','E']]){
-   moves.length=0;await page.keyboard.down(key);await page.keyboard.down(key);await page.keyboard.up(key);
-   await page.waitForTimeout(50);assert.deepEqual(moves,[dir,stop],key+' must start once and stop on release');
+  const resetMoves=()=>{moves.length=0;moveBodies.length=0;};
+  for(const [key,az,el] of [['ArrowLeft','-1','0'],['ArrowRight','1','0'],['ArrowUp','0','1'],['ArrowDown','0','-1']]){
+   resetMoves();await page.keyboard.down(key);await page.keyboard.down(key);await page.keyboard.up(key);
+   await page.waitForTimeout(80);assert.deepEqual(moves,['H','S'],key+' must open and close one gesture');
+   assert.equal(moveBodies[0].az,az);assert.equal(moveBodies[0].el,el);assert.equal(moveBodies[0].gesture,moveBodies[1].gesture);
+   assert(Number(moveBodies[1].serial)>Number(moveBodies[0].serial));
   }
-  moves.length=0;await page.keyboard.down('ArrowLeft');await page.keyboard.down('ArrowUp');await page.keyboard.up('ArrowLeft');await page.keyboard.up('ArrowUp');
-  await page.waitForTimeout(50);assert.deepEqual(moves,['L','U','A','E']);
-  moves.length=0;await page.keyboard.down('ArrowLeft');await page.keyboard.down('ArrowRight');await page.keyboard.up('ArrowLeft');await page.keyboard.up('ArrowRight');
-  await page.waitForTimeout(50);assert.deepEqual(moves,['L','A','R','A'],'old opposite key must not stop newer direction');
-  moves.length=0;await page.keyboard.down('ArrowRight');await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await page.keyboard.up('ArrowRight');
-  await page.waitForTimeout(50);assert.deepEqual(moves,['R','A'],'blur must release movement');
-  moves.length=0;await page.keyboard.down('ArrowDown');await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));delete document.hidden;});await page.keyboard.up('ArrowDown');
-  await page.waitForTimeout(50);assert.deepEqual(moves,['D','E'],'hidden page must release movement');
-  moves.length=0;await page.keyboard.down('ArrowUp');await page.locator('#taz').focus();await page.keyboard.up('ArrowUp');
-  await page.waitForTimeout(50);assert.deepEqual(moves,['U','E'],'editing must release movement');await unfocus();
-  moves.length=0;await page.keyboard.down('ArrowLeft');await page.evaluate(()=>selectTab('history'));await page.keyboard.up('ArrowLeft');
-  await page.waitForTimeout(50);assert.deepEqual(moves,['L','A'],'leaving control tab must stop');
-  moves.length=0;await page.keyboard.press('ArrowRight');await page.waitForTimeout(50);assert.deepEqual(moves,[]);
+  resetMoves();await page.keyboard.down('ArrowLeft');await page.waitForTimeout(30);await page.keyboard.down('ArrowUp');await page.waitForTimeout(30);await page.keyboard.up('ArrowLeft');await page.waitForTimeout(250);await page.keyboard.up('ArrowUp');
+  await page.waitForTimeout(80);assert(moves.includes('A'));assert.equal(moves.at(-1),'S');
+  assert(moveBodies.some(b=>b.d==='H'&&b.az==='0'&&b.el==='1'),'releasing AZ must preserve held EL');
+  resetMoves();await page.keyboard.down('ArrowLeft');await page.waitForTimeout(30);await page.keyboard.down('ArrowRight');await page.waitForTimeout(30);await page.keyboard.up('ArrowLeft');
+  assert.equal(await page.evaluate(()=>keyboardAxes.az?.key),'ArrowRight');await page.keyboard.up('ArrowRight');
+  await page.waitForTimeout(80);assert.deepEqual(moves,['H','H','S']);
+  for(const [key,release] of [['ArrowRight',()=>page.evaluate(()=>window.dispatchEvent(new Event('blur')))],['ArrowDown',()=>page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));delete document.hidden;})],['ArrowUp',()=>page.locator('#taz').focus()]]){
+   resetMoves();await page.keyboard.down(key);await release();await page.keyboard.up(key);await page.waitForTimeout(80);assert.deepEqual(moves,['H','S']);await unfocus();
+  }
+  resetMoves();await page.keyboard.down('ArrowLeft');await page.evaluate(()=>selectTab('history'));await page.keyboard.up('ArrowLeft');
+  await page.waitForTimeout(80);assert.deepEqual(moves,['H','S'],'leaving control tab must close the gesture');
+  resetMoves();await page.keyboard.press('ArrowRight');await page.waitForTimeout(50);assert.deepEqual(moves,[]);
   await page.evaluate(()=>selectTab('control'));await unfocus();
+  // Long holds use a fixed renewal rate, independent of OS repeat speed/flags.
+  resetMoves();await page.keyboard.down('ArrowRight');
+  await page.evaluate(()=>{for(let i=0;i<30;++i)document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));});
+  await page.waitForTimeout(1600);await page.keyboard.up('ArrowRight');await page.waitForTimeout(80);
+  assert(moves.filter(d=>d==='H').length>=6&&moves.filter(d=>d==='H').length<=10);
+  assert(moveBodies.every(b=>b.gesture===moveBodies[0].gesture));assert.equal(moves.at(-1),'S');
+  let total=moves.length;await page.waitForTimeout(600);assert.equal(moves.length,total,'released keys must not renew');
+  // Losing STOP retries only the same closed gesture; the device lease is tested natively.
+  resetMoves();await page.keyboard.down('ArrowUp');await page.waitForTimeout(40);dropStops=true;await page.keyboard.up('ArrowUp');
+  await page.waitForTimeout(350);dropStops=false;assert.equal(moves.filter(d=>d==='S').length,3);
+  assert(new Set(moveBodies.filter(b=>b.d==='S').map(b=>b.serial)).size===1);
+  total=moves.length;await page.waitForTimeout(400);assert.equal(moves.length,total);assert.equal(await page.evaluate(()=>keyboardHeld()),false);
+  // A failed renewal cancels the hold rather than falling back to a raw jog.
+  resetMoves();await page.keyboard.down('ArrowRight');await page.waitForTimeout(30);dropHolds=true;
+  await page.waitForTimeout(350);dropHolds=false;await page.keyboard.up('ArrowRight');
+  assert.equal(await page.evaluate(()=>keyboardHeld()),false);assert.equal(moves.at(-1),'S');
+  assert(!moves.some(d=>['L','R','U','D'].includes(d)));
+  // Capture-phase keyup survives handlers elsewhere stopping event propagation.
+  resetMoves();await page.keyboard.down('ArrowDown');
+  await page.evaluate(()=>document.addEventListener('keyup',event=>event.stopImmediatePropagation(),{once:true}));
+  await page.keyboard.up('ArrowDown');await page.waitForTimeout(80);assert.deepEqual(moves,['H','S']);
+  // A slow live HOLD ACK must not delay release or restart after its late reply.
+  await page.evaluate(()=>{window.keyboardOldSendLive=sendLive;window.keyboardPackets=[];live.ready=true;live.last=Date.now();sendLive=async(path,body)=>{window.keyboardPackets.push({...body});if(body.d==='H')return new Promise(resolve=>window.releaseKeyboardAck=()=>resolve({status:200,json:async()=>({ok:true,result:'ok'})}));return{status:200,json:async()=>({ok:true,result:'ok'})};};});
+  await page.keyboard.down('ArrowRight');await page.keyboard.up('ArrowRight');
+  assert.deepEqual(await page.evaluate(()=>window.keyboardPackets.map(p=>p.d)),['H','S']);
+  await page.evaluate(()=>window.releaseKeyboardAck());await page.waitForTimeout(250);
+  assert.deepEqual(await page.evaluate(()=>window.keyboardPackets.map(p=>p.d)),['H','S']);
+  await page.evaluate(()=>{sendLive=window.keyboardOldSendLive;live.ready=false;});resetMoves();
   state.model='G800DXA';await page.evaluate(()=>upd(true));await page.waitForFunction(()=>window._forkState.model==='G800DXA');
   await page.keyboard.press('ArrowUp');await page.keyboard.press('Control+ArrowLeft');await page.waitForTimeout(50);assert.deepEqual(moves,[],'hidden axes/modifiers must not move');
   await page.locator('#taz').fill('100');await page.locator('#tel').evaluate(e=>e.value='999');
   await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/target'),page.locator('#taz').press('Enter')]);
   assert.deepEqual(posts.at(-1).form,{az:'100',rangeRevision:String(state.azRangeRevision)},'Enter must omit hidden EL on G800');await unfocus();
   state.autotune.active=true;await page.evaluate(()=>upd(true));await page.waitForFunction(()=>window._forkState.autotune.active);await page.keyboard.press('ArrowRight');await page.waitForTimeout(50);assert.deepEqual(moves,[],'autotune must block keyboard starts');
-  assert.deepEqual(errors,[]);console.log('PASS: compact live speed sliders/5% minima/storage UI, Enter validation, held arrow axes/release/blur/tab/edit guards, 1100/390/320px');
+  assert.deepEqual(errors,[]);console.log('PASS: compact live speed sliders/5% minima/storage UI, Enter validation, leased keyboard holds/lost STOP/renewal/late ACK/blur/tab/edit guards, 1100/390/320px');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

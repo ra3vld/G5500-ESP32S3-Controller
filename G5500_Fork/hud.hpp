@@ -155,7 +155,7 @@ private:
     uint8_t attempts = 0;
     bool used = false, live = false;
     uint8_t wireVersion = 1;
-    uint32_t rangeRevision = 0;
+    uint32_t rangeRevision = 0, manualGesture = 0;
   };
   struct History {
     HudReply reply;
@@ -184,7 +184,7 @@ private:
     unsigned nextHistory = 0;
     HeldJog held[2];
     Job manual;
-    uint32_t manualInputAt = 0, closedGesture = 0;
+    uint32_t manualInputAt = 0, closedGesture = 0, closedWebGesture = 0;
   };
   struct Subscription {
     HudEndpoint endpoint;
