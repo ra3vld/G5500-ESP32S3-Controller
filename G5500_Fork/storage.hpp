@@ -31,6 +31,7 @@ public:
   void loadForkSettings(Runtime &runtime);
   void loadMotionSettings(Runtime &runtime);
   bool saveForkSettings(const Runtime &runtime);
+  bool serviceRuntimeSpeeds(Runtime &runtime, uint32_t now, bool force = false);
   void loadProfilePresets(Runtime &runtime);
   void saveProfilePresets(const Runtime &runtime);
   void addResetHistoryEntry(int bootResetReason, const String &bootResetReasonText);

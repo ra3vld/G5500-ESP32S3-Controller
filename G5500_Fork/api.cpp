@@ -442,7 +442,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       protocol.setExternalAzMode(azMode);
       controller.speedEnabled = enabled;
       for(unsigned i=0;i<2;++i) {
-        if (!(controller.speeds[i]==speeds[i])) { controller.stopNow(int(i),now); controller.resetRuntimeSpeed(i); }
+        if (!(controller.speeds[i]==speeds[i])) { controller.stopNow(int(i),now); controller.resetRuntimeSpeed(i,now); }
         controller.configureMotion(i,motion[i],now);
       }
       controller.speeds = speeds;

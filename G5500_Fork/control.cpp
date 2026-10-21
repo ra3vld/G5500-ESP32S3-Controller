@@ -28,7 +28,6 @@ void Controller::configureHardware(const HardwareConfig &config) {
   speeds = {};
   motionSettings = {};
   motion_ = {};
-  runtimeSpeed_[0] = runtimeSpeed_[1] = 0;
   speeds[1].slowdownDegrees = 2;
   speedEnabled = hardware.drive != DRIVE_YAESU;
   if (hardware.drive == DRIVE_YAESU) speeds[0] = {50, 25, 25, 2000, 1500, 10};
@@ -65,8 +64,8 @@ Controller &Controller::operator=(const Controller &other) {
   }
   for (unsigned i = 0; i < 2; ++i) {
     manualScale_[i] = other.manualScale_[i];
-    runtimeSpeed_[i] = other.runtimeSpeed_[i];
   }
+  runtimeSpeeds = other.runtimeSpeeds;
   presets = other.presets;
   pending = other.pending;
   lastTarget = other.lastTarget;
@@ -761,19 +760,32 @@ float Controller::runtimeSpeedLimit(unsigned i) const {
   return motionSettings[i].mode == RegulatorMode::Cascade ? motionSettings[i].velocity :
       std::min(100.f, motionSettings[i].outputLimitPercent);
 }
+unsigned Controller::runtimeSpeedIndex(unsigned i) const {
+  return ((((unsigned(hardware.simulation) * 3 + unsigned(hardware.drive)) * 2 +
+      unsigned(model)) * 2 + i) * 2 + unsigned(motionSettings[i].mode));
+}
+void Controller::resetRuntimeSpeed(unsigned i, uint32_t now) {
+  if (i > 1) return;
+  const unsigned base = runtimeSpeedIndex(i) & ~1u;
+  runtimeSpeeds.set(base, 0, now);
+  runtimeSpeeds.set(base + 1, 0, now);
+}
 float Controller::runtimeSpeed(unsigned i) const {
   if (i > 1) return 0;
   const float saved = motionSettings[i].mode == RegulatorMode::Cascade ? motionSettings[i].velocity : float(speeds[i].speedPercent);
   const bool tuning = autoTune.active() && autoTune.axis == int(i);
-  return std::min(!tuning && runtimeSpeed_[i] > 0 ? runtimeSpeed_[i] : saved, runtimeSpeedLimit(i));
+  const float value = runtimeSpeeds.values[runtimeSpeedIndex(i)];
+  const float limit = runtimeSpeedLimit(i);
+  if (tuning) return std::min(saved,limit);
+  return std::clamp(!tuning && value > 0 ? value : saved, limit / 20.f, limit);
 }
 Result Controller::setRuntimeSpeed(unsigned i, float value, uint32_t now) {
-  (void)now;
   if (i > 1 || !std::isfinite(value)) return Result::Invalid;
   if (configurationLocked || autoTune.active() || !runtimeSpeedAvailable(i)) return Result::Unavailable;
-  const float minimum = motionSettings[i].mode == RegulatorMode::Cascade ? .001f : 1.f;
-  if (value < minimum || value > runtimeSpeedLimit(i)) return Result::Invalid;
-  runtimeSpeed_[i] = value;
+  const float limit = runtimeSpeedLimit(i), minimum = limit / 20.f;
+  // Status JSON and browser arithmetic can round the lower endpoint by one ULP.
+  if (value < minimum - limit * 1e-6f || value > limit) return Result::Invalid;
+  runtimeSpeeds.set(runtimeSpeedIndex(i), std::max(minimum,value), now);
   return Result::Ok;
 }
 void Controller::tick(uint32_t now) {

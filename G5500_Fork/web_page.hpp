@@ -45,7 +45,7 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 .calreset{background:#9b2c2c;min-height:46px;font-size:15px;padding:8px 12px}
 select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t);border:1px solid #355063;font-size:16px} .preset-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.preset-grid button{overflow-wrap:anywhere}.preset-grid button.active{border-color:#24d18d} summary{cursor:pointer;font-weight:700} button:disabled{opacity:.45;cursor:default} #forkSettings input[type=checkbox]{width:auto} @media(max-width:700px){.preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}} .seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}.seg .btn{min-height:42px;font-size:14px;border-radius:10px}.minirow{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.minirow .btn{min-height:42px;font-size:13px;border-radius:10px;padding:6px}.calbox{background:#0b1720;border:1px solid #294153;border-radius:12px;padding:10px;margin-top:8px}.calbox h3{margin:0 0 8px;font-size:15px}.calvalues{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-size:12px}.calvalues div{background:#071018;border-radius:8px;padding:7px}.hide{display:none!important}.rangebadge{display:inline-block;padding:4px 8px;border-radius:999px;background:#173044;color:#fff;font-size:12px;font-weight:700}
 @media(max-width:700px){.grid{grid-template-columns:1fr}.big{font-size:46px}.targetbig{font-size:30px}.sep{font-size:26px}}
-.manual-drive{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:center}.manual-drive.has-speeds{grid-template-columns:minmax(0,1.4fr) minmax(180px,1fr)}.manual-speeds{display:grid;gap:14px;min-width:0}.manual-speed label{display:flex;justify-content:space-between;gap:12px;font-size:14px}.manual-speed output{font-variant-numeric:tabular-nums;white-space:nowrap}.manual-speed input{width:100%;min-height:44px;padding:0;accent-color:var(--a);touch-action:pan-y}.manual-speeds .hint{margin:0}@media(max-width:600px){.manual-drive.has-speeds{grid-template-columns:minmax(0,1fr);gap:12px}}
+.manual-drive{display:grid;grid-template-columns:minmax(0,1fr);gap:12px 18px;align-items:center}.manual-drive.has-speeds{grid-template-columns:minmax(0,6.2fr) minmax(0,1fr)}.manual-speeds{display:grid;gap:10px;min-width:0}.manual-speed label{display:grid;gap:2px;font-size:13px}.manual-speed output{font-variant-numeric:tabular-nums;white-space:nowrap}.manual-speed input{width:100%;min-height:44px;padding:0;accent-color:var(--a);touch-action:pan-y}#manualSpeedHelp{grid-column:1/-1;margin:0}.manual-drive:not(.has-speeds) #manualSpeedHelp{display:none}@media(max-width:600px){.manual-drive.has-speeds{grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px}.manual-drive.has-speeds .controls{gap:6px}.manual-drive.has-speeds .controls .btn{font-size:14px}}
 .hint{color:var(--m);font-size:13px;line-height:1.5;overflow-wrap:anywhere}
 .device-panel h2{font-size:20px;line-height:1.35;margin:0;overflow-wrap:anywhere}.device-panel #hudLink:empty{display:none}.device-panel #hudLink:not(:empty){margin-top:8px}
 .device-section{margin-top:14px;border-top:1px solid var(--b);padding-top:14px}.device-section summary{line-height:1.4;padding:4px 0}.device-section[open] summary{margin-bottom:14px}
@@ -186,8 +186,9 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <div id="manualSpeeds" class="manual-speeds hide">
 <div id="azManualSpeedControl" class="manual-speed hide"><label for="azManualSpeed"><span>Скорость AZ</span><output id="azManualSpeedValue" for="azManualSpeed">—</output></label><input id="azManualSpeed" type="range" min="1" max="100" value="50" step="1" aria-describedby="manualSpeedHelp" oninput="queueManualSpeed('az',this.value)" onchange="flushManualSpeed('az')"></div>
 <div id="elManualSpeedControl" class="manual-speed hide"><label for="elManualSpeed"><span>Скорость EL</span><output id="elManualSpeedValue" for="elManualSpeed">—</output></label><input id="elManualSpeed" type="range" min="1" max="100" value="50" step="1" aria-describedby="manualSpeedHelp" oninput="queueManualSpeed('el',this.value)" onchange="flushManualSpeed('el')"></div>
-<p id="manualSpeedHelp" class="hint">Меняет скорость текущего и следующего движения. После перезапуска возвращается сохранённая настройка.</p>
-</div></div>
+</div>
+<p id="manualSpeedHelp" class="hint">Меняет скорость текущего и следующего движения. Сохраняется через 40 с после последнего изменения и перед штатной перезагрузкой.</p>
+</div>
 <div class="target-controls"><div class="label">Задать угол</div><div class="row" style="margin-top:8px">
 <div class="field"><label id="tazlbl">AZ 0..450°</label><input id="taz" type="number" step="0.1" min="0" max="450"></div>
 <div class="field"><label id="tellbl">EL 0…180°</label><input id="tel" type="number" step="0.1" min="0" max="180"></div>
@@ -424,6 +425,7 @@ async function settingsRequest(path,options={}){
 const pageTabs=['control','settings','history'];
 function selectTab(name,updateHash=true){
  if(!pageTabs.includes(name))name='control';
+ if(name!=='control')releaseKeyboardAxes();
  const settings=name==='settings',opening=settings&&document.getElementById('settingsPanel').hidden;
  document.body.classList.toggle('settings-view',settings);
  for(const tab of pageTabs){
@@ -844,12 +846,12 @@ async function targetAction(){
 const manualSpeedRequests={az:{pending:null,timer:null,busy:false,epoch:0},el:{pending:null,timer:null,busy:false,epoch:0}};
 function manualSpeedLabel(axis,value){
  const cascade=window._forkState?.axes?.[axis==='az'?0:1]?.regulatorMode==='cascade';
- return Number(Number(value).toFixed(cascade?3:0))+(cascade?' °/с':'%');
+ return Number(Number(value).toPrecision(6))+(cascade?' °/с':'%');
 }
 function queueManualSpeed(axis,value){
  const p=manualSpeedRequests[axis],input=document.getElementById(axis+'ManualSpeed');if(input.disabled)return;
  p.pending=Number(value);document.getElementById(axis+'ManualSpeedValue').textContent=manualSpeedLabel(axis,value);
- clearTimeout(p.timer);p.timer=setTimeout(()=>flushManualSpeed(axis),100);
+ if(p.timer===null&&!p.busy)p.timer=setTimeout(()=>flushManualSpeed(axis),50);
 }
 async function flushManualSpeed(axis){
  const p=manualSpeedRequests[axis];clearTimeout(p.timer);p.timer=null;if(p.busy||p.pending===null)return;
@@ -867,7 +869,7 @@ function renderManualSpeeds(j){
   input.disabled=!available||!!j?.autotune?.active||!!j?.configurationLocked;
   if(!available)continue;
   const max=Number(a.speedLimit),value=Number(a.speedSetpoint);if(!Number.isFinite(max)||!Number.isFinite(value))continue;
-  input.min=cascade?'0.001':'1';input.max=max;input.step=cascade?'0.001':'1';
+  input.min=max/20;input.max=max;input.step='any';
   if(!p.busy&&p.pending===null&&document.activeElement!==input)input.value=value;
   document.getElementById(axis+'ManualSpeedValue').textContent=manualSpeedLabel(axis,input.value);
   input.setAttribute('aria-valuetext',manualSpeedLabel(axis,input.value));
@@ -943,6 +945,38 @@ async function go(){
  }
  await forkPost('/api/target',body);
 }
+for(const id of ['taz','tel'])document.getElementById(id).addEventListener('keydown',event=>{
+ if(event.key!=='Enter'||event.isComposing)return;
+ event.preventDefault();if(!event.repeat)go();
+});
+const keyboardAxes={az:null,el:null};
+const arrowDirections={ArrowLeft:'L',ArrowRight:'R',ArrowUp:'U',ArrowDown:'D'};
+function releaseKeyboardAxis(axis){
+ const held=keyboardAxes[axis];if(!held)return;
+ keyboardAxes[axis]=null;stopAxis(held.direction,held.selection);
+}
+function releaseKeyboardAxes(){for(const axis of ['az','el'])releaseKeyboardAxis(axis);}
+document.addEventListener('keydown',event=>{
+ const direction=arrowDirections[event.key];
+ if(!direction||event.defaultPrevented)return;
+ if(event.repeat){if(Object.values(keyboardAxes).some(held=>held?.key===event.key))event.preventDefault();return;}
+ if(event.altKey||event.ctrlKey||event.metaKey||event.shiftKey||event.isComposing)return;
+ const target=event.target;
+ if(target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="tab"]')||document.getElementById('controlPanel').hidden)return;
+ const button=document.querySelector('.movebtn[data-dir="'+direction+'"]'),j=window._forkState;
+ if(!j||j.configurationLocked||j.autotune?.active||!button||button.disabled||!button.getClientRects().length)return;
+ event.preventDefault();const axis=direction==='L'||direction==='R'?'az':'el';
+ releaseKeyboardAxis(axis);
+ keyboardAxes[axis]={key:event.key,direction,selection:j.deviceRole==='hud'?j.hudSelectionEpoch:undefined};
+ mv(direction);
+});
+document.addEventListener('keyup',event=>{
+ if(!arrowDirections[event.key])return;
+ for(const axis of ['az','el'])if(keyboardAxes[axis]?.key===event.key){event.preventDefault();releaseKeyboardAxis(axis);}
+});
+window.addEventListener('blur',releaseKeyboardAxes);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseKeyboardAxes();});
+document.addEventListener('focusin',event=>{if(event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])'))releaseKeyboardAxes();});
 async function cal(p){await calibrationAction('/api/cal?p='+p,'Точка '+p.slice(0,2).toUpperCase()+' '+p.slice(2)+'° запомнена')}
 async function cal2(p){await calibrationAction('/api/cal2?p='+p,(p[0]==='f'?'Конец':'Начало')+' диапазона '+(p.endsWith('2')?'EL':'AZ')+' запомнено')}
 async function setCalMode(m){await calibrationAction('/api/calmode?m='+m,m==='multi'?'Выбрана многоточечная калибровка':'Выбрана двухточечная калибровка')}

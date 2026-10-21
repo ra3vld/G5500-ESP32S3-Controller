@@ -5,7 +5,7 @@
 #include <limits>
 using namespace forkrot;
 int main(){
-  // Main-page speed commands change a live setpoint, never the saved tuning.
+  // Main-page speed commands change live setpoints independently of saved tuning.
   {
     Runtime speedRuntime; auto &speed=speedRuntime.controller;
     HardwareConfig hardware;hardware.drive=DRIVE_BTS7960;hardware.simulation=true;speed.configureHardware(hardware);
@@ -13,26 +13,71 @@ int main(){
     const auto savedSpeed=speed.speeds;const auto savedMotion=speed.motionSettings;
     assert(speed.jog(0,1,false,0)==Result::Ok);speed.tick(0);
     const auto direction=speed.axes[0].direction;assert(direction==1);
+    assert(speed.setRuntimeSpeed(0,4.5f,19)==Result::Ok);
+    assert(speed.runtimeSpeed(0)==4.5f);
+    assert(speed.setRuntimeSpeed(0,4.49f,19)==Result::Invalid);
     assert(api(speed,speedRuntime.protocol,speedRuntime.loggerSettings,"/api/speed",{{"axis","az"},{"value","72"}},20).status==200);
     assert(speed.runtimeSpeed(0)==72 && speed.runtimeSpeed(1)==50);
     assert(speed.axes[0].direction==direction && speed.speeds==savedSpeed && speed.motionSettings==savedMotion);
     speed.motionSettings[1].mode=RegulatorMode::Cascade;speed.motionSettings[1].velocity=27.5f;
+    assert(speed.setRuntimeSpeed(1,1.375f,39)==Result::Ok);
+    assert(speed.runtimeSpeed(1)==1.375f);
+    assert(speed.setRuntimeSpeed(1,1.374f,39)==Result::Invalid);
     assert(api(speed,speedRuntime.protocol,speedRuntime.loggerSettings,"/api/speed",{{"axis","el"},{"value","12.75"}},40).status==200);
     assert(speed.runtimeSpeed(1)==12.75f && speed.motionSettings[1].velocity==27.5f && speed.runtimeSpeed(0)==72);
-    for(const auto &form:{Form{{"axis","az"},{"value","91"}},Form{{"axis","el"},{"value","28"}},Form{{"axis","az"},{"value","nan"}},Form{{"axis","bad"},{"value","20"}}})
+    for(const auto &form:{Form{{"axis","az"},{"value","91"}},Form{{"axis","el"},{"value","28"}},Form{{"axis","az"},{"value","4.49"}},Form{{"axis","el"},{"value","1.374"}},Form{{"axis","az"},{"value","nan"}},Form{{"axis","bad"},{"value","20"}}})
       assert(api(speed,speedRuntime.protocol,speedRuntime.loggerSettings,"/api/speed",form,60).status==400);
     assert(speed.runtimeSpeed(0)==72 && speed.runtimeSpeed(1)==12.75f);
     Storage speedStorage;assert(speedStorage.saveForkSettings(speedRuntime));Runtime reloaded;reloaded.controller.hardware=hardware;speedStorage.loadForkSettings(reloaded);
     assert(reloaded.controller.runtimeSpeed(0)==savedSpeed[0].speedPercent && reloaded.controller.runtimeSpeed(1)==27.5f);
+    assert(speedStorage.serviceRuntimeSpeeds(speedRuntime,40039));
+    assert(!Preferences::database.count("forkspeed")); // 40 s after the LAST axis change.
+    assert(speedStorage.serviceRuntimeSpeeds(speedRuntime,40040));
+    assert(!speed.runtimeSpeeds.dirty);
+    speedStorage.loadForkSettings(reloaded);
+    assert(reloaded.controller.runtimeSpeed(0)==72 && reloaded.controller.runtimeSpeed(1)==12.75f);
+    assert(reloaded.controller.speeds==savedSpeed && reloaded.controller.motionSettings[1].velocity==27.5f);
     const auto status=stateJson(speed,speedRuntime.protocol,speedRuntime.loggerSettings,60);
     assert(status.find("\"speedSetpoint\":72")!=std::string::npos && status.find("\"speedAdjustable\":true")!=std::string::npos);
     assert(api(speed,speedRuntime.protocol,speedRuntime.loggerSettings,"/api/settings",{{"azSpeedPercent","40"}},80).status==200);
     assert(speed.runtimeSpeed(0)==40 && speed.runtimeSpeed(1)==12.75f && !speed.axes[0].direction);
+    assert(speedStorage.saveForkSettings(speedRuntime));
+    assert(speedStorage.serviceRuntimeSpeeds(speedRuntime,81,true)); // Controlled restart flushes resets too.
+    speedStorage.loadForkSettings(reloaded);
+    assert(reloaded.controller.runtimeSpeed(0)==40 && reloaded.controller.runtimeSpeed(1)==12.75f);
     speed.motionSettings[1].velocity=.001f;
-    assert(api(speed,speedRuntime.protocol,speedRuntime.loggerSettings,"/api/speed",{{"axis","el"},{"value","0.001"}},80).status==200);
+    assert(api(speed,speedRuntime.protocol,speedRuntime.loggerSettings,"/api/speed",{{"axis","el"},{"value","0.00005"}},80).status==200);
+    assert(speed.runtimeSpeed(1)==.001f/20);
+    assert(speed.setRuntimeSpeed(1,.000049f,80)==Result::Invalid);
     const auto tinyStatus=stateJson(speed,speedRuntime.protocol,speedRuntime.loggerSettings,80);
-    assert(tinyStatus.find("\"speedSetpoint\":0.001")!=std::string::npos);
+    assert(tinyStatus.find("\"speedSetpoint\":5e-05")!=std::string::npos);
     assert(tinyStatus.find("\"speedLimit\":0.001")!=std::string::npos);
+    assert(speedStorage.saveForkSettings(speedRuntime));
+    Preferences::failedBytesKey="values1";
+    assert(!speedStorage.serviceRuntimeSpeeds(speedRuntime,40080));
+    assert(speed.runtimeSpeeds.dirty);
+    Preferences::failedBytesKey.clear();
+    assert(speedStorage.serviceRuntimeSpeeds(speedRuntime,40081));
+    assert(speed.runtimeSpeeds.dirty); // A failed write is retried after 40 s.
+    assert(speedStorage.serviceRuntimeSpeeds(speedRuntime,80080));
+    speedStorage.loadForkSettings(reloaded);
+    assert(reloaded.controller.runtimeSpeed(1)==.001f/20);
+    const auto opened=Preferences::opened.size();
+    assert(speed.setRuntimeSpeed(1,.001f/20,80081)==Result::Ok);
+    assert(speedStorage.serviceRuntimeSpeeds(speedRuntime,120081));
+    assert(Preferences::opened.size()==opened); // Identical values and clean loops never open NVS.
+    assert(speed.setRuntimeSpeed(0,25,UINT32_MAX-100)==Result::Ok);
+    assert(speedStorage.serviceRuntimeSpeeds(speedRuntime,39898));
+    assert(speed.runtimeSpeeds.dirty);
+    assert(speedStorage.serviceRuntimeSpeeds(speedRuntime,39899)); // millis() rollover.
+    assert(!speed.runtimeSpeeds.dirty);
+    speed.setModel(Model::G800DXA);speedStorage.loadMotionSettings(speedRuntime);
+    assert(speed.runtimeSpeed(0)==speed.speeds[0].speedPercent); // No override from another model.
+    speed.setModel(Model::G5500);speedStorage.loadMotionSettings(speedRuntime);
+    assert(speed.runtimeSpeed(0)==25 && speed.runtimeSpeed(1)==.001f/20);
+    auto &sliderRecord=std::get<Preferences::Bytes>(Preferences::database["forkspeed"]["values1"]);
+    sliderRecord.back()^=1;speedStorage.loadForkSettings(reloaded);
+    assert(reloaded.controller.runtimeSpeed(0)==40); // Damaged override falls back to regulator tuning.
     hardware.simulation=false;hardware.pins.azSpeedEnable=-1;speed.configureHardware(hardware);
     assert(!speed.runtimeSpeedAvailable(0));assert(api(speed,speedRuntime.protocol,speedRuntime.loggerSettings,"/api/speed",{{"axis","az"},{"value","20"}},80).status!=200);
     Preferences::database.clear();

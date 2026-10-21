@@ -510,7 +510,8 @@ static void runtimeMethodology() {
   for(unsigned n=0;n<70 && stale.c.autoTune.active();++n)stale.step(false);
   CHECK(stale.c.autoTune.phase==AutoTunePhase::Failed);CHECK(!stale.c.moving());
   Rig cascade(true);options={};options.lambdaFactor=2;options.positionGainFactor=.5f;
-  CHECK(cascade.c.setRuntimeSpeed(0,.01f,0)==Result::Ok);
+  const float sliderSpeed=cascade.c.runtimeSpeedLimit(0)/20;
+  CHECK(cascade.c.setRuntimeSpeed(0,sliderSpeed,0)==Result::Ok);
   CHECK(cascade.c.startAutoTune(0,RegulatorMode::Cascade,60,50,0,options)==Result::Ok);
   for(unsigned n=0;n<6000 && cascade.c.autoTune.active();++n)cascade.step();
   CHECK(cascade.c.autoTune.phase==AutoTunePhase::Complete);
@@ -522,7 +523,7 @@ static void runtimeMethodology() {
   const float lambda=std::max(.5f,2*(tau+delay))*options.lambdaFactor;
   CHECK(std::abs(t.proposedMotion.velocityKp-tau/(gain*(lambda+delay)))<.0001f);
   CHECK(std::abs(t.proposedMotion.positionKp-options.positionGainFactor/(4*lambda))<.0001f);
-  CHECK(cascade.c.runtimeSpeed(0)==.01f); // The experimental override never persists.
+  CHECK(cascade.c.runtimeSpeed(0)==sliderSpeed); // Autotune restores the manual selection.
   Rig longWindow(false,0,0xfffff000u);longWindow.gain=.08f;options={};
   options.searchStartPercent=35;options.plateauMinMs=1000;options.plateauTimeoutMs=6000;
   CHECK(longWindow.c.startAutoTune(0,RegulatorMode::Simple,60,50,longWindow.now,options)==Result::Ok);

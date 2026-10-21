@@ -10,6 +10,32 @@
 namespace forkrot {
 using namespace board;
 namespace {
+using RuntimeSpeedRecord = std::array<uint8_t, RuntimeSpeeds::Count * sizeof(float) + 4>;
+uint32_t runtimeSpeedChecksum(const RuntimeSpeedRecord &record) {
+  uint32_t hash = 2166136261u;
+  for (size_t i=0; i<record.size()-4; ++i) hash=(hash^record[i])*16777619u;
+  return hash;
+}
+RuntimeSpeedRecord encodeRuntimeSpeeds(const RuntimeSpeeds &speeds) {
+  RuntimeSpeedRecord record{};
+  std::memcpy(record.data(),speeds.values.data(),sizeof(speeds.values));
+  const uint32_t checksum=runtimeSpeedChecksum(record);
+  std::memcpy(record.data()+record.size()-4,&checksum,4);
+  return record;
+}
+bool decodeRuntimeSpeeds(const RuntimeSpeedRecord &record, RuntimeSpeeds &speeds) {
+  uint32_t checksum;
+  std::memcpy(&checksum,record.data()+record.size()-4,4);
+  if(checksum!=runtimeSpeedChecksum(record)) return false;
+  RuntimeSpeeds next;
+  std::memcpy(next.values.data(),record.data(),sizeof(next.values));
+  for(unsigned i=0;i<next.values.size();++i) {
+    const float v=next.values[i];
+    if(!std::isfinite(v) || v<0 || (i%2==0 && v>100)) return false;
+  }
+  speeds=next;
+  return true;
+}
 // The readiness flag and both regulator/simple settings share one verified NVS
 // value. An interrupted legacy-key write cannot arm a mixed configuration.
 using DriveRecord=std::array<uint8_t,MotionRecordSize+36>;
@@ -595,6 +621,31 @@ void Storage::loadForkSettings(Runtime &runtime) {
   prefs_.end();
   }
   loadMotionSettings(runtime);
+  runtime.controller.runtimeSpeeds = {};
+  if (!runtime.hud.isHud() && prefs_.begin("forkspeed",true)) {
+    RuntimeSpeedRecord record{};
+    if (prefs_.getBytesLength("values1")==record.size() &&
+        prefs_.getBytes("values1",record.data(),record.size())==record.size())
+      decodeRuntimeSpeeds(record,runtime.controller.runtimeSpeeds);
+  }
+  prefs_.end();
+}
+
+bool Storage::serviceRuntimeSpeeds(Runtime &runtime, uint32_t now, bool force) {
+  auto &speeds=runtime.controller.runtimeSpeeds;
+  if(runtime.hud.isHud() || !speeds.dirty || (!force && !speeds.due(now))) return true;
+  const auto record=encodeRuntimeSpeeds(speeds);
+  bool valid=false;
+  if(prefs_.begin("forkspeed",false)) {
+    prefs_.putBytes("values1",record.data(),record.size());
+    RuntimeSpeedRecord check{};
+    valid=prefs_.getBytesLength("values1")==record.size() &&
+        prefs_.getBytes("values1",check.data(),check.size())==check.size() && check==record;
+  }
+  prefs_.end();
+  if(valid) speeds.dirty=false;
+  else speeds.changedAt=now; // Retry after the same delay instead of hammering NVS.
+  return valid;
 }
 
 void Storage::loadMotionSettings(Runtime &runtime) {

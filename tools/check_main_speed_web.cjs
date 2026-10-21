@@ -14,9 +14,10 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   const state={...sample,deviceRole:'controller',model:'G5500',configurationLocked:false,moving:true,
    build:{...sample.build,drive:'BTS7960'},autotune:{phase:'idle',active:false},
    axes:sample.axes.map((a,i)=>({...a,speedEnabled:true,speedAdjustable:true,regulatorMode:i?'cascade':'simple',speedSetpoint:i?24.5:50,speedLimit:i?37.26:90,direction:1,tracking:true,motionReady:true,motionPhase:'run'}))};
-  let release=null,blockNext=false,active=0,maxActive=0;
+  let release=null,blockNext=false,active=0,maxActive=0;const moves=[];
   await page.route('http://speed.test/**',async route=>{
    const request=route.request(),url=new URL(request.url());
+   if(url.pathname==='/api/move')moves.push(request.method()==='POST'?new URLSearchParams(request.postData()).get('d'):url.searchParams.get('d'));
    if(request.method()==='POST'){
     const form=Object.fromEntries(new URLSearchParams(request.postData()));posts.push({path:url.pathname,form});
     if(url.pathname==='/api/speed'){
@@ -36,6 +37,16 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   assert.equal(await page.locator('#elManualSpeedValue').textContent(),'24.5 °/с');
   assert.equal(await page.locator('#azManualSpeed').getAttribute('max'),'90');
   assert.equal(await page.locator('#elManualSpeed').getAttribute('max'),'37.26');
+  assert.equal(Number(await page.locator('#azManualSpeed').getAttribute('min')),4.5);
+  assert.equal(Number(await page.locator('#elManualSpeed').getAttribute('min')),1.863);
+  const beforeDrag=posts.length;
+  for(let value=30;value<=40;++value){
+   await page.locator('#azManualSpeed').evaluate((e,value)=>{e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));},String(value));
+   await page.waitForTimeout(20);
+  }
+  assert(posts.length>beforeDrag+1,'continuous input must apply speed before pause/change/release');
+  await page.waitForFunction(()=>!manualSpeedRequests.az.busy&&manualSpeedRequests.az.pending===null&&window._forkState.axes[0].speedSetpoint===40);
+  posts.length=0;
   const input=async(axis,value)=>page.locator('#'+axis+'ManualSpeed').evaluate((e,value)=>{e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));},String(value));
   blockNext=true;await input('az',51);await page.waitForFunction(()=>manualSpeedRequests.az.busy);
   for(let value=52;value<=80;++value)await input('az',value);
@@ -58,8 +69,50 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
    await page.setViewportSize({width,height:1000});await page.locator('#manualSpeeds').scrollIntoViewIfNeeded();
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow at ${width}`);
    assert(await page.locator('#manualSpeeds').evaluate(root=>[...root.querySelectorAll('input')].every(e=>e.getBoundingClientRect().height>=44&&e.getBoundingClientRect().right<=innerWidth)),`touch target at ${width}`);
+   assert(await page.locator('#manualSpeeds').evaluate(e=>{const group=e.closest('.manual-drive'),ratio=e.getBoundingClientRect().width/(group.getBoundingClientRect().width-parseFloat(getComputedStyle(group).columnGap));return Math.abs(ratio-(innerWidth>600?1/7.2:1/3))<.01}),`compact slider column at ${width}`);
+   assert(await page.locator('#azManualSpeed').evaluate(e=>e.getBoundingClientRect().width/e.parentElement.getBoundingClientRect().width>.95),`track fills compact column at ${width}`);
    await page.locator('.manual-drive').screenshot({path:path.join(out,`speed-${width}.png`)});
   }
-  assert.deepEqual(errors,[]);console.log('PASS: main speed sliders, independent units/limits, coalesced in-flight commands, mode/capability guards, 1100/390/320px');
+  // Enter uses the same validated target path from either field.
+  await page.locator('#taz').fill('90');await page.locator('#tel').fill('45');
+  for(const id of ['taz','tel']){
+   const count=posts.filter(p=>p.path==='/api/target').length;
+   await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/target'),page.locator('#'+id).press('Enter')]);
+   assert.equal(posts.filter(p=>p.path==='/api/target').length,count+1);
+   assert.deepEqual(posts.at(-1).form,{az:'90',el:'45',rangeRevision:String(state.azRangeRevision)});
+  }
+  let count=posts.filter(p=>p.path==='/api/target').length;
+  await page.locator('#taz').fill('451');await page.locator('#taz').press('Enter');
+  assert.equal(posts.filter(p=>p.path==='/api/target').length,count,'Enter must validate ranges');
+  await page.locator('#taz').fill('');await page.locator('#tel').fill('');await page.locator('#tel').press('Enter');
+  assert.equal(posts.filter(p=>p.path==='/api/target').length,count,'Empty Enter must not send a target');
+  // Arrow keys leave fields alone, support both axes, and release only their own axis.
+  await page.locator('#taz').press('ArrowUp');assert.deepEqual(moves,[]);
+  const unfocus=()=>page.evaluate(()=>document.activeElement?.blur());await unfocus();
+  for(const [key,dir,stop] of [['ArrowLeft','L','A'],['ArrowRight','R','A'],['ArrowUp','U','E'],['ArrowDown','D','E']]){
+   moves.length=0;await page.keyboard.down(key);await page.keyboard.down(key);await page.keyboard.up(key);
+   await page.waitForTimeout(50);assert.deepEqual(moves,[dir,stop],key+' must start once and stop on release');
+  }
+  moves.length=0;await page.keyboard.down('ArrowLeft');await page.keyboard.down('ArrowUp');await page.keyboard.up('ArrowLeft');await page.keyboard.up('ArrowUp');
+  await page.waitForTimeout(50);assert.deepEqual(moves,['L','U','A','E']);
+  moves.length=0;await page.keyboard.down('ArrowLeft');await page.keyboard.down('ArrowRight');await page.keyboard.up('ArrowLeft');await page.keyboard.up('ArrowRight');
+  await page.waitForTimeout(50);assert.deepEqual(moves,['L','A','R','A'],'old opposite key must not stop newer direction');
+  moves.length=0;await page.keyboard.down('ArrowRight');await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await page.keyboard.up('ArrowRight');
+  await page.waitForTimeout(50);assert.deepEqual(moves,['R','A'],'blur must release movement');
+  moves.length=0;await page.keyboard.down('ArrowDown');await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));delete document.hidden;});await page.keyboard.up('ArrowDown');
+  await page.waitForTimeout(50);assert.deepEqual(moves,['D','E'],'hidden page must release movement');
+  moves.length=0;await page.keyboard.down('ArrowUp');await page.locator('#taz').focus();await page.keyboard.up('ArrowUp');
+  await page.waitForTimeout(50);assert.deepEqual(moves,['U','E'],'editing must release movement');await unfocus();
+  moves.length=0;await page.keyboard.down('ArrowLeft');await page.evaluate(()=>selectTab('history'));await page.keyboard.up('ArrowLeft');
+  await page.waitForTimeout(50);assert.deepEqual(moves,['L','A'],'leaving control tab must stop');
+  moves.length=0;await page.keyboard.press('ArrowRight');await page.waitForTimeout(50);assert.deepEqual(moves,[]);
+  await page.evaluate(()=>selectTab('control'));await unfocus();
+  state.model='G800DXA';await page.evaluate(()=>upd(true));await page.waitForFunction(()=>window._forkState.model==='G800DXA');
+  await page.keyboard.press('ArrowUp');await page.keyboard.press('Control+ArrowLeft');await page.waitForTimeout(50);assert.deepEqual(moves,[],'hidden axes/modifiers must not move');
+  await page.locator('#taz').fill('100');await page.locator('#tel').evaluate(e=>e.value='999');
+  await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/target'),page.locator('#taz').press('Enter')]);
+  assert.deepEqual(posts.at(-1).form,{az:'100',rangeRevision:String(state.azRangeRevision)},'Enter must omit hidden EL on G800');await unfocus();
+  state.autotune.active=true;await page.evaluate(()=>upd(true));await page.waitForFunction(()=>window._forkState.autotune.active);await page.keyboard.press('ArrowRight');await page.waitForTimeout(50);assert.deepEqual(moves,[],'autotune must block keyboard starts');
+  assert.deepEqual(errors,[]);console.log('PASS: compact live speed sliders/5% minima/storage UI, Enter validation, held arrow axes/release/blur/tab/edit guards, 1100/390/320px');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

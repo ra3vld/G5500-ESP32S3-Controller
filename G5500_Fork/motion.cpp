@@ -217,7 +217,7 @@ void Controller::feedbackAt(unsigned i, float position, bool calibrated, uint32_
 }
 bool Controller::configureMotion(unsigned i, const MotionSettings &settings, uint32_t now) {
   if (remote || i > 1 || !settings.valid() || (settings.ready && !prepareMotionPlanner())) return false;
-  if (motionSettings[i] != settings) { stopNow(int(i), now); motionSettings[i] = settings; runtimeSpeed_[i] = 0; }
+  if (motionSettings[i] != settings) { stopNow(int(i), now); motionSettings[i] = settings; resetRuntimeSpeed(i,now); }
   return true;
 }
 Result Controller::resetMotion(int axis, uint32_t now) {

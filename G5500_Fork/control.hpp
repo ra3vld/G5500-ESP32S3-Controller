@@ -4,6 +4,7 @@
 #include "hardware_config.hpp"
 #include "az_range.hpp"
 #include "motion.hpp"
+#include "runtime_speeds.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -215,7 +216,8 @@ public:
   bool runtimeSpeedAvailable(unsigned axis) const;
   float runtimeSpeed(unsigned axis) const;
   float runtimeSpeedLimit(unsigned axis) const;
-  void resetRuntimeSpeed(unsigned axis) { if (axis < 2) runtimeSpeed_[axis] = 0; }
+  RuntimeSpeeds runtimeSpeeds;
+  void resetRuntimeSpeed(unsigned axis, uint32_t now);
   Result setRuntimeSpeed(unsigned axis, float value, uint32_t now);
   float tolerance(unsigned i) const {
     if (variableSpeed(i) && motionSettings[i].mode == RegulatorMode::Cascade)
@@ -286,7 +288,7 @@ private:
     bool used = false, closed = false;
   } manualSessions_[4];
   float manualScale_[2] = {1, 1};
-  float runtimeSpeed_[2] = {}; // Zero selects the saved setting; never persisted.
+  unsigned runtimeSpeedIndex(unsigned axis) const;
   void closeManual(ManualSession &, uint32_t now);
   uint32_t autoHourStartedAt_ = 0, sequenceAdvancedAt_ = 0, sequenceIntervalMs_ = 0;
   uint32_t lastSpeedUpdateAt_ = 0;

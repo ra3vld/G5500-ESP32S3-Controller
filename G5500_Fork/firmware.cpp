@@ -239,6 +239,8 @@ void Application::controllerLoop() {
   ota_.service();
   network_.serviceCommandReplies();
   if(restart_.consume(millis()) || ota_.readyToRestart()) {
+    if (!storage_.serviceRuntimeSpeeds(runtime_,millis(),true))
+      diagnostics_.dbgPrintln("[Speed NVS] save before restart failed");
     if(storage_.finishHardwareBoot(runtime_))ESP.restart();
   }
   if (runtime_.recovery) {
@@ -282,6 +284,8 @@ void Application::controllerLoop() {
   network_.serviceHeapDiagnostics();
   web_server_.service();
   if (ota_.locked()) return;
+  if (!storage_.serviceRuntimeSpeeds(runtime_,millis()))
+    diagnostics_.dbgPrintln("[Speed NVS] deferred save failed; retry in 40 s");
   network_.serviceWifiReconnect();
   diagnostics_.serviceRssiHistory();
   if (runtime_.hud.settingsDirty) {
