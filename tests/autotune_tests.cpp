@@ -118,6 +118,54 @@ static void highStiction() {
   CHECK(r.c.autoTune.phase==AutoTunePhase::Complete);CHECK(r.c.autoTune.proposedSpeed.speedPercent>=25);
   CHECK(r.c.autoTune.proposedMotion.kickPercent==50);
 }
+// Short saved pulses plus delayed, quantized feedback used to reject later
+// restarts even after the shaft had travelled tens of degrees during the run.
+static void startupConfirmation(unsigned axis,float movement,uint32_t stamp=0) {
+  Rig r(false,axis,stamp);r.positiveStart=r.negativeStart=28;r.sustaining=16;
+  r.gain=.5f;r.bias=13;r.timeConstant=.24f;r.quantum=.1f;r.medianFeedback=true;
+  auto &m=r.c.motionSettings[axis];m.kickEnabled=true;m.kickPercent=34;m.kickMs=300;
+  m.movementDegrees=movement;m.stoppedVelocity=4.84f;m.velocityWindowMs=80;
+  m.stallMs=20000;m.outputLimitPercent=50;m.positionTolerance=5;m.holdResumeDegrees=5.38f;m.kickReleaseMs=20;
+  r.c.speeds[axis].speedPercent=50;r.c.speeds[axis].coastDegrees=1.7f;
+  const auto saved=m;const auto speed=r.c.speeds[axis];CHECK(r.start(75)==Result::Ok);
+  bool extendedSearch=false,extendedKick=false,confirmedKick=false;
+  uint32_t kickAt=stamp;float kickPosition=0;int kickDirection=0;
+  for(unsigned n=0;n<6000 && r.c.autoTune.active();++n) {
+    const auto phase=r.c.axes[axis].motionPhase;
+    const auto tunePhase=r.c.autoTune.phase;
+    r.step();const auto &a=r.c.axes[axis];const auto &t=r.c.autoTune;
+    CHECK(a.motionError==MotionError::None);CHECK(a.speedOutputPercent<=50.001f);
+    CHECK(r.position>=t.lower && r.position<=t.upper);CHECK(!r.c.axes[1-axis].direction);
+    if(t.phase==AutoTunePhase::Start && uint32_t(r.now-t.phaseAt)>saved.kickMs)extendedSearch=true;
+    if(a.motionPhase==MotionPhase::Kick && phase!=MotionPhase::Kick) {
+      kickAt=r.now;kickPosition=a.current;kickDirection=a.direction;
+    }
+    if(a.motionPhase==MotionPhase::Kick && t.phase!=AutoTunePhase::Validate &&
+        uint32_t(r.now-kickAt)>saved.kickMs)extendedKick=true;
+    if(phase==MotionPhase::Kick && a.motionPhase==MotionPhase::Run &&
+        tunePhase!=AutoTunePhase::Validate) {
+      CHECK((a.current-kickPosition)*kickDirection>=movement);confirmedKick=true;
+    }
+  }
+  CHECK(extendedSearch);
+  if(movement==1) {CHECK(extendedKick);CHECK(confirmedKick);}
+  CHECK(r.c.autoTune.phase==AutoTunePhase::Complete);CHECK(r.c.autoTune.validationPass==1);
+  for(const auto &p:r.c.autoTune.measurements) {
+    CHECK(p.startOutput>=28 && p.startOutput<=35);CHECK(p.lowVelocity>0);CHECK(p.highVelocity>p.lowVelocity);
+  }
+  CHECK(m==saved);CHECK(r.c.speeds[axis]==speed);CHECK(!r.c.moving());CHECK(!r.c.axes[axis].holdArmed);
+}
+static void startupStallDeadline(bool jam) {
+  Rig r;r.jam=jam;
+  auto &m=r.c.motionSettings[0];m.kickEnabled=true;m.kickMs=300;m.stallMs=500;m.movementDegrees=5;
+  const auto saved=m;const auto speed=r.c.speeds[0];AutoTuneOptions options;options.searchStartPercent=50;
+  CHECK(r.c.startAutoTune(0,RegulatorMode::Simple,60,50,r.now,options)==Result::Ok);
+  for(unsigned n=0;n<100 && r.c.autoTune.active();++n)r.step();
+  CHECK(r.c.autoTune.phase==AutoTunePhase::Failed);CHECK(std::string(r.c.autoTune.reason)=="no_start");
+  CHECK(uint32_t(r.now-r.c.autoTune.phaseAt)==500);
+  if(!jam)CHECK(r.position>90+saved.movementDegrees/4);
+  CHECK(m==saved);CHECK(r.c.speeds[0]==speed);CHECK(!r.c.moving());
+}
 static void fastBounded(float travel,bool cascade=false,unsigned axis=0) {
   Rig r(cascade,axis);r.positiveStart=r.negativeStart=28;r.sustaining=16;r.negativeSustaining=18;
   r.gain=3;r.bias=13;r.negativeGain=1.2f;r.quantum=.1f;
@@ -628,4 +676,4 @@ static void returnMustWork() {
   CHECK(r.c.motionSettings[0]==original);CHECK(r.c.speeds[0]==speed);
   CHECK(r.c.applyAutoTune(r.c.autoTune.id,r.now)==Result::Unavailable);
 }
-int main(){try{runtimeMethodology();cascadeUsesMeasuredStoppingReserve(250);cascadeUsesMeasuredStoppingReserve(300);validationReturnStaysInsideReserve();measuredWorkSurvivesShortStroke();returnMustWork();savedKickIsNotMinimum();completed(false,0);completed(true,0);completed(false,1);completed(true,1,0xfffff000u);safety();highStiction();fastBounded(60);fastBounded(20);fastBounded(10);fastBounded(60,true,1);inertialPlateaus();inertialPlateaus(true);marginalWorkOutput();adaptiveProbeStartup();adaptiveProbeStartup(90);strongerRestart(false);strongerRestart(true);validationAfterStrongKick();cascadeBreakawayRecovery();asymmetricCoast();workOutputHeadroom();repositionDrag();repositionDrag(true);repositionStoppingRoom();adaptiveMinimum();adaptiveMinimum(true);adaptiveMinimum(false,true);validationRetry();exhaustedMinimum();preparation();transport();std::cout<<"PASS autotune: "<<checks<<" checks\n";}catch(const std::exception &e){std::cerr<<e.what()<<'\n';return 1;}}
+int main(){try{startupConfirmation(0,1);startupConfirmation(1,1,0xfffff000u);startupConfirmation(0,5);startupConfirmation(1,5);startupStallDeadline(false);startupStallDeadline(true);runtimeMethodology();cascadeUsesMeasuredStoppingReserve(250);cascadeUsesMeasuredStoppingReserve(300);validationReturnStaysInsideReserve();measuredWorkSurvivesShortStroke();returnMustWork();savedKickIsNotMinimum();completed(false,0);completed(true,0);completed(false,1);completed(true,1,0xfffff000u);safety();highStiction();fastBounded(60);fastBounded(20);fastBounded(10);fastBounded(60,true,1);inertialPlateaus();inertialPlateaus(true);marginalWorkOutput();adaptiveProbeStartup();adaptiveProbeStartup(90);strongerRestart(false);strongerRestart(true);validationAfterStrongKick();cascadeBreakawayRecovery();asymmetricCoast();workOutputHeadroom();repositionDrag();repositionDrag(true);repositionStoppingRoom();adaptiveMinimum();adaptiveMinimum(true);adaptiveMinimum(false,true);validationRetry();exhaustedMinimum();preparation();transport();std::cout<<"PASS autotune: "<<checks<<" checks\n";}catch(const std::exception &e){std::cerr<<e.what()<<'\n';return 1;}}
