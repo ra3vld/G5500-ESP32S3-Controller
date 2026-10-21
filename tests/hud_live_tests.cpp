@@ -1,5 +1,6 @@
 #include "motion_fixture.hpp"
 #include "hud.hpp"
+#include "local_input.hpp"
 #include <cassert>
 #include <deque>
 #include <vector>
@@ -16,6 +17,32 @@ struct Node:HudTransport {
 };
 void Bus::tick(uint32_t at){now=at;for(auto *n:nodes)n->h.service(now);unsigned budget=1000;while(!queue.empty()){assert(budget--);auto msg=std::move(queue.front());queue.pop_front();history.push_back(msg);if(msg.bytes[4]==10&&dropAck){--dropAck;continue;}for(auto *n:nodes)if(n->endpoint==msg.to&&(!n->legacy||msg.bytes[4]<=6))n->h.receive(msg.from,msg.bytes.data(),msg.bytes.size(),now);}}
 int main(){
+ {
+  Bus physical;Node rotor(physical,21,false),other(physical,22,false),hud(physical,23,true);
+  hud.select(rotor);
+  for(unsigned t=100;t<=800;t+=5)physical.tick(t);
+  assert(hud.h.manualAvailable());
+  LocalAxisInput input(hud.c,3);
+  auto sample=[&](float az,float el,uint8_t neutral,uint32_t now){input.sample(az,el,neutral,hud.h.manualAvailable(),now,hud.h.selectionEpoch);physical.tick(now);};
+  sample(0,0,3,810);sample(0,0,3,850);
+  for(unsigned t=860;t<=1000;t+=10)sample(.5f,-1,0,t);
+  assert(rotor.c.axes[0].wanted==1 && rotor.c.axes[1].wanted==-1);
+  sample(0,0,3,1010);physical.tick(1060);
+  assert(!rotor.c.axes[0].wanted && !rotor.c.axes[1].wanted);
+  sample(0,0,3,1070);sample(1,0,2,1080);physical.tick(1130);
+  hud.select(other);physical.tick(1140);
+  for(unsigned t=1150;t<=1400;t+=10)sample(1,0,2,t);
+  assert(!other.c.axes[0].wanted && !rotor.c.axes[0].wanted);
+  sample(0,0,3,1410);sample(0,0,3,1450);sample(1,0,2,1460);physical.tick(1510);
+  assert(other.c.axes[0].wanted==1);
+  hud.c.target({80,0,true,false},false,1520);physical.tick(1520);
+  sample(0,0,3,1530);physical.tick(1580);
+  assert(other.c.axes[0].tracking && other.c.axes[0].target==80);
+  const auto request=hud.h.requestId();hud.c.configurationLocked=true;
+  for(unsigned t=1590;t<1650;t+=10)hud.c.tick(t);
+  assert(hud.h.requestId()==request); // Calibration lock must not flood remote STOPs.
+  assert(hud.c.jog(0,1,false,1650)==Result::Unavailable);
+ }
  Bus bus;Node rotor(bus,1,false),a(bus,2,true),b(bus,3,true),c(bus,4,true),d(bus,5,true),fifth(bus,6,true);
  for(auto *hud:{&a,&b,&c,&d,&fifth})hud->select(rotor);
  for(unsigned t=100;t<=800;t+=5)bus.tick(t);

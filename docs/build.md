@@ -1,6 +1,10 @@
-# Сборка Arduino и PlatformIO
+# Сборка и первая прошивка
+
+[Документация](index.md)
 
 Откройте проект: `G5500_Fork/G5500_Fork.ino` и все соседние исходники `.c/.cpp/.hpp/.h`. Аппаратные флаги и распиновки описаны в [configuration.md](configuration.md). Сборка не прошивает устройство.
+
+Установите один инструмент: [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation/index.html) или Arduino IDE/CLI. Все команды ниже выполняются из корня проекта. Выберите [окружение своей платы](configuration.md#выбор-конфигурации), затем используйте соответствующий способ сборки.
 
 ## Зависимости
 
@@ -82,7 +86,7 @@ pio run -e esp32s3_n16r8_joystick -j4
 
 При изменении DISPLAY_KIND в заголовке используйте `build_platformio.py`, который добавит только выбранные зависимости. Прямое `pio run` использует `lib_deps` выбранного окружения.
 
-Профили `_buttons` и `_joystick` включают [локальные кнопки или аналоговый джойстик](local-controls.md) с указанной в инструкции распиновкой ESP32-S3; дисплей по умолчанию отключён.
+Профили `_buttons` и `_joystick` задают начальные настройки для [локальных кнопок или аналогового джойстика](local-controls.md) с указанной в инструкции распиновкой ESP32-S3; дисплей по умолчанию отключён.
 
 ## Сборка классического ESP32
 
@@ -95,10 +99,46 @@ python3 tools/build_platformio.py --env esp32_4mb --display tft
 python3 tools/prepare_sketch.py --target esp32
 ```
 
-Arduino IDE: открыть исходный `G5500_Fork/G5500_Fork.ino`, выбрать ESP32 Dev Module, Flash 4 MB, DIO 40 MHz, PSRAM Disabled, Core Debug Level None и Partition Scheme **Huge APP (3MB No OTA/1MB SPIFFS)**. Отдельная копия не требуется. Распиновка одинакова для WROOM и WROVER; PSRAM не требуется. Для универсального ESP32-образа используйте раздел приложения 3 MB. Для профиля `esp32_4mb_noweb` PlatformIO выбирает `partitions_s2.csv`: два OTA-слота по 1 966 080 байт, NVS остаётся на `0x9000`. Первую установку этого профиля с таблицей разделов выполняйте через USB. Скрипты и PlatformIO используют `partitions_esp32.csv`: один factory-раздел приложения 3 MB, без второго OTA-слота; NVS начинается с `0x9000`.
+Для обычного ESP32 используйте [параметры IDE](#arduino-ide-2x) выше. Распиновка одинакова для WROOM и WROVER; PSRAM не требуется. Скрипты и профиль `esp32_4mb` используют `partitions_esp32.csv`: один factory-раздел 3 МиБ без OTA. Профиль `esp32_4mb_noweb` использует `partitions_s2.csv`: два OTA-слота по 1 966 080 байт. NVS в обоих случаях начинается с `0x9000`; смена разметки требует записи через USB.
 
 Для универсальной прошивки обычного ESP32 с OTA используйте `esp32_8mb_ota` при физических 8 МиБ Flash. Профиль `esp32_4mb_ota` имеет меньшие разделы и для этого образа не подходит. Arduino-копия для 8 МиБ: `python3 tools/prepare_sketch.py --target esp32-8mb`, CLI-сборка: `./tools/build_arduino.sh esp32-8mb`. [Выбор разделов и обновление](ota.md).
 
-После первой загрузки выполните [настройку оборудования и подтверждение доступа](configuration.md#применение-и-восстановление-доступа). Обычный ESP32 с физическими 4 МиБ Flash не вмещает два экземпляра универсального образа со SPP: используйте профиль без OTA. Для OTA на обычном ESP32 нужна достаточная физическая Flash, например профиль `esp32_8mb_ota`.
+Обычный ESP32 с физическими 4 МиБ Flash не вмещает два экземпляра универсального образа со SPP. Выключение Bluetooth в настройках не уменьшает этот образ; для 4 МиБ с OTA предусмотрен `esp32_4mb_noweb`.
 
 Ядро S-профилей Ruckig Community включено в исходники и не требует установки библиотеки. Условия приведены в [лицензии MIT](licenses/ruckig-MIT.txt).
+
+## Первая прошивка через USB
+
+1. Отключите силовое питание привода. Для CrowPanel с локальным AZ это обязательно перед BOOT/RESET: [особенности BOOT](crowpanel-az.md#полярность-boot-и-загрузка).
+2. Подключите плату USB-кабелем с передачей данных. На плате с двумя разъёмами различайте USB–UART и native USB. На ESP32 обычно используется мост USB–UART; на S2/S3 доступен native USB, на S3 DevKit также может быть UART-мост.
+3. Найдите порт командой `pio device list` или `arduino-cli board list`. В Windows это `COM…`, в Linux — обычно `/dev/ttyUSB…` или `/dev/ttyACM…`, в macOS — `/dev/cu.…`. Закройте программы, занявшие порт.
+4. Если загрузчик не отвечает, удерживайте **BOOT**, нажмите и отпустите **RESET/EN**, затем отпустите BOOT. Снова проверьте список: native USB может получить другой порт.
+5. Запишите прошивку одним из способов ниже. После успешной записи при необходимости нажмите RESET; после запуска native USB снова может сменить имя порта.
+
+**PlatformIO**, пример S3:
+
+```sh
+pio run -e esp32s3_n16r8 -t upload --upload-port /dev/ttyACM0
+```
+
+Замените окружение и порт своими. Если собирали через `build_platformio.py`, загружайте с созданной им конфигурацией, чтобы сохранить выбранные параметры. Пример для `--env esp32s2_mini`:
+
+```sh
+pio run -c build/platformio-config/esp32s2_mini.ini -e selected -t upload --upload-port /dev/ttyACM0
+```
+
+**Arduino IDE:** оставьте плату, Flash/PSRAM и Partition Scheme выбранной сборки, задайте **Tools → Port** и нажмите **Upload**. Verify только компилирует.
+
+**Arduino CLI**, после `./tools/build_arduino.sh s3`:
+
+```sh
+arduino-cli upload --port /dev/ttyACM0 \
+  --fqbn 'esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,PartitionScheme=custom,USBMode=hwcdc,CDCOnBoot=cdc,FlashMode=qio' \
+  --input-dir artifacts/arduino-s3 build/arduino-s3/G5500_Fork
+```
+
+Для другой платы используйте тот же FQBN и каталог, что при сборке; значения по умолчанию указаны в [build_arduino.sh](../tools/build_arduino.sh). CLI upload сам не компилирует. Справочники: [PlatformIO upload](https://docs.platformio.org/en/latest/core/userguide/cmd_run.html#cmdoption-pio-run-upload-port), [Arduino CLI upload](https://docs.arduino.cc/arduino-cli/commands-reference/arduino-cli_upload).
+
+Дождитесь успешного завершения записи. После сброса проверьте появление сети устройства или ответ [командного API](command-api.md). Ошибка записи — повод проверить порт, кабель и режим загрузчика; для обычной установки стирание всей Flash не требуется.
+
+Далее: [первое подключение](quickstart.md#первое-подключение).

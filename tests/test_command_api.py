@@ -201,7 +201,7 @@ class CommandApiTests(unittest.TestCase):
                 client = api.Client(link, timeout=1)
                 hardware = client.request('GET', '/api/hardware')['body']
                 caps = client.request('GET', '/api/hardware/pins')['body']
-                self.assertEqual(len(caps['roles']), 29)
+                self.assertEqual(len(caps['roles']), 35)
                 self.assertEqual(len(caps['gpios']), 49)
                 fields = dict(token=hardware['token'], generation=hardware['generation'])
                 fields['pin.azAdc'] = 36

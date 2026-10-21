@@ -30,12 +30,22 @@ inline bool parseHardwareForm(std::string_view body, HardwareForm &out, bool set
     unsigned key = 0;
     while (key < 11 && names[key] != name) ++key;
     const auto *pin=pinDefinition(name);
+    unsigned local=0;
+    while(local<11 && name!=localSettingNames[local]) ++local;
     if(key==11) {
-      if(!pin) return false;
-      key=11+unsigned(pin-pinDefinitions.data());
+      if(pin) key=11+unsigned(pin-pinDefinitions.data());
+      else if(local<11) key=11+pinDefinitions.size()+local;
+      else return false;
     }
     if ((!settings && key > 1) || (seen & (uint64_t(1)<<key))) return false;
     seen |= uint64_t(1)<<key;
+    if(local<11) {
+      uint32_t value=0;
+      if(!hardwareUnsigned(text,value) || value>4095) return false;
+      next.config.local[local]=uint16_t(value);
+      if(end==body.npos) break;
+      body.remove_prefix(end+1); continue;
+    }
     if(pin) {
       uint32_t value=0;
       if(text=="-1") next.config.pins.*pin->member=-1;

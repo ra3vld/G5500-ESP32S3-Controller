@@ -637,4 +637,59 @@ static void slowKickHandoff() {
   }
 }
 
-int main() { try { operationalSpeedProfiles();startupSpeedSelection();selectedSpeedNearGoal();slowKickHandoff();oneShotOvershoot();cascadeAccelerationFeedthrough();runtimeSpeedChanges();longCascadeCruise(); boundedKickRise();fastHoldingRegression(); nearBandStream();nearBandStream(0xfffffe00u);stationaryNoiseStillKicks();sustainingAndArrival(); records();stallRetry();kickAndStream();cascadeHold();profilesAndNoise();feedbackSafety();lowOutputProgress();cascadeKickOverspeed();stoppedReversal();std::cout<<"PASS motion: "<<checks<<" checks; Controller bytes="<<sizeof(Controller)<<"\n"; } catch(const std::exception &e) { std::cerr<<e.what()<<'\n';return 1; } }
+static void proportionalManualMinimum() {
+  for (bool cascade : {false, true}) for (unsigned axis : {0u, 1u})
+    for (int direction : {-1, 1}) for (float fraction : {.0001f, .25f, 1.f})
+      for (unsigned floor : {0u,12u}) {
+      auto c=ready(cascade,90);
+      auto &m=c.motionSettings[axis];
+      m.kickEnabled=false; m.sustainingPercent=floor; m.outputLimitPercent=80;
+      m.velocity=80; m.acceleration=m.deceleration=100; m.jerk=1000;
+      m.positionKp=m.positionKi=m.positionKd=m.velocityKp=m.velocityKi=m.velocityKd=0;
+      m.feedforward=1;
+      c.speeds[axis].accelerationMs=c.speeds[axis].decelerationMs=100;
+      c.feedbackAt(axis,90,true,1000);
+      const float working=cascade?20.f:40.f;
+      CHECK(c.setRuntimeSpeed(axis,working,1000)==Result::Ok);
+      float position=90; uint32_t serial=0;
+      for (uint32_t t=1020;t<=5020;t+=20) {
+        c.feedbackAt(axis,position,true,t);
+        CHECK(c.manualDrive(0,1,1,++serial,1u<<axis,axis?0:direction*fraction,
+                            axis?direction*fraction:0,false,t)==Result::Ok);
+        c.tick(t);
+        CHECK(c.axes[axis].motionError==MotionError::None);
+        position+=cascade?c.axes[axis].requestedVelocity*.02f:direction*.002f;
+      }
+      const auto &a=c.axes[axis];
+      const float minimum=cascade?.05f*working:std::max(.05f*working,float(floor));
+      const float expected=minimum+(working-minimum)*fraction;
+      CHECK(std::abs((cascade?std::abs(a.requestedVelocity):a.speedOutputPercent)-expected)<.002f);
+      CHECK(a.speedOutputPercent>=float(floor)-.002f && a.speedOutputPercent<=80);
+      CHECK(c.manualDrive(0,1,1,++serial,1u<<axis,0,0,false,5040)==Result::Ok);
+      c.tick(5040);
+      CHECK(!a.direction && !a.wanted && a.speedOutputPercent==0);
+    }
+  // A selected output below the configured floor cannot defeat that floor,
+  // while the hard output cap still takes priority over both settings.
+  for (float cap : {80.f,8.f}) {
+    auto c=ready(false,90); auto &m=c.motionSettings[0];
+    m.kickEnabled=false; m.outputLimitPercent=cap; m.sustainingPercent=12;
+    c.speeds[0].accelerationMs=c.speeds[0].decelerationMs=100;
+    CHECK(c.setRuntimeSpeed(0,5,0)==Result::Ok);
+    for (uint32_t t=20;t<=2000;t+=20) {
+      c.feedbackAt(0,90+float(t)*.0001f,true,t);
+      CHECK(c.manualDrive(0,1,1,t,1,.0001f,0,false,t)==Result::Ok);
+      c.tick(t);
+    }
+    CHECK(std::abs(c.axes[0].speedOutputPercent-std::min(12.f,cap))<.002f);
+    if (cap==80) {
+      CHECK(c.target({120,0,true,false},false,2020)==Result::Ok);
+      for (uint32_t t=2020;t<=4020;t+=20) {
+        c.feedbackAt(0,90+float(t)*.0001f,true,t);
+        c.tick(t);
+      }
+      CHECK(std::abs(c.axes[0].speedOutputPercent-5.f)<.002f); // Positioning keeps its working setting.
+    }
+  }
+}
+int main() { try { proportionalManualMinimum();operationalSpeedProfiles();startupSpeedSelection();selectedSpeedNearGoal();slowKickHandoff();oneShotOvershoot();cascadeAccelerationFeedthrough();runtimeSpeedChanges();longCascadeCruise(); boundedKickRise();fastHoldingRegression(); nearBandStream();nearBandStream(0xfffffe00u);stationaryNoiseStillKicks();sustainingAndArrival(); records();stallRetry();kickAndStream();cascadeHold();profilesAndNoise();feedbackSafety();lowOutputProgress();cascadeKickOverspeed();stoppedReversal();std::cout<<"PASS motion: "<<checks<<" checks; Controller bytes="<<sizeof(Controller)<<"\n"; } catch(const std::exception &e) { std::cerr<<e.what()<<'\n';return 1; } }

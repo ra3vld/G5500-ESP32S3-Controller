@@ -70,7 +70,8 @@ class TouchGesture {
     if (distance <= 12) {
       return 0;
     }
-    const float magnitude = distance >= 100 ? 1.f : float(distance - 12) / 88.f;
+    const float fraction = distance >= 100 ? 1.f : float(distance - 12) / 88.f;
+    const float magnitude = fraction * fraction;
     return displacement < 0 ? -magnitude : magnitude;
   }
 

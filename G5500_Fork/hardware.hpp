@@ -6,9 +6,7 @@
 #include "runtime.hpp"
 #include "crowpanel_drive.hpp"
 #include "rgb_indicator.hpp"
-#if LOCAL_INPUT_MODE != LOCAL_INPUT_NONE
 #include "local_input.hpp"
-#endif
 namespace forkrot {
 
 enum RgbState : uint8_t { RGB_IDLE, RGB_RX, RGB_TX, RGB_HEARTBEAT };
@@ -20,6 +18,11 @@ public:
   void beginAdc();
   void beginInputs();
   void serviceLocalInputs();
+  bool startJoystickCalibration();
+  bool pollJoystickCalibration();
+  void cancelJoystickCalibration();
+  bool calibratingJoystick() const { return calibrating_; }
+  int joystickRaw(unsigned axis) const { return localRaw_[axis]; }
   void startHeartbeat() {
     lastHeartbeatMs = millis();
   }
@@ -44,21 +47,13 @@ private:
   void rgbStart(RgbState s);
   Runtime &runtime_;
   RgbIndicator rgb_;
-#if LOCAL_INPUT_MODE != LOCAL_INPUT_NONE
-  static constexpr uint8_t LocalMask = LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
-      ? (LOCAL_AZ_NEG_GPIO >= 0 ? 1 : 0) | (LOCAL_EL_NEG_GPIO >= 0 ? 2 : 0)
-      : (LOCAL_AZ_ADC_GPIO >= 0 ? 1 : 0) | (LOCAL_EL_ADC_GPIO >= 0 ? 2 : 0);
-  LocalAxisInput localInput_{runtime_.controller, LocalMask};
+  LocalAxisInput localInput_{runtime_.controller, 0};
   bool localInputsStarted_ = false, localSampled_ = false;
-  uint32_t localSampleAt_ = 0;
-#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+  uint32_t localSampleAt_ = 0, calibrationUntil_ = 0;
+  bool calibrating_ = false;
   AxisButtons localButtons_[2];
-#else
-  JoystickAxis localJoystick_[2] = {
-      {LOCAL_AZ_ADC_MIN, LOCAL_AZ_ADC_CENTER, LOCAL_AZ_ADC_MAX, LOCAL_ADC_DEADZONE, LOCAL_ADC_HYSTERESIS, LOCAL_AZ_INVERT},
-      {LOCAL_EL_ADC_MIN, LOCAL_EL_ADC_CENTER, LOCAL_EL_ADC_MAX, LOCAL_ADC_DEADZONE, LOCAL_ADC_HYSTERESIS, LOCAL_EL_INVERT}};
-#endif
-#endif
+  JoystickAxis localJoystick_[2] = {{0,2048,4095,200,50,false},{0,2048,4095,200,50,false}};
+  int localRaw_[2] = {-1,-1};
   bool pwmReady = false, pwmFailed = false, directionsStarted_ = false;
   bool attached_[4] = {};
   PositionFilter filters_[2];

@@ -815,7 +815,8 @@ Result Controller::setRuntimeSpeed(unsigned i, float value, uint32_t now) {
   return Result::Ok;
 }
 void Controller::tick(uint32_t now) {
-  if (configurationLocked) { stopNow(-1, now); return; }
+  // HUD outputs are remote: the operation that locks configuration sends STOP once.
+  if (configurationLocked) { if (!remote) stopNow(-1, now); return; }
   if (remote)
     return;
   for (auto &s : manualSessions_) {

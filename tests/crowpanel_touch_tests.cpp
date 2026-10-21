@@ -63,10 +63,10 @@ static void core() {
   run(5, 12, 3, .25f, -.75f, false, 1140);
   for (unsigned at = 1140; at <= 1740; at += 20) c.tick(at);
   if (c.variableSpeed(0)) {
-    assert(std::abs(c.axes[0].speedOutputPercent - 20) < .01f);
+    assert(std::abs(c.axes[0].speedOutputPercent - 23) < .01f);
   }
   if (c.variableSpeed(1)) {
-    assert(std::abs(c.axes[1].speedOutputPercent - 60) < .01f);
+    assert(std::abs(c.axes[1].speedOutputPercent - 61) < .01f);
   }
   assert(c.speeds[0].speedPercent == 80 && c.speeds[1].speedPercent == 80);
   run(5, 13, 3, 0, 0, true, 1750);
@@ -98,7 +98,7 @@ static void touch() {
   e = g.sample(true, 252, 218, l);
   assert(e.manual && !e.mask);
   e = g.sample(true, 296, 174, l);
-  assert(e.mask == 3 && std::abs(e.az - .5f) < .001f && std::abs(e.el - .5f) < .001f);
+  assert(e.mask == 3 && std::abs(e.az - .25f) < .001f && std::abs(e.el - .25f) < .001f);
   e = g.sample(true, 470, 230, l);
   assert(e.mask == 3 && e.az == 1 && e.el == 0 && e.action == TouchAction::None);
   e = g.sample(false, 0, 0, l);
@@ -134,6 +134,41 @@ static void touch() {
   e = g.sample(true, 240, 130, l);
   assert(e.el == 0 && !e.mask);
   g.sample(false, 0, 0, l);
+}
+static void progressiveSwipe() {
+  using namespace crowpanel;
+  TouchLayout layout;
+  layout.current = {100, 200, 280, 60};
+  layout.dualAxis = true;
+  for (unsigned axis : {0u, 1u}) for (int direction : {-1, 1}) {
+    TouchGesture gesture;
+    gesture.sample(true, 240, 240, layout);
+    float previous = 0, previousStep = 0;
+    for (int distance = 0; distance <= 200; ++distance) {
+      const auto event = gesture.sample(true, axis ? 240 : 240 + direction * distance,
+                                        axis ? 240 - direction * distance : 240, layout);
+      const float value = axis ? event.el : event.az;
+      const float magnitude = std::abs(value);
+      assert(event.manual && !event.release && event.action == TouchAction::None);
+      assert((axis ? event.az : event.el) == 0);
+      assert(magnitude >= previous && magnitude <= 1);
+      if (distance <= 12) assert(value == 0);
+      else assert(value * direction > 0);
+      if (distance >= 13 && distance <= 100) {
+        const float step = magnitude - previous;
+        assert(step + 1e-6f >= previousStep); // Sensitivity increases with displacement.
+        previousStep = step;
+      }
+      if (distance == 34) assert(std::abs(magnitude - .0625f) < 1e-6f);
+      if (distance == 56) assert(std::abs(magnitude - .25f) < 1e-6f);
+      if (distance == 78) assert(std::abs(magnitude - .5625f) < 1e-6f);
+      if (distance >= 100) assert(magnitude == 1);
+      previous = magnitude;
+    }
+    const auto center = gesture.sample(true, 240, 240, layout);
+    assert(center.manual && center.az == 0 && center.el == 0);
+    assert(gesture.sample(false, 240, 240, layout).release);
+  }
 }
 static void ring() {
   using namespace crowpanel;
@@ -189,8 +224,8 @@ static void fullscreenSwipe() {
       assert(e.manual == (startY == 230));
       e = g.sample(true, 296, startY - 56, l);
       assert(e.manual && !e.release && e.gesture && e.action == TouchAction::None);
-      assert(std::abs(e.az - .5f) < .001f);
-      assert(e.el == (dualAxis ? .5f : 0.f));
+      assert(std::abs(e.az - .25f) < .001f);
+      assert(e.el == (dualAxis ? .25f : 0.f));
       const auto gesture = e.gesture;
       const uint8_t mask = dualAxis ? 3 : 1;
       // Redraws may put every other control beneath the finger.
@@ -569,6 +604,7 @@ static void network() {
 int main() {
   core();
   touch();
+  progressiveSwipe();
   fullscreenSwipe();
   idleTouchFrames();
   webKeyboardLease();

@@ -64,6 +64,38 @@ struct Fixture {
   }
 };
 int main(int argc,char **argv) {
+  {
+    Fixture local;
+    const char *fields="token=11&generation=1&localInputMode=2&pin.localAzAdc=36&pin.localElAdc=39&localAzMin=100&localAzCenter=1900&localAzMax=3800&localDeadzone=180&localHysteresis=40";
+    assert(local.call("POST","/api/hardware",fields,false).status==200);
+    assert(local.runtime.hardwareRecord.candidate.local[4]==1900);
+    local.storage.loadHardware(local.runtime);
+    assert(local.runtime.hardwareTrial);
+    local.runtime.hardwareTrial=false;local.runtime.controller.configurationLocked=false;
+    local.hardware.beginInputs();
+    fakeHardware.millivolts[36]=1900;fakeHardware.millivolts[39]=2048;
+    local.hardware.serviceLocalInputs();
+    assert(local.call("POST","/api/hardware/joystick/start","token=11&generation=2",false).status==200);
+    assert(local.runtime.controller.configurationLocked);
+    assert(local.runtime.controller.jog(0,1,false,fakeHardware.now)==Result::Unavailable);
+    fakeHardware.now+=10;local.hardware.serviceLocalInputs();
+    auto raw=local.call("POST","/api/hardware/joystick/poll","token=11&generation=2",false);
+    assert(raw.status==200 && raw.body.find("[1900,2048]")!=raw.body.npos);
+    assert(local.call("POST","/api/hardware/joystick/poll","token=12&generation=2").status==409);
+    fakeHardware.now+=2001;local.hardware.serviceLocalInputs();
+    assert(!local.hardware.calibratingJoystick() && !local.runtime.controller.configurationLocked);
+    assert(local.call("POST","/api/hardware/joystick/poll","token=11&generation=2").status==409);
+    assert(local.call("POST","/api/hardware","token=11&generation=2&localAzCenter=100").status==400);
+    assert(local.call("POST","/api/hardware","token=11&generation=2&localInputMode=1&pin.localAzNegative=21").status==400);
+    assert(local.runtime.hardwareRecord.candidate.local[4]==1900);
+    assert(local.hardware.startJoystickCalibration());
+    Preferences::failedBytesKey="config1";
+    assert(local.call("POST","/api/hardware/rollback","token=11&generation=2").status==503);
+    Preferences::failedBytesKey.clear();
+    assert(!local.hardware.calibratingJoystick() && local.runtime.controller.configurationLocked);
+    fakeHardware.now+=2001;local.hardware.serviceLocalInputs();
+    assert(local.runtime.controller.configurationLocked); // failed configuration stays locked
+  }
   if(argc==2 && std::string(argv[1])=="--serve") {
     Fixture fixture;CommandServer server;
     server.begin(fixture.runtime.hud.boot,100,[](void *context,std::string_view method,std::string_view path,FormView form,JsonWriter &out,int &status,const char *&type) {

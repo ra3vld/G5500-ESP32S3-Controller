@@ -1,0 +1,30 @@
+// Joystick calibration and persisted form on narrow and wide screens.
+const {chromium}=require(process.env.PLAYWRIGHT_PATH||'playwright');
+const fs=require('fs'),assert=require('assert/strict'),path=require('path');
+process.chdir(path.resolve(__dirname,'..'));
+const html=fs.readFileSync('G5500_Fork/hardware_page.hpp','utf8').match(/R"HWHTML\(([\s\S]*?)\)HWHTML"/)[1];
+(async()=>{const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+try{for(const width of [360,1100]){
+const fixture=JSON.parse(fs.readFileSync('build/pin-map-1.json'));
+const config={driveInterface:0,simulation:1,bluetoothEnabled:0,bluetoothMode:3,forceApSta:0,buttonGpio:0,buttonActiveLow:1,buttonPullup:1,pwmInverted:0,pins:{...fixture.pins,localAzAdc:1,localElAdc:6},localInputMode:2,localAzInvert:0,localElInvert:0,localAzMin:0,localAzCenter:2048,localAzMax:4095,localElMin:0,localElCenter:2048,localElMax:4095,localDeadzone:200,localHysteresis:50};
+const state={token:123,generation:2,recovery:false,trial:false,ready:true,reason:'none',heapFree:90000,heapMaxBlock:80000,backend:'NONE',sppSupported:false,classicEsp32:false,configured:config};
+let raw=[2040,2050],posts=[],errors=[];
+const page=await browser.newPage({viewport:{width,height:900}});page.on('pageerror',e=>errors.push(e.message));
+await page.route('http://hardware.test/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname;
+if(path==='/hardware')return route.fulfill({contentType:'text/html',body:html});
+if(req.method()==='GET')return route.fulfill({contentType:'application/json',body:JSON.stringify(path.endsWith('/pins')?fixture.metadata:state)});
+posts.push({path,fields:Object.fromEntries(new URLSearchParams(req.postData()))});
+return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,raw})});});
+await page.goto('http://hardware.test/hardware');await page.waitForFunction(()=>!document.getElementById('joystick-start').disabled);
+await page.locator('#joystick-start').click();await page.waitForFunction(()=>!document.getElementById('joystick-center').disabled);await page.waitForTimeout(300);
+await page.locator('#joystick-center').click();raw=[100,110];await page.waitForTimeout(300);raw=[3900,3910];await page.waitForTimeout(300);
+await page.locator('#joystick-finish').click();await page.waitForFunction(()=>document.getElementById('joystick-status').textContent.startsWith('Измерения перенесены'));
+assert.equal(await page.locator('[name=localAzCenter]').inputValue(),'2040');assert.equal(await page.locator('[name=localElCenter]').inputValue(),'2050');
+assert.equal(await page.locator('[name=localAzMin]').inputValue(),'100');assert.equal(await page.locator('[name=localElMax]').inputValue(),'3910');
+assert(await page.locator('#joystick-start').isDisabled());
+await page.locator('#save').click();await page.waitForFunction(()=>document.getElementById('message').textContent.startsWith('Сохранено'));
+assert.equal(posts.at(-1).fields.localAzCenter,'2040');assert.equal(posts.at(-1).path,'/api/hardware');assert(posts.some(p=>p.path.endsWith('/cancel')));
+assert(new URLSearchParams(posts.at(-1).fields).toString().length<1024);
+assert.deepEqual(errors,[]);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+await page.locator('#joystick-settings').screenshot({path:`build/joystick-calibration-${width}.png`});await page.close();
+}console.log('PASS joystick calibration center/extremes, save payload, 360/1100px, no JS errors');}finally{await browser.close();}})().catch(e=>{console.error(e);process.exit(1)});

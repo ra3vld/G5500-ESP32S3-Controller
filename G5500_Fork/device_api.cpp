@@ -66,7 +66,9 @@ void DeviceApi::writeHardwareStatus(JsonWriter &j, bool compact, std::string_vie
       << ",\"forceApSta\":" << unsigned(c.forceAp) << ",\"buttonGpio\":" << int(c.buttonGpio)
       << ",\"buttonActiveLow\":" << unsigned(c.buttonLow) << ",\"buttonPullup\":" << unsigned(c.buttonPullup)
       << ",\"pwmInverted\":" << unsigned(c.pwmInverted) << ",\"pins\":";
-    writePinMap(j,c.pins); j << '}';
+    writePinMap(j,c.pins);
+    for(unsigned i=0;i<11;++i) j << ',' << jsonQuoted(localSettingNames[i]) << ':' << c.local[i];
+    j << '}';
   };
   const auto &r = runtime_.hardwareRecord;
   const auto elapsed = uint32_t(millis()-runtime_.memoryGuard.started);
@@ -192,12 +194,19 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
     const auto &base=r.phase==ConfigPhase::Testing || r.phase==ConfigPhase::Pending || runtime_.recovery?r.candidate:r.good;
     if(!fields.good() || !parseHardwareForm({encoded,fields.size()},form,path=="/api/hardware",base)) { reply(400,"invalid_form"); return; }
     if(form.token!=runtime_.hardwareToken || form.generation!=runtime_.hardwareRecord.generation) { reply(409,"stale_configuration"); return; }
+    if(path=="/api/hardware/joystick/start" || path=="/api/hardware/joystick/poll" || path=="/api/hardware/joystick/cancel") {
+      if(path=="/api/hardware/joystick/cancel") { hardware_.cancelJoystickCalibration(); reply(200,""); return; }
+      const bool ok=path=="/api/hardware/joystick/start"?hardware_.startJoystickCalibration():hardware_.pollJoystickCalibration();
+      if(!ok) { reply(409,"joystick_calibration_inactive"); return; }
+      output << "{\"ok\":true,\"raw\":[" << hardware_.joystickRaw(0) << ',' << hardware_.joystickRaw(1) << "]}"; return;
+    }
     bool saved=false;
     if(path=="/api/hardware/probe") {
       const bool ok=!runtime_.recovery && runtime_.hardwareTrial && runtime_.memoryGuard.ready(millis()) && storage_.probeHardwareStorage(runtime_);
       runtime_.hardwareProbe=ok; reply(ok?200:409,ok?"":"not_ready"); return;
     }
     auto stopForConfiguration=[&] {
+      hardware_.cancelJoystickCalibration();
       runtime_.controller.stopNow(-1,millis()); hardware_.applyOutputs(); runtime_.controller.configurationLocked=true;
     };
     if(path=="/api/hardware") {
