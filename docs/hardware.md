@@ -1,6 +1,15 @@
 # Силовые интерфейсы и подключение
 
+[Документация](index.md)
+
 Выберите YAESU / SEPARATE_PWM / BTS7960 в [веб-настройках оборудования](configuration.md#оборудование-в-веб-интерфейсе); параметры сборки задают начальный выбор. [Профили плат и GPIO](configuration.md), [подключение G-800DXA](hardware/g800dxa-guide.md), [подключение двух BTS7960 / IBT-2](hardware/independent-pwm-bts7960.md).
+
+| Привод | Инструкция |
+|---|---|
+| Штатный блок G-5500, две оси | [DIN 8, направления и датчики](hardware/g5500-guide.md) |
+| Штатный блок G-800DXA, одна AZ | [EXT CONTROL и скорость 0–5 В](hardware/g800dxa-guide.md) |
+| Независимые DC-двигатели, RPWM/LPWM | [BTS7960 / IBT-2](hardware/independent-pwm-bts7960.md) |
+| Два направления и отдельный PWM | [SEPARATE_PWM](hardware/separate-pwm.md) |
 
 Для **CrowPanel 2.1 с локальным AZ** используйте [отдельную инструкцию переделки и подключения Yaesu / BTS7960](crowpanel-az.md). Она задаёт другие GPIO, уровни RX/TX и обязательную инверсию BOOT. Распиновка DevKit и обычный профиль `crowpanel_21` для такого подключения не подходят.
 

@@ -1,5 +1,7 @@
 # RGB driver used by CrowPanel
 
+[Документация](../index.md)
+
 The CrowPanel profile uses a namespaced copy of Espressif's RGB LCD driver from
 the ESP-IDF `v5.5.5` tag, matching the pinned Arduino core SDK. Copyright and SPDX
 headers are preserved. License: [Apache 2.0](ESP-IDF-Apache-2.0.txt).
