@@ -261,6 +261,14 @@ void Controller::motionFault(unsigned i, MotionError error, uint32_t now) {
 void Controller::tickMotion(unsigned i, uint32_t now) {
   auto &axis = axes[i]; auto &r = motion_[i]; const auto &m = motionSettings[i]; const auto &s = speeds[i];
   const bool cascade = m.mode == RegulatorMode::Cascade;
+  const auto manualSpeed = [&]() {
+    const float work = runtimeSpeed(i), fraction = manualScale_[i];
+    if (axis.tracking || (autoTune.active() && autoTune.axis == int(i))) return work * fraction;
+    if (fraction <= 0) return 0.f;
+    const float minimum = cascade ? .05f * work :
+        std::max(.05f * work, std::min(float(m.sustainingPercent), m.outputLimitPercent));
+    return minimum + (std::max(work, minimum) - minimum) * fraction;
+  };
   if (!m.ready || axis.motionError != MotionError::None || driveFault) {
     axis.wanted = 0; axis.tracking = false; axis.speedOutputPercent = 0; output(i,0,now); cancelMotion(i); return;
   }
@@ -331,7 +339,7 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
       axis.motionPhase=MotionPhase::Run; r.releasing=true; r.releaseAt=now; r.kickDone=true;
       r.profileValid=false; r.positionPid.reset(); r.velocityPid.reset();
       if(!cascade) {
-        float running=runtimeSpeed(i)*manualScale_[i];
+        float running=manualSpeed();
         if(axis.tracking) {
           const float fraction=std::clamp((std::abs(distance)-tolerance(i))/std::max(1u,s.slowdownDegrees),0.f,1.f);
           const float approach=std::min(float(s.approachSpeedPercent),runtimeSpeed(i));
@@ -409,7 +417,7 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
     if (m.kickEnabled && !confirmedMoving && axis.calibrated && !r.kickDone) {
       axis.motionPhase=MotionPhase::Kick; r.kickAt=now; r.kickPosition=axis.current; r.kickDirection=desired;
       r.progressAt=now; r.progressPosition=axis.current; r.progressValid=true;
-      r.kickBase=std::min(m.kickPercent,std::max(5.f,cascade?float(m.sustainingPercent):runtimeSpeed(i)*manualScale_[i]));
+      r.kickBase=std::min(m.kickPercent,std::max(5.f,cascade?float(m.sustainingPercent):manualSpeed()));
       if(m.kickMs<=40)r.kickBase=m.kickPercent; // One control tick cannot fit a staircase.
       r.kickPeak=axis.speedOutputPercent=std::min(r.kickBase,m.outputLimitPercent); return;
     }
@@ -489,7 +497,7 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
       // Jog selects a velocity directly. One S-curve preserves acceleration
       // and jerk when the slider or proportional manual input changes.
       if (!profileStep(false,r.referencePosition,r.commandVelocity,r.commandAcceleration,
-                       velocityLimit*manualScale_[i]*desired,m.velocity,m.acceleration,m.deceleration,m.jerk,dt)) {
+                       manualSpeed()*desired,m.velocity,m.acceleration,m.deceleration,m.jerk,dt)) {
         motionFault(i,MotionError::Planner,now); return;
       }
       r.referenceVelocity=r.commandVelocity;r.referenceAcceleration=r.commandAcceleration;
@@ -521,7 +529,7 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
     requested=std::abs(signedOutput);
     if (!axis.direction && desired) { output(i,desired,now); if (!axis.direction) requested=0; }
   } else {
-    float target=work*manualScale_[i];
+    float target=manualSpeed();
     if (axis.tracking) {
       const float fraction=std::clamp((std::abs(distance)-tolerance(i))/std::max(1u,s.slowdownDegrees),0.f,1.f);
       const float approach=std::min(float(s.approachSpeedPercent),work);

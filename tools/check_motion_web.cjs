@@ -20,6 +20,7 @@ async function state(){return(await fetch(base+'/api/status')).json()}
   assert.equal(await page.locator('#azRegulatorMode').inputValue(),'simple');
   assert.equal(await page.locator('[name=azMotionReady]').count(),0);
   assert.equal(await page.locator('#azMotionVelocity').isVisible(),false);
+  assert.equal(await page.locator('#azMotionSustainingPercent').isVisible(),true);
   for(const name of ['coastDegrees','accelerationMs','decelerationMs','decelerationFactor','speedPercent','slowdownDegrees'])assert.equal(await page.locator(`#azMotionForm [name=${name}]`).isVisible(),true,name);
   await page.locator('#azMotionForm [name=coastDegrees]').fill('3.5');
   await page.locator('#azMotionForm [name=accelerationMs]').fill('2600');
@@ -35,6 +36,7 @@ async function state(){return(await fetch(base+'/api/status')).json()}
   await page.setViewportSize({width:390,height:1000});await page.locator('#azMotionForm .simple-motion-fields').evaluate(e=>window.scrollTo(0,scrollY+e.getBoundingClientRect().top-20));await page.screenshot({path:'build/motion/simple-ui-390-top.png'});await page.locator('#coastDegrees').evaluate(e=>window.scrollTo(0,scrollY+e.getBoundingClientRect().top-170));await page.screenshot({path:'build/motion/simple-ui-390-bottom.png'});await page.setViewportSize({width:1100,height:900});
   await page.locator('#azRegulatorMode').selectOption('cascade');
   assert.equal(await page.locator('#azMotionVelocity').isVisible(),true);
+  assert.equal(await page.locator('#azMotionSustainingPercent').isVisible(),true);
   await page.locator('#azMotionVelocity').fill('1.25');await page.locator('[name=azMotionHoldEnabled]').check();
   await page.locator('#azMotionForm button[type=submit]').click();
   await page.waitForFunction(()=>window._forkState?.axes?.[0]?.regulatorMode==='cascade');
