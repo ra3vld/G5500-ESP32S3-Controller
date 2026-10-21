@@ -345,57 +345,75 @@ void Hardware::crowpanelFault() {
 void Hardware::beginInputs() {
   const auto &c = runtime_.controller.hardware;
   if (!runtime_.recovery && c.buttonGpio >= 0) pinMode(c.buttonGpio, c.buttonPullup ? INPUT_PULLUP : INPUT);
-#if LOCAL_INPUT_MODE != LOCAL_INPUT_NONE
-  if (runtime_.hud.isHud() || runtime_.recovery || board::validateHardware(c, runtime_.hud.config.uart)) return;
-  for (int pin : board::localInputPins) if (pin >= 0) {
-#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
-    pinMode(pin, INPUT_PULLUP);
-#else
-    pinMode(pin, INPUT);
-    analogReadResolution(12);
-    analogSetPinAttenuation(pin, ADC_11db);
-#endif
+  if (runtime_.recovery || board::validateHardware(c, runtime_.hud.config.uart)) return;
+  localInput_.configure(c.localMask());
+  for(const auto &d:pinDefinitions) if((d.group==PinGroup::Buttons || d.group==PinGroup::Joystick) && board::pinActive(c,d)) {
+    const int pin=c.pins.*d.member;
+    if(pin<0) continue;
+    pinMode(pin, d.group==PinGroup::Buttons?INPUT_PULLUP:INPUT);
+    if(d.group==PinGroup::Joystick) { analogReadResolution(12); analogSetPinAttenuation(pin,ADC_11db); }
   }
-  localInputsStarted_ = true;
-#endif
+  for(unsigned i=0;i<2;++i) {
+    const auto at=3+i*3;
+    localJoystick_[i]=JoystickAxis(c.local[at],c.local[at+1],c.local[at+2],c.local[9],c.local[10],c.local[1+i]);
+  }
+  localInputsStarted_ = c.localMask()!=0;
+}
+bool Hardware::startJoystickCalibration() {
+  if(!localInputsStarted_ || runtime_.controller.hardware.local[0]!=LOCAL_INPUT_JOYSTICK ||
+      runtime_.controller.configurationLocked || runtime_.controller.autoTune.active()) return false;
+  runtime_.controller.stopNow(-1,millis()); applyOutputs();
+  localInput_.sample(0,0,0,false,millis());
+  calibrating_=true;
+  runtime_.controller.configurationLocked=true;
+  calibrationUntil_=millis()+2000;
+  return true;
+}
+bool Hardware::pollJoystickCalibration() {
+  if(!calibrating_ || int32_t(millis()-calibrationUntil_)>=0) { cancelJoystickCalibration(); return false; }
+  calibrationUntil_=millis()+2000;
+  return true;
+}
+void Hardware::cancelJoystickCalibration() {
+  if(!calibrating_) return;
+  calibrating_=false;
+  runtime_.controller.configurationLocked=runtime_.recovery || runtime_.hardwareTrial;
+  localInput_.sample(0,0,0,false,millis());
 }
 void Hardware::serviceLocalInputs() {
-#if LOCAL_INPUT_MODE != LOCAL_INPUT_NONE
   const uint32_t now = millis();
   if (!localInputsStarted_) return;
-  if (runtime_.hud.isHud() || runtime_.recovery || runtime_.controller.configurationLocked) {
-    localInput_.sample(0, 0, 0, false, now);
-    return;
+  if(calibrating_ && int32_t(now-calibrationUntil_)>=0) cancelJoystickCalibration();
+  if (runtime_.recovery || (runtime_.controller.configurationLocked && !calibrating_)) {
+    localInput_.sample(0, 0, 0, false, now); return;
   }
   if (localSampled_ && uint32_t(now - localSampleAt_) < 10) return;
   localSampled_ = true; localSampleAt_ = now;
+  const auto &c=runtime_.controller.hardware;
+  const auto &p=c.pins;
   float values[2]{};
   uint8_t neutralMask = 0;
-#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
-  constexpr int negative[] = {LOCAL_AZ_NEG_GPIO, LOCAL_EL_NEG_GPIO};
-  constexpr int positive[] = {LOCAL_AZ_POS_GPIO, LOCAL_EL_POS_GPIO};
-#else
-  constexpr int pins[] = {LOCAL_AZ_ADC_GPIO, LOCAL_EL_ADC_GPIO};
-#endif
+  const int negative[]={p.localAzNegative,p.localElNegative}, positive[]={p.localAzPositive,p.localElPositive};
+  const int pins[]={p.localAzAdc,p.localElAdc};
   for (unsigned i = 0; i < 2; ++i) {
-    if (!(LocalMask & (1u << i)) || (i == 1 && runtime_.controller.model == Model::G800DXA)) {
-      neutralMask |= 1u << i;
-      continue;
+    if (!(c.localMask() & (1u << i)) || (!calibrating_ && i == 1 && runtime_.controller.model == Model::G800DXA)) {
+      neutralMask |= 1u << i; continue;
     }
-#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
-    values[i] = localButtons_[i].sample(digitalRead(negative[i]) == LOW, digitalRead(positive[i]) == LOW, now);
-    if (localButtons_[i].neutral()) neutralMask |= 1u << i;
-    if (i ? LOCAL_EL_INVERT : LOCAL_AZ_INVERT) values[i] = -values[i];
-#else
-    // Median of five conversions rejects isolated spikes without a blocking delay.
-    int samples[5];
-    for (int &value : samples) value = analogRead(pins[i]);
-    std::sort(samples, samples + 5);
-    values[i] = localJoystick_[i].sample(samples[2]);
-    if (localJoystick_[i].neutral(samples[2])) neutralMask |= 1u << i;
-#endif
+    if(c.local[0]==LOCAL_INPUT_BUTTONS) {
+      values[i] = localButtons_[i].sample(digitalRead(negative[i]) == LOW, digitalRead(positive[i]) == LOW, now);
+      if (localButtons_[i].neutral()) neutralMask |= 1u << i;
+      if (c.local[1+i]) values[i] = -values[i];
+    } else {
+      int samples[5];
+      for (int &value : samples) value = analogRead(pins[i]);
+      std::sort(samples, samples + 5); localRaw_[i]=samples[2];
+      values[i] = localJoystick_[i].sample(samples[2]);
+      if (localJoystick_[i].neutral(samples[2])) neutralMask |= 1u << i;
+    }
   }
-  localInput_.sample(values[0], values[1], neutralMask, true, now);
-#endif
+  // Selection changes, disconnect and remote takeover require a new neutral gesture.
+  const auto selection=runtime_.hud.selectionEpoch;
+  localInput_.sample(values[0], values[1], neutralMask,
+      !calibrating_ && (!runtime_.hud.isHud() || runtime_.hud.manualAvailable()), now, selection);
 }
 } // namespace forkrot

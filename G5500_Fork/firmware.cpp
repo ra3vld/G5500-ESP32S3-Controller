@@ -90,6 +90,7 @@ void Application::controllerSetup() {
   network_.beginHud();
   ota_.begin([](void *context) {
     auto &self=*static_cast<Application *>(context);
+    self.hardware_.cancelJoystickCalibration();
     self.runtime_.controller.stopNow(-1,millis());self.hardware_.applyOutputs();
     if(self.runtime_.hud.isHud())self.network_.serviceHud();
     self.runtime_.controller.configurationLocked=true;

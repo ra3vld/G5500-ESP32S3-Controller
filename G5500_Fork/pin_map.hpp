@@ -5,8 +5,17 @@
 #include <cstdint>
 #include <string_view>
 namespace forkrot {
+namespace board {
+inline constexpr int PIN_LOCAL_AZ_NEG_GPIO = LOCAL_AZ_NEG_GPIO;
+inline constexpr int PIN_LOCAL_AZ_POS_GPIO = LOCAL_AZ_POS_GPIO;
+inline constexpr int PIN_LOCAL_EL_NEG_GPIO = LOCAL_EL_NEG_GPIO;
+inline constexpr int PIN_LOCAL_EL_POS_GPIO = LOCAL_EL_POS_GPIO;
+inline constexpr int PIN_LOCAL_AZ_ADC_GPIO = LOCAL_AZ_ADC_GPIO;
+inline constexpr int PIN_LOCAL_EL_ADC_GPIO = LOCAL_EL_ADC_GPIO;
+}
+
 enum class PinKind : uint8_t { Input, Output, Adc };
-enum class PinGroup : uint8_t { Drive, Uart, Hc05, Indicator, Tft, Lcd };
+enum class PinGroup : uint8_t { Drive, Uart, Hc05, Indicator, Tft, Lcd, Buttons, Joystick };
 #define FORK_PIN_MAP(X) \
  X(azAdc, PIN_AZ_ADC, Adc, Drive, false) \
  X(elAdc, PIN_EL_ADC, Adc, Drive, false) \
@@ -36,7 +45,13 @@ enum class PinGroup : uint8_t { Drive, Uart, Hc05, Indicator, Tft, Lcd };
  X(lcdD4, PIN_LCD_D4, Output, Lcd, false) \
  X(lcdD5, PIN_LCD_D5, Output, Lcd, false) \
  X(lcdD6, PIN_LCD_D6, Output, Lcd, false) \
- X(lcdD7, PIN_LCD_D7, Output, Lcd, false)
+ X(lcdD7, PIN_LCD_D7, Output, Lcd, false) \
+ X(localAzNegative, PIN_LOCAL_AZ_NEG_GPIO, Input, Buttons, true) \
+ X(localAzPositive, PIN_LOCAL_AZ_POS_GPIO, Input, Buttons, true) \
+ X(localElNegative, PIN_LOCAL_EL_NEG_GPIO, Input, Buttons, true) \
+ X(localElPositive, PIN_LOCAL_EL_POS_GPIO, Input, Buttons, true) \
+ X(localAzAdc, PIN_LOCAL_AZ_ADC_GPIO, Adc, Joystick, true) \
+ X(localElAdc, PIN_LOCAL_EL_ADC_GPIO, Adc, Joystick, true)
 struct PinMap {
 #define FORK_PIN_MEMBER(name, initial, kind, group, optional) int8_t name = board::initial < 0 ? -1 : board::initial;
   FORK_PIN_MAP(FORK_PIN_MEMBER)
@@ -54,7 +69,7 @@ struct PinDefinition {
   PinGroup group;
   bool optional;
 };
-inline constexpr std::array<PinDefinition,29> pinDefinitions{{
+inline constexpr std::array<PinDefinition,35> pinDefinitions{{
 #define FORK_PIN_DEFINITION(name, initial, kind, group, optional) {#name,"pin." #name,&PinMap::name,PinKind::kind,PinGroup::group,optional},
   FORK_PIN_MAP(FORK_PIN_DEFINITION)
 #undef FORK_PIN_DEFINITION
@@ -72,6 +87,7 @@ inline const char *pinGroupName(PinGroup group) {
   switch(group) {
   case PinGroup::Drive:return "drive"; case PinGroup::Uart:return "uart";
   case PinGroup::Hc05:return "hc05"; case PinGroup::Indicator:return "indicator";
+  case PinGroup::Buttons:return "buttons"; case PinGroup::Joystick:return "joystick";
   case PinGroup::Tft:return "tft"; case PinGroup::Lcd:return "lcd";
   }
   return "";

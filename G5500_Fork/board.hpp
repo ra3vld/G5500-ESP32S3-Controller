@@ -167,7 +167,7 @@ inline const char *fixedPinOwner(int n) {
 inline const char *unavailablePinOwner(int n) {
   if(gpio(n)) {
     if(const auto *owner=fixedPinOwner(n)) return owner;
-    return localPinOwner(n);
+    return nullptr;
   }
   if((SELECTED_BOARD==BOARD_ESP32 && ((n>=6 && n<=11) || n==16 || n==17)) ||
       ((SELECTED_BOARD==BOARD_S3 || SELECTED_BOARD==BOARD_CROWPANEL_21) && n>=26 && n<=37) ||
@@ -187,6 +187,8 @@ inline bool pinActive(const HardwareConfig &c,const PinDefinition &d) {
     if(c.pins.singleAxis() && (d.member==&PinMap::elAdc || d.member==&PinMap::elNegative ||
         d.member==&PinMap::elPositive || d.member==&PinMap::elSpeedEnable)) return false;
     return d.member!=&PinMap::elSpeedEnable || c.drive!=DRIVE_YAESU;
+  case PinGroup::Buttons:return c.local[0]==LOCAL_INPUT_BUTTONS;
+  case PinGroup::Joystick:return c.local[0]==LOCAL_INPUT_JOYSTICK;
   case PinGroup::Uart:return true;
   case PinGroup::Hc05:return c.backend()==BT_HC05;
   case PinGroup::Indicator:return true;
@@ -210,6 +212,18 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
 #endif
   if((c.pins.uartRx<0)!=(c.pins.uartTx<0) || (hudUart && c.pins.uartRx<0))
     return {"incomplete_uart","pin.uartRx"};
+  if(c.local[0]>2 || c.local[1]>1 || c.local[2]>1) return {"invalid_local_input","localInputMode"};
+  if(c.local[0]==LOCAL_INPUT_BUTTONS &&
+      ((c.pins.localAzNegative<0)!=(c.pins.localAzPositive<0) ||
+       (c.pins.localElNegative<0)!=(c.pins.localElPositive<0))) return {"incomplete_buttons","localInputMode"};
+  if(c.local[0] && !c.localMask()) return {"missing_pin","localInputMode"};
+  for(unsigned i=0;i<2;++i) {
+    const auto at=3+i*3;
+    if(c.local[at+2]>4095 || c.local[at]>=c.local[at+1] || c.local[at+1]>=c.local[at+2] ||
+       unsigned(c.local[9])+c.local[10]>=unsigned(c.local[at+1]-c.local[at]) ||
+       unsigned(c.local[9])+c.local[10]>=unsigned(c.local[at+2]-c.local[at+1]))
+      return {"invalid_joystick_calibration",localSettingNames[at]};
+  }
   const char *owners[49]{};
   auto add=[&](int pin,const char *field,PinKind kind,bool required,bool needsPullup=false)->HardwareValidation {
     if(pin < -1 || pin>48) return {"invalid_gpio",field,"",pin};
@@ -219,7 +233,6 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
     if(kind==PinKind::Output && !output(pin)) return {"input_only_gpio",field,"",pin};
     if(needsPullup && !pullup(pin)) return {"invalid_pullup",field,"",pin};
     if(const auto *owner=fixedPinOwner(pin)) return {"gpio_conflict",field,owner,pin};
-    if(const auto *owner=localPinOwner(pin)) return {"gpio_conflict",field,owner,pin};
     if(owners[pin]) return {"gpio_conflict",field,owners[pin],pin};
     owners[pin]=field; return {};
   };
@@ -235,7 +248,7 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
       if(const auto *owner=fixedPinOwner(pin)) return {"gpio_conflict",d.field,owner,pin};
     }
     if(!pinActive(c,d)) continue;
-    if(auto error=add(pin,d.field,d.kind,!d.optional)) return error;
+    if(auto error=add(pin,d.field,d.kind,!d.optional,d.group==PinGroup::Buttons)) return error;
   }
   if(auto error=add(c.buttonGpio,"buttonGpio",PinKind::Input,false,c.buttonPullup)) return error;
   return {};

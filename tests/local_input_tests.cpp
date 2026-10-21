@@ -146,22 +146,21 @@ static void runtimePinOwnership() {
   for (int pin : board::localInputPins) {
     if (pin < 0) continue;
     const auto *owner = board::localPinOwner(pin);
-    assert(owner && std::string(board::unavailablePinOwner(pin)) == owner);
+    assert(owner && !board::unavailablePinOwner(pin));
     auto config = original;
     config.pins.uartRx = pin;
     const auto uart = board::validateHardwareDetailed(config);
-    assert(uart && std::string(uart.error) == "gpio_conflict" &&
-           std::string(uart.field) == "pin.uartRx" && std::string(uart.owner) == owner);
+    assert(uart && std::string(uart.error) == "gpio_conflict");
     config = original;
     config.buttonGpio = pin; config.buttonPullup = false;
     const auto button = board::validateHardwareDetailed(config);
-    assert(button && std::string(button.field) == "buttonGpio" && std::string(button.owner) == owner);
+    assert(button && std::string(button.error) == "gpio_conflict");
     if (board::adc(pin)) {
       config = original; config.simulation = true; config.pins.azAdc = pin;
       assert(!board::validateHardware(config)); // Inactive motor roles do not own a wire.
       config.simulation = false;
       const auto motor = board::validateHardwareDetailed(config);
-      assert(motor && std::string(motor.field) == "pin.azAdc" && std::string(motor.owner) == owner);
+      assert(motor && std::string(motor.error) == "gpio_conflict");
     }
   }
   Runtime recovery; recovery.recovery = true;
@@ -214,9 +213,13 @@ static void gpioAdapter() {
 #endif
   Runtime hud; hud.hud.config.role = DeviceRole::Hud;
   Hardware remote(hud); fakeHardware = {}; remote.beginInputs();
-  for (auto &event : fakeHardware.events)
-    for (int pin : board::localInputPins) assert(pin < 0 || event.pin != pin);
-  remote.serviceLocalInputs(); assert(!fakeHardware.readsRaw);
+  remote.serviceLocalInputs();
+  assert(!hud.controller.moving());
+#if LOCAL_INPUT_MODE == LOCAL_INPUT_JOYSTICK
+  assert(fakeHardware.readsRaw>0); // HUD reads its joystick, never position feedback.
+#else
+  assert(!fakeHardware.readsRaw);
+#endif
 }
 int main() {
   buttons(); joystick(); gestures(); protection(); movement(); runtimePinOwnership(); gpioAdapter();

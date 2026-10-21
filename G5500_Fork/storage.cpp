@@ -96,6 +96,9 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
     if(prefs_.getBytesLength("config1")==LegacyHardwareBytes{}.size()) {
       LegacyHardwareBytes legacy{};
       valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
+    } else if(prefs_.getBytesLength("config1")==PinHardwareBytes{}.size()) {
+      PinHardwareBytes legacy{};
+      valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
     } else valid = prefs_.getBytesLength("config1") == bytes.size() &&
         prefs_.getBytes("config1", bytes.data(), bytes.size()) == bytes.size() && decodeHardware(bytes, record);
   }

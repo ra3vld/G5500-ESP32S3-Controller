@@ -47,34 +47,39 @@ public:
 
 // Uses the controller's manual lease and ownership checks. Idle inputs send no
 // commands, and releasing an old gesture cannot stop a newer external command.
-// Local motor inputs intentionally do not control a selected remote HUD peer.
+// The same controller facade routes HUD samples through its remote manual lease.
 class LocalAxisInput {
   Controller &controller_;
-  const uint8_t mask_;
+  uint8_t mask_;
+  uint32_t selection_ = 0, remoteRequest_ = 0;
   static constexpr uint64_t Source = 0x4c4f43414cULL;
   uint32_t gesture_ = 0, serial_ = 0, stopEpoch_ = 0, rangeRevision_ = 0;
   uint32_t epochs_[2]{}, sampledAt_ = 0, neutralAt_ = 0;
   Model model_ = Model::G5500;
   bool started_ = false, active_ = false, armed_ = false, neutral_ = false;
   void release(uint32_t now) {
-    if (active_ && !controller_.remote)
+    if (active_ && (!controller_.remote || controller_.remote->requestId()==remoteRequest_))
       controller_.manualDrive(Source, 1, gesture_, ++serial_, mask_, 0, 0, true, now);
     active_ = armed_ = neutral_ = false;
   }
 public:
   LocalAxisInput(Controller &controller, uint8_t mask) : controller_(controller), mask_(mask) {}
-  void sample(float az, float el, uint8_t neutralMask, bool healthy, uint32_t now) {
+  void configure(uint8_t mask) { mask_=mask; }
+  void sample(float az, float el, uint8_t neutralMask, bool healthy, uint32_t now, uint32_t selection = 0) {
     auto &c = controller_;
     const uint8_t mask = mask_ & (c.model == Model::G800DXA ? 1 : 3);
     if (!(mask & 1)) az = 0;
     if (!(mask & 2)) el = 0;
-    bool changed = started_ && (c.stopEpoch != stopEpoch_ || c.rangeRevision != rangeRevision_ || c.model != model_);
+    bool changed = started_ && (selection != selection_ ||c.stopEpoch != stopEpoch_ || c.rangeRevision != rangeRevision_ || c.model != model_);
+    if (active_ && c.remote && (selection!=selection_ || c.remote->requestId()!=remoteRequest_)) {
+      active_=false; changed=true;
+    }
     if (active_) for (unsigned i = 0; i < 2; ++i)
       if ((mask & (1u << i)) && c.motionEpoch[i] != epochs_[i]) changed = true;
     const bool stale = started_ && uint32_t(now - sampledAt_) >= 250;
-    started_ = true; sampledAt_ = now;
+    started_ = true; sampledAt_ = now; selection_ = selection;
     stopEpoch_ = c.stopEpoch; rangeRevision_ = c.rangeRevision; model_ = c.model;
-    if (!healthy || c.remote || c.configurationLocked || c.hasDriveError() || c.autoTune.active() ||
+    if (!healthy || c.configurationLocked || c.hasDriveError() || c.autoTune.active() ||
         !mask || changed || stale || !std::isfinite(az) || !std::isfinite(el) || std::abs(az) > 1 || std::abs(el) > 1) {
       release(now);
       return;
@@ -92,8 +97,9 @@ public:
       serial_ = 0;
     }
     const auto result = c.manualDrive(Source, 1, gesture_, ++serial_, mask, az, el, false, now);
-    if (result != Result::Ok) { release(now); return; }
+    if (result != Result::Ok && result != Result::Deferred) { release(now); return; }
     active_ = true;
+    if(c.remote) remoteRequest_=c.remote->requestId();
     for (unsigned i = 0; i < 2; ++i) epochs_[i] = c.motionEpoch[i];
   }
 };

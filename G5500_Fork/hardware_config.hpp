@@ -6,7 +6,17 @@
 #include <cstring>
 #include <string_view>
 namespace forkrot {
+inline constexpr const char *localSettingNames[] = {"localInputMode", "localAzInvert", "localElInvert",
+  "localAzMin", "localAzCenter", "localAzMax", "localElMin", "localElCenter", "localElMax", "localDeadzone", "localHysteresis"};
+using LocalSettings = std::array<uint16_t,11>;
 struct HardwareConfig {
+  LocalSettings local{LOCAL_INPUT_MODE, LOCAL_AZ_INVERT, LOCAL_EL_INVERT,
+    LOCAL_AZ_ADC_MIN, LOCAL_AZ_ADC_CENTER, LOCAL_AZ_ADC_MAX,
+    LOCAL_EL_ADC_MIN, LOCAL_EL_ADC_CENTER, LOCAL_EL_ADC_MAX, LOCAL_ADC_DEADZONE, LOCAL_ADC_HYSTERESIS};
+  uint8_t localMask() const {
+    return local[0]==LOCAL_INPUT_BUTTONS ? (pins.localAzNegative>=0?1:0)|(pins.localElNegative>=0?2:0)
+      : local[0]==LOCAL_INPUT_JOYSTICK ? (pins.localAzAdc>=0?1:0)|(pins.localElAdc>=0?2:0) : 0;
+  }
   PinMap pins;
   uint8_t drive = DRIVE_INTERFACE;
   bool simulation = DRIVE_SIMULATION;
@@ -24,7 +34,7 @@ struct HardwareConfig {
     return backend() == BT_ESP32_SPP ? "ESP32_SPP" : backend() == BT_HC05 ? "HC05" : "NONE";
   }
   bool operator==(const HardwareConfig &b) const {
-    return drive == b.drive && simulation == b.simulation && bluetooth == b.bluetooth &&
+    return local == b.local && drive == b.drive && simulation == b.simulation && bluetooth == b.bluetooth &&
         bluetoothMode == b.bluetoothMode && forceAp == b.forceAp && buttonGpio == b.buttonGpio &&
         buttonLow == b.buttonLow && buttonPullup == b.buttonPullup && pwmInverted == b.pwmInverted && pins == b.pins;
   }
@@ -91,11 +101,12 @@ struct HardwareRecord {
 };
 // Explicit wire format: no structure padding, compiler ABI or unchecked enums in NVS.
 using LegacyHardwareBytes = std::array<uint8_t,40>;
-using HardwareBytes = std::array<uint8_t,40 + pinDefinitions.size()*2>;
+using PinHardwareBytes = std::array<uint8_t,98>; // version 2, 29 GPIO roles
+using HardwareBytes = std::array<uint8_t,40 + pinDefinitions.size()*2 + LocalSettings{}.size()*4>;
 template<size_t N> inline std::array<uint8_t,N> encodeHardwareRecord(const HardwareRecord &r) {
-  static_assert(N==40 || N==HardwareBytes{}.size(), "Unknown hardware format");
+  static_assert(N==40 || N==98 || N==HardwareBytes{}.size(), "Unknown hardware format");
   std::array<uint8_t,N> b{};
-  b[0]='H'; b[1]='W'; b[2]=N==40?1:2; b[3]=SELECTED_BOARD; b[4]=DISPLAY_KIND;
+  b[0]='H'; b[1]='W'; b[2]=N==40?1:N==98?2:3; b[3]=SELECTED_BOARD; b[4]=DISPLAY_KIND;
   b[5]=uint8_t(r.phase); b[6]=uint8_t(r.reason); b[7]=r.hasConfirmed;
   for(unsigned i=0;i<4;++i) b[8+i]=uint8_t(r.generation>>(8*i));
   auto put=[&](unsigned at,const HardwareConfig &c) {
@@ -105,9 +116,15 @@ template<size_t N> inline std::array<uint8_t,N> encodeHardwareRecord(const Hardw
   };
   put(12,r.good); put(21,r.candidate);
   for(unsigned i=0;i<4;++i) b[30+i]=uint8_t(r.probeCounter>>(8*i));
-  if constexpr(N!=40) for(size_t i=0;i<pinDefinitions.size();++i) {
+  constexpr size_t count=N==40?0:N==98?29:pinDefinitions.size();
+  if constexpr(N!=40) for(size_t i=0;i<count;++i) {
     b[36+i]=uint8_t(r.good.pins.*pinDefinitions[i].member);
-    b[36+pinDefinitions.size()+i]=uint8_t(r.candidate.pins.*pinDefinitions[i].member);
+    b[36+count+i]=uint8_t(r.candidate.pins.*pinDefinitions[i].member);
+  }
+  if constexpr(N!=40 && N!=98) for(unsigned c=0;c<2;++c) for(size_t i=0;i<LocalSettings{}.size();++i) {
+    const auto value=(c?r.candidate:r.good).local[i];
+    const auto at=36+count*2+(c*LocalSettings{}.size()+i)*2;
+    b[at]=uint8_t(value); b[at+1]=uint8_t(value>>8);
   }
   uint32_t crc=2166136261u;
   for(size_t i=0;i<N-4;++i) crc=(crc^b[i])*16777619u;
@@ -116,7 +133,7 @@ template<size_t N> inline std::array<uint8_t,N> encodeHardwareRecord(const Hardw
 }
 inline HardwareBytes encodeHardware(const HardwareRecord &r) { return encodeHardwareRecord<HardwareBytes{}.size()>(r); }
 template<size_t N> inline bool decodeHardware(const std::array<uint8_t,N> &b,HardwareRecord &r) {
-  if(b[0]!='H' || b[1]!='W' || b[2]!=(N==40?1:2) || b[3]!=SELECTED_BOARD || b[4]!=DISPLAY_KIND ||
+  if(b[0]!='H' || b[1]!='W' || b[2]!=(N==40?1:N==98?2:3) || b[3]!=SELECTED_BOARD || b[4]!=DISPLAY_KIND ||
       b[5]>uint8_t(ConfigPhase::Starting) || b[6]>uint8_t(RecoveryReason::Initial) || b[7]>1) return false;
   HardwareRecord next;
   next.phase=ConfigPhase(b[5]); next.reason=RecoveryReason(b[6]); next.hasConfirmed=b[7];
@@ -130,9 +147,14 @@ template<size_t N> inline bool decodeHardware(const std::array<uint8_t,N> &b,Har
     c.buttonPullup=b[at+7]; c.pwmInverted=b[at+8]; return true;
   };
   if(!get(12,next.good) || !get(21,next.candidate)) return false;
-  if constexpr(N!=40) for(size_t i=0;i<pinDefinitions.size();++i) {
+  constexpr size_t count=N==40?0:N==98?29:pinDefinitions.size();
+  if constexpr(N!=40) for(size_t i=0;i<count;++i) {
     next.good.pins.*pinDefinitions[i].member=int8_t(b[36+i]);
-    next.candidate.pins.*pinDefinitions[i].member=int8_t(b[36+pinDefinitions.size()+i]);
+    next.candidate.pins.*pinDefinitions[i].member=int8_t(b[36+count+i]);
+  }
+  if constexpr(N!=40 && N!=98) for(unsigned c=0;c<2;++c) for(size_t i=0;i<LocalSettings{}.size();++i) {
+    const auto at=36+count*2+(c*LocalSettings{}.size()+i)*2;
+    (c?next.candidate:next.good).local[i]=uint16_t(b[at])|(uint16_t(b[at+1])<<8);
   }
   if(encodeHardwareRecord<N>(next)!=b) return false;
   if constexpr(N==40) {

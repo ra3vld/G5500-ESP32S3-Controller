@@ -93,9 +93,16 @@ int main(int argc,char **argv) {
   record.good.simulation=record.candidate.simulation=true;
   record.good.pins.led=-1; record.candidate.pins.led=0; record.candidate.buttonGpio=-1;
   const auto bytes=encodeHardware(record); HardwareRecord decoded;
-  assert(bytes[2]==2 && decodeHardware(bytes,decoded));
+  assert(bytes[2]==3 && decodeHardware(bytes,decoded));
   assert(decoded.good==record.good && decoded.candidate==record.candidate);
   auto broken=bytes; broken[36]^=1; assert(!decodeHardware(broken,decoded));
+  const auto v2=encodeHardwareRecord<98>(record);
+  assert(v2[2]==2 && decodeHardware(v2,decoded));
+  for(size_t i=0;i<29;++i) assert(decoded.good.pins.*pinDefinitions[i].member==record.good.pins.*pinDefinitions[i].member);
+  record.good.local={2,1,0,100,1900,3800,200,2100,4000,180,40};
+  record.good.pins.localAzAdc=SELECTED_BOARD==BOARD_ESP32?36:4;
+  auto v3=encodeHardware(record);
+  assert(decodeHardware(v3,decoded) && decoded.good==record.good);
   const auto legacy=encodeHardwareRecord<40>(record);
   assert(legacy[2]==1 && decodeHardware(legacy,decoded));
   assert(decoded.good.pins==PinMap{} && decoded.candidate.pins==PinMap{});
