@@ -5,6 +5,10 @@
 #include <cmath>
 #include <cstdlib>
 #include <new>
+#include <thread>
+#include <chrono>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <esp_heap_caps.h>
 static size_t allocationCalls=0, releasedCalls=0, allocatedBytes=0;
 void *operator new(size_t size) {
@@ -52,6 +56,20 @@ int main(){
  httpd_req_t legacy{fakeServer.uri.user_ctx,HTTP_GET,999,{}};assert(fakeServer.uri.handler(&legacy)==ESP_OK);
  httpd_sess_trigger_close(&fakeServer,999);fakeServer.sent.clear();
  for(int fd=1000;fd<1004;++fd)assert(connect(fd)==ESP_OK);
+ // Exercise the production send override with real short writes and a reader
+ // paused longer than the previous 5 ms timeout. No radio or motors are used.
+ assert(fakeSendOverride);
+ int pair[2];assert(socketpair(AF_UNIX,SOCK_STREAM,0,pair)==0);
+ int small=1024;assert(setsockopt(pair[0],SOL_SOCKET,SO_SNDBUF,&small,sizeof small)==0);
+ const std::string payload(20000,'x');std::string received;
+ std::thread reader([&]{
+   std::this_thread::sleep_for(std::chrono::milliseconds(20));
+   char chunk[1024];int n;
+   while((n=recv(pair[1],chunk,sizeof chunk,0))>0)received.append(chunk,size_t(n));
+ });
+ const int sent=fakeSendOverride(&fakeServer,pair[0],payload.data(),payload.size(),0);
+ shutdown(pair[0],SHUT_WR);reader.join();close(pair[0]);close(pair[1]);
+ assert(sent==int(payload.size()) && received==payload);
  assert(connect(1004)==ESP_FAIL);
  assert(command(1000,packet(1,"/api/target","&az=90"))==ESP_OK);
  assert(runtime.controller.axes[0].target!=90); // HTTPD cannot execute a control command.

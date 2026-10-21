@@ -77,6 +77,36 @@ int main(int argc,char **argv) {
     return 0;
   }
   {
+    // Regression for the ESP32 panic: an HTTP speed/mode request performs a
+    // position solve while the other axis is already running. STOP must still
+    // reach both outputs before the request returns.
+    Fixture motion;auto &c=motion.runtime.controller;
+    auto hw=c.hardware;hw.drive=DRIVE_BTS7960;hw.simulation=false;
+    c.configureHardware(hw);
+    motion.hardware.beginDirections();
+    for(unsigned axis=0;axis<2;++axis) {
+      auto settings=c.motionSettings[axis];settings.ready=true;
+      settings.mode=RegulatorMode::Cascade;settings.kickEnabled=false;
+      assert(c.configureMotion(axis,settings,fakeHardware.now));
+      c.feedbackAt(axis,axis?45:90,true,fakeHardware.now);
+    }
+    assert(motion.call("POST","/api/mode","mode=auto",false).status==200);
+    assert(motion.call("POST","/api/target","az=150&el=100",false).status==200);
+    for(unsigned n=0;n<100;++n) {
+      fakeHardware.now+=20;
+      c.feedbackAt(0,90+n*.02f,true,fakeHardware.now);
+      c.feedbackAt(1,45+n*.02f,true,fakeHardware.now);
+      const auto speed=motion.call("POST","/api/speed","axis=az&value=1",false);
+      assert(speed.status==200);
+      assert(c.axes[0].motionError==MotionError::None && c.axes[1].motionError==MotionError::None);
+    }
+    assert(c.moving());
+    assert(motion.call("POST","/api/move","d=S",false).status==200);
+    assert(!c.moving() && c.axes[0].speedOutputPercent==0 && c.axes[1].speedOutputPercent==0);
+    assert(fakeHardware.levels[c.hardware.pins.azSpeedEnable]==LOW &&
+           fakeHardware.levels[c.hardware.pins.elSpeedEnable]==LOW);
+  }
+  {
     Fixture tuning;
     auto &c=tuning.runtime.controller;
     c.hardware.drive=DRIVE_BTS7960;c.hardware.simulation=false;

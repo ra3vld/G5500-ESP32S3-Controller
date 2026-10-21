@@ -4,6 +4,7 @@
 #include <array>
 #include <iostream>
 #include <limits>
+#include <new>
 #include <optional>
 #include <tuple>
 #include <type_traits>
@@ -39,6 +40,23 @@ private:
 
     StandardVector<ControlInterface, DOFs> inp_per_dof_control_interface;
     StandardVector<Synchronization, DOFs> inp_per_dof_synchronization;
+
+    // Step 1's candidate profiles are several KiB. Reuse one workspace owned
+    // by the calculator instead of putting them on every caller's task stack.
+    // In the firmware this calculator belongs to the preallocated, single-thread
+    // PlannerScratch. No allocation occurs while calculating a trajectory.
+    std::aligned_union_t<0, PositionThirdOrderStep1, PositionSecondOrderStep1,
+                         PositionFirstOrderStep1, VelocityThirdOrderStep1,
+                         VelocitySecondOrderStep1> step1_storage;
+
+    template<class Step, class... Args>
+    bool calculate_step1(const Profile& input, Block& block, Args... args) {
+        static_assert(std::is_trivially_destructible_v<Step>);
+        auto* step = ::new (static_cast<void*>(&step1_storage)) Step(args...);
+        const bool found = step->get_profile(input, block);
+        step->~Step();
+        return found;
+    }
 
     //! Is the trajectory (in principle) phase synchronizable?
     bool is_input_collinear(const InputParameter<DOFs, CustomVector>& inp, Profile::Direction limiting_direction, size_t limiting_dof) {
@@ -285,23 +303,18 @@ public:
             switch (inp_per_dof_control_interface[dof]) {
                 case ControlInterface::Position: {
                     if (!std::isinf(inp.max_jerk[dof])) {
-                        PositionThirdOrderStep1 step1 {p.p[0], p.v[0], p.a[0], p.pf, p.vf, p.af, inp.max_velocity[dof], inp_min_velocity[dof], inp.max_acceleration[dof], inp_min_acceleration[dof], inp.max_jerk[dof]};
-                        found_profile = step1.get_profile(p, blocks[dof]);
+                        found_profile = calculate_step1<PositionThirdOrderStep1>(p, blocks[dof], p.p[0], p.v[0], p.a[0], p.pf, p.vf, p.af, inp.max_velocity[dof], inp_min_velocity[dof], inp.max_acceleration[dof], inp_min_acceleration[dof], inp.max_jerk[dof]);
                     } else if (!std::isinf(inp.max_acceleration[dof])) {
-                        PositionSecondOrderStep1 step1 {p.p[0], p.v[0], p.pf, p.vf, inp.max_velocity[dof], inp_min_velocity[dof], inp.max_acceleration[dof], inp_min_acceleration[dof]};
-                        found_profile = step1.get_profile(p, blocks[dof]);
+                        found_profile = calculate_step1<PositionSecondOrderStep1>(p, blocks[dof], p.p[0], p.v[0], p.pf, p.vf, inp.max_velocity[dof], inp_min_velocity[dof], inp.max_acceleration[dof], inp_min_acceleration[dof]);
                     } else {
-                        PositionFirstOrderStep1 step1 {p.p[0], p.pf, inp.max_velocity[dof], inp_min_velocity[dof]};
-                        found_profile = step1.get_profile(p, blocks[dof]);
+                        found_profile = calculate_step1<PositionFirstOrderStep1>(p, blocks[dof], p.p[0], p.pf, inp.max_velocity[dof], inp_min_velocity[dof]);
                     }
                 } break;
                 case ControlInterface::Velocity: {
                     if (!std::isinf(inp.max_jerk[dof])) {
-                        VelocityThirdOrderStep1 step1 {p.v[0], p.a[0], p.vf, p.af, inp.max_acceleration[dof], inp_min_acceleration[dof], inp.max_jerk[dof]};
-                        found_profile = step1.get_profile(p, blocks[dof]);
+                        found_profile = calculate_step1<VelocityThirdOrderStep1>(p, blocks[dof], p.v[0], p.a[0], p.vf, p.af, inp.max_acceleration[dof], inp_min_acceleration[dof], inp.max_jerk[dof]);
                     } else {
-                        VelocitySecondOrderStep1 step1 {p.v[0], p.vf, inp.max_acceleration[dof], inp_min_acceleration[dof]};
-                        found_profile = step1.get_profile(p, blocks[dof]);
+                        found_profile = calculate_step1<VelocitySecondOrderStep1>(p, blocks[dof], p.v[0], p.vf, inp.max_acceleration[dof], inp_min_acceleration[dof]);
                     }
                 } break;
             }

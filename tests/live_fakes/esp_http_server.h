@@ -19,10 +19,12 @@ struct httpd_uri_t {const char *uri=nullptr;int method=0;esp_err_t(*handler)(htt
 inline httpd_config_t HTTPD_DEFAULT_CONFIG(){return {};}
 struct FakeHttpd {httpd_config_t cfg;httpd_uri_t uri;void(*work)(void*)=nullptr;void *context=nullptr;int failedFd=-1;std::vector<int> closed;std::vector<std::pair<int,std::string>> sent;std::set<int> websocketFds;};
 inline FakeHttpd fakeServer;
+inline int(*fakeSendOverride)(httpd_handle_t,int,const char*,size_t,int)=nullptr;
 inline esp_err_t httpd_start(httpd_handle_t *p,const httpd_config_t *cfg){fakeServer={};fakeServer.cfg=*cfg;*p=&fakeServer;return ESP_OK;}
 inline esp_err_t httpd_stop(httpd_handle_t){return ESP_OK;}
 inline esp_err_t httpd_register_uri_handler(httpd_handle_t s,const httpd_uri_t *u){s->uri=*u;return ESP_OK;}
 inline void *httpd_get_global_user_ctx(httpd_handle_t s){return s->cfg.global_user_ctx;}
+inline esp_err_t httpd_sess_set_send_override(httpd_handle_t,int,int(*fn)(httpd_handle_t,int,const char*,size_t,int)){fakeSendOverride=fn;return ESP_OK;}
 inline int httpd_req_to_sockfd(httpd_req_t *r){return r->fd;}
 inline httpd_ws_client_info_t httpd_ws_get_fd_info(httpd_handle_t s,int fd){return s->websocketFds.count(fd)?HTTPD_WS_CLIENT_WEBSOCKET:HTTPD_WS_CLIENT_HTTP;}
 inline esp_err_t httpd_ws_recv_frame(httpd_req_t *r,httpd_ws_frame_t *f,size_t max){f->len=r->payload.size();if(max){if(max<f->len)return ESP_FAIL;std::memcpy(f->payload,r->payload.data(),f->len);}return ESP_OK;}

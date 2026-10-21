@@ -2,6 +2,9 @@
 #include "network_timing.hpp"
 #if defined(ARDUINO_ARCH_ESP32) && WEB_INTERFACE_ENABLED
 #include "heap_metrics.hpp"
+#include "bounded_socket_write.hpp"
+#include <esp_timer.h>
+#include <freertos/task.h>
 #include <lwip/sockets.h>
 #include <lwip/tcp.h>
 #include <cstring>
@@ -28,9 +31,13 @@ bool LiveServer::begin() {
 }
 esp_err_t LiveServer::opened(httpd_handle_t server,int fd) {
   int yes=1;setsockopt(fd,IPPROTO_TCP,TCP_NODELAY,&yes,sizeof yes);
-  timeval timeout{0,5000};
+  // HTTPD runs independently of motor control. Allow a split TCP request to
+  // arrive across Wi-Fi retries, with a bounded wait for an incomplete peer.
+  timeval timeout{0,200000};
   setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof timeout);
-  setsockopt(fd,SOL_SOCKET,SO_SNDTIMEO,&timeout,sizeof timeout);
+  // IDF's WS sender treats a positive short write as a complete write. Ensure
+  // both handshake and WS bytes are sent in full, without a 5 ms disconnect.
+  if(httpd_sess_set_send_override(server,fd,sendSocket)!=ESP_OK)return ESP_FAIL;
   // IDF 5.5.5 no longer calls the URI handler for a successful upgrade.
   // Reserve the client at accept; sendWork waits for the WS handshake before
   // publishing. This also bounds clients that have not finished upgrading.
@@ -47,6 +54,12 @@ esp_err_t LiveServer::opened(httpd_handle_t server,int fd) {
     c.fd=fd;c.generation=gen;return ESP_OK;
   }
   return ESP_FAIL;
+}
+int LiveServer::sendSocket(httpd_handle_t,int fd,const char *data,size_t size,int flags) {
+  return boundedSocketWrite(data,size,100,
+    [=](const char *p,size_t n){return ::send(fd,p,n,flags|MSG_DONTWAIT);},
+    []{return uint32_t(esp_timer_get_time()/1000);},
+    []{vTaskDelay(1);});
 }
 void LiveServer::closed(httpd_handle_t server,int fd) {
   auto &self=*static_cast<LiveServer *>(httpd_get_global_user_ctx(server));

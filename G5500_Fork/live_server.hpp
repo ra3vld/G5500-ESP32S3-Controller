@@ -46,6 +46,7 @@ class LiveServer {
   bool ingressReady_[2]{};
   static esp_err_t handler(httpd_req_t *);
   static esp_err_t opened(httpd_handle_t,int);
+  static int sendSocket(httpd_handle_t,int,const char *,size_t,int);
   static void closed(httpd_handle_t,int);
   static void sendWork(void *);
   void reply(Client &,uint32_t,const char *);
