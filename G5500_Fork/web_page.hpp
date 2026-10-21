@@ -532,7 +532,7 @@ function compactStatus(j){
 }
 
 // Live commands are never replayed after reconnecting.
-const livePaths=new Set(['/api/target','/api/move','/api/mode','/api/execute','/api/preset/run','/api/hud/select']);
+const livePaths=new Set(['/api/target','/api/speed','/api/move','/api/mode','/api/execute','/api/preset/run','/api/hud/select']);
 const live={socket:null,ready:false,boot:null,revision:0,next:0,pending:new Map(),state:null,retry:null,last:0};
 const connection={httpOnline:null,httpLast:0,state:null};
 const connectionFavicon=document.getElementById('connectionFavicon'),offlineFavicon=connectionFavicon.href;
@@ -630,7 +630,7 @@ async function forkPost(path,body){
   document.getElementById('forkMessage').textContent=(messages[j.result]||'Ошибка')+(path!=='/api/hud/select'&&name&&selection!==window._forkState?.hudSelectionEpoch?' · команда для '+name:'');
   const ok=r.status<400&&!!j.ok;
   notice?.finish(ok,ok&&j.result==='ok'?success:(messages[j.result]||'Не удалось выполнить действие'));
-  if(!usingLive)await upd(true);return ok;
+  if(!usingLive&&path!=='/api/speed')await upd(true);return ok;
  }catch(e){const message='Подтверждение не получено. Проверьте связь и состояние устройства перед повтором.';document.getElementById('forkMessage').textContent=message;notice?.finish(false,message);return false}
 }
 function fillPreset(){
@@ -856,7 +856,7 @@ function queueManualSpeed(axis,value){
 async function flushManualSpeed(axis){
  const p=manualSpeedRequests[axis];clearTimeout(p.timer);p.timer=null;if(p.busy||p.pending===null)return;
  const value=p.pending,epoch=p.epoch;p.pending=null;p.busy=true;
- try{const ok=await forkPost('/api/speed',{axis,value,rangeRevision:window._forkState?.azRangeRevision});if(!ok&&p.epoch===epoch&&p.pending===null){const current=window._forkState?.axes?.[axis==='az'?0:1]?.speedSetpoint;if(Number.isFinite(current))document.getElementById(axis+'ManualSpeed').value=current;}}finally{p.busy=false;if(p.pending!==null)flushManualSpeed(axis);else renderManualSpeeds(window._forkState);}
+ try{const ok=await forkPost('/api/speed',{axis,value,rangeRevision:window._forkState?.azRangeRevision});if(p.epoch===epoch){const a=window._forkState?.axes?.[axis==='az'?0:1];if(ok&&a)a.speedSetpoint=value;else if(p.pending===null&&Number.isFinite(a?.speedSetpoint))document.getElementById(axis+'ManualSpeed').value=a.speedSetpoint;}}finally{p.busy=false;if(p.pending!==null)flushManualSpeed(axis);else renderManualSpeeds(window._forkState);}
 }
 function renderManualSpeeds(j){
  let visible=false;

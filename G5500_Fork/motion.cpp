@@ -442,25 +442,59 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
       r.commandVelocity=r.referenceVelocity;r.commandAcceleration=0;r.profileValid=true;
 
     }
-    const bool ok=profileStep(axis.tracking,r.referencePosition,r.referenceVelocity,r.referenceAcceleration,
-                             axis.tracking ? axis.target : velocityLimit*manualScale_[i]*desired,
-                             velocityLimit,m.acceleration,m.deceleration,m.jerk,dt);
-    if (!ok) { motionFault(i,MotionError::Planner,now); return; }
     const float filter=float(m.derivativeFilterMs)/1000;
-    float velocity=r.referenceVelocity;
-    if (axis.tracking) velocity=r.positionPid.step(r.referencePosition-axis.current,axis.current,velocity,
-       m.positionKp,m.positionKi,m.positionKd,dt,filter,-velocityLimit,velocityLimit,!r.releasing);
-    float virtualPosition=0;
-    // A velocity S-curve targets zero acceleration. Feeding it only the
-    // instantaneous position-profile speed adds a second full S-curve and
-    // delays both acceleration and braking. Include the velocity needed to
-    // release the reference acceleration at the configured jerk. This makes
-    // the nominal profile pass through while PID corrections remain bounded
-    // by the same physical acceleration and jerk limits.
-    const float accelerationLead=std::copysign(r.referenceAcceleration*r.referenceAcceleration/(2*m.jerk),r.referenceAcceleration);
-    const float velocityBoundary=std::clamp(velocity+accelerationLead,-m.velocity,m.velocity);
-    if (!profileStep(false,virtualPosition,r.commandVelocity,r.commandAcceleration,velocityBoundary,
-                     m.velocity,m.acceleration,m.deceleration,m.jerk,dt)) { motionFault(i,MotionError::Planner,now); return; }
+    if(axis.tracking) {
+      if(!r.profileTracking || velocityLimit!=r.plannedSpeedLimit) {
+        // A live speed selection changes the remaining move, not its goal.
+        // Start at the shaft position and the command's continuous boundary
+        // state: a lagging virtual path must not keep opposing the selection.
+        // Keep both PID states, breakaway and progress deadlines intact.
+        r.referencePosition=axis.current;
+        r.referenceVelocity=r.commandVelocity;
+        r.referenceAcceleration=r.commandAcceleration;
+      }
+      // Lowering a hard position-profile limit below its current velocity
+      // invokes the planner's constraint recovery brake. That brake can go
+      // well below the selected speed. Instead, keep the current state
+      // feasible and approach the new limit with a velocity S-curve. The
+      // position trajectory still wins whenever the goal needs more braking.
+      const float outwardAcceleration=std::max(0.f,r.referenceAcceleration*sign(r.referenceVelocity));
+      const float feasibleLimit=std::max(velocityLimit,std::abs(r.referenceVelocity)+
+          outwardAcceleration*outwardAcceleration/(2*m.jerk));
+      float speedPosition=r.referencePosition,speedVelocity=r.referenceVelocity,speedAcceleration=r.referenceAcceleration;
+      if (!profileStep(true,r.referencePosition,r.referenceVelocity,r.referenceAcceleration,axis.target,
+                       feasibleLimit,m.acceleration,m.deceleration,m.jerk,dt)) { motionFault(i,MotionError::Planner,now); return; }
+      if(feasibleLimit>velocityLimit+.0001f) {
+        if(!profileStep(false,speedPosition,speedVelocity,speedAcceleration,velocityLimit*desired,
+                        m.velocity,m.acceleration,m.deceleration,m.jerk,dt)) { motionFault(i,MotionError::Planner,now); return; }
+        if(speedVelocity*desired<r.referenceVelocity*desired) {
+          r.referencePosition=speedPosition;r.referenceVelocity=speedVelocity;r.referenceAcceleration=speedAcceleration;
+        }
+      }
+      // A reduced limit cannot clip the feedforward while the position
+      // profile is still braking from a higher speed. Its acceleration lead
+      // would then be applied to the already clipped speed and brake twice,
+      // taking the command below the new selection before recovering.
+      const float correctionLimit=std::max(velocityLimit,std::abs(r.referenceVelocity));
+      const float velocity=r.positionPid.step(r.referencePosition-axis.current,axis.current,r.referenceVelocity,
+         m.positionKp,m.positionKi,m.positionKd,dt,filter,-correctionLimit,correctionLimit,!r.releasing);
+      float virtualPosition=0;
+      // Pass the nominal position profile through without a second S-curve;
+      // only its PID correction needs the remaining velocity/jerk limiter.
+      const float accelerationLead=std::copysign(r.referenceAcceleration*r.referenceAcceleration/(2*m.jerk),r.referenceAcceleration);
+      const float velocityBoundary=std::clamp(velocity+accelerationLead,-m.velocity,m.velocity);
+      if (!profileStep(false,virtualPosition,r.commandVelocity,r.commandAcceleration,velocityBoundary,
+                       m.velocity,m.acceleration,m.deceleration,m.jerk,dt)) { motionFault(i,MotionError::Planner,now); return; }
+    } else {
+      // Jog selects a velocity directly. One S-curve preserves acceleration
+      // and jerk when the slider or proportional manual input changes.
+      if (!profileStep(false,r.referencePosition,r.commandVelocity,r.commandAcceleration,
+                       velocityLimit*manualScale_[i]*desired,m.velocity,m.acceleration,m.deceleration,m.jerk,dt)) {
+        motionFault(i,MotionError::Planner,now); return;
+      }
+      r.referenceVelocity=r.commandVelocity;r.referenceAcceleration=r.commandAcceleration;
+    }
+    r.profileTracking=axis.tracking;r.plannedSpeedLimit=velocityLimit;
     axis.requestedVelocity=r.commandVelocity; axis.profileAcceleration=r.commandAcceleration;
     desired=axis.direction ? axis.direction : sign(r.commandVelocity);
     if(blocked(desired)) {

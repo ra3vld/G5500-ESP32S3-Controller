@@ -38,7 +38,7 @@ bool LiveRequest::parse(std::string_view text) {
     text.remove_prefix(amp+1);
   }
   path=get("path");
-  const bool allowed=path=="/api/target"||path=="/api/move"||path=="/api/mode"||path=="/api/execute"||path=="/api/preset/run"||path=="/api/hud/select";
+  const bool allowed=path=="/api/target"||path=="/api/speed"||path=="/api/move"||path=="/api/mode"||path=="/api/execute"||path=="/api/preset/run"||path=="/api/hud/select";
   return allowed && get("v")=="1" && requestGeneration(get("cid"),id) && id && identity(get("boot"),boot) && requestGeneration(get("selection"),selection);
 }
 Response executeLive(const LiveRequest &r, Controller &c, Protocol &p, Settings &s, Hud &h, uint32_t now) {
@@ -59,8 +59,12 @@ uint32_t liveControlFingerprint(const Controller &c,const Hud &h) {
   j << c.rangeRevision << ',' << c.minimum << ',' << c.maximum << ',' << unsigned(c.mode) << ',' << c.stopEpoch << ',' << c.pendingValid << ',' << c.pending.az << ',' << c.pending.el
     << ',' << c.presetSlot << ',' << c.presetActive << ',' << c.targetKnown << ',' << h.selectionEpoch << ',' << h.available() << ',' << c.fault;
   for(const auto &a:c.axes)j<<','<<a.target<<','<<a.direction<<','<<a.wanted<<','<<a.tracking<<','<<a.completed<<','<<a.calibrated;
-  for(unsigned i=0;i<2;++i) j<<','<<unsigned(c.motionSettings[i].mode)<<','<<c.motionSettings[i].ready
-    <<','<<unsigned(c.axes[i].motionPhase)<<','<<unsigned(c.axes[i].motionError)<<','<<c.axes[i].holdArmed;
+  for(unsigned i=0;i<2;++i) {
+    j<<','<<unsigned(c.motionSettings[i].mode)<<','<<c.motionSettings[i].ready
+    <<','<<unsigned(c.axes[i].motionPhase)<<','<<unsigned(c.axes[i].motionError)<<','<<c.axes[i].holdArmed
+    <<',';
+    j.decimal(c.runtimeSpeed(i),-1);
+  }
   j<<','<<unsigned(c.autoTune.phase)<<','<<c.autoTune.id<<','<<c.autoTune.direction<<','<<c.autoTune.level;
   return hudCrc(reinterpret_cast<const uint8_t *>(j.data()),j.size());
 }

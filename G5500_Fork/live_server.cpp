@@ -17,8 +17,11 @@ bool LiveServer::begin() {
   if(!clients_ || !state_){clients_.reset();state_.reset();return false;}
   liveBootText(boot_,runtime_.hud.boot);
   ingressRange_[0]=runtime_.controller.azRange;ingressRange_[1]=runtime_.controller.elRange;ingressEl_=runtime_.controller.model==Model::G5500;
-  for(unsigned i=0;i<2;++i) ingressReady_[i]=runtime_.controller.axes[i].calibrated &&
-    (!runtime_.controller.variableSpeed(i) || runtime_.controller.motionSettings[i].ready);
+  for(unsigned i=0;i<2;++i) {
+    ingressReady_[i]=runtime_.controller.axes[i].calibrated &&
+      (!runtime_.controller.variableSpeed(i) || runtime_.controller.motionSettings[i].ready);
+    ingressSpeedLimit_[i]=runtime_.controller.runtimeSpeedLimit(i);
+  }
   mutex_=xSemaphoreCreateMutexStatic(&mutexStorage_);
   httpd_config_t cfg=HTTPD_DEFAULT_CONFIG();
   cfg.server_port=81; cfg.ctrl_port=32769; cfg.max_open_sockets=4; cfg.max_uri_handlers=1;
@@ -98,6 +101,26 @@ esp_err_t LiveServer::handler(httpd_req_t *req) {
   for(auto &c:*self.clients_)if(c.fd==fd&&(!c.closing||request.stop())) {
     if(request.id<=c.lastId){self.reply(c,request.id,"{\"ok\":false,\"result\":\"cancelled\"}");return ESP_OK;}
     c.lastId=request.id;
+    if(request.path=="/api/speed") {
+      const auto axis=request.get("axis");SpeedRequest next;
+      next.boot=request.boot;next.cid=request.id;next.selection=request.selection;
+      next.hasRangeRevision=!request.get("rangeRevision").empty();
+      if((axis!="az"&&axis!="el")||!number(request.get("value"),next.value)||
+          (next.hasRangeRevision&&!requestGeneration(request.get("rangeRevision"),next.rangeRevision))) {
+        self.reply(c,request.id,"{\"ok\":false,\"result\":\"invalid\"}");return ESP_OK;
+      }
+      const unsigned index=axis=="az"?0:1;const float limit=self.ingressSpeedLimit_[index];
+      if(next.value<limit/20-limit*1e-6f||next.value>limit) {
+        self.reply(c,request.id,"{\"ok\":false,\"result\":\"invalid\"}");return ESP_OK;
+      }
+      auto &speed=c.buffers->speeds[index];
+      if(speed.cid&&(speed.boot!=next.boot||speed.selection!=next.selection||
+          speed.hasRangeRevision!=next.hasRangeRevision||speed.rangeRevision!=next.rangeRevision)) {
+        self.reply(c,request.id,"{\"ok\":false,\"result\":\"busy\"}");return ESP_OK;
+      }
+      if(speed.cid)self.cancelTarget(c,speed.cid);
+      speed=next;return ESP_OK;
+    }
     auto &slot=request.stop()?c.buffers->stop:c.buffers->command;
     if(slot.size) {
       LiveRequest old;
@@ -128,27 +151,59 @@ esp_err_t LiveServer::handler(httpd_req_t *req) {
   }
   return ESP_FAIL;
 }
+void LiveServer::speedCommands(uint32_t now) {
+  // Numeric latest-value slots keep AZ/EL independent without another pair
+  // of full websocket buffers. HTTPD queues; only the control loop executes.
+  for(auto &client:*clients_)for(unsigned axis=0;axis<2;++axis) {
+    SpeedRequest input;uint32_t generation;int fd;
+    { Guard lock(mutex_);if(client.fd<0||client.closing)continue;
+      auto &slot=client.buffers->speeds[axis];if(!slot.cid)continue;
+      input=slot;slot={};generation=client.generation;fd=client.fd;
+    }
+    Response response{409,"{\"ok\":false,\"result\":\"cancelled\"}"};
+    if(input.boot==runtime_.hud.boot&&input.selection==runtime_.hud.selectionEpoch) {
+      char value[24],revision[11];std::snprintf(value,sizeof value,"%.9g",double(input.value));
+      std::snprintf(revision,sizeof revision,"%lu",static_cast<unsigned long>(input.rangeRevision));
+      const std::pair<std::string_view,std::string_view> args[]={{"axis",axis?"el":"az"},{"value",value},{"rangeRevision",revision}};
+      response=apiView(runtime_.controller,runtime_.protocol,runtime_.loggerSettings,"/api/speed",
+          {args,input.hasRangeRevision?3u:2u},now);
+      runtime_.controller.tick(now);
+    }
+    Guard lock(mutex_);if(client.fd!=fd||client.generation!=generation)continue;
+    reply(client,input.cid,response.body.c_str());
+  }
+}
 void LiveServer::commands(uint32_t now) {
   if(!server_)return;
   // STOP from every client precedes all normal commands. A STOP cancels queued
   // older work on that connection; unrelated clients retain controller semantics.
-  for(unsigned pass=0;pass<2;++pass)for(auto &client:*clients_) {
-    Message input;uint32_t generation;int fd;
-    { Guard lock(mutex_); if(client.fd<0||(client.closing&&(pass||!client.buffers->stop.size)))continue;
-      auto &slot=pass?client.buffers->command:client.buffers->stop;if(!slot.size)continue;
-      input=slot;slot.size=0;generation=client.generation;fd=client.fd;
-      if(!pass&&client.buffers->command.size){LiveRequest old,stop;
-        if(old.parse({client.buffers->command.data,client.buffers->command.size})&&stop.parse({input.data,input.size})&&old.id<stop.id){
-          reply(client,old.id,"{\"ok\":false,\"result\":\"cancelled\"}");client.buffers->command.size=0;
+  for(unsigned pass=0;pass<2;++pass) {
+    if(pass)speedCommands(now);
+    for(auto &client:*clients_) {
+      Message input;uint32_t generation;int fd;
+      { Guard lock(mutex_); if(client.fd<0||(client.closing&&(pass||!client.buffers->stop.size)))continue;
+        auto &slot=pass?client.buffers->command:client.buffers->stop;if(!slot.size)continue;
+        input=slot;slot.size=0;generation=client.generation;fd=client.fd;
+        if(!pass){LiveRequest stop;
+          if(stop.parse({input.data,input.size})) {
+            if(client.buffers->command.size){LiveRequest old;
+              if(old.parse({client.buffers->command.data,client.buffers->command.size})&&old.id<stop.id){
+                reply(client,old.id,"{\"ok\":false,\"result\":\"cancelled\"}");client.buffers->command.size=0;
+              }
+            }
+            for(auto &speed:client.buffers->speeds)if(speed.cid&&speed.cid<stop.id) {
+              reply(client,speed.cid,"{\"ok\":false,\"result\":\"cancelled\"}");speed={};
+            }
+          }
         }
       }
+      LiveRequest request;if(!request.parse({input.data,input.size}))continue;
+      // Main-loop ownership: HTTPD must never call executeLive or touch runtime.
+      const auto response=executeLive(request,runtime_.controller,runtime_.protocol,runtime_.loggerSettings,runtime_.hud,now);
+      Guard lock(mutex_);if(client.fd!=fd||client.generation!=generation)continue;
+      reply(client,request.id,response.body.c_str());
+      if(response.status==202){bool saved=false;for(auto &p:client.buffers->pending)if(!p.cid){p={request.id,runtime_.hud.requestId()};saved=true;break;}if(!saved)client.closing=true;}
     }
-    LiveRequest request;if(!request.parse({input.data,input.size}))continue;
-    // Main-loop ownership: HTTPD must never call executeLive or touch runtime.
-    const auto response=executeLive(request,runtime_.controller,runtime_.protocol,runtime_.loggerSettings,runtime_.hud,now);
-    Guard lock(mutex_);if(client.fd!=fd||client.generation!=generation)continue;
-    reply(client,request.id,response.body.c_str());
-    if(response.status==202){bool saved=false;for(auto &p:client.buffers->pending)if(!p.cid){p={request.id,runtime_.hud.requestId()};saved=true;break;}if(!saved)client.closing=true;}
   }
   for(auto &client:*clients_) {
     Guard lock(mutex_);if(client.fd<0||client.closing)continue;
@@ -162,8 +217,11 @@ void LiveServer::publish(uint32_t now) {
   if(!server_)return;
   bool any=false;{Guard lock(mutex_);
     ingressRange_[0]=runtime_.controller.azRange;ingressRange_[1]=runtime_.controller.elRange;ingressEl_=runtime_.controller.model==Model::G5500;
-    for(unsigned i=0;i<2;++i) ingressReady_[i]=runtime_.controller.axes[i].calibrated &&
-      (!runtime_.controller.variableSpeed(i) || runtime_.controller.motionSettings[i].ready);
+    for(unsigned i=0;i<2;++i) {
+      ingressReady_[i]=runtime_.controller.axes[i].calibrated &&
+        (!runtime_.controller.variableSpeed(i) || runtime_.controller.motionSettings[i].ready);
+      ingressSpeedLimit_[i]=runtime_.controller.runtimeSpeedLimit(i);
+    }
     for(auto &c:*clients_)any|=c.fd>=0;}
   if(!any)return;
   const uint32_t critical=liveControlFingerprint(runtime_.controller,runtime_.hud);

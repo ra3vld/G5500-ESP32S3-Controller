@@ -476,6 +476,99 @@ static void runtimeSpeedChanges() {
   }
   CHECK(std::abs(c.axes[0].speedOutputPercent-50)<.01f);
 }
+static void operationalSpeedProfiles() {
+  for(unsigned axis:{0u,1u})for(int direction:{-1,1})for(bool tracking:{false,true}) {
+    auto c=ready(true,90);c.azRange={-1000,1000};c.elRange={-1000,1000};
+    c.resetFeedback(int(axis),0);c.feedbackAt(axis,90,true,0);
+    auto &m=c.motionSettings[axis];m.velocity=80;m.acceleration=m.deceleration=10;m.jerk=8;
+    m.positionKp=m.positionKi=m.positionKd=0;m.velocityKp=m.velocityKi=m.velocityKd=0;m.feedforward=1;
+    const float goal=90+800.f*direction;
+    CHECK(c.setRuntimeSpeed(axis,24,0)==Result::Ok);
+    if(tracking)CHECK(c.target({goal,goal,axis==0,axis==1},false,0)==Result::Ok);
+    else CHECK(c.jog(axis,direction,false,0)==Result::Ok);
+    c.tick(0);float position=90,previousVelocity=c.axes[axis].requestedVelocity,previousAcceleration=c.axes[axis].profileAcceleration;
+    for(unsigned t=20;t<=18000;t+=20) {
+      position+=c.axes[axis].requestedVelocity*.02f;c.feedbackAt(axis,position,true,t);
+      const auto epoch=c.motionEpoch[axis];
+      if(t==6000)CHECK(c.setRuntimeSpeed(axis,36,t)==Result::Ok);
+      if(t==10000)CHECK(c.setRuntimeSpeed(axis,12,t)==Result::Ok);
+      if(t==14000)CHECK(c.setRuntimeSpeed(axis,30,t)==Result::Ok);
+      auto duplicate=c;
+      if(t==12500)CHECK(c.setRuntimeSpeed(axis,12,t)==Result::Ok);
+      c.tick(t);const auto &a=c.axes[axis];
+      CHECK(a.motionError==MotionError::None&&a.direction==direction&&a.motionPhase==MotionPhase::Run);
+      CHECK(c.motionEpoch[axis]==epoch);CHECK(a.tracking==tracking);
+      CHECK(std::abs(a.profileAcceleration)<=10.001f);
+      if(std::abs(a.profileAcceleration-previousAcceleration)>.1605f)
+        std::cerr<<"operational jerk axis="<<axis<<" dir="<<direction<<" tracking="<<tracking<<" t="<<t<<" previous="<<previousAcceleration<<" actual="<<a.profileAcceleration<<" velocity="<<a.requestedVelocity<<'\n';
+      CHECK(std::abs(a.profileAcceleration-previousAcceleration)<=.1605f);
+      CHECK(std::abs(a.requestedVelocity-previousVelocity)<=.201f);
+      if(t==6000)CHECK(a.profileAcceleration*direction>.15f);
+      if(t==10000)CHECK(a.profileAcceleration*direction<-.15f);
+      if(t==8460)CHECK(std::abs(a.requestedVelocity-36*direction)<.03f);
+      if(t>=10000&&t<14000) {
+        CHECK(a.requestedVelocity*direction>=11.99f);
+        CHECK(a.requestedVelocity*direction<=previousVelocity*direction+.0005f);
+      }
+      if(t==13660)CHECK(std::abs(a.requestedVelocity-12*direction)<.03f);
+      if(t==12500) {
+        duplicate.tick(t);CHECK(a.requestedVelocity==duplicate.axes[axis].requestedVelocity);
+        CHECK(a.profileAcceleration==duplicate.axes[axis].profileAcceleration);
+        CHECK(a.speedOutputPercent==duplicate.axes[axis].speedOutputPercent);
+      }
+      previousVelocity=a.requestedVelocity;previousAcceleration=a.profileAcceleration;
+    }
+    CHECK(std::abs(c.axes[axis].requestedVelocity-30*direction)<.03f);
+    if(tracking)CHECK(c.axes[axis].target==goal);
+    CHECK(m.velocity==80);c.stopNow(-1,18020);CHECK(!c.moving());
+  }
+}
+// Reproduce a live speed increase while startup overspeed has left the shaft
+// ahead of the virtual position profile. An old path used to keep braking for
+// another 0.6 s after the selection; only jerk release should delay the turn.
+static void startupSpeedSelection() {
+  for(unsigned axis:{0u,1u})for(int direction:{-1,1}) {
+    auto c=ready(true,90);c.azRange={-1000,1000};c.elRange={-1000,1000};
+    c.resetFeedback(int(axis),0);c.feedbackAt(axis,90,true,0);auto &m=c.motionSettings[axis];
+    m.kickEnabled=true;m.kickPercent=35;m.kickMs=300;m.kickReleaseMs=20;m.movementDegrees=1;m.sustainingPercent=18;
+    m.velocity=40;m.acceleration=m.deceleration=10;m.jerk=8;m.positionKp=.5f;m.positionKi=m.positionKd=0;
+    m.velocityKp=.12f;m.velocityKi=.8f;m.velocityKd=0;m.feedforward=.61f;m.velocityWindowMs=80;
+    m.positionTolerance=3.59f;m.stoppedVelocity=3.64f;m.outputLimitPercent=50;
+    CHECK(c.setRuntimeSpeed(axis,24,0)==Result::Ok);const float goal=90+800.f*direction;
+    CHECK(c.target({goal,goal,axis==0,axis==1},false,0)==Result::Ok);c.tick(0);
+    float position=90,velocity=0;PositionFilter filter;
+    for(unsigned t=20;t<=2000;t+=20) {
+      const auto &a=c.axes[axis];const float u=a.speedOutputPercent;
+      float wanted=a.direction*(u>=18?6*(u-15):0);if(std::abs(velocity)<.05f&&u<28)wanted=0;
+      velocity+=(wanted-velocity)*(.02f/.16f);position+=velocity*.02f;
+      c.feedbackAt(axis,filter.sample(int(std::round(position/.07f)),t)*.07f,true,t);
+      if(t==600)CHECK(c.setRuntimeSpeed(axis,36,t)==Result::Ok);
+      c.tick(t);CHECK(a.motionError==MotionError::None);
+      if(t>=600)CHECK(a.motionPhase==MotionPhase::Run&&a.direction==direction&&a.target==goal);
+      if(t==1000) { CHECK(a.profileAcceleration*direction>0);CHECK(a.requestedVelocity*direction>23); }
+    }
+  }
+}
+static void selectedSpeedNearGoal() {
+  for(unsigned axis:{0u,1u})for(int direction:{-1,1}) {
+    auto c=ready(true,90);c.azRange={-1000,1000};c.elRange={-1000,1000};
+    c.resetFeedback(int(axis),0);c.feedbackAt(axis,90,true,0);auto &m=c.motionSettings[axis];
+    m.velocity=40;m.acceleration=m.deceleration=10;m.jerk=8;m.positionKp=m.positionKi=m.positionKd=0;
+    m.velocityKp=m.velocityKi=m.velocityKd=0;m.feedforward=1;m.positionTolerance=.2f;
+    const float goal=90+40.f*direction;
+    CHECK(c.target({goal,goal,axis==0,axis==1},false,0)==Result::Ok);c.tick(0);
+    float position=90;bool changed=false;
+    for(unsigned t=20;t<=14000;t+=20) {
+      position+=c.axes[axis].requestedVelocity*.02f;c.feedbackAt(axis,position,true,t);
+      if(!changed&&std::abs(goal-position)<20) {CHECK(c.setRuntimeSpeed(axis,8,t)==Result::Ok);changed=true;}
+      c.tick(t);CHECK(c.axes[axis].motionError==MotionError::None);
+      CHECK(!c.axes[axis].direction||c.axes[axis].direction==direction);
+      if(c.axes[axis].completed)break;
+    }
+    CHECK(changed&&c.axes[axis].completed);CHECK(std::abs(position-goal)<.3f);
+    CHECK(!c.axes[axis].holdArmed&&c.axes[axis].speedOutputPercent==0);
+  }
+}
 static void longCascadeCruise() {
   for(unsigned axis:{0u,1u}) for(int direction:{-1,1}) {
     auto c=ready(true,90);c.azRange={-500,500};c.elRange={-500,500};
@@ -544,4 +637,4 @@ static void slowKickHandoff() {
   }
 }
 
-int main() { try { slowKickHandoff();oneShotOvershoot();cascadeAccelerationFeedthrough();runtimeSpeedChanges();longCascadeCruise(); boundedKickRise();fastHoldingRegression(); nearBandStream();nearBandStream(0xfffffe00u);stationaryNoiseStillKicks();sustainingAndArrival(); records();stallRetry();kickAndStream();cascadeHold();profilesAndNoise();feedbackSafety();lowOutputProgress();cascadeKickOverspeed();stoppedReversal();std::cout<<"PASS motion: "<<checks<<" checks; Controller bytes="<<sizeof(Controller)<<"\n"; } catch(const std::exception &e) { std::cerr<<e.what()<<'\n';return 1; } }
+int main() { try { operationalSpeedProfiles();startupSpeedSelection();selectedSpeedNearGoal();slowKickHandoff();oneShotOvershoot();cascadeAccelerationFeedthrough();runtimeSpeedChanges();longCascadeCruise(); boundedKickRise();fastHoldingRegression(); nearBandStream();nearBandStream(0xfffffe00u);stationaryNoiseStillKicks();sustainingAndArrival(); records();stallRetry();kickAndStream();cascadeHold();profilesAndNoise();feedbackSafety();lowOutputProgress();cascadeKickOverspeed();stoppedReversal();std::cout<<"PASS motion: "<<checks<<" checks; Controller bytes="<<sizeof(Controller)<<"\n"; } catch(const std::exception &e) { std::cerr<<e.what()<<'\n';return 1; } }

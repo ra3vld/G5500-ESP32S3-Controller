@@ -59,6 +59,18 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   assert.equal(state.axes[0].speedSetpoint,80);assert.equal(state.axes[1].speedSetpoint,12.75);
   assert.equal(state.moving,true);assert.equal(state.axes[0].direction,1);assert.equal(state.axes[1].direction,1);
   assert(posts.every(p=>p.path==='/api/speed'),'sliders must not send settings/STOP/target');
+  // A slow full-status refresh must not hold the next speed command hostage.
+  await page.evaluate(()=>{window.speedTestUpd=upd;window.speedTestRefreshes=0;upd=async()=>{++window.speedTestRefreshes;await new Promise(resolve=>window.speedTestRelease=resolve);};});
+  await input('az',44);await page.waitForFunction(()=>!manualSpeedRequests.az.busy&&window._forkState.axes[0].speedSetpoint===44,null,{timeout:1000});
+  await input('az',45);await page.waitForFunction(()=>!manualSpeedRequests.az.busy&&window._forkState.axes[0].speedSetpoint===45,null,{timeout:1000});
+  assert.equal(await page.evaluate(()=>window.speedTestRefreshes),0,'speed ACK must not wait for full status');
+  await page.evaluate(()=>{upd=window.speedTestUpd;});
+  // Ready live connections must carry speed without an HTTP round trip.
+  await page.evaluate(()=>{window.speedTestSendLive=sendLive;window.speedTestPackets=[];live.ready=true;live.last=Date.now();sendLive=async(path,body)=>{window.speedTestPackets.push({path,body});return{status:200,json:async()=>({ok:true,result:'ok'})};};});
+  const httpPosts=posts.length;await input('el',15);
+  await page.waitForFunction(()=>!manualSpeedRequests.el.busy&&window._forkState.axes[1].speedSetpoint===15);
+  assert.equal(posts.length,httpPosts);assert.equal(await page.evaluate(()=>window.speedTestPackets.at(-1).path),'/api/speed');
+  await page.evaluate(()=>{sendLive=window.speedTestSendLive;live.ready=false;});
   state.autotune.active=true;await page.evaluate(()=>upd(true));await page.waitForFunction(()=>document.getElementById('azManualSpeed').disabled);assert(await page.locator('#azManualSpeed').isDisabled());assert(await page.locator('#elManualSpeed').isDisabled());
   state.autotune.active=false;state.axes[1].speedAdjustable=false;await page.evaluate(()=>upd(true));await page.waitForFunction(()=>document.getElementById('elManualSpeedControl').classList.contains('hide'));assert(!await page.locator('#elManualSpeedControl').isVisible());
   state.model='G800DXA';state.axes[1].speedAdjustable=true;await page.evaluate(()=>upd(true));await page.waitForFunction(()=>window._forkState.model==='G800DXA');assert(!await page.locator('#elManualSpeedControl').isVisible());

@@ -13,6 +13,12 @@ int main() {
   assert(executeLive(request,c,p,settings,h,0).status==200);assert(c.axes[0].target==123);
   assert(request.parse(prefix+"/api/move&d=S"));assert(request.stop());
   assert(executeLive(request,c,p,settings,h,1).status==200);assert(!c.moving());
+  c.hardware.drive=DRIVE_BTS7960;c.hardware.simulation=false;
+  const auto speedFingerprint=liveControlFingerprint(c,h),stopEpoch=c.stopEpoch;
+  assert(request.parse(prefix+"/api/speed&axis=az&value=35"));
+  assert(executeLive(request,c,p,settings,h,2).status==200);
+  assert(c.runtimeSpeed(0)==35&&c.axes[0].target==123&&!c.moving()&&c.stopEpoch==stopEpoch);
+  assert(speedFingerprint!=liveControlFingerprint(c,h));
   assert(!request.parse(prefix+"/api/target&az=123&az=456"));
   assert(!request.parse(prefix+"/api/target&az=%00"));
   assert(!request.parse(prefix+"/api/target&az=%f"));

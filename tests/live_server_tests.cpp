@@ -143,6 +143,36 @@ int main(){
  assert(!c.moving());server.publish(2520);pumpLive(); // Old delivery cannot rearm.
  assert(command(1002,packet(502,"/api/target","&az=40"))==ESP_OK);server.commands(2540);
  assert(c.axes[0].direction); // A new command may repeat the same coordinate.
+ // Speed bursts have bounded independent slots and cannot crowd out STOP/targets.
+ c.stopNow(-1,2560);server.publish(2560);pumpLive();
+ c.hardware.simulation=true;
+ for(unsigned id=600;id<800;++id) {
+   const bool az=id%2==0;
+   const std::string args=std::string("&axis=")+(az?"az":"el")+"&value="+std::to_string(20+(id-600)*.1f);
+   assert(command(1002,packet(id,"/api/speed",args.c_str()))==ESP_OK);
+ }
+ assert(c.runtimeSpeed(0)!=39.8f);server.commands(2580);
+ assert(std::abs(c.runtimeSpeed(0)-39.8f)<.001f&&std::abs(c.runtimeSpeed(1)-39.9f)<.001f&&!c.moving());
+ server.publish(2580);pumpLive();server.publish(2585);pumpLive();
+ // STOP cancels older speed updates; a newer speed changes only the setting.
+ assert(command(1002,packet(800,"/api/speed","&axis=az&value=50"))==ESP_OK);
+ assert(command(1002,packet(801,"/api/move","&d=S"))==ESP_OK);
+ assert(command(1002,packet(802,"/api/speed","&axis=el&value=60"))==ESP_OK);
+ server.commands(2600);assert(std::abs(c.runtimeSpeed(0)-39.8f)<.001f&&c.runtimeSpeed(1)==60&&!c.moving());
+ server.publish(2600);pumpLive();server.publish(2605);pumpLive();
+ // The final speed slot and an ordinary target can both execute on one tick.
+ assert(command(1002,packet(803,"/api/speed","&axis=az&value=45"))==ESP_OK);
+ assert(command(1002,packet(804,"/api/target","&az=80"))==ESP_OK);
+ server.commands(2620);assert(c.runtimeSpeed(0)==45&&c.axes[0].target==80);
+ server.publish(2620);pumpLive();server.publish(2625);pumpLive();
+ assert(command(1002,"v=1&boot=b&selection=0&cid=805&path=/api/speed&axis=az&value=70")==ESP_OK);
+ server.commands(2640);assert(c.runtimeSpeed(0)==45);server.publish(2640);pumpLive();
+ assert(command(1002,packet(806,"/api/speed","&axis=az&value=70&rangeRevision=999"))==ESP_OK);
+ server.commands(2660);assert(c.runtimeSpeed(0)==45);server.publish(2660);pumpLive();
+ c.stopNow(-1,2680);
+ assert(command(1003,packet(1,"/api/speed","&axis=az&value=55"))==ESP_OK);
+ assert(command(1003,packet(2,"/api/speed","&axis=az&value=101"))==ESP_OK);
+ server.commands(2700);assert(c.runtimeSpeed(0)==55&&!c.moving()); // Invalid update keeps the queued valid value.
  std::cout<<"PASS: actual HTTPD adapter: four clients, loop ownership, STOP priority, duplicate IDs, bounded backpressure, reconnect\n";
  std::cout<<"PASS: idle live storage <=4 KiB, 10000 queue allocations/releases, low-memory admission and existing STOP\n";
 }

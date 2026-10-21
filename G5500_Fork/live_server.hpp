@@ -17,8 +17,15 @@ class LiveServer {
   struct Message { char data[LIVE_INPUT_CAPACITY+1]{}; size_t size=0; };
   struct Reply { char data[192]{}; size_t size=0; };
   struct Pending { uint32_t cid=0, request=0; };
+  struct SpeedRequest {
+    uint64_t boot=0;
+    uint32_t cid=0, selection=0, rangeRevision=0;
+    float value=0;
+    bool hasRangeRevision=false;
+  };
   struct ClientBuffers {
     Message command, stop;
+    SpeedRequest speeds[2];
     Reply replies[4]; unsigned head=0, count=0;
     Pending pending[4];
     uint32_t cancelledFrom=0, cancelledThrough=0;
@@ -44,6 +51,7 @@ class LiveServer {
   RotationRange ingressRange_[2]{};
   bool ingressEl_=true;
   bool ingressReady_[2]{};
+  float ingressSpeedLimit_[2]{};
   static esp_err_t handler(httpd_req_t *);
   static esp_err_t opened(httpd_handle_t,int);
   static int sendSocket(httpd_handle_t,int,const char *,size_t,int);
@@ -51,6 +59,7 @@ class LiveServer {
   static void sendWork(void *);
   void reply(Client &,uint32_t,const char *);
   void cancelTarget(Client &,uint32_t);
+  void speedCommands(uint32_t now);
 public:
   explicit LiveServer(Runtime &r):runtime_(r) {}
   bool begin();

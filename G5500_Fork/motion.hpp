@@ -93,13 +93,14 @@ struct MotionRuntime {
   MotionFeedback feedback;
   MotionPid positionPid, velocityPid;
   bool started = false, profileValid = false, settling = false, releasing = false, arriving = false;
-  bool progressValid = false, kickDone = false, streamingTarget = false;
+  bool progressValid = false, kickDone = false, streamingTarget = false, profileTracking = false;
   uint32_t targetChangedAt = 0;
   uint32_t at = 0, kickAt = 0, releaseAt = 0, settledAt = 0, progressAt = 0;
   float referencePosition = 0, referenceVelocity = 0, referenceAcceleration = 0;
   float ramp = 0, rampRate = 0, kickPosition = 0, progressPosition = 0;
   float kickBase = 0, kickPeak = 0, releaseOutput = 0;
   float commandVelocity = 0, commandAcceleration = 0;
+  float plannedSpeedLimit = 0;
   int kickDirection = 0, targetDirection = 0;
   bool crossedTarget = false;
   void cancel();
