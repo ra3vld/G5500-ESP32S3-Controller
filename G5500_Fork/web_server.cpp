@@ -78,6 +78,7 @@ void WebInterface::setupWeb() {
     "/api/rssi",
     "/api/settings",
     "/api/status",
+    "/api/speed",
     "/api/target",
     "/api/wifi",
     "/api/config",

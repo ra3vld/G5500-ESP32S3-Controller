@@ -37,6 +37,11 @@ int main() {
   auto fingerprint=liveControlFingerprint(c,h);c.axes[0].current+=1;
   assert(fingerprint==liveControlFingerprint(c,h));c.axes[0].target+=1;
   assert(fingerprint!=liveControlFingerprint(c,h));
+  // Preserve sub-centidegree speed limits/setpoints in the live projection.
+  c.motionSettings[0].mode=RegulatorMode::Cascade;c.motionSettings[0].velocity=.001f;
+  JsonWriter tiny(data,sizeof data);assert(writeLiveState(tiny,c,h,3));
+  assert(std::string(tiny.data()).find("\"speedSetpoint\":0.001")!=std::string::npos);
+  assert(std::string(tiny.data()).find("\"speedLimit\":0.001")!=std::string::npos);
   HudUartTx uart;uint8_t telemetry[60]={1,2,3,4,8},ack[80]={1,2,3,4,10},command[70]={1,2,3,4,9};
   assert(uart.enqueue(telemetry,sizeof telemetry));assert(uart.enqueue(ack,sizeof ack));assert(uart.enqueue(command,sizeof command));
   assert(!uart.enqueue(command,sizeof command));

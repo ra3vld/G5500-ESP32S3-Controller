@@ -5,6 +5,38 @@
 #include <limits>
 using namespace forkrot;
 int main(){
+  // Main-page speed commands change a live setpoint, never the saved tuning.
+  {
+    Runtime speedRuntime; auto &speed=speedRuntime.controller;
+    HardwareConfig hardware;hardware.drive=DRIVE_BTS7960;hardware.simulation=true;speed.configureHardware(hardware);
+    speed.feedback(30,60,true,true);speed.motionSettings[0].outputLimitPercent=90;
+    const auto savedSpeed=speed.speeds;const auto savedMotion=speed.motionSettings;
+    assert(speed.jog(0,1,false,0)==Result::Ok);speed.tick(0);
+    const auto direction=speed.axes[0].direction;assert(direction==1);
+    assert(api(speed,speedRuntime.protocol,speedRuntime.loggerSettings,"/api/speed",{{"axis","az"},{"value","72"}},20).status==200);
+    assert(speed.runtimeSpeed(0)==72 && speed.runtimeSpeed(1)==50);
+    assert(speed.axes[0].direction==direction && speed.speeds==savedSpeed && speed.motionSettings==savedMotion);
+    speed.motionSettings[1].mode=RegulatorMode::Cascade;speed.motionSettings[1].velocity=27.5f;
+    assert(api(speed,speedRuntime.protocol,speedRuntime.loggerSettings,"/api/speed",{{"axis","el"},{"value","12.75"}},40).status==200);
+    assert(speed.runtimeSpeed(1)==12.75f && speed.motionSettings[1].velocity==27.5f && speed.runtimeSpeed(0)==72);
+    for(const auto &form:{Form{{"axis","az"},{"value","91"}},Form{{"axis","el"},{"value","28"}},Form{{"axis","az"},{"value","nan"}},Form{{"axis","bad"},{"value","20"}}})
+      assert(api(speed,speedRuntime.protocol,speedRuntime.loggerSettings,"/api/speed",form,60).status==400);
+    assert(speed.runtimeSpeed(0)==72 && speed.runtimeSpeed(1)==12.75f);
+    Storage speedStorage;assert(speedStorage.saveForkSettings(speedRuntime));Runtime reloaded;reloaded.controller.hardware=hardware;speedStorage.loadForkSettings(reloaded);
+    assert(reloaded.controller.runtimeSpeed(0)==savedSpeed[0].speedPercent && reloaded.controller.runtimeSpeed(1)==27.5f);
+    const auto status=stateJson(speed,speedRuntime.protocol,speedRuntime.loggerSettings,60);
+    assert(status.find("\"speedSetpoint\":72")!=std::string::npos && status.find("\"speedAdjustable\":true")!=std::string::npos);
+    assert(api(speed,speedRuntime.protocol,speedRuntime.loggerSettings,"/api/settings",{{"azSpeedPercent","40"}},80).status==200);
+    assert(speed.runtimeSpeed(0)==40 && speed.runtimeSpeed(1)==12.75f && !speed.axes[0].direction);
+    speed.motionSettings[1].velocity=.001f;
+    assert(api(speed,speedRuntime.protocol,speedRuntime.loggerSettings,"/api/speed",{{"axis","el"},{"value","0.001"}},80).status==200);
+    const auto tinyStatus=stateJson(speed,speedRuntime.protocol,speedRuntime.loggerSettings,80);
+    assert(tinyStatus.find("\"speedSetpoint\":0.001")!=std::string::npos);
+    assert(tinyStatus.find("\"speedLimit\":0.001")!=std::string::npos);
+    hardware.simulation=false;hardware.pins.azSpeedEnable=-1;speed.configureHardware(hardware);
+    assert(!speed.runtimeSpeedAvailable(0));assert(api(speed,speedRuntime.protocol,speedRuntime.loggerSettings,"/api/speed",{{"axis","az"},{"value","20"}},80).status!=200);
+    Preferences::database.clear();
+  }
   Preferences::database.clear(); Storage storage; Runtime runtime;
   HardwareConfig hw;hw.drive=DRIVE_BTS7960;hw.simulation=false;runtime.controller.configureHardware(hw);
   runtime.controller.feedback(10,30,true,true);storage.loadForkSettings(runtime);

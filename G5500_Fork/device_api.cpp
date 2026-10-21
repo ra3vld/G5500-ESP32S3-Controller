@@ -250,7 +250,9 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
         << ",\"tracking\":" << (a.tracking?"true":"false")
         << ",\"completed\":" << (a.completed?"true":"false")
         << ",\"direction\":" << a.direction << ",\"stopToleranceDegrees\":" << c.effectiveTolerance(i)
-        << ",\"speedOutputPercent\":" << a.speedOutputPercent;
+        << ",\"speedOutputPercent\":" << a.speedOutputPercent
+        << ",\"speedSetpoint\":";output.decimal(c.runtimeSpeed(i),-1) << ",\"speedLimit\":";
+      output.decimal(c.runtimeSpeedLimit(i),-1) << ",\"speedAdjustable\":" << (c.runtimeSpeedAvailable(i)?"true":"false");
       writeAxisMotion(output,c,i);output << '}';return;
     }
     output << "{\"model\":" << jsonQuoted(c.model==Model::G5500?"G5500":"G800DXA")
@@ -930,7 +932,7 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
     web_.send(200, "text/plain; charset=utf-8", "Настройки Wi-Fi сохранены. Подключаемся к сети; полученный IP появится на этой странице.");
     return;
   }
-  if(method=="POST" && (path=="/api/mode" || path=="/api/execute" || path=="/api/preset" || path=="/api/preset/run" || path=="/api/settings" || path=="/api/motion/reset" || path=="/api/motion/autotune")) {
+  if(method=="POST" && (path=="/api/mode" || path=="/api/execute" || path=="/api/preset" || path=="/api/preset/run" || path=="/api/settings" || path=="/api/motion/reset" || path=="/api/motion/autotune" || path=="/api/speed")) {
       auto oldModel = runtime_.controller.model;
       auto oldSettings = runtime_.loggerSettings;
       actions_.updatePosition();

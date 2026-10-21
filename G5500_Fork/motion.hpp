@@ -100,7 +100,8 @@ struct MotionRuntime {
   float ramp = 0, rampRate = 0, kickPosition = 0, progressPosition = 0;
   float kickBase = 0, kickPeak = 0, releaseOutput = 0;
   float commandVelocity = 0, commandAcceleration = 0;
-  int kickDirection = 0;
+  int kickDirection = 0, targetDirection = 0;
+  bool crossedTarget = false;
   void cancel();
 };
 } // namespace forkrot

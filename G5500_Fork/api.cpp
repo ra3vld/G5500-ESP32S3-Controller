@@ -171,6 +171,9 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
          << ",\"stopToleranceDegrees\":" << controller.effectiveTolerance(i)
          << ",\"speedEnabled\":" << (controller.variableSpeed(i) ? "true" : "false")
          << ",\"speedOutputPercent\":" << axis.speedOutputPercent;
+    json << ",\"speedSetpoint\":";json.decimal(controller.runtimeSpeed(i),-1) << ",\"speedLimit\":";
+    json.decimal(controller.runtimeSpeedLimit(i),-1)
+         << ",\"speedAdjustable\":" << (controller.runtimeSpeedAvailable(i) ? "true" : "false");
     writeAxisMotion(json,controller,i); json << '}';
   }
   json << ']';
@@ -262,7 +265,11 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     protocol.setExternalAzMode(azMode);
     return {200, "{\"ok\":true,\"result\":\"ok\"}"};
   }
-  if (path == "/api/mode") {
+  if (path == "/api/speed") {
+    const auto axis=get(form,"axis");float value;
+    if((axis=="az" || axis=="el") && number(get(form,"value"),value))
+      result=controller.setRuntimeSpeed(axis=="az"?0:1,value,now);
+  } else if (path == "/api/mode") {
     auto m = get(form, "mode");
     if (m == "manual" || m == "auto" || m == "auto_1h") {
       result = controller.setMode(m == "manual" ? Mode::Manual
@@ -435,7 +442,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       protocol.setExternalAzMode(azMode);
       controller.speedEnabled = enabled;
       for(unsigned i=0;i<2;++i) {
-        if (!(controller.speeds[i]==speeds[i])) controller.stopNow(int(i),now);
+        if (!(controller.speeds[i]==speeds[i])) { controller.stopNow(int(i),now); controller.resetRuntimeSpeed(i); }
         controller.configureMotion(i,motion[i],now);
       }
       controller.speeds = speeds;
@@ -447,16 +454,38 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     if(action=="center") {
       const auto axis=get(form,"axis");
       if(axis=="az" || axis=="el")result=controller.centerForAutoTune(axis=="az"?0:1,now);
-    } else if(action=="cancel")result=controller.cancelAutoTune(now);
-    else if(action=="apply") {
+    } else if(action=="cancel") {
+      uint32_t expected;
+      if(!has(form,"id"))result=controller.cancelAutoTune(now);
+      else if(requestGeneration(get(form,"id"),expected))
+        result=expected==controller.autoTune.id?controller.cancelAutoTune(now):Result::Unavailable;
+    } else if(action=="apply") {
       uint32_t id;
       if(requestGeneration(get(form,"id"),id)) result=controller.applyAutoTune(id,now);
     } else if(action=="start") {
       const auto axis=get(form,"axis"),mode=get(form,"mode");float travel,limit;uint32_t previous;
-      if((axis=="az" || axis=="el") && (mode=="simple" || mode=="cascade") &&
+      AutoTuneOptions options;bool optionsValid=true;
+      for(const auto &field:autoTuneRealFields)if(has(form,field.name)) {
+        float value;
+        if(!number(get(form,field.name),value) || value<field.lo || value>field.hi)optionsValid=false;
+        else options.*field.member=value;
+      }
+      for(const auto &field:autoTuneIntFields)if(has(form,field.name)) {
+        unsigned value;
+        if(!integer(get(form,field.name),value,field.lo,field.hi))optionsValid=false;
+        else options.*field.member=value;
+      }
+      // A misspelled methodology must not silently run the default experiment.
+      for(const auto &entry:form)if(entry.first.substr(0,4)=="tune") {
+        bool known=false;
+        for(const auto &field:autoTuneRealFields)known|=entry.first==field.name;
+        for(const auto &field:autoTuneIntFields)known|=entry.first==field.name;
+        if(!known)optionsValid=false;
+      }
+      if(optionsValid && (axis=="az" || axis=="el") && (mode=="simple" || mode=="cascade") &&
           requestGeneration(get(form,"id"),previous) && previous==controller.autoTune.id &&
           number(get(form,"travel"),travel) && number(get(form,"outputLimit"),limit))
-        result=controller.startAutoTune(axis=="az"?0:1,mode=="simple"?RegulatorMode::Simple:RegulatorMode::Cascade,travel,limit,now);
+        result=controller.startAutoTune(axis=="az"?0:1,mode=="simple"?RegulatorMode::Simple:RegulatorMode::Cascade,travel,limit,now,options);
     }
   } else if (path == "/api/motion/reset") {
     const auto axis=get(form,"axis");

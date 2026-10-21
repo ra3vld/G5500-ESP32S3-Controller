@@ -108,7 +108,29 @@ struct AutoTuneMeasurement {
   float responseSeconds = 0, coastDegrees = 0;
   uint32_t startMs = 0;
 };
+// Volatile methodology for one identification run; never stored in drive settings.
+struct AutoTuneOptions {
+  float searchStartPercent = 5, searchStepPercent = 5, workingFraction = .5f;
+  float lambdaFactor = 1, positionGainFactor = 1;
+  unsigned startupObservationMs = 500, plateauMinMs = 200, plateauTimeoutMs = 2500;
+  bool valid(float outputLimit) const;
+};
+struct AutoTuneRealField { const char *name; float AutoTuneOptions::*member; float lo, hi; };
+inline constexpr AutoTuneRealField autoTuneRealFields[] = {
+  {"tuneSearchStartPercent", &AutoTuneOptions::searchStartPercent, 1, 100},
+  {"tuneSearchStepPercent", &AutoTuneOptions::searchStepPercent, 1, 20},
+  {"tuneWorkingFraction", &AutoTuneOptions::workingFraction, .1f, 1},
+  {"tuneLambdaFactor", &AutoTuneOptions::lambdaFactor, .5f, 4},
+  {"tunePositionGainFactor", &AutoTuneOptions::positionGainFactor, .25f, 2}
+};
+struct AutoTuneIntField { const char *name; unsigned AutoTuneOptions::*member; unsigned lo, hi; };
+inline constexpr AutoTuneIntField autoTuneIntFields[] = {
+  {"tuneStartupObservationMs", &AutoTuneOptions::startupObservationMs, 100, 2000},
+  {"tunePlateauMinMs", &AutoTuneOptions::plateauMinMs, 160, 1000},
+  {"tunePlateauTimeoutMs", &AutoTuneOptions::plateauTimeoutMs, 1000, 10000}
+};
 struct AutoTuneState {
+  AutoTuneOptions options{};
   AutoTunePhase phase = AutoTunePhase::Idle;
   RegulatorMode mode = RegulatorMode::Simple;
   int axis = -1, direction = 1;
@@ -178,7 +200,7 @@ public:
   std::array<MotionSettings, 2> motionSettings{};
   AutoTuneState autoTune{};
   Result centerForAutoTune(unsigned axis, uint32_t now);
-  Result startAutoTune(unsigned axis, RegulatorMode mode, float travel, float outputLimit, uint32_t now);
+  Result startAutoTune(unsigned axis, RegulatorMode mode, float travel, float outputLimit, uint32_t now, const AutoTuneOptions &options = {});
   Result cancelAutoTune(uint32_t now);
   Result applyAutoTune(uint32_t id, uint32_t now);
   static const char *autoTunePhaseName(AutoTunePhase);
@@ -190,6 +212,11 @@ public:
   unsigned &slowdownDegrees = speeds[0].slowdownDegrees;
   bool driveFault = false;
   bool variableSpeed(unsigned i) const;
+  bool runtimeSpeedAvailable(unsigned axis) const;
+  float runtimeSpeed(unsigned axis) const;
+  float runtimeSpeedLimit(unsigned axis) const;
+  void resetRuntimeSpeed(unsigned axis) { if (axis < 2) runtimeSpeed_[axis] = 0; }
+  Result setRuntimeSpeed(unsigned axis, float value, uint32_t now);
   float tolerance(unsigned i) const {
     if (variableSpeed(i) && motionSettings[i].mode == RegulatorMode::Cascade)
       return motionSettings[i].positionTolerance;
@@ -259,6 +286,7 @@ private:
     bool used = false, closed = false;
   } manualSessions_[4];
   float manualScale_[2] = {1, 1};
+  float runtimeSpeed_[2] = {}; // Zero selects the saved setting; never persisted.
   void closeManual(ManualSession &, uint32_t now);
   uint32_t autoHourStartedAt_ = 0, sequenceAdvancedAt_ = 0, sequenceIntervalMs_ = 0;
   uint32_t lastSpeedUpdateAt_ = 0;

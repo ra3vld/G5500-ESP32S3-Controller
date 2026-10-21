@@ -62,10 +62,10 @@ static void kickAndStream() {
   CHECK(c.target({70,0,true,false},true,4020)==Result::Ok);c.tick(4020);CHECK(c.axes[0].direction);
   auto stuck=ready();stuck.motionSettings[0].kickEnabled=true;stuck.motionSettings[0].kickMs=100;
   stuck.target({90,0,true,false},true,0);stuck.tick(0);
-  for(unsigned now=20;now<=120;now+=20) { stuck.feedbackAt(0,10,true,now);stuck.target({90+now*.001f,0,true,false},true,now);stuck.tick(now); }
+  for(unsigned now=20;now<=3000;now+=20) { stuck.feedbackAt(0,10,true,now);stuck.target({90+now*.001f,0,true,false},true,now);stuck.tick(now); }
   CHECK(stuck.axes[0].motionError==MotionError::KickTimeout);CHECK(!stuck.axes[0].direction);
-  CHECK(stuck.target({180,0,true,false},true,200)==Result::Unavailable);
-  CHECK(stuck.resetMotion(0,200)==Result::Ok);CHECK(stuck.target({180,0,true,false},true,200)==Result::Ok);
+  CHECK(stuck.target({180,0,true,false},true,3020)==Result::Unavailable);
+  CHECK(stuck.resetMotion(0,3020)==Result::Ok);CHECK(stuck.target({180,0,true,false},true,3020)==Result::Ok);
 }
 static void cascadeHold() {
   auto c=ready(true);c.motionSettings[0].kickEnabled=true;c.motionSettings[0].holdEnabled=true;
@@ -121,9 +121,9 @@ static void profilesAndNoise() {
   CHECK(blocked.manualDrive(1,1,1,1,1,1,0,false,0)==Result::NotCalibrated);blocked.tick(0);CHECK(!blocked.axes[0].direction);
   auto faults=ready();for(auto &m:faults.motionSettings){m.kickEnabled=true;m.kickMs=100;}
   faults.target({90,90,true,true},false,0);faults.tick(0);
-  for(unsigned at=20;at<=100;at+=20){faults.feedbackAt(0,10,true,at);faults.feedbackAt(1,30,true,at);faults.tick(at);}
-  CHECK(faults.axes[1].motionError==MotionError::KickTimeout);faults.resetMotion(0,120);
-  CHECK(faults.fault=="el_kick_start_timeout");CHECK(faults.target({90,0,true,false},false,120)==Result::Ok);
+  for(unsigned at=20;at<=3000;at+=20){faults.feedbackAt(0,10,true,at);faults.feedbackAt(1,30,true,at);faults.tick(at);}
+  CHECK(faults.axes[1].motionError==MotionError::KickTimeout);faults.resetMotion(0,3020);
+  CHECK(faults.fault=="el_kick_start_timeout");CHECK(faults.target({90,0,true,false},false,3020)==Result::Ok);
   CHECK(faults.fault=="el_kick_start_timeout");
 }
 static void feedbackSafety() {
@@ -392,10 +392,156 @@ static void boundedKickRise() {
     c.feedbackAt(0,90,true,at);c.tick(at);const float output=c.axes[0].speedOutputPercent;
     CHECK(output>=previous&&output<=60);CHECK(output-previous<=5.001f);peak=std::max(peak,output);previous=output;
   }
-  CHECK(peak==60);c.feedbackAt(0,90,true,600);c.tick(600);CHECK(c.axes[0].motionError==MotionError::KickTimeout);CHECK(!c.moving());
+  CHECK(peak==60);
+  for(unsigned at=600;at<m.stallMs;at+=20) {
+    c.feedbackAt(0,90,true,at);c.tick(at);
+    CHECK(c.axes[0].motionError==MotionError::None && c.axes[0].speedOutputPercent==60);
+  }
+  c.feedbackAt(0,90,true,m.stallMs);c.tick(m.stallMs);CHECK(c.axes[0].motionError==MotionError::KickTimeout);CHECK(!c.moving());
   c=ready(true,90);c.motionSettings[0].kickEnabled=true;c.motionSettings[0].kickMs=20;c.motionSettings[0].kickPercent=50;
   CHECK(c.jog(0,1,false,0)==Result::Ok);c.tick(0);CHECK(c.axes[0].speedOutputPercent==50);
-  c.feedbackAt(0,90,true,20);c.tick(20);CHECK(c.axes[0].motionError==MotionError::KickTimeout&&!c.moving());
+  for(unsigned at=20;at<=3000;at+=20) {c.feedbackAt(0,90,true,at);c.tick(at);}
+  CHECK(c.axes[0].motionError==MotionError::KickTimeout&&!c.moving());
 }
 
-int main() { try { boundedKickRise();fastHoldingRegression(); nearBandStream();nearBandStream(0xfffffe00u);stationaryNoiseStillKicks();sustainingAndArrival(); records();stallRetry();kickAndStream();cascadeHold();profilesAndNoise();feedbackSafety();lowOutputProgress();cascadeKickOverspeed();stoppedReversal();std::cout<<"PASS motion: "<<checks<<" checks; Controller bytes="<<sizeof(Controller)<<"\n"; } catch(const std::exception &e) { std::cerr<<e.what()<<'\n';return 1; } }
+
+static void oneShotOvershoot() {
+  for(unsigned axis:{0u,1u}) for(int direction:{-1,1}) for(bool hold:{false,true}) for(uint32_t epoch:{0u,0xfffffe00u}) {
+    auto c=ready(true,90);c.resetFeedback(int(axis),epoch);c.feedbackAt(axis,90,true,epoch);
+    auto &m=c.motionSettings[axis];m.holdEnabled=hold;m.stoppedVelocity=.1f;m.positionTolerance=.25f;m.settleMs=100;
+    const float goal=90+direction*10.f;
+    CHECK(c.target({goal,goal,axis==0,axis==1},false,epoch)==Result::Ok);c.tick(epoch);
+    // Two fresh conversions straddle the entire accepted band. The shaft
+    // then coasts further; one-shot completion must wait for actual rest.
+    for(unsigned t=20;t<=400;t+=20) {
+      c.feedbackAt(axis,90+direction*float(t)*.03f,true,epoch+t);c.tick(epoch+t);
+      CHECK(c.axes[axis].motionError==MotionError::None);
+      if(t>=360)CHECK(!c.axes[axis].direction);
+    }
+    CHECK(!c.axes[axis].completed);
+    bool reversed=false;
+    for(unsigned t=420;t<=1500;t+=20) {
+      c.feedbackAt(axis,90+direction*12.f,true,epoch+t);c.tick(epoch+t);
+      if(c.axes[axis].direction==-direction)reversed=true;
+    }
+    CHECK(reversed==hold);
+    if(!hold) {
+      CHECK(c.axes[axis].completed && !c.axes[axis].tracking);
+      // A new goal deliberately behind the shaft remains a valid movement.
+      CHECK(c.target({90,90,axis==0,axis==1},false,epoch+1520)==Result::Ok);c.tick(epoch+1520);
+      CHECK(c.axes[axis].direction==-direction && c.axes[axis].tracking);
+    }
+  }
+}
+static void cascadeAccelerationFeedthrough() {
+  auto c=ready(true,90);auto &m=c.motionSettings[0];m.velocity=80;
+  m.acceleration=m.deceleration=10;m.jerk=8;m.positionKp=m.positionKi=m.positionKd=0;
+  m.velocityKp=m.velocityKi=m.velocityKd=0;m.feedforward=1;
+  CHECK(c.target({400,0,true,false},false,0)==Result::Ok);c.tick(0);
+  for(unsigned t=20;t<=2000;t+=20) {c.feedbackAt(0,90,true,t);c.tick(t);CHECK(c.axes[0].motionError==MotionError::None);}
+  // At 2.02s a jerk-limited profile has reached10deg/s² after1.25s.
+  const float duration=2.02f;
+  const float expected=.5f*8*1.25f*1.25f+10*(duration-1.25f);
+  std::cout<<"profile feedthrough actual="<<c.axes[0].requestedVelocity<<" expected="<<expected<<" accel="<<c.axes[0].profileAcceleration<<"\n";
+  CHECK(std::abs(c.axes[0].requestedVelocity-expected)<.03f);
+}
+static void runtimeSpeedChanges() {
+  auto c=ready(true,90);c.azRange={-1000,1000};auto &m=c.motionSettings[0];
+  m.velocity=80;m.acceleration=m.deceleration=40;m.jerk=80;m.kickEnabled=false;
+  CHECK(c.jog(0,1,false,0)==Result::Ok);c.tick(0);
+  float position=90,previousAcceleration=c.axes[0].profileAcceleration;bool decelerated=false;
+  for(unsigned t=20;t<=14000;t+=20) {
+    position+=c.axes[0].requestedVelocity*.02f;
+    c.feedbackAt(0,position,true,t);
+    if(t==4000)CHECK(c.setRuntimeSpeed(0,10,t)==Result::Ok);
+    if(t==9000)CHECK(c.setRuntimeSpeed(0,60,t)==Result::Ok);
+    c.tick(t);
+    CHECK(c.axes[0].motionError==MotionError::None && c.axes[0].direction==1);
+    CHECK(std::abs(c.axes[0].profileAcceleration)<=40.001f);
+    if(std::abs(c.axes[0].profileAcceleration-previousAcceleration)>1.601f)std::cerr<<"runtime jerk t="<<t<<" prev="<<previousAcceleration<<" actual="<<c.axes[0].profileAcceleration<<" v="<<c.axes[0].requestedVelocity<<"\n";
+    CHECK(std::abs(c.axes[0].profileAcceleration-previousAcceleration)<=1.601f);
+    previousAcceleration=c.axes[0].profileAcceleration;
+    if(t==4020)CHECK(c.axes[0].requestedVelocity>10);
+    if(t==8500){CHECK(std::abs(c.axes[0].requestedVelocity-10)<.01f);decelerated=true;}
+  }
+  CHECK(decelerated);CHECK(std::abs(c.axes[0].requestedVelocity-60)<.01f);
+  CHECK(m.velocity==80); // Runtime selection does not rewrite saved limits.
+  c=ready();c.speeds[0].accelerationMs=c.speeds[0].decelerationMs=500;
+  CHECK(c.setRuntimeSpeed(0,20,0)==Result::Ok);CHECK(c.jog(0,1,false,0)==Result::Ok);c.tick(0);
+  for(unsigned t=20;t<=2000;t+=20) {
+    c.feedbackAt(0,10+t*.001f,true,t);
+    if(t==1000)CHECK(c.setRuntimeSpeed(0,50,t)==Result::Ok);
+    c.tick(t);CHECK(c.axes[0].motionError==MotionError::None && c.axes[0].direction==1);
+    if(t==980)CHECK(std::abs(c.axes[0].speedOutputPercent-20)<.01f);
+  }
+  CHECK(std::abs(c.axes[0].speedOutputPercent-50)<.01f);
+}
+static void longCascadeCruise() {
+  for(unsigned axis:{0u,1u}) for(int direction:{-1,1}) {
+    auto c=ready(true,90);c.azRange={-500,500};c.elRange={-500,500};
+    c.resetFeedback(int(axis),0);c.feedbackAt(axis,90,true,0);
+    auto &m=c.motionSettings[axis];m.kickEnabled=true;m.kickPercent=35;m.kickMs=1200;m.kickReleaseMs=20;
+    m.velocity=60;m.acceleration=m.deceleration=40;m.jerk=80;m.positionKp=.5f;m.positionKi=m.positionKd=0;
+    m.velocityKp=.03f;m.velocityKi=.47f;m.velocityKd=0;m.feedforward=.42f;m.sustainingPercent=17;
+    m.velocityWindowMs=80;m.stoppedVelocity=1;m.positionTolerance=2;m.movementDegrees=1;
+    const float destination=90+direction*400.f;
+    CHECK(c.target({destination,destination,axis==0,axis==1},false,0)==Result::Ok);c.tick(0);
+    float position=90,velocity=0;PositionFilter filter;unsigned zeroRun=0;float minCruise=1000,maxCruise=0;
+    for(unsigned t=20;t<=6000;t+=20) {
+      const auto &a=c.axes[axis];const float u=a.speedOutputPercent;
+      float goal=a.direction*(u>=17?6*(u-15):0);
+      if(std::abs(velocity)<.05f && u<28)goal=0;
+      velocity+=(goal-velocity)*(.02f/.16f);position+=velocity*.02f;
+      c.feedbackAt(axis,filter.sample(int(std::round(position/.07f)),t)*.07f,true,t);c.tick(t);
+      CHECK(c.axes[axis].motionError==MotionError::None);
+      if(t>=2500 && t<=4500) {
+        minCruise=std::min(minCruise,std::abs(velocity));maxCruise=std::max(maxCruise,std::abs(velocity));
+        if(a.motionPhase==MotionPhase::Run && std::abs(velocity)<1)++zeroRun;
+      }
+
+    }
+    std::cout<<"cruise axis="<<axis<<" direction="<<direction<<" min="<<minCruise<<" max="<<maxCruise<<'\n';
+    CHECK(!zeroRun);CHECK(minCruise>35 && maxCruise<90);
+  }
+}
+
+
+// A short breakaway pulse is followed by a slow trajectory on this drive.
+// Resetting I to zero and seeding velocity from the lagging window used to
+// drop PWM below dynamic friction, stop for ~1.5 s, then restart in a burst.
+static void slowKickHandoff() {
+  for(unsigned axis:{0u,1u})for(int direction:{-1,1})for(bool positioning:{false,true})
+    for(float tau:{.08f,.16f,.24f,.36f}) {
+    auto c=ready(true,90);c.azRange={-500,500};c.elRange={-500,500};
+    c.resetFeedback(int(axis),0);c.feedbackAt(axis,90,true,0);
+    auto &m=c.motionSettings[axis];m.kickEnabled=true;m.kickPercent=35;m.kickMs=300;m.kickReleaseMs=20;
+    m.velocity=39.51f;m.acceleration=m.deceleration=10;m.jerk=8;
+    m.positionKp=.5f;m.positionKi=m.positionKd=0;
+    m.velocityKp=.02f;m.velocityKi=.39f;m.velocityKd=0;m.feedforward=.61f;m.sustainingPercent=17;
+    m.velocityWindowMs=120;m.stoppedVelocity=3.64f;m.positionTolerance=3.59f;m.movementDegrees=1;
+    const float goal=90+direction*400.f;
+    if(positioning)CHECK(c.target({goal,goal,axis==0,axis==1},false,0)==Result::Ok);
+    else CHECK(c.jog(axis,direction,false,0)==Result::Ok);
+    c.tick(0);float position=90,velocity=0;PositionFilter filter;
+    unsigned starts=1;auto phase=c.axes[axis].motionPhase;
+    float minimum=1000,maximum=0;
+    for(unsigned t=20;t<=6000;t+=20) {
+      const auto &a=c.axes[axis];const float u=a.speedOutputPercent;
+      float desired=a.direction*(u>=23?6*(u-23):0);
+      if(std::abs(velocity)<.1f && u<28)desired=0;
+      velocity+=(desired-velocity)*(.02f/tau);position+=velocity*.02f;
+      c.feedbackAt(axis,filter.sample(int(std::round(position/.07f)),t)*.07f,true,t);c.tick(t);
+      CHECK(a.motionError==MotionError::None);
+      CHECK(a.direction==direction);
+      if(a.motionPhase==MotionPhase::Kick && phase!=MotionPhase::Kick)++starts;
+      phase=a.motionPhase;
+      if(t>=1000 && t<=3500) {
+        minimum=std::min(minimum,std::abs(velocity));maximum=std::max(maximum,std::abs(velocity));
+      }
+    }
+    CHECK(starts==1);CHECK(minimum>2);CHECK(maximum<2*m.velocity);
+    c.stopNow(int(axis),6020);CHECK(!c.axes[axis].direction && !c.axes[axis].holdArmed);
+  }
+}
+
+int main() { try { slowKickHandoff();oneShotOvershoot();cascadeAccelerationFeedthrough();runtimeSpeedChanges();longCascadeCruise(); boundedKickRise();fastHoldingRegression(); nearBandStream();nearBandStream(0xfffffe00u);stationaryNoiseStillKicks();sustainingAndArrival(); records();stallRetry();kickAndStream();cascadeHold();profilesAndNoise();feedbackSafety();lowOutputProgress();cascadeKickOverspeed();stoppedReversal();std::cout<<"PASS motion: "<<checks<<" checks; Controller bytes="<<sizeof(Controller)<<"\n"; } catch(const std::exception &e) { std::cerr<<e.what()<<'\n';return 1; } }

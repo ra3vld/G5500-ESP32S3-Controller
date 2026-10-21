@@ -149,6 +149,36 @@ class CommandApiTests(unittest.TestCase):
         self.assertEqual(bridge.responses[1], bridge.responses[2])
         self.assertEqual(client.request('GET', '/api/status')['body']['controlMode'], 'auto')
 
+    def test_usb_runtime_speed_and_autotune_options(self):
+        bridge = self.bridge('serial')
+        link = api.SerialTransport(bridge.address, 9600)
+        self.addCleanup(link.close)
+        client = api.Client(link, timeout=1)
+        before = client.request('GET', '/api/config')['body']['speedPercent']
+        self.assertEqual(client.request('POST', '/api/speed', {'axis': 'az', 'value': '25'})['status'], 200)
+        axis = client.request('GET', '/api/status', {'view': 'axis', 'axis': 'az'})['body']
+        self.assertEqual(axis['speedSetpoint'], 25)
+        self.assertTrue(axis['speedAdjustable'])
+        self.assertEqual(client.request('GET', '/api/config')['body']['speedPercent'], before)
+        self.assertEqual(client.request('POST', '/api/speed', {'axis': 'az', 'value': '101'})['status'], 400)
+        axis = client.request('GET', '/api/status', {'view': 'axis', 'axis': 'az'})['body']
+        self.assertEqual(axis['speedSetpoint'], 25)
+        full = client.request('GET', '/api/motion/autotune', {'full': '1'})['body']
+        self.assertEqual(full['options']['tuneLambdaFactor'], 1)
+        self.assertEqual(full['options']['methodVersion'], 1)
+        rejected = client.request('POST', '/api/motion/autotune', dict(
+            action='start', axis='az', mode='simple', id=full['id'], travel=60,
+            outputLimit=50, tuneMisspelled=1))
+        self.assertEqual(rejected['status'], 400)
+        self.assertEqual(client.request('GET', '/api/motion/autotune')['body']['id'], full['id'])
+        self.assertEqual(client.request('POST', '/api/settings', {
+            'azRegulatorMode': 'cascade', 'azMotionVelocity': '.001'})['status'], 200)
+        self.assertEqual(client.request('POST', '/api/speed', {'axis': 'az', 'value': '.001'})['status'], 200)
+        slow = client.request('GET', '/api/status', {'view': 'axis', 'axis': 'az'})['body']
+        self.assertEqual(slow['speedSetpoint'], .001)
+        self.assertEqual(slow['speedLimit'], .001)
+        self.assertTrue(all(len(reply) <= 1200 for reply in bridge.responses))
+
     def test_tcp_pages_and_settings(self):
         bridge = self.bridge('tcp')
         link = api.SocketTransport(bridge.address, False, 1)

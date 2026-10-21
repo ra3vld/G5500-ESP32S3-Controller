@@ -77,6 +77,26 @@ int main(int argc,char **argv) {
     return 0;
   }
   {
+    Fixture tuning;
+    auto &c=tuning.runtime.controller;
+    c.hardware.drive=DRIVE_BTS7960;c.hardware.simulation=false;
+    c.feedbackAt(0,90,true,fakeHardware.now);c.feedbackAt(1,45,true,fakeHardware.now);
+    const auto defaults=tuning.call("GET","/api/motion/autotune","full=1");
+    assert(defaults.status==200 && defaults.body.find("\"tuneSearchStartPercent\":5")!=std::string::npos);
+    const std::string start="action=start&axis=az&mode=simple&id=0&travel=60&outputLimit=50&tuneSearchStartPercent=15&tuneSearchStepPercent=10&tuneLambdaFactor=2";
+    assert(tuning.call("POST","/api/motion/autotune",start).status==200);
+    assert(c.autoTune.active() && c.autoTune.options.searchStartPercent==15);
+    const auto compact=tuning.call("GET","/api/motion/autotune");
+    assert(compact.status==200 && compact.body.find("options")==std::string::npos);
+    const auto full=tuning.call("GET","/api/motion/autotune","full=1");
+    assert(full.status==200 && full.body.find("\"tuneSearchStepPercent\":10")!=std::string::npos);
+    // HTTP and USB project the same volatile methodology from DeviceApi.
+    const auto http=tuning.call("GET","/api/motion/autotune","",false);
+    assert(http.status==200 && http.body.find("\"tuneLambdaFactor\":2")!=std::string::npos);
+    assert(tuning.call("POST","/api/motion/autotune","action=cancel").status==200);
+    assert(!c.autoTune.active() && !c.moving());
+  }
+  {
     Fixture merged;
     merged.runtime.recoveryHistory.record(RecoveryReason::LowMemory);
     const auto hardware=merged.call("GET","/api/hardware","",false).body;

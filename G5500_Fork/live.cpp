@@ -91,6 +91,8 @@ bool writeLiveState(JsonWriter &j,const Controller &c,const Hud &h,uint32_t now)
       << ",\"tracking\":" << boolean(a.tracking) << ",\"completed\":" << boolean(a.completed)
       << ",\"calibrated\":" << boolean(a.calibrated) << ",\"speedOutputPercent\":" << a.speedOutputPercent
       << ",\"speedEnabled\":" << boolean(c.variableSpeed(i)) << ",\"stopToleranceDegrees\":" << c.effectiveTolerance(i);
+    j << ",\"speedSetpoint\":";j.decimal(c.runtimeSpeed(i),-1) << ",\"speedLimit\":";
+    j.decimal(c.runtimeSpeedLimit(i),-1) << ",\"speedAdjustable\":" << boolean(c.runtimeSpeedAvailable(i));
     writeAxisMotion(j,c,i); j << '}';
   }
   j << "],\"azSpeedOutputPercent\":" << c.axes[0].speedOutputPercent << ",\"elSpeedOutputPercent\":" << c.axes[1].speedOutputPercent;

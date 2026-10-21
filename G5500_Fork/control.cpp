@@ -28,6 +28,7 @@ void Controller::configureHardware(const HardwareConfig &config) {
   speeds = {};
   motionSettings = {};
   motion_ = {};
+  runtimeSpeed_[0] = runtimeSpeed_[1] = 0;
   speeds[1].slowdownDegrees = 2;
   speedEnabled = hardware.drive != DRIVE_YAESU;
   if (hardware.drive == DRIVE_YAESU) speeds[0] = {50, 25, 25, 2000, 1500, 10};
@@ -64,6 +65,7 @@ Controller &Controller::operator=(const Controller &other) {
   }
   for (unsigned i = 0; i < 2; ++i) {
     manualScale_[i] = other.manualScale_[i];
+    runtimeSpeed_[i] = other.runtimeSpeed_[i];
   }
   presets = other.presets;
   pending = other.pending;
@@ -157,6 +159,8 @@ Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
         motion_[i].arriving=motion_[i].settling=false;
         motion_[i].streamingTarget=axis.tracking && axis.direction*(value-axis.target)>0;
         motion_[i].targetChangedAt=now;
+        motion_[i].targetDirection=(value>axis.current)-(value<axis.current);
+        motion_[i].crossedTarget=false;
       }
       accepted = true;
       axis.acceptedTarget = value;
@@ -742,6 +746,35 @@ bool Controller::variableSpeed(unsigned i) const {
   if (hardware.simulation) return i == 0 || (i == 1 && model == Model::G5500);
   if (hardware.drive == DRIVE_YAESU) return i == 0 && model == Model::G800DXA && speedEnabled;
   return i == 0 || model == Model::G5500;
+}
+bool Controller::runtimeSpeedAvailable(unsigned i) const {
+  if (remote || i > 1 || (i == 1 && model != Model::G5500) || !variableSpeed(i)) return false;
+  if (hardware.simulation) return true;
+  const auto &p = hardware.pins;
+  const int enable = i ? p.elSpeedEnable : p.azSpeedEnable;
+  if (enable < 0) return false;
+  return hardware.drive != DRIVE_BTS7960 ||
+      ((i ? p.elNegative : p.azNegative) >= 0 && (i ? p.elPositive : p.azPositive) >= 0);
+}
+float Controller::runtimeSpeedLimit(unsigned i) const {
+  if (i > 1) return 0;
+  return motionSettings[i].mode == RegulatorMode::Cascade ? motionSettings[i].velocity :
+      std::min(100.f, motionSettings[i].outputLimitPercent);
+}
+float Controller::runtimeSpeed(unsigned i) const {
+  if (i > 1) return 0;
+  const float saved = motionSettings[i].mode == RegulatorMode::Cascade ? motionSettings[i].velocity : float(speeds[i].speedPercent);
+  const bool tuning = autoTune.active() && autoTune.axis == int(i);
+  return std::min(!tuning && runtimeSpeed_[i] > 0 ? runtimeSpeed_[i] : saved, runtimeSpeedLimit(i));
+}
+Result Controller::setRuntimeSpeed(unsigned i, float value, uint32_t now) {
+  (void)now;
+  if (i > 1 || !std::isfinite(value)) return Result::Invalid;
+  if (configurationLocked || autoTune.active() || !runtimeSpeedAvailable(i)) return Result::Unavailable;
+  const float minimum = motionSettings[i].mode == RegulatorMode::Cascade ? .001f : 1.f;
+  if (value < minimum || value > runtimeSpeedLimit(i)) return Result::Invalid;
+  runtimeSpeed_[i] = value;
+  return Result::Ok;
 }
 void Controller::tick(uint32_t now) {
   if (configurationLocked) { stopNow(-1, now); return; }

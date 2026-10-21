@@ -16,6 +16,16 @@ inline bool writeAutoTune(JsonWriter &j, const Controller &c, bool full=false) {
     << ",\"axis\":" << t.axis << ",\"mode\":" << jsonQuoted(regulatorName(t.mode))
     << ",\"direction\":" << t.direction << ",\"output\":" << (t.active()?c.axes[unsigned(t.axis)].speedOutputPercent:0)
     << ",\"reason\":" << jsonQuoted(t.reason) << ",\"validationError\":" << t.validationError;
+  if(full) {
+    j << ",\"options\":{";
+    bool comma=false;
+    for(const auto &field:autoTuneRealFields) {
+      if(comma)j << ',';
+      comma=true;j << jsonQuoted(field.name) << ':' << t.options.*field.member;
+    }
+    for(const auto &field:autoTuneIntFields)j << ',' << jsonQuoted(field.name) << ':' << t.options.*field.member;
+    j << ",\"methodVersion\":1}";
+  }
   if(full && t.phase==AutoTunePhase::Complete) {
     const auto &m=t.proposedMotion;const auto &s=t.proposedSpeed;
     j << ",\"result\":{\"speedPercent\":" << s.speedPercent << ",\"approachSpeedPercent\":" << s.approachSpeedPercent

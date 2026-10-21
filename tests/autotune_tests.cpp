@@ -460,6 +460,83 @@ static void transport() {
   CHECK(r.c.autoTune.phase==AutoTunePhase::Cancelled);
   CHECK(r.c.speeds[0].speedPercent==20);
 }
+static void runtimeMethodology() {
+  Rig r;Protocol p(r.c);Settings settings;
+  const auto saved=r.c.motionSettings[0];const auto speed=r.c.speeds[0];
+  Form start{{"action","start"},{"axis","az"},{"mode","simple"},{"travel","60"},{"outputLimit","50"},{"id","0"},
+      {"tuneSearchStartPercent","15"},{"tuneSearchStepPercent","10"},
+      {"tuneWorkingFraction","0.8"},{"tuneLambdaFactor","2"},{"tunePositionGainFactor","0.5"},
+      {"tuneStartupObservationMs","700"},{"tunePlateauMinMs","240"},{"tunePlateauTimeoutMs","4000"}};
+  // Invalid fields and combinations never consume an id, stop an axis, or mutate saved settings.
+  for(const auto &bad:Form{{"tuneSearchStartPercent","51"},{"tuneSearchStepPercent","nan"},
+      {"tuneWorkingFraction","1.1"},{"tuneLambdaFactor","0"},{"tunePositionGainFactor","3"},
+      {"tuneStartupObservationMs","-1"},{"tunePlateauMinMs","240.5"},
+      {"tunePlateauTimeoutMs","600"},{"tuneMisspelled","1"}}) {
+    auto input=start;input[bad.first]=bad.second;
+    CHECK(api(r.c,p,settings,"/api/motion/autotune",input,0).status==400);
+    CHECK(!r.c.autoTune.active());CHECK(r.c.autoTune.id==0);
+    CHECK(r.c.motionSettings[0]==saved);CHECK(r.c.speeds[0]==speed);
+  }
+  auto incompatible=start;incompatible["tunePlateauMinMs"]="1000";incompatible["tunePlateauTimeoutMs"]="1000";
+  CHECK(api(r.c,p,settings,"/api/motion/autotune",incompatible,0).status==400);
+  CHECK(api(r.c,p,settings,"/api/motion/autotune",start,0).status==200);
+  CHECK(r.c.autoTune.options.searchStartPercent==15);CHECK(r.c.autoTune.options.workingFraction==.8f);
+  CHECK(api(r.c,p,settings,"/api/motion/autotune",{{"action","cancel"},{"id","999"}},0).status!=200);
+  CHECK(r.c.autoTune.active()); // A stale experiment cannot cancel a replacement.
+  bool sawStart=false,sawSecond=false;
+  for(unsigned n=0;n<6000 && r.c.autoTune.active();++n) {
+    r.step();
+    if(r.c.autoTune.phase==AutoTunePhase::Start) {
+      sawStart|=r.c.autoTune.searchLevel==15;sawSecond|=r.c.autoTune.searchLevel==25;
+    }
+    CHECK(r.c.axes[0].speedOutputPercent<=50.001f);
+  }
+  CHECK(sawStart);CHECK(sawSecond);
+  CHECK(r.c.autoTune.phase==AutoTunePhase::Complete);
+  CHECK(r.c.autoTune.proposedSpeed.speedPercent>=40);
+  CHECK(r.c.motionSettings[0]==saved);CHECK(r.c.speeds[0]==speed);
+  char out[4096];JsonWriter j(out,sizeof out);CHECK(writeAutoTune(j,r.c,true));
+  CHECK(std::string(j.data()).find("\"tuneSearchStartPercent\":15")!=std::string::npos);
+  CHECK(std::string(j.data()).find("\"methodVersion\":1")!=std::string::npos);
+  const auto previous=r.c.autoTune.id;
+  r.position=90;r.velocity=0;r.c.resetFeedback(0,r.now);r.c.feedbackAt(0,90,true,r.now);
+  Form again{{"action","start"},{"axis","az"},{"mode","simple"},{"travel","60"},{"outputLimit","50"},{"id",std::to_string(previous)}};
+  CHECK(api(r.c,p,settings,"/api/motion/autotune",again,r.now).status==200);
+  CHECK(r.c.autoTune.options.searchStartPercent==5);CHECK(r.c.autoTune.options.lambdaFactor==1);
+  CHECK(r.c.cancelAutoTune(r.now)==Result::Ok);
+  // Method knobs can shorten probes, never bypass stale feedback or the trial-output cap.
+  Rig stale;AutoTuneOptions options;options.searchStartPercent=40;options.plateauTimeoutMs=10000;
+  CHECK(stale.c.startAutoTune(0,RegulatorMode::Simple,60,50,0,options)==Result::Ok);
+  for(unsigned n=0;n<70 && stale.c.autoTune.active();++n)stale.step(false);
+  CHECK(stale.c.autoTune.phase==AutoTunePhase::Failed);CHECK(!stale.c.moving());
+  Rig cascade(true);options={};options.lambdaFactor=2;options.positionGainFactor=.5f;
+  CHECK(cascade.c.setRuntimeSpeed(0,.01f,0)==Result::Ok);
+  CHECK(cascade.c.startAutoTune(0,RegulatorMode::Cascade,60,50,0,options)==Result::Ok);
+  for(unsigned n=0;n<6000 && cascade.c.autoTune.active();++n)cascade.step();
+  CHECK(cascade.c.autoTune.phase==AutoTunePhase::Complete);
+  const auto &t=cascade.c.autoTune;const auto &a=t.measurements[0],&b=t.measurements[1];
+  const float gain=std::max((a.highVelocity-a.lowVelocity)/(a.highOutput-a.lowOutput),
+      (b.highVelocity-b.lowVelocity)/(b.highOutput-b.lowOutput));
+  const float tau=std::clamp(std::max(a.responseSeconds,b.responseSeconds),.05f,5.f);
+  const float delay=std::max(.02f,float(t.proposedMotion.velocityWindowMs)/2000);
+  const float lambda=std::max(.5f,2*(tau+delay))*options.lambdaFactor;
+  CHECK(std::abs(t.proposedMotion.velocityKp-tau/(gain*(lambda+delay)))<.0001f);
+  CHECK(std::abs(t.proposedMotion.positionKp-options.positionGainFactor/(4*lambda))<.0001f);
+  CHECK(cascade.c.runtimeSpeed(0)==.01f); // The experimental override never persists.
+  Rig longWindow(false,0,0xfffff000u);longWindow.gain=.08f;options={};
+  options.searchStartPercent=35;options.plateauMinMs=1000;options.plateauTimeoutMs=6000;
+  CHECK(longWindow.c.startAutoTune(0,RegulatorMode::Simple,60,50,longWindow.now,options)==Result::Ok);
+  bool decimated=false;
+  for(unsigned n=0;n<6000 && longWindow.c.autoTune.active();++n) {
+    longWindow.step();const auto &t=longWindow.c.autoTune;
+    if((t.phase==AutoTunePhase::Low || t.phase==AutoTunePhase::High) && t.sampleCount>=8) {
+      const unsigned newest=(t.sampleNext+t.positions.size()-1)%t.positions.size();
+      const unsigned before=(newest+t.positions.size()-1)%t.positions.size();
+      decimated|=uint32_t(t.sampleTimes[newest]-t.sampleTimes[before])>=80;
+    }
+  }
+  CHECK(decimated);CHECK(longWindow.c.autoTune.phase==AutoTunePhase::Complete);
+}
 static void savedKickIsNotMinimum() {
   for(bool cascade:{false,true}) {
     Rig r(cascade);r.positiveStart=12;r.c.motionSettings[0].kickEnabled=true;
@@ -550,4 +627,4 @@ static void returnMustWork() {
   CHECK(r.c.motionSettings[0]==original);CHECK(r.c.speeds[0]==speed);
   CHECK(r.c.applyAutoTune(r.c.autoTune.id,r.now)==Result::Unavailable);
 }
-int main(){try{cascadeUsesMeasuredStoppingReserve(250);cascadeUsesMeasuredStoppingReserve(300);validationReturnStaysInsideReserve();measuredWorkSurvivesShortStroke();returnMustWork();savedKickIsNotMinimum();completed(false,0);completed(true,0);completed(false,1);completed(true,1,0xfffff000u);safety();highStiction();fastBounded(60);fastBounded(20);fastBounded(10);fastBounded(60,true,1);inertialPlateaus();inertialPlateaus(true);marginalWorkOutput();adaptiveProbeStartup();adaptiveProbeStartup(90);strongerRestart(false);strongerRestart(true);validationAfterStrongKick();cascadeBreakawayRecovery();asymmetricCoast();workOutputHeadroom();repositionDrag();repositionDrag(true);repositionStoppingRoom();adaptiveMinimum();adaptiveMinimum(true);adaptiveMinimum(false,true);validationRetry();exhaustedMinimum();preparation();transport();std::cout<<"PASS autotune: "<<checks<<" checks\n";}catch(const std::exception &e){std::cerr<<e.what()<<'\n';return 1;}}
+int main(){try{runtimeMethodology();cascadeUsesMeasuredStoppingReserve(250);cascadeUsesMeasuredStoppingReserve(300);validationReturnStaysInsideReserve();measuredWorkSurvivesShortStroke();returnMustWork();savedKickIsNotMinimum();completed(false,0);completed(true,0);completed(false,1);completed(true,1,0xfffff000u);safety();highStiction();fastBounded(60);fastBounded(20);fastBounded(10);fastBounded(60,true,1);inertialPlateaus();inertialPlateaus(true);marginalWorkOutput();adaptiveProbeStartup();adaptiveProbeStartup(90);strongerRestart(false);strongerRestart(true);validationAfterStrongKick();cascadeBreakawayRecovery();asymmetricCoast();workOutputHeadroom();repositionDrag();repositionDrag(true);repositionStoppingRoom();adaptiveMinimum();adaptiveMinimum(true);adaptiveMinimum(false,true);validationRetry();exhaustedMinimum();preparation();transport();std::cout<<"PASS autotune: "<<checks<<" checks\n";}catch(const std::exception &e){std::cerr<<e.what()<<'\n';return 1;}}
