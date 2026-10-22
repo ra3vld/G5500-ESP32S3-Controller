@@ -24,6 +24,11 @@ int main() {
   assert(serviceApAddress(0x6304a8c0u, 0x00ffffffu) == 0x01ff1facu);
   assert(serviceApAddress(0x6303a8c0u, 0x0000ffffu) == 0x01ff1facu);
   assert(serviceApAddress(0x6303a8c0u, 0x00ffffffu) == 0x0104a8c0u);
+  // Wi-Fi and Ethernet may use different LANs: avoid both, not only the preferred one.
+  assert(serviceApAddress(0x6304a8c0u,0x00ffffffu,0x02ff1facu,0x00ffffffu)==0x01ffff0au);
+  assert(serviceApAddress(0,0,0x6304a8c0u,0x00ffffffu)==0x01ff1facu);
+  assert(apSubnetOverlaps(0x0104a8c0u,0x6304a8c0u,0x00ffffffu));
+  assert(!apSubnetOverlaps(0x0104a8c0u,0,0));
   WifiFallback policy;
   policy.reset(100, true);
   assert(policy.update(101, true, true, false) == WifiAction::None);

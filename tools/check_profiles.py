@@ -96,4 +96,16 @@ for flags in [
     joystick + ['LOCAL_ADC_HYSTERESIS=-1'],
     ['LOCAL_AZ_INVERT=2'],
 ]: compile_case(flags, False)
+for drive,bt in itertools.product(range(3),range(2)):
+    compile_case(['BOARD_PROFILE=6',f'DRIVE_INTERFACE={drive}',f'BLUETOOTH_ENABLED={bt}','CONFIG_IDF_TARGET_ESP32=1'],True)
+compile_case(['ARDUINO_WT32_ETH01','CONFIG_IDF_TARGET_ESP32=1'],True)
+compile_case(['BOARD_PROFILE=6','BLUETOOTH_ENABLED=1','BLUETOOTH_MODE=BT_HC05'],True)
+compile_case(['BOARD_PROFILE=6','LOCAL_INPUT_MODE=2','LOCAL_AZ_ADC_GPIO=39'],True)
+for flags in [
+    ['BOARD_PROFILE=6','DISPLAY_KIND=1'], ['BOARD_PROFILE=6','DISPLAY_KIND=2'],
+    ['BOARD_PROFILE=6','ARDUINO_USB_CDC_ON_BOOT=1'],
+    ['BOARD_PROFILE=6','CONFIG_IDF_TARGET_ESP32S3=1'],
+    *[['BOARD_PROFILE=6',f'USER_BUTTON_GPIO={pin}'] for pin in (0,16,18,19,21,22,23,25,26,27,34,13)],
+    ['BOARD_PROFILE=6','LOCAL_INPUT_MODE=2','LOCAL_AZ_ADC_GPIO=25'],
+]: compile_case(flags,False)
 print(f'PASS: {checks} board/display/BT/drive/local-input ownership and negative compile checks')

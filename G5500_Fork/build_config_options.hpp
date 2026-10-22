@@ -12,6 +12,7 @@
 #define BOARD_S2_MINI 3
 #define BOARD_ESP32 4
 #define BOARD_CROWPANEL_21 5
+#define BOARD_WT32_ETH01 6
 
 #define DISPLAY_NONE 0
 #define DISPLAY_ILI9341 1

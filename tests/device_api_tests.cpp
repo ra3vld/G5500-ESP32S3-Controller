@@ -66,7 +66,7 @@ struct Fixture {
 int main(int argc,char **argv) {
   {
     Fixture local;
-    const char *fields="token=11&generation=1&localInputMode=2&pin.localAzAdc=36&pin.localElAdc=39&localAzMin=100&localAzCenter=1900&localAzMax=3800&localDeadzone=180&localHysteresis=40";
+    const char *fields="token=11&generation=1&simulation=1&localInputMode=2&pin.localAzAdc=36&pin.localElAdc=39&localAzMin=100&localAzCenter=1900&localAzMax=3800&localDeadzone=180&localHysteresis=40";
     assert(local.call("POST","/api/hardware",fields,false).status==200);
     assert(local.runtime.hardwareRecord.candidate.local[4]==1900);
     local.storage.loadHardware(local.runtime);
@@ -108,6 +108,41 @@ int main(int argc,char **argv) {
     }
     return 0;
   }
+#if SELECTED_BOARD == BOARD_WT32_ETH01
+  {
+    Fixture wired;ETH={};
+    auto network=wired.call("GET","/api/network").body;
+    assert(network.find("\"ethernetSupported\":true")!=network.npos);
+    assert(network.find("\"ethLink\":false")!=network.npos);
+    assert(network.find("\"ethConnected\":false")!=network.npos);
+    ETH.link=true;
+    network=wired.call("GET","/api/network").body;
+    assert(network.find("\"ethLink\":true")!=network.npos);
+    assert(network.find("\"ethConnected\":false")!=network.npos);
+    ETH.ip=true;
+    network=wired.call("GET","/api/network").body;
+    assert(network.find("\"ethConnected\":true")!=network.npos);
+    assert(network.size()<=COMMAND_PAGE_MAX);
+    auto status=wired.call("GET","/api/status","",false).body;
+    assert(status.find("\"wifiMode\":\"Ethernet + AP\"")!=status.npos);
+    assert(status.find("\"ethConnected\":true")!=status.npos);
+    assert(status.find("\"ethStarted\":false")!=status.npos);
+    assert(status.find("\"rssi\":null")!=status.npos);
+    ETH.link=false;
+    status=wired.call("GET","/api/status","",false).body;
+    assert(status.find("\"wifiMode\":\"Access Point\"")!=status.npos);
+    assert(status.find("\"ethConnected\":false")!=status.npos);
+    auto hardware=wired.call("GET","/api/hardware","",false).body;
+    assert(hardware.find("\"classicEsp32\":true")!=hardware.npos);
+    const auto reserved=wired.call("POST","/api/hardware","token=11&generation=1&pin.azPositive=25",false);
+    assert(reserved.status==400 && reserved.body.find("ethernet.rmii")!=reserved.body.npos);
+    assert(!wired.restart.pending());
+    const auto boot=wired.call("POST","/api/hardware","token=11&generation=1&buttonGpio=0",false);
+    assert(boot.status==400 && boot.body.find("ethernet.rmii")!=boot.body.npos);
+  }
+  std::cout << "PASS: WT32 Ethernet DHCP/carrier API, Wi-Fi fallback status and reserved-pin HTTP rejection\n";
+  return 0;
+#endif
   {
     Fixture held;auto &c=held.runtime.controller;auto hw=c.hardware;
     hw.drive=DRIVE_BTS7960;hw.simulation=false;c.configureHardware(hw);

@@ -7,6 +7,7 @@
 | Плата / сценарий | Окружение PlatformIO | Flash | Дисплей | Bluetooth | OTA |
 |---|---|---|---|---|---|
 | ESP32 WROOM/WROVER | `esp32_4mb` | 4 МиБ | Нет; варианты `_tft`, `_lcd` | SPP или HC-05 | Нет |
+| WT32-ETH01, Ethernet | `wt32_eth01` | 4 МиБ | Нет | SPP или HC-05 | Нет; `wt32_eth01_noweb` — ArduinoOTA |
 | ESP32 без веба | `esp32_4mb_noweb` | 4 МиБ | Нет | Нет | ArduinoOTA |
 | ESP32 с увеличенной Flash | `esp32_8mb_ota` | 8 МиБ | Через `--display` | SPP или HC-05 | Да |
 | S3 DevKitC-1 N16R8 | `esp32s3_n16r8` | 16 МиБ | Нет; `_tft`, `_lcd` | HC-05 | Да |
@@ -15,7 +16,7 @@
 | CrowPanel 2.1 | `crowpanel_21` | 16 МиБ | Встроенный | HC-05 при свободных GPIO | Да |
 | Переделанная CrowPanel, AZ | `crowpanel_21_az` | 16 МиБ | Встроенный | Только при свободной распиновке | Да |
 
-У всех вариантов доступны имитация и роль HUD. HTTP/WebSocket есть во всех перечисленных профилях, кроме `noweb`; командный API работает и без веба. Bluetooth по умолчанию выключен. Обычная CrowPanel управляет реальной повороткой через HUD; локальному приводу нужна [переделка](crowpanel-az.md).
+У всех вариантов доступны имитация и роль HUD. HTTP/WebSocket есть во всех перечисленных профилях, кроме вариантов `noweb`; командный API работает и без веба. Bluetooth по умолчанию выключен. Обычная CrowPanel управляет реальной повороткой через HUD; локальному приводу нужна [переделка](crowpanel-az.md).
 
 | Когда выбирается | Параметры |
 |---|---|
@@ -36,7 +37,7 @@
 #define DISPLAY_KIND DISPLAY_NONE
 ```
 
-Меняйте значения существующих определений под `#ifndef`, сохраняя эти защиты. Флаги `-D` имеют приоритет. `BOARD_AUTO` выбирает S2 Mini для LOLIN S2 Mini, прежнюю S2 для общего S2, классический ESP32 для ESP32 и S3 для S3. Явные варианты: `BOARD_ESP32`, `BOARD_S3`, `BOARD_S2_MINI`, `BOARD_S2_LEGACY`, `BOARD_CROWPANEL_21`. Плата в IDE должна соответствовать чипу.
+Меняйте значения существующих определений под `#ifndef`, сохраняя эти защиты. Флаги `-D` имеют приоритет. `BOARD_AUTO` выбирает S2 Mini для LOLIN S2 Mini, прежнюю S2 для общего S2, классический ESP32 для ESP32 и S3 для S3. Явные варианты: `BOARD_ESP32`, `BOARD_S3`, `BOARD_S2_MINI`, `BOARD_S2_LEGACY`, `BOARD_CROWPANEL_21`, `BOARD_WT32_ETH01`. WT32-ETH01 использует отдельную [распиновку Ethernet](wt32-eth01.md). Плата в IDE должна соответствовать чипу.
 
 Дисплей: `DISPLAY_NONE`, `DISPLAY_ILI9341` (TFT и XPT2046), `DISPLAY_LCD1602` (параллельный HD44780) или `DISPLAY_CROWPANEL_21`. CrowPanel требует одновременно `BOARD_CROWPANEL_21` и `DISPLAY_CROWPANEL_21`. Прежние `TFT_DISPLAY_ENABLED=0/1` и `DISPLAY_ENABLED=0/1` сохранены как алиасы NONE/TFT; противоречивые флаги отклоняются.
 

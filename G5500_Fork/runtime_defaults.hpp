@@ -47,7 +47,7 @@
 // КНОПКА ПОДТВЕРЖДЕНИЯ ЦЕЛИ
 // Свободный GPIO; -1 отключает кнопку. По умолчанию GPIO0 (кнопка BOOT).
 #ifndef USER_BUTTON_GPIO
-#define USER_BUTTON_GPIO (SELECTED_BOARD == BOARD_CROWPANEL_21 ? -1 : 0)
+#define USER_BUTTON_GPIO ((SELECTED_BOARD == BOARD_CROWPANEL_21 || SELECTED_BOARD == BOARD_WT32_ETH01) ? -1 : 0)
 #endif
 // 1 — нажатие замыкает GPIO на GND; 0 — нажатие подаёт HIGH.
 #ifndef USER_BUTTON_ACTIVE_LOW

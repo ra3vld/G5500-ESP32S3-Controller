@@ -23,7 +23,7 @@
 #include "application.hpp"
 #include "runtime_metrics.hpp"
 #include <new>
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
 #include <esp_log.h>
 #endif
 namespace forkrot {
@@ -99,7 +99,7 @@ void Application::controllerSetup() {
   if (!runtime_.hud.isHud())
     hardware_.allStop();
   hardware_.rgbSet(0, 0, 0);
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   // UART0 belongs to GS-232. Keep IDF radio diagnostics off that byte stream.
   esp_log_level_set("*", ESP_LOG_NONE);
 #endif
@@ -136,7 +136,7 @@ void Application::controllerSetup() {
                           : runtime_.controller.hardware.drive == DRIVE_YAESU   ? "YAESU"
                           : runtime_.controller.hardware.drive == DRIVE_BTS7960 ? "BTS7960"
                                                              : "SEPARATE_PWM");
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   diagnostics_.dbgPrintln("[DIAG] /diaglog: fixed 2048-byte log; UART0 H4: RAM and Wi-Fi status");
 #else
   diagnostics_.dbgPrintln("[DIAG] Web console: /diaglog, RAM ring buffer 160 lines");
@@ -229,6 +229,10 @@ void Application::controllerSetup() {
     diagnostics_.dbgPrintln(WiFi.localIP().toString());
   } else {
     diagnostics_.dbgPrintln("[WiFi LAN] not connected");
+  }
+  if (ETHERNET_SUPPORTED) {
+    diagnostics_.dbgPrint("[Ethernet] ");
+    diagnostics_.dbgPrintln(ethernetConnected() ? ethernetIP().toString() : "waiting for cable / DHCP");
   }
   diagnostics_.dbgPrintln("==============================");
 

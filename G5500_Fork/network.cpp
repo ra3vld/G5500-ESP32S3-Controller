@@ -51,7 +51,7 @@ int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
         diagnostics_.wifiCredentialsReadOk() ? "OK" : "unavailable",
         btReady_ ? "yes" : "no", bluetooth_.connected() ? "yes" : "no",
         bluetooth_.linkConnected() ? "yes" : "no",
-        compactWifi_ ? "compact" : bufferedWifi_ ? (SELECTED_BOARD == BOARD_ESP32 ? "controller" : "buffered") : "standard");
+        compactWifi_ ? "compact" : bufferedWifi_ ? (FORK_CLASSIC_ESP32 ? "controller" : "buffered") : "standard");
   case 2: {
     const IPAddress ap = (WiFi.getMode() & WIFI_AP) ? WiFi.softAPIP() : IPAddress();
     const IPAddress sta = WiFi.localIP();
@@ -75,13 +75,14 @@ int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
   }
   case 5: {
     const auto mode = WiFi.getMode();
-    return std::snprintf(reply, capacity, "WIFI runtimeMode=%s apClients=%u apPolicy=%s\r\n",
+    return std::snprintf(reply, capacity, "WIFI runtimeMode=%s apClients=%u apPolicy=%s ethLink=%s ethIp=%s\r\n",
                          mode == WIFI_STA      ? "STA"
                          : mode == WIFI_AP     ? "AP"
                          : mode == WIFI_AP_STA ? "AP+STA"
                                                : "OFF",
                          (mode & WIFI_AP) ? unsigned(WiFi.softAPgetStationNum()) : 0,
-                         apAlwaysOn() ? "always" : "fallback");
+                         apAlwaysOn() ? "always" : "fallback",
+                         ethernetLinkUp()?"up":"down",ethernetIP().toString().c_str());
   }
   case 6:
     return std::snprintf(reply, capacity,
@@ -461,11 +462,13 @@ void Network::handleRotctldTcp() {
 }
 
 bool Network::startWifi() {
+  if (ETHERNET_SUPPORTED && !ethernet_.begin())
+    diagnostics_.dbgPrintln("[ETH] PHY start failed; Wi-Fi remains available");
   WiFi.persistent(false);
-  if (runtime_.recovery || (SELECTED_BOARD == BOARD_ESP32 && runtime_.controller.hardware.backend() == BT_ESP32_SPP)) {
+  if (runtime_.recovery || (FORK_CLASSIC_ESP32 && runtime_.controller.hardware.backend() == BT_ESP32_SPP)) {
     compactWifi_ = initCompactWifi() == ESP_OK;
     if (!compactWifi_) return false; // never fall back to a larger buffer profile on OOM
-  } else if (SELECTED_BOARD == BOARD_ESP32) {
+  } else if (FORK_CLASSIC_ESP32) {
     bufferedWifi_ = initControllerWifi() == ESP_OK;
     if (!bufferedWifi_) return false;
   } else if (SELECTED_BOARD == BOARD_CROWPANEL_21) {
@@ -540,28 +543,33 @@ void Network::restoreApOnlyAfterReconnectFail() {
 void Network::serviceApSubnet() {
   // The setup browser still uses the original AP address. Defer an overlap
   // adjustment until reboot so DHCP success cannot move that page out of reach.
-  if (wifiSetupAp_ || WiFi.status() != WL_CONNECTED || !(WiFi.getMode() & WIFI_AP))
+  if (wifiSetupAp_ || (!ethernetConnected() && WiFi.status() != WL_CONNECTED) || !(WiFi.getMode() & WIFI_AP))
     return;
-  const uint32_t sta = uint32_t(WiFi.localIP()), mask = uint32_t(WiFi.subnetMask());
-  const uint32_t ap = uint32_t(WiFi.softAPIP()), commonMask = mask & 0x00ffffffu;
-  if (!mask || (sta & commonMask) != (ap & commonMask))
-    return;
-  const uint32_t chosen = serviceApAddress(sta, mask);
+  const bool wifi=WiFi.status()==WL_CONNECTED;
+  const uint32_t sta=wifi?uint32_t(WiFi.localIP()):0, mask=wifi?uint32_t(WiFi.subnetMask()):0;
+  uint32_t eth=0,ethMask=0;
+#if SELECTED_BOARD == BOARD_WT32_ETH01
+  if(ethernetConnected()) { eth=uint32_t(ETH.localIP());ethMask=uint32_t(ETH.subnetMask()); }
+#endif
+  const uint32_t ap=uint32_t(WiFi.softAPIP());
+  if(!apSubnetOverlaps(ap,sta,mask) && !apSubnetOverlaps(ap,eth,ethMask)) return;
+  const uint32_t chosen=serviceApAddress(sta,mask,eth,ethMask);
   if (chosen && WiFi.softAPConfig(IPAddress(chosen), IPAddress(chosen), IPAddress(255, 255, 255, 0))) {
-    diagnostics_.dbgPrint("[WIFI] AP subnet changed to avoid STA overlap: ");
+    diagnostics_.dbgPrint("[WIFI] AP subnet changed to avoid uplink overlap: ");
     diagnostics_.dbgPrintln(WiFi.softAPIP().toString());
   }
 }
 
 void Network::formatAddresses(char *text, size_t capacity, const char *separator) const {
-  char sta[16]{}, ap[16]{};
+  char sta[16]{}, ap[16]{}, eth[16]{};
   const auto address = [](char *out, const IPAddress &ip) {
     std::snprintf(out, 16, "%u.%u.%u.%u", unsigned(ip[0]), unsigned(ip[1]),
                   unsigned(ip[2]), unsigned(ip[3]));
   };
   if (WiFi.status() == WL_CONNECTED) address(sta, WiFi.localIP());
   if (WiFi.getMode() & WIFI_AP) address(ap, WiFi.softAPIP());
-  formatNetworkAddresses(text, capacity, sta, ap, separator);
+  if (ethernetConnected()) address(eth, ethernetIP());
+  formatNetworkAddresses(text, capacity, sta, ap, separator, eth);
 }
 
 void Network::connectWifi(const String &ssid, const String &password) {
@@ -574,6 +582,12 @@ void Network::connectWifi(const String &ssid, const String &password) {
 }
 
 void Network::serviceWifiReconnect() {
+  const bool wired=ethernetConnected();
+  if(wired!=ethernetWasConnected_) {
+    ethernetWasConnected_=wired;
+    diagnostics_.dbgPrintln(wired ? String("[ETH] IP = ")+ethernetIP().toString()
+                                : String("[ETH] disconnected or waiting for DHCP"));
+  }
   if (wifiConnectPending_) {
     // Finish sending the save response before changing the radio channel.
     if (uint32_t(millis() - wifiConnectRequestedMs_) < 250) return;

@@ -28,7 +28,7 @@ struct HardwareConfig {
   bool pwmInverted = BTS7960_PWM_INVERTED;
   uint8_t backend() const {
     return !bluetooth ? BT_NONE : bluetoothMode == BT_AUTO
-        ? (SELECTED_BOARD == BOARD_ESP32 ? BT_ESP32_SPP : BT_HC05) : bluetoothMode;
+        ? (FORK_CLASSIC_ESP32 ? BT_ESP32_SPP : BT_HC05) : bluetoothMode;
   }
   const char *backendName() const {
     return backend() == BT_ESP32_SPP ? "ESP32_SPP" : backend() == BT_HC05 ? "HC05" : "NONE";

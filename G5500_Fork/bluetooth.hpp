@@ -7,7 +7,7 @@
 #include <HardwareSerial.h>
 #include <memory>
 #include <atomic>
-#if SELECTED_BOARD == BOARD_ESP32 && BLUETOOTH_SUPPORT
+#if FORK_CLASSIC_ESP32 && BLUETOOTH_SUPPORT
 #include <esp_spp_api.h>
 #include <esp_gap_bt_api.h>
 #endif
@@ -38,7 +38,7 @@ private:
   uint32_t inputSession_ = 0;
   struct HcState { HardwareSerial serial{1}; LineBuffer receiver; int8_t statePin=-1; };
   std::unique_ptr<HcState> hc_;
-#if SELECTED_BOARD == BOARD_ESP32 && BLUETOOTH_SUPPORT
+#if FORK_CLASSIC_ESP32 && BLUETOOTH_SUPPORT
   static Bluetooth *owner_;
   static void onEvent(esp_spp_cb_event_t event, esp_spp_cb_param_t *param);
   static void onGapEvent(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);

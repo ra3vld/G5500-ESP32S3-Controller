@@ -3,7 +3,7 @@
 #if BLUETOOTH_SUPPORT
 #include <cstring>
 #include <new>
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
 #include <esp32-hal-bt.h>
 #include <esp_bt_main.h>
 #include <esp_bt_device.h>
@@ -16,7 +16,7 @@
 #endif
 #endif
 namespace forkrot {
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
 Bluetooth *Bluetooth::owner_ = nullptr;
 void Bluetooth::onEvent(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
   if (!owner_ || !owner_->spp_) return;
@@ -90,7 +90,7 @@ void Bluetooth::onData(const uint8_t *bytes, size_t size) {
 #endif
 bool Bluetooth::begin(uint8_t backend, const PinMap &pins) {
   backend_ = BT_NONE;
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   if (backend != BT_ESP32_SPP) {
 #ifdef ARDUINO
     // The core has already released unused BLE memory. Its wrapper tracks that
@@ -135,7 +135,7 @@ bool Bluetooth::begin(uint8_t backend, const PinMap &pins) {
   return backend == BT_NONE;
 }
 void Bluetooth::end() {
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   if (spp_) {
 #ifdef ARDUINO
     // Deinit joins stack tasks/callbacks before the private queues are released.
@@ -151,20 +151,20 @@ void Bluetooth::end() {
   hc_.reset(); backend_ = BT_NONE;
 }
 bool Bluetooth::connected() {
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   if (spp_) return spp_->ready_.load() && spp_->client_.load() != 0;
 #endif
   return hc_ && digitalRead(hc_->statePin) == HIGH;
 }
 bool Bluetooth::linkConnected() {
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   if (spp_) return spp_->aclCount_.load() != 0 || connected();
 #endif
   return connected();
 }
 bool Bluetooth::macAddress(char (&address)[18]) const {
   address[0] = '\0';
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   if (spp_) {
     const uint8_t *mac = esp_bt_dev_get_address();
     if (!mac) return false;
@@ -178,7 +178,7 @@ bool Bluetooth::macAddress(char (&address)[18]) const {
   return false;
 }
 void Bluetooth::service() {
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   if (!spp_) return;
   auto &s = *spp_;
   uint32_t session = s.session_.load();
@@ -193,7 +193,7 @@ void Bluetooth::service() {
 }
 bool Bluetooth::receive(char *out, size_t capacity, size_t &size) {
   service();
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   if (spp_) {
     auto &s = *spp_; if (!s.ready_) return false;
     uint32_t session;
@@ -215,7 +215,7 @@ bool Bluetooth::receive(char *out, size_t capacity, size_t &size) {
   return false;
 }
 bool Bluetooth::send(std::string_view reply) {
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   if (spp_) {
     service();
     if (!connected() || reply.size()>512 || !spp_->replies_.push(reply)) return false;
@@ -225,7 +225,7 @@ bool Bluetooth::send(std::string_view reply) {
   return hc_ && hc_->serial.write(reinterpret_cast<const uint8_t *>(reply.data()),reply.size()) == reply.size();
 }
 void Bluetooth::discardInput() {
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   if (spp_) spp_->session_.fetch_add(1);
 #endif
   if (hc_) {
@@ -235,13 +235,13 @@ void Bluetooth::discardInput() {
   }
 }
 uint32_t Bluetooth::sessionId() const {
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   if (spp_) return spp_->session_.load();
 #endif
   return inputSession_;
 }
 uint32_t Bluetooth::droppedCommands() const {
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   if (spp_) return spp_->rxDropped_.load();
 #endif
   return 0;

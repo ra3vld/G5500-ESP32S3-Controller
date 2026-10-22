@@ -187,7 +187,25 @@ status.rssi=-62;status.heapFree=65536;status.uptimeSeconds=90061;
    assert(livePolls>before);assert(await livePage.evaluate(()=>live.ready));
    assert.match(await livePage.locator('#rotatorConnection').innerText(),/STA: 172\.16\.2\.99 · AP: 192\.168\.4\.1/);
   }finally{clearInterval(heartbeat);await livePage.close();}
+  await page.getByRole('tab',{name:'Настройки',exact:true}).click();
+  status.ethernetSupported=true;status.ethStarted=false;status.ethLink=false;status.ethConnected=false;
+  status.staIp='-';status.connectedSsid='';status.rssi=null;status.wifiMode='Access Point';status.apIp='192.168.4.1';
+  await page.evaluate(s=>renderStatus(s),status);
+  assert.equal(await page.locator('#ethernetStatus').isVisible(),true);
+  assert.equal(await page.locator('#ethstate').innerText(),'Ошибка запуска');
+  status.ethStarted=true;status.ethLink=true;await page.evaluate(s=>renderStatus(s),status);
+  assert.equal(await page.locator('#ethstate').innerText(),'Ожидание DHCP');
+  status.ethConnected=true;status.ethIp='10.0.1.50';status.ip=status.ethIp;status.wifiMode='Ethernet + AP';
+  await page.evaluate(s=>renderStatus(s),status);
+  assert.equal(await page.locator('#ethip').innerText(),'10.0.1.50');
+  assert.equal(await page.locator('#ethstate').innerText(),'Подключён');
+  assert.match(await page.locator('#statusWifi').innerText(),/ETH: 10\.0\.1\.50/);
+  assert.equal(await page.locator('#statusWifi').getAttribute('class'),'online');
+  status.ethLink=false;status.ethConnected=false;status.ethIp='-';status.wifiMode='Access Point';
+  await page.evaluate(s=>renderStatus(s),status);
+  assert.equal(await page.locator('#ethstate').innerText(),'Нет кабеля');
+  assert.doesNotMatch(await page.locator('#statusWifi').innerText(),/ETH:/);
   assert.deepEqual(errors,[]);
-  console.log('PASS: first setup IP, simultaneous STA/AP addresses, default open network settings, mobile layouts, STA/AP status, Wi-Fi POST, encoded credentials, failure/success, stalled save timeout, duplicate-save guard and single status request');
+  console.log('PASS: first setup IP, simultaneous STA/AP addresses, default open network settings, mobile layouts, STA/AP/Ethernet status and DHCP/cable transitions, Wi-Fi POST, encoded credentials, failure/success, stalled save timeout, duplicate-save guard and single status request');
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

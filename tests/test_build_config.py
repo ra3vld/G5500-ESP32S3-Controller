@@ -95,6 +95,27 @@ class BuildConfigTests(unittest.TestCase):
                 self.compile(dict(SELECTED_BOARD=board, BLUETOOTH_BACKEND=backend, DRIVE_SIMULATION=0,
                                   **{'forkrot::board::WIFI_AP_ALWAYS_ON': int(board != 4)}), [flag, 'BLUETOOTH_ENABLED=1'])
 
+    def test_wt32_ethernet_profile_and_arduino_copy(self):
+        self.compile(dict(SELECTED_BOARD=6, FORK_CLASSIC_ESP32=1, USER_BUTTON_GPIO=-1,
+                          BLUETOOTH_BACKEND=2, **{'forkrot::board::PIN_AZ_ADC':36}),
+                     ['ARDUINO_WT32_ETH01=1','CONFIG_IDF_TARGET_ESP32=1','BLUETOOTH_ENABLED=1'])
+        for name in ('wt32_eth01','wt32_eth01_noweb'):
+            result=subprocess.run([sys.executable,str(self.root/'tools/build_platformio.py'),
+                                   '--env',name,'--dry-run'],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            config=configparser.ConfigParser(interpolation=None)
+            config.read(self.root/f'build/platformio-config/{name}.ini')
+            self.assertIn('-DBOARD_PROFILE=BOARD_WT32_ETH01',config['env:selected']['build_flags'])
+            self.assertEqual(config['env:selected']['lib_deps'],'')
+            if name.endswith('_noweb'):
+                self.assertIn('-DWEB_INTERFACE_ENABLED=0',config['env:selected']['build_flags'])
+        result=subprocess.run([sys.executable,str(self.root/'tools/prepare_sketch.py'),
+                               '--target','wt32-eth01'],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        sketch=self.root/'build/arduino-wt32-eth01/G5500_Fork'
+        self.assertEqual((sketch/'partitions.csv').read_bytes(),(self.source/'partitions_esp32.csv').read_bytes())
+        self.assertEqual((sketch/'board_wt32_eth01.hpp').read_bytes(),(self.source/'board_wt32_eth01.hpp').read_bytes())
+
     def test_simulation_and_external_bluetooth(self):
         self.edit(BOARD_PROFILE=4, BLUETOOTH_ENABLED=1, BLUETOOTH_MODE='BT_HC05', DRIVE_SIMULATION=1)
         self.compile(dict(BLUETOOTH_BACKEND=1, DRIVE_SIMULATION=1))

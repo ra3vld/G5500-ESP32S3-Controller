@@ -99,8 +99,8 @@ void DeviceApi::writeHardwareStatus(JsonWriter &j, bool compact, std::string_vie
     << ",\"remainingMs\":" << (runtime_.hardwareTrial && elapsed < MemoryGuard::TrialMs ? MemoryGuard::TrialMs-elapsed : 0u)
     << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMaxBlock\":" << heapMaxBlockBytes()
     << ",\"backend\":" << jsonQuoted(runtime_.controller.hardware.backendName())
-    << ",\"sppSupported\":" << (SELECTED_BOARD == BOARD_ESP32 && BLUETOOTH_SUPPORT ? "true" : "false")
-    << ",\"classicEsp32\":" << (SELECTED_BOARD == BOARD_ESP32 ? "true" : "false")
+    << ",\"sppSupported\":" << (FORK_CLASSIC_ESP32 && BLUETOOTH_SUPPORT ? "true" : "false")
+    << ",\"classicEsp32\":" << (FORK_CLASSIC_ESP32 ? "true" : "false")
     << ",\"crowpanel\":" << (SELECTED_BOARD == BOARD_CROWPANEL_21 ? "true" : "false")
     << ",\"crowpanelLocalDrive\":" << (CROWPANEL_LOCAL_DRIVE ? "true" : "false")
     << ",\"separateDrive\":" << (CROWPANEL_LOCAL_DRIVE?"false":"true")
@@ -312,6 +312,11 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
       << ",\"staIp\":" << jsonQuoted(sta.c_str()) << ",\"apIp\":" << jsonQuoted(ap.c_str())
       << ",\"apAlwaysOn\":" << (network_.apAlwaysOn()?"true":"false") << ",\"rssi\":";
     if(connected)output << WiFi.RSSI();else output << "null";
+    output << ",\"ethernetSupported\":" << (ETHERNET_SUPPORTED?"true":"false")
+      << ",\"ethStarted\":" << (network_.ethernetStarted()?"true":"false")
+      << ",\"ethLink\":" << (ethernetLinkUp()?"true":"false")
+      << ",\"ethConnected\":" << (ethernetConnected()?"true":"false")
+      << ",\"ethIp\":" << jsonQuoted(ethernetIP().toString().c_str());
     output << ",\"n1mmPort\":" << runtime_.loggerSettings.n1mmPort << ",\"pstPort\":" << runtime_.loggerSettings.pstPort
       << ",\"hudPort\":" << runtime_.hud.config.port << ",\"commandPort\":" << runtime_.loggerSettings.commandPort << '}';return;
   }
@@ -614,8 +619,10 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
     String staIp = staOk ? WiFi.localIP().toString() : "-";
     const bool apEnabled = (WiFi.getMode() & WIFI_AP) != 0;
     String apIp = apEnabled ? WiFi.softAPIP().toString() : "-";
-    String ip = staOk ? staIp : apIp;
-    const char *mode = staOk ? (apEnabled ? "AP + Wi-Fi Client" : "Wi-Fi Client") : apEnabled ? "Access Point" : "Disconnected";
+    const bool ethOk=ethernetConnected();
+    const String ethIp=ethOk?ethernetIP().toString():"-";
+    String ip = ethOk ? ethIp : staOk ? staIp : apIp;
+    const char *mode = ethOk ? (apEnabled ? "Ethernet + AP" : "Ethernet") : staOk ? (apEnabled ? "AP + Wi-Fi Client" : "Wi-Fi Client") : apEnabled ? "Access Point" : "Disconnected";
     int rssi = staOk ? WiFi.RSSI() : 0;
     String signal = !staOk
                         ? "-"
@@ -669,6 +676,11 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
       << ",\"elp135\":" << calibrationState.elCalMv[3] << ",\"elp180\":" << calibrationState.elCalMv[4]
       << ",\"ip\":" << jsonQuoted(ip.c_str()) << ",\"apIp\":" << jsonQuoted(apIp.c_str())
       << ",\"staIp\":" << jsonQuoted(staIp.c_str()) << ",\"wifiMode\":" << jsonQuoted(mode)
+      << ",\"ethernetSupported\":" << (ETHERNET_SUPPORTED?"true":"false")
+      << ",\"ethStarted\":" << (network_.ethernetStarted()?"true":"false")
+      << ",\"ethLink\":" << (ethernetLinkUp()?"true":"false")
+      << ",\"ethConnected\":" << (ethOk?"true":"false")
+      << ",\"ethIp\":" << jsonQuoted(ethIp.c_str())
       << ",\"connectedSsid\":" << jsonQuoted(staOk ? WiFi.SSID().c_str() : "")
       << ",\"wifiConnecting\":" << (network_.wifiConnecting() ? "true" : "false")
       << ",\"ssid\":" << jsonQuoted(network_.credentials().wifiSsid.c_str())

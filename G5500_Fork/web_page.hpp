@@ -202,7 +202,7 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <div class="card"><div class="label">Предустановки</div><div id="presetButtons" class="preset-grid" style="margin-top:10px"></div>
 </div>
 <div class="card current-status" id="currentStatus" aria-label="Текущий статус устройства">
-<div><span>Wi-Fi</span><b id="statusWifi">—</b></div>
+<div><span>Сеть</span><b id="statusWifi">—</b></div>
 <div><span>Bluetooth</span><b id="statusBt">—</b></div>
 <div><span>Сигнал Wi-Fi</span><b id="statusSignal">—</b></div>
 <div title="Свободная внутренняя RAM"><span>Свободная память</span><b id="statusMemory">—</b></div>
@@ -329,8 +329,8 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <div class="field"><label for="devicePort">UDP-порт HUD</label><input aria-describedby="devicePort-help" id="devicePort" max="65535" min="1" name="port" required="" type="number" value="4534"/><p class="field-help" id="devicePort-help">Порт обмена между пультом и контроллерами. Используйте одинаковый порт на связанных устройствах, отличный от портов логгеров.</p></div>
 </div><p class="hint">Для общей сети одно устройство создаёт точку доступа, остальные подключаются к ней через настройки Wi-Fi ниже. UART HUD занимает существующие провода GS-232.</p>
 <div class="form-actions"><button class="btn good" type="submit">Сохранить и перезагрузить</button></div></form>
-</section></div></details></section><section class="card settings-section" id="networkSettings"><details class="settings-details" open><summary><h2>Сеть и подключение<span class="section-caption">Домашний Wi-Fi, точка доступа и Bluetooth</span></h2></summary><div class="settings-content"><h3>Текущее подключение</h3><div class="kv">
-<div>IP клиента (STA): <b id="ip">-</b></div><div>IP точки доступа: <b id="apip">-</b></div><div>TCP rotctld: <b>4533</b></div><div>Режим: <b id="mode">-</b></div><div>Уровень Wi-Fi: <b id="rssi">-</b></div><div>Качество: <b id="sig">-</b></div>
+</section></div></details></section><section class="card settings-section" id="networkSettings"><details class="settings-details" open><summary><h2>Сеть и подключение<span class="section-caption">Подключение к сети, точка доступа и Bluetooth</span></h2></summary><div class="settings-content"><h3>Текущее подключение</h3><div class="kv">
+<div id="ethernetStatus" hidden>Ethernet: <b id="ethip">-</b> <span id="ethstate"></span></div><div>IP клиента (STA): <b id="ip">-</b></div><div>IP точки доступа: <b id="apip">-</b></div><div>TCP rotctld: <b>4533</b></div><div>Режим: <b id="mode">-</b></div><div>Уровень Wi-Fi: <b id="rssi">-</b></div><div>Качество: <b id="sig">-</b></div>
 <div class="hide" id="btlinkrow">Bluetooth-соединение: <b id="btlinkstate" role="status">-</b></div>
 <div><span id="btlabel">Bluetooth</span>: <b id="btstate" role="status">-</b></div><div id="bttransport">-</div>
 <div class="hide" id="btmacrow">Bluetooth MAC: <b class="mono" id="btmac">-</b></div></div><div class="hint hide" id="bthelp">Этот MAC нужен в Look4Sat. Подключение видно и без передачи команд; сопряжение в Android само по себе не означает активное соединение.</div>
@@ -513,13 +513,13 @@ async function armArduinoOta(){try{await otaPost('/api/ota/arduino');await loadO
 function networkAddresses(j){
  const valid=ip=>typeof ip==='string'&&/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)&&ip!=='0.0.0.0';
  const sta=j?.staIp??(Number.isFinite(j?.rssi)?j.ip:null),ap=j?.apIp??(j?.wifiMode==='Access Point'?j.ip:null);
- return [valid(sta)?'STA: '+sta:'',valid(ap)?'AP: '+ap:''].filter(Boolean);
+ return [j?.ethConnected&&valid(j.ethIp)?'ETH: '+j.ethIp:'',valid(sta)?'STA: '+sta:'',valid(ap)?'AP: '+ap:''].filter(Boolean);
 }
 function compactStatus(j){
  const wifi=document.getElementById('statusWifi'),bt=document.getElementById('statusBt');
- const wifiModes={'Wi-Fi Client':'Подключён','AP + Wi-Fi Client':'Подключён + AP','Access Point':'Точка доступа','Disconnected':'Нет подключения'};
+ const wifiModes={'Wi-Fi Client':'Подключён','AP + Wi-Fi Client':'Подключён + AP','Access Point':'Точка доступа','Disconnected':'Нет подключения','Ethernet':'Ethernet','Ethernet + AP':'Ethernet + AP'};
  wifi.textContent=[wifiModes[j.wifiMode]||j.wifiMode||'—',...networkAddresses(j)].join('\n');wifi.style.whiteSpace='pre-line';wifi.title=j.ssid||'';
- wifi.className=Number.isFinite(j.rssi)?'online':'offline';
+ wifi.className=j.ethConnected||Number.isFinite(j.rssi)?'online':'offline';
  const btEnabled=j.build?.bluetooth!==false&&j.build?.bluetoothBackend!=='NONE';
  bt.textContent=!btEnabled?'Отключён':j.btConnected?'Подключён':j.btLinkConnected?'Связь без SPP':'Нет подключения';
  bt.className=btEnabled?(j.btConnected?'online':'offline'):'';
@@ -1201,6 +1201,7 @@ const elCustom=j.elProfile==='custom';setText(elrange,(elCustom?'Произво�
 customElPoints.classList.toggle('hide',!elCustom);elPointAngle.min=elmn;elPointAngle.max=elmx;
 for(const axis of ['az','el']){const key=calibrationContext(axis);if(window['_'+axis+'CalKey']!==key){window['_'+axis+'CalKey']=key;loadAxisCalibration(axis)}renderAxisCalibration(axis,j)}
 panel2.classList.toggle('hide',j.calMode!=='2');panelm.classList.toggle('hide',j.calMode!=='multi');multiCalHint.classList.toggle('hide',j.calMode!=='multi');
+document.getElementById('ethernetStatus').hidden=!j.ethernetSupported;setText(document.getElementById('ethip'),j.ethIp||'-');setText(document.getElementById('ethstate'),j.ethStarted===false?'Ошибка запуска':j.ethConnected?'Подключён':j.ethLink?'Ожидание DHCP':'Нет кабеля');
 setText(ip,j.staIp??(Number.isFinite(j.rssi)?j.ip:'-'));setText(document.getElementById('apip'),j.apIp||'-');setText(mode,j.wifiMode);
 setText(rssi,(j.rssi===null?'-':j.rssi+' dBm'));
 setText(sig,j.signal||'-');

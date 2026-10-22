@@ -5,12 +5,15 @@
 namespace forkrot {
 // Addresses use the same network-byte representation as uint32_t(IPAddress).
 // Pick a /24 that does not overlap even a broad STA route (e.g. 192.168/16).
-inline uint32_t serviceApAddress(uint32_t sta, uint32_t mask) {
-  constexpr uint32_t apMask = 0x00ffffffu;
-  for (uint32_t candidate : {0x0104a8c0u, 0x01ff1facu, 0x01ffff0au})
-    if (!sta || !mask || (candidate & mask & apMask) != (sta & mask & apMask))
+inline bool apSubnetOverlaps(uint32_t ap,uint32_t host,uint32_t mask) {
+  constexpr uint32_t apMask=0x00ffffffu;
+  return host && mask && (ap & mask & apMask)==(host & mask & apMask);
+}
+inline uint32_t serviceApAddress(uint32_t sta,uint32_t mask,uint32_t eth=0,uint32_t ethMask=0) {
+  for(uint32_t candidate:{0x0104a8c0u,0x01ff1facu,0x01ffff0au})
+    if(!apSubnetOverlaps(candidate,sta,mask) && !apSubnetOverlaps(candidate,eth,ethMask))
       return candidate;
-  return 0; // No private subnet can avoid a default-only STA mask.
+  return 0; // All candidate AP subnets overlap an uplink.
 }
 enum class WifiAction { None, StartAp, StartSta, StopAp, ReconnectSta };
 // A reconnect runs alongside AP for at most eight seconds. Successful STA

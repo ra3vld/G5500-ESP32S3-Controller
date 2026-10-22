@@ -1,6 +1,7 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "diagnostics.hpp"
 #include <WiFi.h>
+#include "ethernet.hpp"
 #include <time.h>
 
 #if ARDUINO_USB_MODE
@@ -15,7 +16,7 @@ static auto &HWCDCSerial = Serial;
 
 namespace forkrot {
 void Diagnostics::diagStoreLine(String line) {
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   diagLog_.append({line.c_str(), line.length()}, true);
 #else
   line.replace("\r", "");
@@ -31,7 +32,7 @@ void Diagnostics::diagStoreLine(String line) {
 }
 
 void Diagnostics::diagMirror(const String &s, bool newline) {
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   diagLog_.append({s.c_str(), s.length()}, newline);
 #else
   for (size_t i = 0; i < s.length(); i++) {
@@ -58,7 +59,7 @@ void Diagnostics::diagMirror(const String &s, bool newline) {
 }
 
 void Diagnostics::diagClear() {
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   diagLog_.clear();
 #else
   for (uint16_t i = 0; i < DIAG_MAX_LINES; i++) {
@@ -72,7 +73,7 @@ void Diagnostics::diagClear() {
 
 String Diagnostics::diagSnapshot() {
   String out;
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   if (!out.reserve(diagLog_.size())) return "[DIAG] not enough memory for snapshot\n";
   diagLog_.copyTo(out);
 #else
@@ -91,7 +92,7 @@ String Diagnostics::diagSnapshot() {
 }
 
 void Diagnostics::dbgView(std::string_view text, bool newline) {
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   diagLog_.append(text, newline);
 #else
   // Other boards retain their existing 160-line log behavior.
@@ -167,7 +168,7 @@ String Diagnostics::resetReasonToText(esp_reset_reason_t r) {
 }
 
 bool Diagnostics::syncClockFromNtp(uint32_t timeoutMs) {
-  if (WiFi.status() != WL_CONNECTED) {
+  if (!ethernetConnected() && WiFi.status() != WL_CONNECTED) {
     return false;
   }
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
@@ -341,7 +342,7 @@ bool Diagnostics::writeHistoryJson(JsonWriter &j, RssiPeriod period) {
 
 namespace forkrot {
 void Diagnostics::writeLog(JsonWriter &out) const {
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
   struct Sink { JsonWriter &writer; void operator+=(char c) { writer << c; } } sink{out};
   diagLog_.copyTo(sink);
 #else

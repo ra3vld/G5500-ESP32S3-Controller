@@ -21,6 +21,7 @@
 // BOARD_S2_MINI   — LOLIN / WEMOS S2 Mini.
 // BOARD_S2_LEGACY — прежняя проводка S2; только DRIVE_YAESU.
 // BOARD_ESP32     — ESP32 WROOM / WROVER.
+// BOARD_WT32_ETH01 — Wireless-Tag WT32-ETH01, LAN8720 Ethernet, без дисплея.
 // BOARD_CROWPANEL_21 — Elecrow DHE03921D, круглый ST7701 480x480.
 #ifndef BOARD_PROFILE
 #define BOARD_PROFILE BOARD_AUTO

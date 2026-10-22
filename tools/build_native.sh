@@ -22,6 +22,10 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tes
 ./build/keyboard_hold_tests
 sh tools/test_local_controls.sh
 
+# WT32: PHY setup, cable/DHCP states and Ethernet reservations in every drive mode.
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=6 -I tests/ethernet_fakes -I tests/device_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp tests/ethernet_tests.cpp -o build/ethernet_tests
+./build/ethernet_tests
+
 # Persisted GPIO ownership and adapters on every board, including both CrowPanel profiles.
 for board in 1 2 3 4 5; do
   extra=""
@@ -45,6 +49,8 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork G5500_Fork/comman
 ./build/command_api_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/device_api_tests.cpp -o build/device_api_tests
 ./build/device_api_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=6 -DBLUETOOTH_SUPPORT=0 -I tests/ethernet_fakes -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/device_api_tests.cpp -o build/device_api_wt32_tests
+./build/device_api_wt32_tests
 python3 -m unittest discover -s tests -p test_command_api.py
 python3 -m unittest discover -s tests -p test_autotune_experiment.py
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/motion_tests.cpp -o build/motion_tests

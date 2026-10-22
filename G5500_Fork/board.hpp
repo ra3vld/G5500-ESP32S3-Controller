@@ -9,10 +9,10 @@
 #error "Only ESP32, ESP32-S2 and ESP32-S3 are supported"
 #endif
 #endif
-#if ((CONFIG_IDF_TARGET_ESP32S2 && SELECTED_BOARD != BOARD_S2_LEGACY && SELECTED_BOARD != BOARD_S2_MINI) || (CONFIG_IDF_TARGET_ESP32S3 && SELECTED_BOARD != BOARD_S3 && SELECTED_BOARD != BOARD_CROWPANEL_21) || (CONFIG_IDF_TARGET_ESP32 && SELECTED_BOARD != BOARD_ESP32))
+#if ((CONFIG_IDF_TARGET_ESP32S2 && SELECTED_BOARD != BOARD_S2_LEGACY && SELECTED_BOARD != BOARD_S2_MINI) || (CONFIG_IDF_TARGET_ESP32S3 && SELECTED_BOARD != BOARD_S3 && SELECTED_BOARD != BOARD_CROWPANEL_21) || (CONFIG_IDF_TARGET_ESP32 && !FORK_CLASSIC_ESP32))
 #error "Board profile does not match the chip"
 #endif
-#if SELECTED_BOARD == BOARD_ESP32 && (ARDUINO_USB_MODE || ARDUINO_USB_CDC_ON_BOOT)
+#if FORK_CLASSIC_ESP32 && (ARDUINO_USB_MODE || ARDUINO_USB_CDC_ON_BOOT)
 #error "Classic ESP32 uses a UART bridge, not native USB CDC"
 #endif
 #if ARDUINO_USB_MODE || ARDUINO_USB_CDC_ON_BOOT
@@ -20,7 +20,7 @@
 #else
 #define FORK_NATIVE_USB 0
 #endif
-#if SELECTED_BOARD == BOARD_ESP32
+#if FORK_CLASSIC_ESP32
 #define FORK_CHIP_NAME "ESP32"
 #define FORK_USB_NAME "UART bridge"
 #elif SELECTED_BOARD != BOARD_S3 && SELECTED_BOARD != BOARD_CROWPANEL_21
@@ -31,7 +31,7 @@
 #define FORK_USB_NAME "Serial/JTAG"
 #endif
 namespace forkrot { namespace board {
-inline constexpr bool WIFI_AP_ALWAYS_ON = SELECTED_BOARD != BOARD_ESP32 || ESP32_FORCE_AP_STA;
+inline constexpr bool WIFI_AP_ALWAYS_ON = !FORK_CLASSIC_ESP32 || ESP32_FORCE_AP_STA;
 inline constexpr int PIN_CONFIRM = USER_BUTTON_GPIO;
 inline constexpr int TOUCH_RAW_X_MIN = 240, TOUCH_RAW_X_MAX = 3850;
 inline constexpr int TOUCH_RAW_Y_MIN = 240, TOUCH_RAW_Y_MAX = 3850;
@@ -45,14 +45,17 @@ inline constexpr const char *AP_SSID = "G5500-Rotator", *AP_PASS = "";
 // Exclude flash/PSRAM and native USB pins. S2 Mini additionally requires a header pin.
 constexpr bool gpio(int n) {
   if (n < 0) return false;
-  if (SELECTED_BOARD == BOARD_ESP32) return n <= 39 && !(n >= 6 && n <= 11) && n != 16 && n != 17 && n != 20 && n != 24 && !(n >= 28 && n <= 31) && n != 37 && n != 38;
+  if (SELECTED_BOARD == BOARD_WT32_ETH01)
+    return n==1 || n==2 || n==3 || n==4 || n==5 || n==12 || n==14 || n==15 ||
+           n==17 || n==32 || n==33 || n==35 || n==36 || n==39;
+  if (FORK_CLASSIC_ESP32) return n <= 39 && !(n >= 6 && n <= 11) && n != 16 && n != 17 && n != 20 && n != 24 && !(n >= 28 && n <= 31) && n != 37 && n != 38;
   if (SELECTED_BOARD == BOARD_S3 || SELECTED_BOARD == BOARD_CROWPANEL_21) return n <= 48 && n != 22 && n != 23 && n != 24 && n != 25 && !(n >= 26 && n <= 37) && n != 19 && n != 20;
   if (SELECTED_BOARD == BOARD_S2_MINI) return (n <= 18 || n == 21 || (n >= 33 && n <= 40));
   return n <= 46 && !(n >= 22 && n <= 32) && n != 19 && n != 20;
 }
-constexpr bool output(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n < 34 : (SELECTED_BOARD == BOARD_S3 || SELECTED_BOARD == BOARD_CROWPANEL_21) || n != 46); }
-constexpr bool pullup(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n < 34 : (SELECTED_BOARD == BOARD_S3 || SELECTED_BOARD == BOARD_CROWPANEL_21) || n != 46); }
-constexpr bool adc(int n) { return gpio(n) && (SELECTED_BOARD == BOARD_ESP32 ? n >= 32 : n >= 1 && n <= 10); }
+constexpr bool output(int n) { return gpio(n) && (FORK_CLASSIC_ESP32 ? n < 34 : (SELECTED_BOARD == BOARD_S3 || SELECTED_BOARD == BOARD_CROWPANEL_21) || n != 46); }
+constexpr bool pullup(int n) { return gpio(n) && (FORK_CLASSIC_ESP32 ? n < 34 : (SELECTED_BOARD == BOARD_S3 || SELECTED_BOARD == BOARD_CROWPANEL_21) || n != 46); }
+constexpr bool adc(int n) { return gpio(n) && (FORK_CLASSIC_ESP32 ? n >= 32 : n >= 1 && n <= 10); }
 inline constexpr int localInputPins[] = {
 #if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
  LOCAL_AZ_NEG_GPIO, LOCAL_AZ_POS_GPIO, LOCAL_EL_NEG_GPIO, LOCAL_EL_POS_GPIO,
@@ -153,6 +156,9 @@ static_assert(SOC_LEDC_CHANNEL_NUM >= (CROWPANEL_LOCAL_DRIVE ? 2 : DRIVE_INTERFA
 #endif
 // Physical connections on CrowPanel cannot be freed by software switches.
 inline const char *fixedPinOwner(int n) {
+#if SELECTED_BOARD == BOARD_WT32_ETH01
+  if(ethernetPin(n)) return "ethernet.rmii";
+#endif
 #if DISPLAY_KIND == DISPLAY_CROWPANEL_21
   if(n==PIN_I2C_SDA || n==PIN_I2C_SCL) return "crowpanel.i2c";
   if(n==PIN_ENCODER_A || n==PIN_ENCODER_B) return "crowpanel.encoder";
@@ -165,14 +171,12 @@ inline const char *fixedPinOwner(int n) {
   return nullptr;
 }
 inline const char *unavailablePinOwner(int n) {
-  if(gpio(n)) {
-    if(const auto *owner=fixedPinOwner(n)) return owner;
-    return nullptr;
-  }
-  if((SELECTED_BOARD==BOARD_ESP32 && ((n>=6 && n<=11) || n==16 || n==17)) ||
+  if(const auto *owner=fixedPinOwner(n)) return owner;
+  if(gpio(n)) return nullptr;
+  if((FORK_CLASSIC_ESP32 && ((n>=6 && n<=11) || n==16 || n==17)) ||
       ((SELECTED_BOARD==BOARD_S3 || SELECTED_BOARD==BOARD_CROWPANEL_21) && n>=26 && n<=37) ||
       ((SELECTED_BOARD==BOARD_S2_LEGACY || SELECTED_BOARD==BOARD_S2_MINI) && n>=22 && n<=32)) return "flash_psram";
-  if(SELECTED_BOARD!=BOARD_ESP32 && (n==19 || n==20)) return "usb";
+  if(!FORK_CLASSIC_ESP32 && (n==19 || n==20)) return "usb";
   return "unavailable";
 }
 struct HardwareValidation {
@@ -201,7 +205,7 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
   if(!BLUETOOTH_SUPPORT && c.bluetooth) return {"bluetooth_not_supported","bluetoothEnabled"};
   if(c.drive>DRIVE_BTS7960 || c.bluetoothMode<BT_HC05 || c.bluetoothMode>BT_AUTO ||
       (c.pwmInverted && c.drive!=DRIVE_BTS7960)) return {"invalid_hardware"};
-  if(c.backend()==BT_ESP32_SPP && SELECTED_BOARD!=BOARD_ESP32) return {"spp_not_supported","bluetoothMode"};
+  if(c.backend()==BT_ESP32_SPP && !FORK_CLASSIC_ESP32) return {"spp_not_supported","bluetoothMode"};
   // The modified adapter has an active-LOW, open-drain speed/enable stage.
   if(CROWPANEL_LOCAL_DRIVE && !c.simulation && (!c.pins.singleAxis() || c.drive==DRIVE_SEPARATE_PWM))
     return {"drive_not_supported","driveInterface"};

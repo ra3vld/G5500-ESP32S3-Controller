@@ -12,7 +12,7 @@
 
 ## Подключение
 
-- [Платы, начальные GPIO и настройки оборудования](configuration.md); [классический ESP32](classic-esp32.md).
+- [Платы, начальные GPIO и настройки оборудования](configuration.md); [классический ESP32](classic-esp32.md), [WT32-ETH01 с Ethernet](wt32-eth01.md).
 - [G-5500](hardware/g5500-guide.md), [G-800DXA](hardware/g800dxa-guide.md), [BTS7960 / IBT-2](hardware/independent-pwm-bts7960.md), [отдельные направления и PWM](hardware/separate-pwm.md).
 - [Входы датчиков ADC](hardware/adc-input.md), [кнопки и джойстик](local-controls.md).
 - [CrowPanel: экран и жесты](crowpanel-21.md), [переделка CrowPanel для локального AZ](crowpanel-az.md).

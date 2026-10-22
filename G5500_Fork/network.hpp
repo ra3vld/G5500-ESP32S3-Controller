@@ -4,6 +4,7 @@
 #include "runtime.hpp"
 #include "board.hpp"
 #include "network_state.hpp"
+#include "ethernet.hpp"
 #include "device_actions.hpp"
 #include "hardware.hpp"
 #include "diagnostics.hpp"
@@ -33,7 +34,7 @@ public:
   bool hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned report) const;
   bool apAlwaysOn() const {
     return wifiSetupAp_ || runtime_.recovery || runtime_.hud.config.wifi == HudWifi::Host ||
-           (runtime_.hud.config.wifi == HudWifi::Existing && (SELECTED_BOARD != BOARD_ESP32 || runtime_.controller.hardware.forceAp));
+           (runtime_.hud.config.wifi == HudWifi::Existing && (!FORK_CLASSIC_ESP32 || runtime_.controller.hardware.forceAp));
   }
 
   WifiCredentials &credentials() {
@@ -63,6 +64,7 @@ public:
   void handleRotctldTcp();
   bool startWifi();
   void connectWifi(const String &ssid, const String &password);
+  bool ethernetStarted() const { return ethernet_.started(); }
   bool wifiConnecting() const { return wifiConnectPending_ || (wifiFallback_.trying() && WiFi.status() != WL_CONNECTED); }
   void formatAddresses(char *text, size_t capacity, const char *separator = "\n") const;
   void serviceWifiReconnect();
@@ -105,6 +107,8 @@ private:
   bool deferReply(const Packet &, uint8_t port);
   void resetHudInputs();
   WifiCredentials credentials_;
+  EthernetAdapter ethernet_;
+  bool ethernetWasConnected_=false;
   WiFiServer tcpServer_{board::TCP_PORT};
   WiFiClient rotctldClient_;
   SelectionApiLineBuffer tcpReceiver_;

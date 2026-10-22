@@ -7,7 +7,7 @@ import subprocess
 import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 p = argparse.ArgumentParser(description=__doc__)
-p.add_argument('--target', choices=['s3', 's2', 's2-mini', 'esp32', 'esp32-8mb', 'crowpanel'], required=True)
+p.add_argument('--target', choices=['s3', 's2', 's2-mini', 'esp32', 'esp32-8mb', 'crowpanel', 'wt32-eth01'], required=True)
 p.add_argument('--output', type=pathlib.Path)
 a = p.parse_args()
 out = a.output or ROOT / 'build' / ('arduino-' + a.target) / 'G5500_Fork'
@@ -24,6 +24,6 @@ for f in source.iterdir():
     if f.suffix in {'.ino', '.cpp', '.c', '.hpp', '.h'} and not f.name.endswith('.ino.cpp'):
         shutil.copy2(f, out / f.name)
 shutil.copytree(source / 'src', out / 'src', dirs_exist_ok=True)
-partitions = 'partitions_esp32_8mb.csv' if a.target == 'esp32-8mb' else 'partitions_esp32.csv' if a.target == 'esp32' else 'partitions_s3.csv' if a.target in ('s3', 'crowpanel') else 'partitions_s2.csv'
+partitions = 'partitions_esp32_8mb.csv' if a.target == 'esp32-8mb' else 'partitions_esp32.csv' if a.target in ('esp32','wt32-eth01') else 'partitions_s3.csv' if a.target in ('s3', 'crowpanel') else 'partitions_s2.csv'
 shutil.copy2(source / partitions, out / 'partitions.csv')
 print(out / 'G5500_Fork.ino')

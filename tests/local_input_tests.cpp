@@ -124,7 +124,7 @@ static void movement() {
   for (uint32_t now = 50; now <= 900; now += 10) {
     input.sample(.5f, 1, 0, true, now); c.tick(now);
   }
-  assert(std::abs(c.axes[0].speedOutputPercent - 40) < .01f);
+  assert(std::abs(c.axes[0].speedOutputPercent - 42) < .01f); // Half travel between 5% minimum and working speed.
   assert(std::abs(c.axes[1].speedOutputPercent - 80) < .01f);
   assert(c.axes[0].current > 100 && c.axes[1].current > 60);
   input.sample(0, 0, 3, true, 910); c.tick(910);
