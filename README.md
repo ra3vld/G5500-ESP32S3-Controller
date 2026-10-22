@@ -22,7 +22,7 @@
 
 | CrowPanel: AZ / EL | HUD: выбранная поворотка |
 |---|---|
-| ![Положение и цель AZ/EL](docs/images/crowpanel-21-dual.png) | ![Удалённое управление](docs/images/crowpanel-21-hud.png) |
+| ![Положение и цель AZ/EL](docs/images/crowpanel-21-dual.png) | ![Удалённое управление](docs/images/crowpanel-21-target-limits.png) |
 
 ## Начало работы
 

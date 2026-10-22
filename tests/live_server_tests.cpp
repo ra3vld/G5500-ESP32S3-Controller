@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <esp_heap_caps.h>
+#include <esp_timer.h>
 static size_t allocationCalls=0, releasedCalls=0, allocatedBytes=0;
 void *operator new(size_t size) {
   if(void *p=std::malloc(size?size:1)){++allocationCalls;allocatedBytes+=size;return p;}
@@ -34,7 +35,7 @@ static std::string packet(unsigned id,const char *path,const char *args=""){retu
 int main(){
  MotionTestRuntime runtime;runtime.hud.begin(1,10);runtime.controller.feedback(20,30,true,true);
  LiveServer server(runtime);const auto beforeBegin=allocatedBytes;
- assert(server.begin());assert(fakeServer.cfg.max_open_sockets==4);
+ assert(server.begin());assert(fakeServer.cfg.max_open_sockets==4);assert(fakeServer.uri.handle_ws_control_frames);
  assert(allocatedBytes-beforeBegin<=4096); // idle server holds no per-client queues
  const auto beforeLowHeap=allocationCalls;
  fakeHeapFree=MemoryGuard::CriticalFree;
@@ -45,7 +46,7 @@ int main(){
  for(unsigned i=0;i<10000;++i) {
    const auto allocations=allocationCalls, releases=releasedCalls, bytes=allocatedBytes;
    assert(fakeServer.cfg.open_fn(&fakeServer,999)==ESP_OK);
-   assert(allocationCalls==allocations+1 && allocatedBytes-bytes<=2048);
+   assert(allocationCalls==allocations+1 && allocatedBytes-bytes<=6144);
    fakeServer.cfg.close_fn(&fakeServer,999);
    assert(releasedCalls==releases+1);
  }
@@ -70,6 +71,30 @@ int main(){
  const int sent=fakeSendOverride(&fakeServer,pair[0],payload.data(),payload.size(),0);
  shutdown(pair[0],SHUT_WR);reader.join();close(pair[0]);close(pair[1]);
  assert(sent==int(payload.size()) && received==payload);
+ // A receiver that stops draining TCP must leave a precise timeout record,
+ // including the offset of a partly sent frame, rather than only ESP_FAIL.
+ assert(socketpair(AF_UNIX,SOCK_STREAM,0,pair)==0);
+ assert(setsockopt(pair[0],SOL_SOCKET,SO_SNDBUF,&small,sizeof small)==0);
+ assert(fakeSendOverride(&fakeServer,pair[0],payload.data(),payload.size(),0)==-1);
+ assert(errno==ETIMEDOUT);
+ char details[2048];JsonWriter diagnostic(details,sizeof details);server.writeDiagnostics(diagnostic);
+ const std::string timeoutDetails(diagnostic.data(),diagnostic.size());
+ assert(timeoutDetails.find("\"liveSendTimeouts\":1")!=std::string::npos);
+ assert(timeoutDetails.find("\"liveSendErrno\":"+std::to_string(ETIMEDOUT))!=std::string::npos);
+ assert(timeoutDetails.find("\"liveSendRetryErrno\":"+std::to_string(EAGAIN))!=std::string::npos);
+ assert(timeoutDetails.find("\"liveSendRequested\":20000")!=std::string::npos);
+ const auto offset=timeoutDetails.find("\"liveSendWritten\":");assert(offset!=std::string::npos);
+ const auto partial=std::stoul(timeoutDetails.substr(offset+18));assert(partial>0&&partial<payload.size());
+ const auto elapsed=timeoutDetails.find("\"liveSendElapsedMs\":");assert(elapsed!=std::string::npos);
+ assert(std::stoul(timeoutDetails.substr(elapsed+20))>=100);
+ close(pair[0]);close(pair[1]);
+ assert(fakeSendOverride(&fakeServer,-1,payload.data(),payload.size(),0)==-1&&errno==EBADF);
+ JsonWriter fatal(details,sizeof details);server.writeDiagnostics(fatal);
+ const std::string fatalDetails(fatal.data(),fatal.size());
+ assert(fatalDetails.find("\"liveSendErrno\":"+std::to_string(EBADF))!=std::string::npos);
+ assert(fatalDetails.find("\"liveSendWritten\":0")!=std::string::npos);
+ assert(fatalDetails.find("\"liveSendTimeouts\":1")!=std::string::npos);
+
  assert(connect(1004)==ESP_FAIL);
  assert(command(1000,packet(1,"/api/target","&az=90"))==ESP_OK);
  assert(runtime.controller.axes[0].target!=90); // HTTPD cannot execute a control command.
@@ -184,6 +209,46 @@ int main(){
  server.commands(2810);assert(!c.moving());server.publish(2810);pumpLive();
  assert(command(1002,packet(903,"/api/move",("&d=H&az=1&el=-1&serial=2"+identity).c_str()))==ESP_OK);
  server.commands(2820);assert(!c.moving());server.publish(2820);pumpLive();
+ // A partly written state survives >100 ms of EAGAIN. Other clients,
+ // STOP execution and PONG/result ordering keep working while it is blocked.
+ for(int fd=1000;fd<1004;++fd)if(fakeServer.websocketFds.count(fd))httpd_sess_trigger_close(&fakeServer,fd);
+ fakeServer.sent.clear();fakeServer.opcodes.clear();fakeServer.maxWrite=7;
+ assert(connect(1000)==ESP_OK&&connect(1001)==ESP_OK);fakeEspTimeUs=10000000;
+ server.publish(10000);pumpLive();assert(fakeServer.pendingWire[1000].size()==7);
+ fakeServer.blockedFd=1000;fakeServer.maxWrite=SIZE_MAX;
+ httpd_req_t ping{fakeServer.uri.user_ctx,HTTP_POST,1000,"probe",HTTPD_WS_TYPE_PING};assert(fakeServer.uri.handler(&ping)==ESP_OK);
+ assert(command(1000,packet(1,"/api/target","&az=140"))==ESP_OK);
+ assert(command(1000,packet(2,"/api/move","&d=S"))==ESP_OK);
+ server.commands(10020);assert(!c.moving());
+ for(unsigned t=10020;t<=11520;t+=20){fakeEspTimeUs=int64_t(t)*1000;c.axes[0].current=75;server.publish(t);pumpLive();}
+ assert(fakeServer.websocketFds.count(1000)&&fakeServer.pendingWire[1000].size()==7);
+ assert(fakeServer.sent.size()>=5); // healthy client receives telemetry
+ fakeServer.blockedFd=-1;fakeServer.maxWrite=31;
+ for(unsigned t=11525;t<=13025;t+=5){fakeEspTimeUs=int64_t(t)*1000;server.publish(t);pumpLive();}
+ std::vector<std::string> recovered;std::vector<int> recoveredOpcodes;
+ for(size_t i=0;i<fakeServer.sent.size();++i)if(fakeServer.sent[i].first==1000){recovered.push_back(fakeServer.sent[i].second);recoveredOpcodes.push_back(fakeServer.opcodes[i].second);}
+ assert(recovered.size()>=5);
+ assert(recovered[0].find("\"type\":\"state\"")!=std::string::npos);
+ assert(recovered[1]=="probe"&&recoveredOpcodes[1]==HTTPD_WS_TYPE_PONG);
+ assert(recovered[2].find("\"type\":\"result\"")!=std::string::npos&&recovered[3].find("\"type\":\"result\"")!=std::string::npos);
+ assert(recovered[4].find("\"az\":75")!=std::string::npos); // latest state, no telemetry backlog
+ // An incoming PONG is consumed, not treated as a malformed command.
+ httpd_req_t pong{fakeServer.uri.user_ctx,HTTP_POST,1000,"peer",HTTPD_WS_TYPE_PONG};assert(fakeServer.uri.handler(&pong)==ESP_OK);
+ // Only a permanently stalled client expires; the healthy peer remains live.
+ httpd_sess_trigger_close(&fakeServer,1000);httpd_sess_trigger_close(&fakeServer,1001);assert(connect(1000)==ESP_OK&&connect(1001)==ESP_OK);
+ fakeServer.maxWrite=SIZE_MAX;fakeServer.blockedFd=1000;fakeEspTimeUs=20000000;
+ server.publish(20000);pumpLive();fakeEspTimeUs=24999000;server.publish(24999);pumpLive();assert(fakeServer.websocketFds.count(1000));
+ fakeEspTimeUs=25000000;server.publish(25004);pumpLive();assert(!fakeServer.websocketFds.count(1000)&&fakeServer.websocketFds.count(1001));
+ fakeServer.blockedFd=-1;
+ // Peer CLOSE at a frame boundary can be echoed; after a partial write it
+ // closes without injecting a control header into the unfinished payload.
+ httpd_req_t closeReady{fakeServer.uri.user_ctx,HTTP_POST,1001,std::string("\x03\xe8",2),HTTPD_WS_TYPE_CLOSE};assert(fakeServer.uri.handler(&closeReady)==ESP_OK);
+ assert(connect(1000)==ESP_OK);fakeServer.maxWrite=7;fakeEspTimeUs=26000000;server.publish(26000);pumpLive();
+ const auto sentBeforeClose=fakeServer.sent.size();
+ httpd_req_t closePartial{fakeServer.uri.user_ctx,HTTP_POST,1000,std::string("\x03\xe8",2),HTTPD_WS_TYPE_CLOSE};assert(fakeServer.uri.handler(&closePartial)==ESP_FAIL);
+ assert(fakeServer.sent.size()==sentBeforeClose);
+ fakeServer.maxWrite=SIZE_MAX;fakeEspTimeUs=-1;
+ std::cout<<"PASS: partial frames resume after 1.5s, independent STOP/peers, PONG and ACK ordering, latest state and bounded stalled-client timeout\n";
  std::cout<<"PASS: actual HTTPD adapter: four clients, loop ownership, STOP priority, duplicate IDs, bounded backpressure, reconnect\n";
- std::cout<<"PASS: idle live storage <=4 KiB, 10000 queue allocations/releases, low-memory admission and existing STOP\n";
+ std::cout<<"PASS: idle live storage <=4 KiB, 10000 queue allocations/releases (<=6 KiB/client), low-memory admission and existing STOP\n";
 }
