@@ -1,6 +1,7 @@
 #pragma once
 #include "build_config.hpp"
 #include "live.hpp"
+#include "live_frame.hpp"
 #if defined(ARDUINO_ARCH_ESP32) && WEB_INTERFACE_ENABLED
 // Arduino WebServer and IDF use different values for the HTTP_ANY macro.
 #pragma push_macro("HTTP_ANY")
@@ -25,6 +26,8 @@ class LiveServer {
   };
   struct ClientBuffers {
     Message command, stop;
+    LiveFrame<LIVE_STATE_CAPACITY> outgoing;
+    char pong[125]{}; size_t pongSize=0; bool pongPending=false;
     SpeedRequest speeds[2];
     Reply replies[4]; unsigned head=0, count=0;
     Pending pending[4];
@@ -45,7 +48,12 @@ class LiveServer {
   std::unique_ptr<std::array<char,LIVE_STATE_CAPACITY>> state_;
   size_t stateSize_=0;
   uint32_t revision_=0, publishedAt_=0, hash_=0, controlHash_=0, wakeAt_=0;
-  uint32_t workRuns_=0, framesSent_=0, queueErrors_=0, sendErrors_=0;
+  uint32_t workRuns_=0, framesSent_=0, queueErrors_=0, sendErrors_=0, sendDeferred_=0;
+  // Preserve the last failed socket write: the HTTPD return code alone loses
+  // errno and whether a frame was cut short by the bounded retry deadline.
+  uint32_t sendTimeouts_=0, sendRetryErrors_=0, sendElapsedMs_=0;
+  size_t sendWritten_=0, sendRequested_=0;
+  int sendErrno_=0, sendRetryErrno_=0;
   bool workPending_=false;
   char boot_[17]{};
   RotationRange ingressRange_[2]{};

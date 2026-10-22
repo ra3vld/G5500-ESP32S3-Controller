@@ -531,6 +531,7 @@ function compactStatus(j){
 
 // Live commands are never replayed after reconnecting.
 const livePaths=new Set(['/api/target','/api/speed','/api/move','/api/mode','/api/execute','/api/preset/run','/api/hud/select']);
+const liveTimeoutMs=5000; // Matches the server frame recovery bound.
 const live={socket:null,ready:false,boot:null,revision:0,next:0,pending:new Map(),state:null,retry:null,last:0};
 const connection={httpOnline:null,httpLast:0,state:null};
 const connectionFavicon=document.getElementById('connectionFavicon'),offlineFavicon=connectionFavicon.href;
@@ -543,7 +544,7 @@ function updateConnectionFavicon(online){
 let httpState=null,liveFrame=0;
 function updateConnection(){
  const node=document.getElementById('rotatorConnection'),j=connection.state,now=Date.now();
- const reachable=(live.ready&&now-live.last<=1500)||(connection.httpOnline&&now-connection.httpLast<=6500);
+ const reachable=(live.ready&&now-live.last<=liveTimeoutMs)||(connection.httpOnline&&now-connection.httpLast<=6500);
  let state='pending',text='Проверяем связь…',hint='Ожидаем состояние устройства.';
  if(reachable&&j){
   const hud=j.deviceRole==='hud',selected=j.hudSelected&&!/^0+$/.test(j.hudSelected);
@@ -566,7 +567,7 @@ function connectLive(port){
   if(message.v!==1||!message.boot)return;
   live.last=Date.now();
   if(message.type==='state'){
-   if(live.boot&&message.boot!==live.boot){for(const p of live.pending.values()){clearTimeout(p.timer);p.reject(new Error('restarted'))}live.pending.clear();live.revision=0;live.state=null;}
+   if(live.boot&&message.boot!==live.boot){releaseKeyboardAxes();for(const p of live.pending.values()){clearTimeout(p.timer);p.reject(new Error('restarted'))}live.pending.clear();live.revision=0;live.state=null;}
    if(live.ready&&message.boot===live.boot&&message.revision<=live.revision)return;
    const changed=live.state&&live.state.hudSelectionEpoch!==message.state.hudSelectionEpoch;
    live.boot=message.boot;live.revision=message.revision;live.state=message.state;live.ready=true;queueLiveRender();
@@ -582,7 +583,7 @@ function connectLive(port){
  };
  socket.onclose=()=>{
   if(live.socket!==socket)return;
-  live.socket=null;live.ready=false;releaseKeyboardAxes();live.state=null;live.boot=null;live.revision=0;
+  live.socket=null;live.ready=false;live.state=null;live.revision=0;
   updateConnection();
   for(const p of live.pending.values()){clearTimeout(p.timer);p.reject(new Error('disconnected'))}live.pending.clear();
   live.retry=setTimeout(()=>{live.retry=null;connectLive(port)},1000);upd(true);
@@ -595,12 +596,12 @@ function sendLive(path,body){
  if(live.pending.size>=(stop?9:8)||live.socket.bufferedAmount>(stop?4096:2048))return Promise.resolve({status:503,json:async()=>({ok:false,result:'busy'})});
  const id=++live.next,packet=new URLSearchParams({...body,v:1,cid:id,boot:live.boot,selection:body.selection??window._forkState?.hudSelectionEpoch??0,path}).toString();
  return new Promise((resolve,reject)=>{
-  const timer=setTimeout(()=>{live.pending.delete(id);resolve({status:504,json:async()=>({ok:false,result:'timeout'})})},1500);
+  const timer=setTimeout(()=>{live.pending.delete(id);resolve({status:504,json:async()=>({ok:false,result:'timeout'})})},liveTimeoutMs);
   live.pending.set(id,{resolve,reject,timer});
   try{live.socket.send(packet)}catch(e){clearTimeout(timer);live.pending.delete(id);reject(e)}
  });
 }
-setInterval(()=>{if(live.ready&&Date.now()-live.last>1500)live.socket.close();updateConnection()},250);
+setInterval(()=>{if(live.ready&&Date.now()-live.last>liveTimeoutMs)live.socket.close();updateConnection()},250);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){queueLiveRender();upd(true)}});
 async function forkPost(path,body){
  const success={'/api/settings':'Настройки сохранены','/api/preset':'Предустановка сохранена','/api/device':'Настройки устройства сохранены','/api/hud/select':'Поворотка выбрана','/api/hud/peers':body.action==='remove'?'Поворотка удалена':body.name?'Имя поворотки сохранено':'Поворотка добавлена','/api/hud/discover':'Поиск устройств запущен'}[path];
@@ -924,13 +925,7 @@ function updateFork(j){
 }
 
 async function q(u){try{if((live.ready||window._forkState?.deviceRole==='hud')&&(u.startsWith('/api/move?')||u.startsWith('/api/target?'))){const url=new URL(u,location.origin);await forkPost(url.pathname,Object.fromEntries(url.searchParams));return ''}return await (await fetch(u,{cache:'no-store'})).text()}catch(e){return''}}
-async function mv(d){await q('/api/move?d='+d)}
-async function st(){await q('/api/move?d=S')}
-async function stopAxis(d,selection){
-  const scope=selection===undefined?'':'&selection='+selection;
-  if(d==='L'||d==='R') await q('/api/move?d=A'+scope);
-  else if(d==='U'||d==='D') await q('/api/move?d=E'+scope);
-}
+async function st(){releaseKeyboardAxes();await q('/api/move?d=S')}
 async function go(){
  const body={},g800=window._forkState?.model==='G800DXA';
  for(const [key,id] of g800?[['az','taz']]:[['az','taz'],['el','tel']]){
@@ -952,7 +947,7 @@ const keyboardAxes={az:null,el:null};
 const arrowDirections={ArrowLeft:'L',ArrowRight:'R',ArrowUp:'U',ArrowDown:'D'};
 function keyboardToken(){const n=new Uint32Array(1);crypto.getRandomValues(n);return n[0]||1;}
 const keyboardStream={client:keyboardToken(),session:keyboardToken(),gesture:0,serial:0,version:0,busy:null,timer:null,context:null};
-function keyboardContext(j){return [j?.deviceRole,j?.model,j?.hudSelectionEpoch,j?.azRangeRevision,live.boot].join(':');}
+function keyboardContext(j){return [j?.deviceId,j?.deviceRole,j?.model,j?.hudSelectionEpoch,j?.azRangeRevision].join(':');}
 function keyboardHeld(){return !!(keyboardAxes.az||keyboardAxes.el);}
 function keyboardPacket(d,mask,az=0,el=0){
  const k=keyboardStream,c=k.context;
@@ -962,7 +957,8 @@ function keyboardPacket(d,mask,az=0,el=0){
 async function keyboardReply(r){const j=await r.json();return r.status<300&&(j.ok||(r.status===202&&j.result==='deferred'));}
 async function transmitKeyboard(packet){
  try{
-  if(live.ready)return await keyboardReply(await sendLive('/api/move',packet));
+  // Manual holds have their own bounded request/ACK stream. A telemetry
+  // WebSocket reconnect must not abort a healthy HTTP control stream.
   const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),400);
   try{return await keyboardReply(await fetch('/api/move',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(packet),signal:abort.signal,keepalive:packet.d!=='H'}));}
   finally{clearTimeout(timer);}
@@ -994,12 +990,23 @@ async function sendKeyboardHold(){
  const packet=keyboardPacket('H',k.context.mask,az,el),token={gesture:k.gesture,version:k.version};k.busy=token;
  try{
   if(!await transmitKeyboard(packet)&&token.gesture===k.gesture&&token.version===k.version&&keyboardHeld()){
-   releaseKeyboardAxes();document.getElementById('forkMessage').textContent='Управление стрелками остановлено: нет подтверждения команды.';
+   releaseKeyboardAxes();document.getElementById('forkMessage').textContent='Ручное управление остановлено: нет подтверждения команды.';
   }
  }finally{
   if(k.busy===token)k.busy=null;
   if(token.gesture===k.gesture&&token.version!==k.version&&keyboardHeld())sendKeyboardHold();
  }
+}
+function startManualAxis(axis,input){
+ const j=window._forkState,k=keyboardStream;
+ if(!j||j.configurationLocked||j.autotune?.active||document.getElementById('controlPanel').hidden)return false;
+ if(keyboardHeld()&&k.context.key!==keyboardContext(j))releaseKeyboardAxes();
+ if(!keyboardHeld()){
+  k.gesture=(k.gesture+1)>>>0||1;
+  k.context={key:keyboardContext(j),mask:j.model==='G800DXA'?1:3,selection:j.hudSelectionEpoch??0,range:j.azRangeRevision};
+  k.timer=setInterval(sendKeyboardHold,200);
+ }
+ keyboardAxes[axis]=input;++k.version;sendKeyboardHold();return true;
 }
 document.addEventListener('keydown',event=>{
  const direction=arrowDirections[event.key];
@@ -1010,14 +1017,9 @@ document.addEventListener('keydown',event=>{
  if(target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="tab"]')||document.getElementById('controlPanel').hidden)return;
  const button=document.querySelector('.movebtn[data-dir="'+direction+'"]'),j=window._forkState;
  if(!j||j.configurationLocked||j.autotune?.active||!button||button.disabled||!button.getClientRects().length)return;
- event.preventDefault();const axis=direction==='L'||direction==='R'?'az':'el',k=keyboardStream;
+ event.preventDefault();const axis=direction==='L'||direction==='R'?'az':'el';
  if(keyboardAxes[axis]?.key===event.key)return; // Some platforms omit repeat=true.
- if(!keyboardHeld()){
-  k.gesture=(k.gesture+1)>>>0||1;
-  k.context={key:keyboardContext(j),mask:j.model==='G800DXA'?1:3,selection:j.hudSelectionEpoch??0,range:j.azRangeRevision};
-  k.timer=setInterval(sendKeyboardHold,200);
- }
- keyboardAxes[axis]={key:event.key,direction};++k.version;sendKeyboardHold();
+ startManualAxis(axis,{key:event.key,direction});
 });
 window.addEventListener('keyup',event=>{
  if(!arrowDirections[event.key])return;
@@ -1251,31 +1253,28 @@ document.querySelectorAll('.btn').forEach(function(b){
 });
 
 document.querySelectorAll('.movebtn').forEach(function(b){
-  let active=false,selection;
-
-  b.addEventListener('touchstart',function(e){
-    e.preventDefault();
-  },{passive:false});
-
+  let pointer=null;
+  const axis=b.dataset.dir==='L'||b.dataset.dir==='R'?'az':'el';
+  b.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
   b.addEventListener('pointerdown',function(e){
     e.preventDefault();
-    active=true;selection=window._forkState?.deviceRole==='hud'?window._forkState?.hudSelectionEpoch:undefined;
-    try{ b.setPointerCapture(e.pointerId); }catch(x){}
-    mv(b.dataset.dir);
+    if(pointer&&keyboardAxes[axis]!==pointer)pointer=null;
+    if(b.disabled||pointer!==null||e.button!==0)return;
+    const input={pointer:e.pointerId,direction:b.dataset.dir};
+    if(!startManualAxis(axis,input))return;
+    pointer=input;
+    try{b.setPointerCapture(e.pointerId);}catch(x){}
   });
-
   function release(e){
-    if(e) e.preventDefault();
-    if(active){
-      active=false;
-      stopAxis(b.dataset.dir,selection);
-    }
+    if(!pointer||e.pointerId!==pointer.pointer)return;
+    e.preventDefault();
+    if(keyboardAxes[axis]===pointer)releaseKeyboardAxis(axis);
+    pointer=null;
   }
-
   b.addEventListener('pointerup',release);
   b.addEventListener('pointercancel',release);
   b.addEventListener('lostpointercapture',release);
-  b.addEventListener('contextmenu',function(e){e.preventDefault();});
+  b.addEventListener('contextmenu',e=>e.preventDefault());
 });
 
 let hudSelection;

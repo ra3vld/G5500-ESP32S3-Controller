@@ -28,7 +28,7 @@ bool LiveServer::begin() {
   cfg.stack_size=6144; cfg.recv_wait_timeout=1;cfg.send_wait_timeout=1;
   cfg.open_fn=opened;cfg.close_fn=closed;cfg.global_user_ctx=this;
   if(httpd_start(&server_,&cfg)!=ESP_OK){server_=nullptr;clients_.reset();state_.reset();return false;}
-  httpd_uri_t uri{};uri.uri="/api/live";uri.method=HTTP_GET;uri.handler=handler;uri.user_ctx=this;uri.is_websocket=true;
+  httpd_uri_t uri{};uri.uri="/api/live";uri.method=HTTP_GET;uri.handler=handler;uri.user_ctx=this;uri.is_websocket=true;uri.handle_ws_control_frames=true;
   if(httpd_register_uri_handler(server_,&uri)!=ESP_OK){httpd_stop(server_);server_=nullptr;clients_.reset();state_.reset();return false;}
   return true;
 }
@@ -38,8 +38,8 @@ esp_err_t LiveServer::opened(httpd_handle_t server,int fd) {
   // arrive across Wi-Fi retries, with a bounded wait for an incomplete peer.
   timeval timeout{0,200000};
   setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof timeout);
-  // IDF's WS sender treats a positive short write as a complete write. Ensure
-  // both handshake and WS bytes are sent in full, without a 5 ms disconnect.
+  // Synchronous writes are used only for HTTP upgrade and peer CLOSE replies.
+  // Data/PONG frames use the persistent nonblocking outgoing buffer below.
   if(httpd_sess_set_send_override(server,fd,sendSocket)!=ESP_OK)return ESP_FAIL;
   // IDF 5.5.5 no longer calls the URI handler for a successful upgrade.
   // Reserve the client at accept; sendWork waits for the WS handshake before
@@ -58,11 +58,28 @@ esp_err_t LiveServer::opened(httpd_handle_t server,int fd) {
   }
   return ESP_FAIL;
 }
-int LiveServer::sendSocket(httpd_handle_t,int fd,const char *data,size_t size,int flags) {
-  return boundedSocketWrite(data,size,100,
-    [=](const char *p,size_t n){return ::send(fd,p,n,flags|MSG_DONTWAIT);},
-    []{return uint32_t(esp_timer_get_time()/1000);},
-    []{vTaskDelay(1);});
+int LiveServer::sendSocket(httpd_handle_t server,int fd,const char *data,size_t size,int flags) {
+  const auto now=[] {return uint32_t(esp_timer_get_time()/1000);};
+  const uint32_t started=now();size_t written=0;uint32_t retries=0;int retryError=0;
+  const int result=boundedSocketWrite(data,size,100,
+    [&](const char *p,size_t n){
+      const int sent=::send(fd,p,n,flags|MSG_DONTWAIT);
+      if(sent>0)written+=size_t(sent);
+      else if(sent<0){retryError=errno;++retries;}
+      return sent;
+    },now,[]{vTaskDelay(1);});
+  if(result<0) {
+    const int error=errno;const uint32_t elapsed=now()-started;
+    auto &self=*static_cast<LiveServer *>(httpd_get_global_user_ctx(server));
+    {Guard lock(self.mutex_);
+      self.sendErrno_=error;self.sendRetryErrno_=retryError;
+      self.sendWritten_=written;self.sendRequested_=size;
+      self.sendRetryErrors_=retries;self.sendElapsedMs_=elapsed;
+      if(error==ETIMEDOUT)++self.sendTimeouts_;
+    }
+    errno=error;
+  }
+  return result;
 }
 void LiveServer::closed(httpd_handle_t server,int fd) {
   auto &self=*static_cast<LiveServer *>(httpd_get_global_user_ctx(server));
@@ -91,10 +108,24 @@ esp_err_t LiveServer::handler(httpd_req_t *req) {
   }
   httpd_ws_frame_t frame{};
   if(httpd_ws_recv_frame(req,&frame,0)!=ESP_OK)return ESP_FAIL;
-  if(frame.type==HTTPD_WS_TYPE_CLOSE)return ESP_FAIL;
-  if(frame.type!=HTTPD_WS_TYPE_TEXT||frame.len>LIVE_INPUT_CAPACITY||!frame.final)return ESP_FAIL;
+  const bool control=frame.type==HTTPD_WS_TYPE_PING||frame.type==HTTPD_WS_TYPE_PONG||frame.type==HTTPD_WS_TYPE_CLOSE;
+  if((frame.type!=HTTPD_WS_TYPE_TEXT&&!control)||frame.len>(control?125:LIVE_INPUT_CAPACITY)||!frame.final)return ESP_FAIL;
   Message input;frame.payload=reinterpret_cast<uint8_t *>(input.data);
   if(httpd_ws_recv_frame(req,&frame,LIVE_INPUT_CAPACITY)!=ESP_OK)return ESP_FAIL;
+  if(control) {
+    if(frame.type==HTTPD_WS_TYPE_PONG)return ESP_OK;
+    if(frame.type==HTTPD_WS_TYPE_CLOSE) {
+      // IDF closes this session after the handler. Reply only at a frame
+      // boundary: never insert CLOSE bytes into an incomplete text frame.
+      {Guard lock(self.mutex_);for(auto &c:*self.clients_)if(c.fd==fd&&c.buffers->outgoing.written())return ESP_FAIL;}
+      return httpd_ws_send_frame(req,&frame);
+    }
+    Guard lock(self.mutex_);
+    for(auto &c:*self.clients_)if(c.fd==fd){
+      std::memcpy(c.buffers->pong,input.data,frame.len);c.buffers->pongSize=frame.len;c.buffers->pongPending=true;return ESP_OK;
+    }
+    return ESP_FAIL;
+  }
   input.size=frame.len;
   LiveRequest request;if(!request.parse({input.data,input.size}))return ESP_FAIL;
   Guard lock(self.mutex_);
@@ -240,7 +271,7 @@ void LiveServer::publish(uint32_t now) {
   }
   bool queue=false;
   {Guard lock(mutex_);
-    bool needed=false;for(const auto &c:*clients_)needed|=c.fd>=0&&(c.closing||c.buffers->count||c.buffers->cancelledFrom||c.revision!=revision_);
+    bool needed=false;for(const auto &c:*clients_)needed|=c.fd>=0&&(c.closing||c.buffers->outgoing.active()||c.buffers->pongPending||c.buffers->count||c.buffers->cancelledFrom||c.revision!=revision_);
     if(needed&&!workPending_&&uint32_t(now-wakeAt_)>=5){workPending_=true;wakeAt_=now;queue=true;}
   }
   if(queue&&httpd_queue_work(server_,sendWork,this)!=ESP_OK){Guard lock(mutex_);workPending_=false;++queueErrors_;}
@@ -251,29 +282,53 @@ void LiveServer::writeDiagnostics(JsonWriter &j) {
   for(const auto &c:*clients_)clients+=c.fd>=0;
   j<<",\"liveClients\":"<<clients<<",\"liveRevision\":"<<revision_<<",\"liveStateBytes\":"<<stateSize_
    <<",\"liveWorkRuns\":"<<workRuns_<<",\"liveFrames\":"<<framesSent_
-   <<",\"liveQueueErrors\":"<<queueErrors_<<",\"liveSendErrors\":"<<sendErrors_;
+   <<",\"liveSendDeferred\":"<<sendDeferred_<<",\"liveQueueErrors\":"<<queueErrors_<<",\"liveSendErrors\":"<<sendErrors_
+   <<",\"liveSendTimeouts\":"<<sendTimeouts_<<",\"liveSendErrno\":"<<sendErrno_
+   <<",\"liveSendRetryErrno\":"<<sendRetryErrno_<<",\"liveSendRetryErrors\":"<<sendRetryErrors_
+   <<",\"liveSendWritten\":"<<sendWritten_<<",\"liveSendRequested\":"<<sendRequested_
+   <<",\"liveSendElapsedMs\":"<<sendElapsedMs_;
 }
 void LiveServer::sendWork(void *context) {
   auto &self=*static_cast<LiveServer *>(context);
   {Guard lock(self.mutex_);++self.workRuns_;}
-  char data[LIVE_STATE_CAPACITY];
   for(auto &client:*self.clients_) {
-    size_t n=0;int fd;bool close=false;
+    int fd;bool close=false;
+    // Only HTTPD closes/replaces client buffers. Runtime only queues commands
+    // and results under the mutex; the outgoing frame remains HTTPD-owned.
     {Guard lock(self.mutex_);fd=client.fd;if(fd<0)continue;
       if(httpd_ws_get_fd_info(self.server_,fd)!=HTTPD_WS_CLIENT_WEBSOCKET)continue;
       close=client.closing&&!client.buffers->stop.size;
-      if(!close&&client.buffers->cancelledFrom){
-        const int size=std::snprintf(data,sizeof data,"{\"v\":1,\"type\":\"result\",\"boot\":\"%s\",\"id\":%lu,\"cancelledFrom\":%lu,\"cancelledThrough\":%lu,\"result\":{\"ok\":false,\"result\":\"cancelled\",\"superseded\":true}}",self.boot_,(unsigned long)client.buffers->cancelledThrough,(unsigned long)client.buffers->cancelledFrom,(unsigned long)client.buffers->cancelledThrough);
-        if(size>0 && size_t(size)<sizeof data)n=size_t(size);
-        client.buffers->cancelledFrom=client.buffers->cancelledThrough=0;
+      auto &b=*client.buffers;auto &out=b.outgoing;
+      if(!close&&!out.active()) {
+        size_t n=0;uint8_t opcode=HTTPD_WS_TYPE_TEXT;char *data=out.payload();
+        if(b.pongPending){n=b.pongSize;std::memcpy(data,b.pong,n);b.pongPending=false;opcode=HTTPD_WS_TYPE_PONG;}
+        else if(b.cancelledFrom){
+          const int size=std::snprintf(data,LIVE_STATE_CAPACITY,"{\"v\":1,\"type\":\"result\",\"boot\":\"%s\",\"id\":%lu,\"cancelledFrom\":%lu,\"cancelledThrough\":%lu,\"result\":{\"ok\":false,\"result\":\"cancelled\",\"superseded\":true}}",self.boot_,(unsigned long)b.cancelledThrough,(unsigned long)b.cancelledFrom,(unsigned long)b.cancelledThrough);
+          if(size>0&&size_t(size)<LIVE_STATE_CAPACITY)n=size_t(size);
+          b.cancelledFrom=b.cancelledThrough=0;
+        }
+        else if(b.count){auto &r=b.replies[b.head];n=r.size;std::memcpy(data,r.data,n);b.head=(b.head+1)%4;--b.count;}
+        else if(client.revision!=self.revision_&&self.stateSize_){n=self.stateSize_;std::memcpy(data,self.state_->data(),n);client.revision=self.revision_;}
+        if(n||opcode==HTTPD_WS_TYPE_PONG)out.begin(n,opcode,uint32_t(esp_timer_get_time()/1000));
       }
-      else if(!close&&client.buffers->count){auto &r=client.buffers->replies[client.buffers->head];n=r.size;std::memcpy(data,r.data,n);client.buffers->head=(client.buffers->head+1)%4;--client.buffers->count;}
-      else if(!close&&client.revision!=self.revision_&&self.stateSize_){n=self.stateSize_;std::memcpy(data,self.state_->data(),n);client.revision=self.revision_;}
     }
-    if(n){httpd_ws_frame_t frame{};frame.type=HTTPD_WS_TYPE_TEXT;frame.final=true;frame.payload=reinterpret_cast<uint8_t *>(data);frame.len=n;
-      const bool sent=httpd_ws_send_frame_async(self.server_,fd,&frame)==ESP_OK;
-      {Guard lock(self.mutex_);if(sent)++self.framesSent_;else ++self.sendErrors_;}
-      if(!sent)close=true;}
+    auto &out=client.buffers->outgoing;
+    if(!close&&out.active()) {
+      const uint32_t now=uint32_t(esp_timer_get_time()/1000);const auto retries=out.retries;
+      const auto step=out.pump(now,[=](const char *data,size_t size){return ::send(fd,data,size,MSG_DONTWAIT);});
+      const int error=errno;
+      {Guard lock(self.mutex_);
+        self.sendDeferred_+=out.retries-retries;
+        if(step==LiveFrame<LIVE_STATE_CAPACITY>::Step::Complete){++self.framesSent_;out.clear();}
+        else if(step==LiveFrame<LIVE_STATE_CAPACITY>::Step::Failed){
+          ++self.sendErrors_;self.sendErrno_=error;self.sendRetryErrno_=out.retryError;
+          self.sendRetryErrors_=out.retries;self.sendElapsedMs_=now-out.started;
+          self.sendWritten_=out.written();self.sendRequested_=out.requested();
+          if(error==ETIMEDOUT)++self.sendTimeouts_;
+          close=true;
+        }
+      }
+    }
     if(close)httpd_sess_trigger_close(self.server_,fd);
   }
   Guard lock(self.mutex_);self.workPending_=false;

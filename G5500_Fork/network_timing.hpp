@@ -6,4 +6,6 @@ namespace forkrot {
 // The latest value replaces older samples; no telemetry backlog is retained.
 inline constexpr uint32_t HudPositionIntervalMs = 100;
 inline constexpr uint32_t WebPositionIntervalMs = 200;
+// Bounded recovery for a queued frame; manual-input leases remain independent.
+inline constexpr uint32_t LiveFrameTimeoutMs = 5000;
 } // namespace forkrot
