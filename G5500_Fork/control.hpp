@@ -45,7 +45,8 @@ enum class ControlOp : uint8_t {
   ToggleMode,
   ExecuteDisplayed,
   ManualDrive,
-  ResetMotion
+  ResetMotion,
+  RuntimeSpeed
 };
 struct ControlCommand {
   ControlOp op = ControlOp::Stop;
@@ -63,6 +64,8 @@ struct ControlCommand {
   uint8_t axesMask = 0;
   float manual[2]{};
   bool release = false;
+  bool absoluteSpeed = false;
+  float speed = 0;
   uint16_t inputLeaseMs = 100; // Local HUD input freshness; web holds renew more slowly.
 };
 class CommandSink {
@@ -233,6 +236,8 @@ public:
   uint32_t snapshotAt = 0, remoteRemaining = 0;
   size_t remoteSequenceIndex = 0, remoteSequenceCount = 0;
   bool remoteVariable[2] = {};
+  bool remoteSpeedAvailable[2]{};
+  float remoteSpeed[2]{}, remoteSpeedLimit[2]{};
   float remoteTolerance[2] = {};
   float effectiveTolerance(unsigned i) const { return remote ? remoteTolerance[i] : tolerance(i); }
   bool available() const { return !remote || remote->available(); }
@@ -318,7 +323,7 @@ public:
   }
   Result manualDrive(uint64_t source, uint64_t boot, uint32_t gesture, uint32_t serial,
                      uint8_t mask, float az, float el, bool release, uint32_t now,
-                     uint16_t inputLeaseMs = 100);
+                     uint16_t inputLeaseMs = 100, bool absoluteSpeed = false);
   Result setMode(Mode m, uint32_t now);
   void restoreMode(Mode m); // An expired/nonpersistent hour always boots manual.
   void setModel(Model m);
@@ -351,6 +356,7 @@ private:
     bool used = false, closed = false;
   } manualSessions_[4];
   float manualScale_[2] = {1, 1};
+  bool manualAbsolute_[2]{};
   uint32_t webManualGesture_ = 0, webManualOwner_ = 0;
   unsigned runtimeSpeedIndex(unsigned axis) const;
   void closeManual(ManualSession &, uint32_t now);

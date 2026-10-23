@@ -72,7 +72,7 @@ int main() {
     motor.controller.hardware.drive=DRIVE_BTS7960;motor.controller.speedEnabled=true;
     motor.controller.motionSettings[0].kickEnabled=true;
     panel.save(motor);panel.hud.select(1);stream.tick(100);
-    assert(panel.hud.active()->wireVersion==4);
+    assert(panel.hud.active()->wireVersion==5);
     uint32_t previous=0;
     for(unsigned i=1;i<=200;++i){
       assert(panel.controller.target({20+.1f*i,0,true,false},false,100)==Result::Deferred);
@@ -293,19 +293,24 @@ int main() {
     c.hud.service(at);
   assert(bus.queries <= 20);
   bus.packets.clear();
-  // Knob: hold changes selection without STOP; 3+ uses a list; release confirms.
+  // Knob hold is temporary; the name-button action opens selection.
   HudKnob knob(a.hud, a.controller);
   knob.sample(true, false, 0, 9000);
   knob.sample(true, false, 0, 9031);
   const auto before = rotor.controller.stopEpoch;
+  const auto initialSelection = a.hud.config.selected;
   knob.sample(true, true, 0, 9040);
   knob.sample(true, true, 0, 10240);
-  assert(a.hud.config.selected == 2 && !knob.menu && rotor.controller.stopEpoch == before);
+  assert(a.hud.config.selected == initialSelection && !knob.menu && rotor.controller.stopEpoch == before);
   knob.sample(true, false, 0, 10241);
   knob.sample(true, false, 0, 10280);
+  knob.open();
+  assert(a.hud.config.selected == 2);
   a.hud.add(3, {0x0300007f, 4534, false}, "Third");
   knob.sample(true, true, 0, 10300);
   knob.sample(true, true, 0, 11500);
+  assert(!knob.menu);
+  knob.open();
   assert(knob.menu);
   const auto selected = a.hud.config.selected;
   knob.sample(true, false, 0, 11501);

@@ -64,6 +64,10 @@ Controller &Controller::operator=(const Controller &other) {
   }
   for (unsigned i = 0; i < 2; ++i) {
     manualScale_[i] = other.manualScale_[i];
+    manualAbsolute_[i] = other.manualAbsolute_[i];
+    remoteSpeedAvailable[i] = other.remoteSpeedAvailable[i];
+    remoteSpeed[i] = other.remoteSpeed[i];
+    remoteSpeedLimit[i] = other.remoteSpeedLimit[i];
   }
   runtimeSpeeds = other.runtimeSpeeds;
   webManualGesture_ = other.webManualGesture_;
@@ -194,6 +198,7 @@ Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
       axis.target = value;
       axis.targetKnown = true;
       manualScale_[i] = 1;
+      manualAbsolute_[i] = false;
       if (unchanged) continue;
       ++motionEpoch[i];
       axis.completed = false;
@@ -289,6 +294,7 @@ Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now
   }
   ++motionEpoch[axis];
   manualScale_[axis] = 1;
+  manualAbsolute_[axis] = false;
   axes[axis].completed = false;
   axes[axis].accepted = false;
   axes[axis].tracking = false;
@@ -426,7 +432,7 @@ void Controller::closeManual(ManualSession &s, uint32_t now) {
 }
 Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t gesture,
                                uint32_t serial, uint8_t mask, float az, float el, bool release,
-                               uint32_t now, uint16_t inputLeaseMs) {
+                               uint32_t now, uint16_t inputLeaseMs, bool absoluteSpeed) {
   if (autoTune.active() && !autoTune.internal && !release) return Result::Busy;
   if (configurationLocked) return Result::Unavailable;
   if (!gesture || !serial || mask > 3 || (!release && model == Model::G800DXA && (mask & 2)) ||
@@ -443,6 +449,7 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
     c.manual[1] = el;
     c.release = release;
     c.inputLeaseMs = inputLeaseMs;
+    c.absoluteSpeed = absoluteSpeed;
     return remote->submitAt(c, now);
   }
   ManualSession *s = nullptr, *free = nullptr;
@@ -508,7 +515,7 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
     }
     ControlCommand c;
     c.op=ControlOp::ManualDrive;c.gesture=s->epoch[0];c.axesMask=mask;
-    c.manual[0]=az;c.manual[1]=el;c.release=release;c.inputLeaseMs=inputLeaseMs;
+    c.manual[0]=az;c.manual[1]=el;c.release=release;c.inputLeaseMs=inputLeaseMs;c.absoluteSpeed=absoluteSpeed;
     s->claimed |= mask;
     if(release)s->closed=true;
     return remote->submitAt(c,now);
@@ -551,6 +558,7 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
     } else {
       axes[i].wanted = direction;
       manualScale_[i] = std::abs(values[i]);
+      manualAbsolute_[i] = absoluteSpeed;
     }
   }
   return Result::Ok;
@@ -798,7 +806,9 @@ bool Controller::variableSpeed(unsigned i) const {
   return i == 0 || model == Model::G5500;
 }
 bool Controller::runtimeSpeedAvailable(unsigned i) const {
-  if (remote || i > 1 || (i == 1 && model != Model::G5500) || !variableSpeed(i)) return false;
+  if (i > 1 || (i == 1 && model != Model::G5500)) return false;
+  if (remote) return remote->available() && remoteSpeedAvailable[i];
+  if (!variableSpeed(i)) return false;
   if (hardware.simulation) return true;
   const auto &p = hardware.pins;
   const int enable = i ? p.elSpeedEnable : p.azSpeedEnable;
@@ -808,6 +818,7 @@ bool Controller::runtimeSpeedAvailable(unsigned i) const {
 }
 float Controller::runtimeSpeedLimit(unsigned i) const {
   if (i > 1) return 0;
+  if (remote) return remoteSpeedLimit[i];
   return motionSettings[i].mode == RegulatorMode::Cascade ? motionSettings[i].velocity :
       std::min(100.f, motionSettings[i].outputLimitPercent);
 }
@@ -823,6 +834,7 @@ void Controller::resetRuntimeSpeed(unsigned i, uint32_t now) {
 }
 float Controller::runtimeSpeed(unsigned i) const {
   if (i > 1) return 0;
+  if (remote) return remoteSpeed[i];
   const float saved = motionSettings[i].mode == RegulatorMode::Cascade ? motionSettings[i].velocity : float(speeds[i].speedPercent);
   const bool tuning = autoTune.active() && autoTune.axis == int(i);
   const float value = runtimeSpeeds.values[runtimeSpeedIndex(i)];
@@ -836,6 +848,10 @@ Result Controller::setRuntimeSpeed(unsigned i, float value, uint32_t now) {
   const float limit = runtimeSpeedLimit(i), minimum = limit / 20.f;
   // Status JSON and browser arithmetic can round the lower endpoint by one ULP.
   if (value < minimum - limit * 1e-6f || value > limit) return Result::Invalid;
+  if (remote) {
+    ControlCommand c; c.op = ControlOp::RuntimeSpeed; c.axis = int(i); c.speed = std::max(minimum,value);
+    return remote->submitAt(c, now);
+  }
   runtimeSpeeds.set(runtimeSpeedIndex(i), std::max(minimum,value), now);
   return Result::Ok;
 }

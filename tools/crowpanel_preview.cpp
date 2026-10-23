@@ -623,6 +623,19 @@ int main(int argc, char **argv) {
     std::snprintf(path, sizeof path, "%s/network-%s-%s.ppm", argv[1], dual ? "dual" : "single", pending ? "pending" : "normal");
     save(path);
   }
+  view.speedScreen = true; view.dualAxis = true;
+  view.speedAvailable[0] = view.speedAvailable[1] = true;
+  view.speedPercent[0] = 35; view.speedPercent[1] = 80;
+  ui.update(view); settle(d);
+  assert(ui.touchLayout().speedScreen && ui.touchLayout().speedEnabled[0] && ui.touchLayout().speedEnabled[1]);
+  std::snprintf(path, sizeof path, "%s/speed-dual.ppm", argv[1]); save(path);
+  view.dualAxis = false; view.speedAvailable[0] = false;
+  ui.update(view); settle(d);
+  assert(ui.touchLayout().speedScreen && !ui.touchLayout().speedEnabled[0] && !ui.touchLayout().speedEnabled[1]);
+  std::snprintf(path, sizeof path, "%s/speed-single.ppm", argv[1]); save(path);
+  view.speedScreen = false; ui.update(view); settle(d);
+  assert(!ui.touchLayout().speedScreen && ui.touchLayout().current.width);
+  std::puts("PASS: axis speed screen, unavailable/single-axis controls and return to dashboard");
   std::puts("PASS: simultaneous STA/AP IPv4 addresses fit all dashboard layouts");
   std::puts("PASS: NC glyphs, independent axes, offline dash, calibration restored, targets unchanged and layout");
   std::puts("PASS: LVGL marker animation/wrap/reset, independent current/target limit tails, confirmation hit/restoration, Wi-Fi, arrows, markers and idle redraw");

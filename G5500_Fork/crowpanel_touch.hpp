@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <cmath>
+#include <algorithm>
 
 namespace forkrot::crowpanel {
 struct TouchRect {
@@ -26,7 +27,9 @@ inline float dialBearing(uint16_t x, uint16_t y) {
                         (180.f / 3.14159265358979323846f);
   return float((std::lround(degrees) + 360) % 360);
 }
-enum class TouchAction { None, Mode, Target, Confirm };
+inline constexpr TouchRect SpeedTracks[2]{{100, 207, 280, 40}, {100, 302, 280, 40}};
+inline constexpr TouchRect SpeedBack{160, 374, 160, 46};
+enum class TouchAction { None, Mode, Target, Confirm, SpeedOpen, SpeedClose, SpeedValue };
 class TouchButtons {
   bool down_ = false;
   TouchAction active_ = TouchAction::None;
@@ -47,17 +50,19 @@ public:
 // started gestures keep ownership until release.
 struct TouchLayout {
   TouchRect current{}, target{}, arrows[4]{}; // left, right, up, down
-  bool dualAxis = false, enabled = true;
+  bool dualAxis = false, enabled = true, speedScreen = false;
+  bool speedEnabled[2]{};
 };
 struct TouchEvent {
   TouchAction action = TouchAction::None;
-  bool manual = false, release = false;
+  bool manual = false, release = false, absoluteSpeed = false;
   uint32_t gesture = 0;
   uint8_t mask = 0;
   float az = 0, el = 0;
+  unsigned axis = 0, percent = 5;
 };
 class TouchGesture {
-  enum class Role { None, Mode, Ring, Target, Swipe, Arrow } role_ = Role::None;
+  enum class Role { None, Mode, Ring, Target, Swipe, Arrow, Speed, Back } role_ = Role::None;
   bool down_ = false, cancelled_ = false, blocked_ = false;
   uint16_t startX_ = 0, startY_ = 0, lastX_ = 0, lastY_ = 0;
   float ringBearing_ = -1;
@@ -65,6 +70,9 @@ class TouchGesture {
   uint8_t mask_ = 0;
   uint32_t gesture_ = 0;
   TouchLayout captured_{};
+  bool tap_ = false;
+  uint32_t tapAt_ = 0, downAt_ = 0;
+  uint16_t tapX_ = 0, tapY_ = 0;
   static float scale(int displacement) {
     const int distance = std::abs(displacement);
     if (distance <= 12) {
@@ -82,7 +90,7 @@ public:
   TouchAction pressed() const {
     return down_ && role_ == Role::Mode ? TouchAction::Mode : TouchAction::None;
   }
-  TouchEvent sample(bool down, uint16_t x, uint16_t y, const TouchLayout &layout) {
+  TouchEvent sample(bool down, uint16_t x, uint16_t y, const TouchLayout &layout, uint32_t now = 0) {
     TouchEvent e;
     if (blocked_) {
       down_ = down;
@@ -100,6 +108,7 @@ public:
     }
     if (down && !down_) {
       captured_ = layout;
+      downAt_ = now;
       startX_ = x;
       startY_ = y;
       mask_ = 0;
@@ -107,7 +116,12 @@ public:
       ringBearing_ = -1;
       role_ = Role::None;
       if (layout.enabled) {
-        if (ModeButton.contains(x, y)) {
+        if (layout.speedScreen) {
+          tap_ = false;
+          if (SpeedBack.contains(x, y)) role_ = Role::Back;
+          for (unsigned i = 0; i < (layout.dualAxis ? 2u : 1u); ++i)
+            if (layout.speedEnabled[i] && SpeedTracks[i].contains(x, y)) { role_ = Role::Speed; arrow_ = i; }
+        } else if (ModeButton.contains(x, y)) {
           role_ = Role::Mode;
           e.action = TouchAction::Mode;
         } else {
@@ -142,9 +156,16 @@ public:
         role_ = Role::Swipe;
       }
     }
-    if (role_ == Role::Swipe || role_ == Role::Arrow) {
+    if (down && role_ == Role::Speed && layout.enabled && layout.speedScreen) {
+      e.action = TouchAction::SpeedValue; e.axis = arrow_;
+      const int offset = std::max(0, std::min(280, int(x) - 100));
+      e.percent = unsigned(5 + (95 * offset + 140) / 280);
+    } else if (!down && down_ && role_ == Role::Back && layout.enabled && SpeedBack.contains(x, y)) {
+      e.action = TouchAction::SpeedClose;
+    } else if (role_ == Role::Swipe || role_ == Role::Arrow) {
       if (down || down_) {
         e.manual = true;
+        e.absoluteSpeed = role_ == Role::Swipe;
         e.release = !down || !layout.enabled;
         e.gesture = gesture_;
         if (!e.release) {
@@ -178,6 +199,13 @@ public:
                captured_.target.contains(x, y)) {
       e.action = TouchAction::Confirm;
     }
+    if (!down && down_ && role_ == Role::Swipe && !cancelled_ && layout.enabled &&
+        captured_.current.contains(x, y) && uint32_t(now - downAt_) <= 250) {
+      if (tap_ && uint32_t(now - tapAt_) <= 350 &&
+          std::abs(int(x) - tapX_) <= 30 && std::abs(int(y) - tapY_) <= 30) {
+        e.action = TouchAction::SpeedOpen; tap_ = false;
+      } else { tap_ = true; tapAt_ = now; tapX_ = x; tapY_ = y; }
+    } else if (cancelled_ || !layout.enabled || (down && role_ != Role::Swipe)) tap_ = false;
     if (!layout.enabled) {
       role_ = Role::None;
       blocked_ = true;

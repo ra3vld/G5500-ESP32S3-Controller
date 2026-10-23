@@ -149,7 +149,7 @@ static void progressiveSwipe() {
                                         axis ? 240 - direction * distance : 240, layout);
       const float value = axis ? event.el : event.az;
       const float magnitude = std::abs(value);
-      assert(event.manual && !event.release && event.action == TouchAction::None);
+      assert(event.manual && event.absoluteSpeed && !event.release && event.action == TouchAction::None);
       assert((axis ? event.az : event.el) == 0);
       assert(magnitude >= previous && magnitude <= 1);
       if (distance <= 12) assert(value == 0);
@@ -291,6 +291,40 @@ static void idleTouchFrames() {
   g.sample(false, x, y, layout);
   assert(g.sample(true, 240, 230, layout).manual);
 }
+static void speedScreenTouch() {
+  using namespace crowpanel;
+  TouchLayout l; l.current = {100,200,280,60}; l.dualAxis = true;
+  TouchGesture g;
+  g.sample(true,240,230,l,100);
+  assert(g.sample(false,0,0,l,140).action == TouchAction::None);
+  g.sample(true,242,232,l,250);
+  auto e = g.sample(false,0,0,l,280);
+  assert(e.action == TouchAction::SpeedOpen && e.release && !e.mask);
+  // A drag, a slow tap, and a disabled layout never become a double tap.
+  for (unsigned variant : {0u,1u,2u}) {
+    TouchGesture input;
+    input.sample(true,240,230,l,100);
+    if (variant == 0) input.sample(true,270,230,l,120);
+    if (variant == 2) l.enabled = false;
+    input.sample(false,0,0,l,variant == 1 ? 400 : 140);
+    l.enabled = true; input.sample(false,0,0,l,410);
+    input.sample(true,240,230,l,420);
+    assert(input.sample(false,0,0,l,450).action == TouchAction::None);
+  }
+  l.speedScreen = true; l.speedEnabled[0] = l.speedEnabled[1] = true;
+  for (unsigned axis : {0u,1u}) {
+    e = g.sample(true,100,227+95*axis,l,500);
+    assert(e.action == TouchAction::SpeedValue && e.axis == axis && e.percent == 5 && !e.manual);
+    e = g.sample(true,240,227+95*axis,l,510); assert(e.percent == 53);
+    e = g.sample(true,479,0,l,520); assert(e.percent == 100 && e.axis == axis);
+    assert(g.sample(false,0,0,l,530).action == TouchAction::None);
+  }
+  l.speedEnabled[1] = false;
+  assert(g.sample(true,240,322,l,600).action == TouchAction::None);
+  g.sample(false,0,0,l,610);
+  g.sample(true,240,390,l,620);
+  assert(g.sample(false,0,0,l,650).action == TouchAction::SpeedClose);
+}
 struct Node;
 struct WirePacket {
   HudEndpoint from, to;
@@ -311,6 +345,7 @@ struct Node : HudTransport {
   Hud h{c, p};
   HudEndpoint endpoint;
   bool legacy = false;
+  uint8_t maxVersion = 5;
   Node(Bus &b, int id, bool remote) : bus(b), endpoint{uint32_t(id), 4534, false} {
     h.config.role = remote ? DeviceRole::Hud : DeviceRole::Controller;
     h.begin(id, id + 100);
@@ -319,7 +354,7 @@ struct Node : HudTransport {
     bus.nodes.push_back(this);
   }
   bool sendHud(const HudEndpoint &e, const uint8_t *p, size_t n) override {
-    if (!bus.drop && (!legacy || p[4] <= 10)) {
+    if (!bus.drop && p[3] <= char('0'+maxVersion) && (!legacy || p[4] <= 10)) {
       bus.packets.push_back({endpoint, e, {p, p + n}});
     }
     return true;
@@ -337,7 +372,7 @@ void Bus::deliver(uint32_t now) {
     packets.pop_front();
     history.push_back(msg);
     for (auto *n : nodes) {
-      if (n->endpoint == msg.to && (!n->legacy || msg.data[4] <= 10)) {
+      if (n->endpoint == msg.to && msg.data[3] <= char('0'+n->maxVersion) && (!n->legacy || msg.data[4] <= 10)) {
         n->h.receive(msg.from, msg.data.data(), msg.data.size(), now);
       }
     }
@@ -447,7 +482,7 @@ static void fullscreenSwipeControl() {
         assert(e.action == TouchAction::None);
         if (e.manual) {
           assert(input.manualDrive(0, 1, e.gesture, ++serial, e.mask, e.az, e.el, e.release,
-                                   now) == (remote ? Result::Deferred : Result::Ok));
+                                   now, 100, e.absoluteSpeed) == (remote ? Result::Deferred : Result::Ok));
         }
         bus.tick(now);
       };
@@ -601,7 +636,75 @@ static void network() {
   old.tick(810);
   assert(legacy.c.axes[0].target == 80);
 }
+static void oldSpeedCompatibility() {
+  Bus bus; Node motor(bus,1,false),panel(bus,2,true); motor.maxVersion=4; panel.select(motor);
+  for (unsigned t=100;t<=2000;t+=10) bus.tick(t);
+  assert(panel.h.available() && panel.h.active()->wireVersion == 4 && panel.h.manualAvailable());
+  assert(!panel.c.runtimeSpeedAvailable(0));
+  assert(panel.c.setRuntimeSpeed(0,50,2010) == Result::Unavailable);
+  assert(panel.c.manualDrive(0,1,1,1,1,1,0,false,2010,100,true) == Result::Unavailable);
+  bus.tick(2010); assert(!motor.c.moving());
+  assert(panel.c.manualDrive(0,1,2,2,1,1,0,false,2020) == Result::Deferred);
+  bus.tick(2020); assert(motor.c.axes[0].wanted == 1);
+  panel.c.manualDrive(0,1,2,3,1,0,0,true,2030); bus.tick(2030);
+  assert(!motor.c.moving());
+}
+static void fullRangeAndSpeedCommands() {
+  for (bool remote : {false,true}) {
+    Bus bus; Node motor(bus,1,false), panel(bus,2,true); panel.select(motor);
+    motor.c.hardware.simulation = true;
+    for (auto &m : motor.c.motionSettings) { m.kickEnabled = false; m.stallMs = 60000; m.outputLimitPercent = 80; }
+    for (auto &speed : motor.c.speeds) { speed.speedPercent = 15; speed.accelerationMs = speed.decelerationMs = 100; }
+    for (unsigned t=100;t<=800;t+=10) bus.tick(t);
+    assert(panel.h.active()->wireVersion == 5);
+    auto &input = remote ? panel.c : motor.c;
+    assert(input.runtimeSpeedAvailable(0) && input.runtimeSpeedAvailable(1));
+    assert(input.setRuntimeSpeed(0,16,810) == (remote ? Result::Deferred : Result::Ok));
+    assert(input.setRuntimeSpeed(1,24,810) == (remote ? Result::Deferred : Result::Ok));
+    bus.tick(820);
+    for (unsigned t=830;t<=1100;t+=10) bus.tick(t);
+    assert(motor.c.runtimeSpeed(0)==16 && motor.c.runtimeSpeed(1)==24);
+    assert(panel.c.runtimeSpeed(0)==16 && panel.c.runtimeSpeed(1)==24);
+    uint32_t serial=0, now=1110;
+    for (float fraction : {1.f,.5f,.01f}) {
+      for (unsigned n=0;n<200;++n,now+=10) {
+        if (n == 100 && fraction == 1.f)
+          assert(input.setRuntimeSpeed(0,8,now) == (remote ? Result::Deferred : Result::Ok));
+        assert(input.manualDrive(0,1,1,++serial,3,fraction,fraction,false,now,100,true) ==
+               (remote ? Result::Deferred : Result::Ok));
+        bus.tick(now);
+      }
+      for (unsigned axis : {0u,1u}) assert(std::abs(motor.c.axes[axis].speedOutputPercent-80*fraction)<.02f);
+    }
+    assert(motor.c.runtimeSpeed(0)==8 && motor.c.runtimeSpeed(1)==24);
+    input.manualDrive(0,1,1,++serial,3,0,0,true,now,100,true); bus.tick(now);
+    assert(!motor.c.axes[0].wanted && !motor.c.axes[1].wanted);
+    // Both directions of the temporary encoder modifier work over the real HUD codec.
+    HudKnob knob(panel.h,panel.c);
+    knob.sample(true,false,0,now+=40,false);
+    for (unsigned selected : {0u,1u}) {
+      knob.sample(true,true,0,now+=40,false); assert(knob.axis()==1-selected);
+      knob.sample(true,true,1,now+=40,false); bus.tick(now);
+      assert(motor.c.axes[1-selected].tracking);
+      knob.sample(true,false,0,now+=10,false);
+      knob.sample(true,false,0,now+=40,false); assert(knob.axis()==selected);
+      knob.sample(true,false,0,now+=400,false); bus.tick(now);
+      assert(motor.c.axes[1-selected].tracking && !knob.menu);
+      motor.c.stop();
+      for (unsigned n=0;n<10;++n) bus.tick(now+=50);
+      // Persistently select the other axis using the existing double click.
+      for (unsigned n=0;n<2;++n) {
+        knob.sample(true,true,0,now+=40,false);
+        knob.sample(true,false,0,now+=10,false); knob.sample(true,false,0,now+=40,false);
+      }
+      assert(knob.axis()==1-selected);
+    }
+  }
+}
 int main() {
+  speedScreenTouch();
+  oldSpeedCompatibility();
+  fullRangeAndSpeedCommands();
   core();
   touch();
   progressiveSwipe();

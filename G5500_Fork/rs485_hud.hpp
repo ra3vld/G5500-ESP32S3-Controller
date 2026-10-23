@@ -16,11 +16,11 @@ class Rs485Hud {
   static void put32(uint8_t *p,uint32_t v) { for(unsigned i=0;i<4;++i)p[i]=uint8_t(v>>(8*i)); }
   static uint64_t get64(const uint8_t *p) { return uint64_t(get32(p))|(uint64_t(get32(p+4))<<32); }
   static bool urgent(const uint8_t *p,size_t n) {
-    if(n<49 || p[3]<'1' || p[3]>'4') return false;
+    if(n<49 || p[3]<'1' || p[3]>'5') return false;
     const size_t offset=p[3]=='1'?45:49;
     if(n<=offset+5) return false;
     return ((p[4]==4 || p[4]==9) && (p[offset]==uint8_t(ControlOp::Stop) || p[offset]==uint8_t(ControlOp::ReleaseJog))) ||
-        (p[4]==15 && p[offset+5]==1);
+        (p[4]==15 && (p[offset+5]&1));
   }
   void clearQueue() { stop_.size=manual_.size=state_.size=0;count_=head_=0; }
   size_t take(uint8_t *out,uint32_t now) {

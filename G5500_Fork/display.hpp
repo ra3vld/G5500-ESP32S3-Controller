@@ -141,7 +141,8 @@ class Display {
   CrowPanelKnob knob_;
   HudKnob hudKnob_;
   Storage &storage_;
-  bool hudTouchDown_ = false;
+  bool hudTouchDown_ = false, speedScreen_ = false, speedKnobDown_ = false;
+  int speedRequested_[2]{-1, -1};
   crowpanel::TouchGesture touchButtons_;
   uint32_t touchSerial_ = 0, touchSelection_ = 0, touchNoticeAt_ = 0;
   bool touchNotice_ = false;

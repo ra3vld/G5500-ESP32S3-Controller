@@ -102,6 +102,14 @@ void Display::serviceKnob() {
   const bool healthy = crowpanel::readButton(down);
   inputHealthy_ = healthy;
   const int delta = crowpanel::encoderDelta();
+  if (speedScreen_) {
+    knob_.cancelInput(); hudKnob_.cancelInput();
+    if (!healthy || (down && !speedKnobDown_)) runtime_.controller.stopNow(-1, now);
+    speedKnobDown_ = down;
+    hardware_.controlRotator();
+    return;
+  }
+  speedKnobDown_ = false;
   if (runtime_.hud.isHud()) {
     hudKnob_.sample(healthy, down, delta, now, runtime_.loggerSettings.encoderInverted);
     if (hudKnob_.selectionChanged) {
@@ -136,8 +144,9 @@ void Display::serviceTouch() {
     if (selectionChanged) {
       layout.enabled = false;
       touchSelection_ = runtime_.hud.selectionEpoch;
+      speedScreen_ = false; speedRequested_[0] = speedRequested_[1] = -1;
     }
-    auto event = touchButtons_.sample(touch, x, y, layout);
+    auto event = touchButtons_.sample(touch, x, y, layout, now);
 #if CROWPANEL_TOUCH_TRACE
     static uint32_t tracedGesture = 0;
     static bool tracedCancelled = false;
@@ -150,13 +159,15 @@ void Display::serviceTouch() {
     }
 #endif
     const auto action = event.action;
+    if (!touch) speedRequested_[0] = speedRequested_[1] = -1;
     if (event.manual && !selectionChanged) {
       if (runtime_.controller.manualAvailable()) {
         if (!++touchSerial_) {
           ++touchSerial_;
         }
         const auto result = runtime_.controller.manualDrive(0, 1, event.gesture, touchSerial_, event.mask, event.az,
-                                                          event.el, event.release, now);
+                                                          event.el, event.release, now, 100, event.absoluteSpeed);
+        if (result == Result::Unavailable && hud) { touchNotice_ = true; touchNoticeAt_ = now; }
 #if CROWPANEL_TOUCH_TRACE
         if (result == Result::Cancelled && !tracedCancelled) {
           Serial.printf("[TouchCancelled] t=%lu gesture=%lu release=%d xy=%u,%u\n",
@@ -169,6 +180,22 @@ void Display::serviceTouch() {
       } else if (!event.release && hud && runtime_.hud.available()) {
         touchNotice_ = true;
         touchNoticeAt_ = now;
+      }
+      redraw_ = true;
+    }
+    if (action == crowpanel::TouchAction::SpeedOpen) {
+      knob_.cancelInput(); hudKnob_.cancelInput();
+      speedScreen_ = true; speedRequested_[0] = speedRequested_[1] = -1; redraw_ = true;
+    }
+    if (action == crowpanel::TouchAction::SpeedClose) {
+      speedScreen_ = false; redraw_ = true;
+    }
+    if (action == crowpanel::TouchAction::SpeedValue) {
+      auto &c = runtime_.controller;
+      speedRequested_[1 - event.axis] = -1;
+      if (speedRequested_[event.axis] != int(event.percent)) {
+        const auto result = c.setRuntimeSpeed(event.axis, c.runtimeSpeedLimit(event.axis) * event.percent / 100.f, now);
+        if (result == Result::Ok || result == Result::Deferred) speedRequested_[event.axis] = int(event.percent);
       }
       redraw_ = true;
     }
@@ -187,7 +214,7 @@ void Display::serviceTouch() {
     if (runtime_.hud.isHud()) {
       if (action == crowpanel::TouchAction::Mode)
         hudKnob_.toggleMode(now);
-      if (touch && !hudTouchDown_) {
+      if (touch && !hudTouchDown_ && !speedScreen_) {
         if (crowpanel::HudNameButton.contains(x, y))
           hudKnob_.open();
         else if (hudKnob_.menu) {
@@ -302,6 +329,13 @@ void Display::updateLocalDisplay() {
       }
     }
     view.dualAxis = controller.model == Model::G5500;
+    view.speedScreen = speedScreen_;
+    for (unsigned i = 0; i < 2; ++i) {
+      view.speedAvailable[i] = controller.runtimeSpeedAvailable(i);
+      const float limit = controller.runtimeSpeedLimit(i);
+      view.speedPercent[i] = limit > 0 ? unsigned(std::lround(100 * controller.runtimeSpeed(i) / limit)) : 5;
+      if (speedRequested_[i] >= 0 && touchButtons_.contactDown()) view.speedPercent[i] = unsigned(speedRequested_[i]);
+    }
     view.elevation = axis != 0;
     view.minimum = controller.range(axis).start;
     view.maximum = controller.range(axis).end;

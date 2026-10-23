@@ -38,22 +38,25 @@ public:
   bool modeChanged = false;
   Result lastResult = Result::Ok;
   explicit CrowPanelKnob(Controller &controller) : controller_(controller) {}
-  unsigned axis() const { return axis_; }
+  void cancelInput() { raw_ = down_ = click_ = canResume_ = false; blocked_ = true; }
+  unsigned axis() const { return controller_.model == Model::G5500 && down_ ? 1 - axis_ : axis_; }
   void confirmPending(uint32_t now) {
     synchronize(inverted_);
+    const unsigned selected = axis();
     if (controller_.hasDriveError()) { confirm(now); return; }
     if (controller_.mode != Mode::Manual || !controller_.pendingValid ||
-        !(axis_ ? controller_.pending.hasEl : controller_.pending.hasAz)) return;
+        !(selected ? controller_.pending.hasEl : controller_.pending.hasAz)) return;
     canResume_ = click_ = false;
     long_ = true;
     lastResult = controller_.execute(now);
   }
   void setBearing(float bearing, uint32_t now) {
     synchronize(inverted_);
+    const unsigned selected = axis();
     canResume_ = click_ = false;
     long_ = true;
-    const float target = nearest(bearing, controller_.axes[axis_].current, controller_.range(axis_));
-    lastResult = controller_.target({axis_ ? 0.f : target, axis_ ? target : 0.f, axis_ == 0, axis_ == 1}, false, now);
+    const float target = nearest(bearing, controller_.axes[selected].current, controller_.range(selected));
+    lastResult = controller_.target({selected ? 0.f : target, selected ? target : 0.f, selected == 0, selected == 1}, false, now);
   }
   void selectAxis() { axis_ = controller_.model == Model::G5500 ? 1 - axis_ : 0; canResume_ = false; }
   void stop(uint32_t now) {
@@ -123,20 +126,22 @@ public:
         }
       }
     }
-    if (down_ && !long_ && uint32_t(now - downAt_) >= 1200) {
-      toggleMode(now);
+    if (down_ && !long_ && uint32_t(now - downAt_) >= 350) {
+      long_ = true; click_ = canResume_ = false;
     }
     if (click_ && !down_ && !raw_ && uint32_t(now - clickAt_) > 350) {
       click_ = false; confirm(now);
     }
-    if (delta && !raw_ && !down_ && !released) {
+    if (delta && raw_ == down_ && !released && (!down_ || uint32_t(now - downAt_) >= 30)) {
+      if (down_) long_ = true;
       canResume_ = false;
-      const auto &axis = controller_.axes[axis_];
+      const unsigned selected = axis();
+      const auto &axis = controller_.axes[selected];
       const float origin = axis.tracking || axis.holdArmed ? axis.target : axis.current;
-      const float next = std::clamp(origin + (inverted_ ? -float(delta) : float(delta)) * StepDegrees, controller_.range(axis_).start,
-                                   controller_.range(axis_).end);
+      const float next = std::clamp(origin + (inverted_ ? -float(delta) : float(delta)) * StepDegrees, controller_.range(selected).start,
+                                   controller_.range(selected).end);
       // Every detent updates the controller immediately, including during motion.
-      Target target{axis_ ? 0.f : next, axis_ ? next : 0.f, axis_ == 0, axis_ == 1};
+      Target target{selected ? 0.f : next, selected ? next : 0.f, selected == 0, selected == 1};
       lastResult = controller_.target(target, false, now);
       click_ = false;
     }

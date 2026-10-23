@@ -13,6 +13,19 @@ static mb::Frame command(uint32_t id,uint16_t op,uint32_t ticket=100){
  mb::put16(p+18,op);mb::put16(p+20,3);mb::put32(p+22,120000);mb::put32(p+26,30000);mb::put16(p+30,0);f.finish(39);return f;
 }
 int main(){
+  // HUD/5 absolute input keeps release priority even with its speed flag set.
+  {
+    uint8_t command[64]{}; command[3]='5'; command[4]=4;
+    uint8_t manual[64]{}; manual[3]='5'; manual[4]=15; manual[54]=2;
+    mb::Mailbox transport; transport.begin(1);
+    assert(transport.enqueue(command,sizeof command,0));
+    assert(transport.enqueue(command,sizeof command,0));
+    assert(!transport.enqueue(command,sizeof command,0));
+    assert(transport.enqueue(manual,sizeof manual,0));
+    assert(!transport.enqueue(command,sizeof command,0)); // Running input cannot evict commands.
+    manual[54]=3; assert(transport.enqueue(manual,sizeof manual,0));
+    assert(transport.enqueue(command,sizeof command,0)); // Release cleared the older commands.
+  }
  const uint8_t vector[]={1,3,0,0,0,10};assert(mb::crc(vector,sizeof vector)==0xcdc5);
  Controller c=testController();Protocol p(c);Hud h(c,p);h.begin(1,456);c.feedback(20,30,true,true);c.setMode(Mode::Auto,0);
  mb::Registers registers(c,h);registers.begin(456);

@@ -100,13 +100,13 @@ int main() {
   sample(false, -1000); assert(c.axes[1].target == 0 && c.axes[1].tracking);
   sample(false, 1000); assert(c.axes[1].target == 180);
   press(); sample(true, 0, 1201); release(); sample(false, 0, 351);
-  assert(c.mode == Mode::Auto && knob.modeChanged && !c.moving());
+  assert(c.mode == Mode::Manual && !knob.modeChanged && !c.moving());
   knob.modeChanged = false;
   // Touch uses the same toggle, cancels a pending click and never starts movement.
   sample(false, 1); press(); release();
   knob.toggleMode(now);
   sample(false, 0, 351);
-  assert(c.mode == Mode::Manual && knob.modeChanged && !c.moving());
+  assert(c.mode == Mode::Auto && knob.modeChanged && !c.moving());
   c.setMode(Mode::AutoHour, now);
   knob.toggleMode(now);
   assert(c.mode == Mode::Manual);
@@ -192,7 +192,7 @@ int main() {
   assert(paused.axes[0].target == 100 && paused.axes[1].target == 80);
   pausePress(); pauseRelease(); pauseSample(false, 351);
   pausePress(); pauseSample(true, 1201); pauseRelease(); pauseSample(false, 351);
-  assert(!paused.moving() && paused.mode == Mode::Auto); // Hold changes mode, never resumes.
+  assert(!paused.moving() && paused.mode == Mode::Manual); // Holding only changes the displayed axis.
   pausePress(); pauseRelease(); pauseSample(false, 351); assert(!paused.moving());
   paused.target({100, 80, true, true}, false, at); paused.tick(at);
   pausePress(); pauseRelease(); pauseSample(false, 351);
@@ -254,5 +254,25 @@ int main() {
   pendingClick.sample(true, false, 0, 600);
   clickThenTap.tick(600);
   assert(clickThenTap.axes[0].target == 90 && clickThenTap.moving());
+  // Hold is an axis modifier; rotating/releasing never produces a click or mode change.
+  for (unsigned selected : {0u, 1u}) {
+    Controller modifier = forkrot::testController(); modifier.feedback(100, 60, true, true);
+    CrowPanelKnob input(modifier);
+    input.sample(true, false, 0, 100, false);
+    if (selected) input.selectAxis();
+    input.sample(true, true, 1, 110, false); // Press-time noise is discarded.
+    assert(input.axis() == 1 - selected && !modifier.axes[0].tracking && !modifier.axes[1].tracking);
+    input.sample(true, true, 1, 160, false);
+    assert(modifier.axes[1 - selected].tracking && !modifier.axes[selected].tracking);
+    assert(modifier.axes[1 - selected].target == (selected ? 120 : 80));
+    input.sample(true, true, 0, 2000, false);
+    assert(input.axis() == 1 - selected && modifier.mode == Mode::Manual);
+    input.sample(true, false, 1, 2010, false); input.sample(true, false, 1, 2050, false);
+    assert(input.axis() == selected);
+    input.sample(true, false, 0, 2500, false);
+    assert(modifier.axes[1 - selected].tracking && !modifier.axes[selected].tracking);
+    input.sample(false, true, 0, 2510, false);
+    assert(input.axis() == selected && !modifier.moving());
+  }
   std::puts("PASS: CrowPanel ring targets, gestures, pause/resume, inversion, touch and faults");
 }

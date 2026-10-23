@@ -42,6 +42,8 @@ struct HudState {
   Axis axes[2]{};
   SpeedSettings speeds[2]{};
   HudMotion motion[2]{};
+  bool speedAvailable[2]{};
+  float runtimeSpeed[2]{}, speedLimit[2]{};
   HudPreset presets[4];
   Target pending{}, lastTarget{0, 0, false, false};
   bool pendingValid = false, presetActive = false, targetKnown = false, speedEnabled = false,
@@ -166,6 +168,7 @@ private:
     uint32_t seq = 0, ticket = 0;
     Result result = Result::Invalid;
     bool used = false;
+    uint8_t channel = 0; // Motion, AZ speed and EL speed have independent ordering.
   } dedup_[32];
   struct Lease {
     uint64_t source = 0, boot = 0;

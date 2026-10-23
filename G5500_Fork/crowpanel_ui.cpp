@@ -275,6 +275,40 @@ void CrowPanelUi::create() {
     lv_label_set_long_mode(hudRows_[i], LV_LABEL_LONG_CLIP);
   }
   lv_obj_set_hidden(hudList_, true);
+  speedPanel_ = lv_obj_create(screen);
+  lv_obj_remove_style_all(speedPanel_);
+  lv_obj_set_size(speedPanel_, 480, 480);
+  lv_obj_set_style_bg_color(speedPanel_, lv_color_hex(bg), 0);
+  lv_obj_set_style_bg_opa(speedPanel_, LV_OPA_COVER, 0);
+  lv_obj_set_scrollable(speedPanel_, false);
+  const auto speedLabel = [&](const char *value, int y, const lv_font_t *face) {
+    auto *obj = lv_label_create(speedPanel_);
+    lv_label_set_text(obj, value);
+    lv_obj_set_style_text_font(obj, face, 0);
+    lv_obj_set_style_text_color(obj, lv_color_hex(text), 0);
+    lv_obj_align(obj, LV_ALIGN_TOP_MID, 0, y);
+    return obj;
+  };
+  speedLabel("Скорость", 84, &crowpanel_font_22);
+  speedFont_ = crowpanel_font_36; speedFont_.fallback = &crowpanel_font_22;
+  for (unsigned i = 0; i < 2; ++i) {
+    speedAxes_[i] = speedLabel(i ? "ЭЛЕВАЦИЯ · EL" : "АЗИМУТ · AZ", 145 + 95 * i, &crowpanel_font_22);
+    speedValues_[i] = speedLabel("50%", 170 + 95 * i, &speedFont_);
+    speedBars_[i] = lv_bar_create(speedPanel_);
+    lv_obj_set_pos(speedBars_[i], 100, 219 + 95 * i);
+    lv_obj_set_size(speedBars_[i], 280, 16);
+    lv_bar_set_range(speedBars_[i], 5, 100);
+    lv_obj_set_style_bg_color(speedBars_[i], lv_color_hex(0x294156), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(speedBars_[i], lv_color_hex(targetColor), LV_PART_INDICATOR);
+  }
+  speedBack_ = lv_button_create(speedPanel_);
+  lv_obj_set_pos(speedBack_, crowpanel::SpeedBack.x, crowpanel::SpeedBack.y);
+  lv_obj_set_size(speedBack_, crowpanel::SpeedBack.width, crowpanel::SpeedBack.height);
+  auto *backLabel = lv_label_create(speedBack_);
+  lv_obj_set_style_text_font(backLabel, &crowpanel_font_22, 0);
+  lv_label_set_text(backLabel, "Назад");
+  lv_obj_center(backLabel);
+  lv_obj_set_hidden(speedPanel_, true);
 }
 void CrowPanelUi::setPressed(crowpanel::TouchAction action) {
   if (action == crowpanel::TouchAction::Mode) lv_obj_add_state(modeButton_, LV_STATE_PRESSED);
@@ -409,6 +443,7 @@ void CrowPanelUi::update(const CrowPanelView &v) {
                                                            lv_obj_get_width(secondaryTarget_)) : 0));
   const int goalTop = confirmation ? int(lv_obj_get_y(targetCaption_)) : goalY;
   const int goalBottom = goalY + goalFont->line_height;
+  touchLayout_ = {};
   touchLayout_.dualAxis = v.dualAxis;
   touchLayout_.enabled = !v.hudSelector;
   touchLayout_.current = {uint16_t(currentLeft), uint16_t(currentY), uint16_t(currentWidth),
@@ -479,6 +514,23 @@ void CrowPanelUi::update(const CrowPanelView &v) {
   sourceId_ = v.sourceId; elevation_ = v.elevation;
   updateMarker(currentMotion_, v.current, v.feedback, contextChanged, false);
   updateMarker(targetMotion_, v.target, v.targetValid, contextChanged, true);
+  lv_obj_set_hidden(speedPanel_, !v.speedScreen);
+  if (v.speedScreen) {
+    confirmationVisible_ = false;
+    touchLayout_ = {};
+    touchLayout_.speedScreen = true;
+    touchLayout_.dualAxis = v.dualAxis;
+    for (unsigned i = 0; i < 2; ++i) {
+      const bool visible = !i || v.dualAxis;
+      touchLayout_.speedEnabled[i] = visible && v.speedAvailable[i];
+      for (auto *obj : {speedAxes_[i], speedValues_[i], speedBars_[i]}) lv_obj_set_hidden(obj, !visible);
+      std::snprintf(value, sizeof value, v.speedAvailable[i] ? "%u%%" : "—", v.speedPercent[i]);
+      set(speedValues_[i], value);
+      color(speedValues_[i], v.speedAvailable[i] ? text : muted);
+      lv_bar_set_value(speedBars_[i], int(v.speedPercent[i]), LV_ANIM_OFF);
+      lv_obj_set_style_opa(speedBars_[i], v.speedAvailable[i] ? LV_OPA_COVER : LV_OPA_30, 0);
+    }
+  }
 }
 }
 #endif

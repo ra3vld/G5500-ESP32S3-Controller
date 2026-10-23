@@ -335,10 +335,13 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
   const unsigned period=controlPeriodMs();
   auto &axis = axes[i]; auto &r = motion_[i]; const auto &m = motionSettings[i]; const auto &s = speeds[i];
   const bool cascade = m.mode == RegulatorMode::Cascade;
+  const float workingSpeed = manualAbsolute_[i] && !axis.tracking ? runtimeSpeedLimit(i) : runtimeSpeed(i);
   const auto manualSpeed = [&]() {
-    const float work = runtimeSpeed(i), fraction = manualScale_[i];
+    const float work = workingSpeed, fraction = manualScale_[i];
     if (axis.tracking || (autoTune.active() && autoTune.axis == int(i))) return work * fraction;
     if (fraction <= 0) return 0.f;
+    // Touch spans the full configured drive range, independent of working speed.
+    if (manualAbsolute_[i]) return runtimeSpeedLimit(i) * fraction;
     const float minimum = cascade ? .05f * work :
         std::max(.05f * work, std::min(float(m.sustainingPercent), m.outputLimitPercent));
     return minimum + (std::max(work, minimum) - minimum) * fraction;
@@ -471,9 +474,9 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
       // the running bias while validating it, rather than accelerating for
       // an extra sensor window at the full breakaway output.
       if(observedKick && r.kickConfirming)axis.speedOutputPercent=std::min(axis.speedOutputPercent,
-          std::max(float(m.sustainingPercent),m.feedforward*runtimeSpeed(i)));
+          std::max(float(m.sustainingPercent),m.feedforward*workingSpeed));
       const bool fast=!m.sustainingPercent && (axis.current-r.kickPosition)*r.kickDirection>=2*m.movementDegrees &&
-          r.kickDirection*axis.measuredVelocity>runtimeSpeed(i);
+          r.kickDirection*axis.measuredVelocity>workingSpeed;
       confirmedMove=confirmedMove && (fast || uint32_t(now-r.kickConfirmAt)>=std::clamp(m.velocityWindowMs/2,40u,80u));
     }
     if (desired && desired != r.kickDirection) { axis.motionPhase=MotionPhase::Braking; r.releasing=false; r.ramp=axis.speedOutputPercent; r.rampRate=0; }
@@ -486,8 +489,8 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
         float running=manualSpeed();
         if(axis.tracking) {
           const float fraction=std::clamp((std::abs(distance)-tolerance(i))/std::max(1u,s.slowdownDegrees),0.f,1.f);
-          const float approach=std::min(float(s.approachSpeedPercent),runtimeSpeed(i));
-          running=approach+(runtimeSpeed(i)-approach)*fraction;
+          const float approach=std::min(float(s.approachSpeedPercent),workingSpeed);
+          running=approach+(workingSpeed-approach)*fraction;
         }
         r.ramp=std::min(running,m.kickPercent); r.rampRate=0;
       }
@@ -545,8 +548,8 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
   // derivatives remain continuous when a target or the work output changes.
   const float up = std::max(.1f, float(s.accelerationMs)/1000);
   const float down = std::max(.1f, float(s.decelerationMs)/1000/std::max(.1f,s.decelerationFactor));
-  const float work = runtimeSpeed(i);
-  const float velocityLimit = cascade ? runtimeSpeed(i) : m.velocity;
+  const float work = workingSpeed;
+  const float velocityLimit = cascade ? workingSpeed : m.velocity;
   auto rampTo = [&](float target) {
     float virtualPosition=0;
     const float duration=target>=r.ramp ? up : down;

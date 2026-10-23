@@ -647,7 +647,7 @@ static void slowKickHandoff() {
 static void proportionalManualMinimum() {
   for (bool cascade : {false, true}) for (unsigned axis : {0u, 1u})
     for (int direction : {-1, 1}) for (float fraction : {.0001f, .25f, 1.f})
-      for (unsigned floor : {0u,12u}) {
+      for (unsigned floor : {0u,12u}) for (bool absolute : {false,true}) {
       auto c=ready(cascade,90);
       auto &m=c.motionSettings[axis];
       m.kickEnabled=false; m.sustainingPercent=floor; m.outputLimitPercent=80;
@@ -655,6 +655,10 @@ static void proportionalManualMinimum() {
       m.positionKp=m.positionKi=m.positionKd=m.velocityKp=m.velocityKi=m.velocityKd=0;
       m.feedforward=1;
       c.speeds[axis].accelerationMs=c.speeds[axis].decelerationMs=100;
+      if (absolute) { // Full-range velocity needs travel beyond the default EL span.
+        CHECK(c.setRange({-1000,1000},AZ_CUSTOM,0));
+        CHECK(c.setElRange({-1000,1000},EL_CUSTOM,0));
+      }
       c.feedbackAt(axis,90,true,1000);
       const float working=cascade?20.f:40.f;
       CHECK(c.setRuntimeSpeed(axis,working,1000)==Result::Ok);
@@ -662,16 +666,18 @@ static void proportionalManualMinimum() {
       for (uint32_t t=1020;t<=5020;t+=20) {
         c.feedbackAt(axis,position,true,t);
         CHECK(c.manualDrive(0,1,1,++serial,1u<<axis,axis?0:direction*fraction,
-                            axis?direction*fraction:0,false,t)==Result::Ok);
+                            axis?direction*fraction:0,false,t,100,absolute)==Result::Ok);
         c.tick(t);
         CHECK(c.axes[axis].motionError==MotionError::None);
         position+=cascade?c.axes[axis].requestedVelocity*.02f:direction*.002f;
       }
       const auto &a=c.axes[axis];
       const float minimum=cascade?.05f*working:std::max(.05f*working,float(floor));
-      const float expected=minimum+(working-minimum)*fraction;
+      const float expected=absolute?80*fraction:minimum+(working-minimum)*fraction;
+      if (std::abs((cascade?std::abs(a.requestedVelocity):a.speedOutputPercent)-expected)>=.002f)
+        std::cerr << "manual cascade=" << cascade << " absolute=" << absolute << " axis=" << axis << " direction=" << direction << " fraction=" << fraction << " floor=" << floor << " expected=" << expected << " velocity=" << a.requestedVelocity << " output=" << a.speedOutputPercent << "\n";
       CHECK(std::abs((cascade?std::abs(a.requestedVelocity):a.speedOutputPercent)-expected)<.002f);
-      CHECK(a.speedOutputPercent>=float(floor)-.002f && a.speedOutputPercent<=80);
+      CHECK(((absolute && !cascade) || a.speedOutputPercent>=float(floor)-.002f) && a.speedOutputPercent<=80);
       CHECK(c.manualDrive(0,1,1,++serial,1u<<axis,0,0,false,5040)==Result::Ok);
       c.tick(5040);
       CHECK(!a.direction && !a.wanted && a.speedOutputPercent==0);

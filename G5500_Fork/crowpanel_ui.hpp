@@ -8,7 +8,9 @@ namespace forkrot {
 struct CrowPanelView {
   bool hud = false, hudSelector = false;
   char hudName[49]{}, hudAddress[32] = "hud:—", hudRows[3][128]{};
-  bool dualAxis = false;
+  bool dualAxis = false, speedScreen = false;
+  bool speedAvailable[2]{};
+  unsigned speedPercent[2]{5, 5};
   bool elevation = false, feedback = false, targetValid = false;
   bool uncalibrated = false, secondaryUncalibrated = false;
   bool pending = false, moving = false, autoMode = false, autoHour = false;
@@ -26,6 +28,8 @@ struct CrowPanelView {
   char status[384] = "Привод не подключён";
 };
 class CrowPanelUi {
+  lv_font_t speedFont_{};
+  lv_obj_t *speedPanel_ = nullptr, *speedBars_[2]{}, *speedValues_[2]{}, *speedAxes_[2]{}, *speedBack_ = nullptr;
   lv_obj_t *hudName_ = nullptr, *hudAddress_ = nullptr, *hudList_ = nullptr, *hudRows_[3]{};
   lv_obj_t *mode_ = nullptr, *axis_ = nullptr, *range_ = nullptr, *angle_ = nullptr;
   lv_obj_t *targetCaption_ = nullptr, *target_ = nullptr, *status_ = nullptr, *wifi_ = nullptr;

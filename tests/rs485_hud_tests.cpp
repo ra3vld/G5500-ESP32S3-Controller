@@ -27,6 +27,19 @@ struct Node:HudTransport {
   }
 };
 int main() {
+  // HUD/5 absolute input keeps release priority even with its speed flag set.
+  {
+    uint8_t command[64]{}; command[3]='5'; command[4]=4;
+    uint8_t manual[64]{}; manual[3]='5'; manual[4]=15; manual[54]=2;
+    Rs485Hud transport; transport.begin(true,1,0);
+    assert(transport.enqueue(command,sizeof command,0));
+    assert(transport.enqueue(command,sizeof command,0));
+    assert(!transport.enqueue(command,sizeof command,0));
+    assert(transport.enqueue(manual,sizeof manual,0));
+    assert(!transport.enqueue(command,sizeof command,0)); // Running input cannot evict commands.
+    manual[54]=3; assert(transport.enqueue(manual,sizeof manual,0));
+    assert(transport.enqueue(command,sizeof command,0)); // Release cleared the older commands.
+  }
   Rs485Reply reply;std::string output;
   const std::string text="AZ=123\r\n";
   assert(reply.write(reinterpret_cast<const uint8_t *>(text.data()),text.size())==text.size());

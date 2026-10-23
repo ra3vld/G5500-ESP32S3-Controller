@@ -13,7 +13,7 @@ class Mailbox {
   static bool urgent(const uint8_t *p,size_t n) {
     if(n<55)return false;
     const size_t o=p[3]=='1'?45:49;
-    return n>o+5 && (((p[4]==4||p[4]==9)&&(p[o]==uint8_t(ControlOp::Stop)||p[o]==uint8_t(ControlOp::ReleaseJog))) || (p[4]==15&&p[o+5]==1));
+    return n>o+5 && (((p[4]==4||p[4]==9)&&(p[o]==uint8_t(ControlOp::Stop)||p[o]==uint8_t(ControlOp::ReleaseJog))) || (p[4]==15&&(p[o+5]&1)));
   }
   void take(uint32_t now) {
     if(tx_.size)return;
