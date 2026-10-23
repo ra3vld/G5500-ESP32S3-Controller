@@ -30,6 +30,9 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 .controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.btn{border:0;border-radius:14px;min-height:48px;background:#235b78;color:white;font-size:19px;font-weight:700;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none;-webkit-tap-highlight-color:transparent}.btn *{pointer-events:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.movebtn{cursor:pointer}
 .stop{background:var(--s);font-size:23px;min-height:60px}.good{background:#167a5c}.warn{background:#81541d}.blank{visibility:hidden}
 #executeTarget{min-height:60px;white-space:pre-line;font-size:clamp(16px,4vw,23px)}
+.aiming-header:has(.pending-target){grid-template-columns:auto minmax(0,1fr)}.aiming-header:has(.pending-target) .drive-status{justify-self:end;grid-column:2;grid-row:1}.aiming-header #waitingTarget.pending-target{grid-column:1/-1;grid-row:2;white-space:normal;overflow:visible;font-size:24px;line-height:1.35;font-weight:700;color:#f2c94c;padding:10px 12px;border:1px solid #a58a35;border-radius:10px;background:#302b18}
+.controls:has(#executeTarget.pending-target){grid-template-columns:minmax(0,1fr) minmax(0,1.5fr) minmax(0,1fr)}#executeTarget.pending-target{background:#f2c94c;color:#151b20;overflow-wrap:anywhere}.manual-speed-reading{display:flex;flex-wrap:wrap;column-gap:4px}.manual-speed-reading>span{color:var(--m)}
+@media(max-width:600px){.aiming-header #waitingTarget.pending-target{font-size:22px}.manual-drive .controls .btn{min-width:0;padding:6px 2px;overflow-wrap:anywhere}#movementButtons .movebtn{font-size:clamp(12px,3.6vw,14px)}.manual-drive.has-speeds #executeTarget.pending-target{font-size:14px}}
 .target-controls{border-top:1px solid var(--b);margin-top:10px;padding-top:10px}.target-controls .row{align-items:flex-end}.mode-controls{display:grid;grid-template-columns:minmax(0,1fr)}.controls.az-only .blank{display:none}#hourLeft:not(:empty){margin-top:8px;color:var(--a)}#forkMessage:empty{display:none}#forkMessage{margin:10px 0;padding:10px 12px;background:var(--p2);border-radius:10px}.row{display:flex;gap:10px;flex-wrap:wrap}.field{flex:1;min-width:160px}input{width:100%;padding:9px;border-radius:10px;border:1px solid #355063;background:#07121a;color:white;font-size:16px}
 .kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;overflow-wrap:anywhere}.kv div{background:#0b1720;padding:9px;border-radius:9px}
 .status{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border-radius:999px;background:#0a151e;border:1px solid #294153;font-size:13px}
@@ -172,7 +175,7 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 </div>
 
 <div class="card command-card"><div class="aiming-header"><h2>Наведение</h2>
-<div id="waitingTarget">Нет ожидающей цели</div>
+<div id="waitingTarget" role="status" aria-live="polite">Нет ожидающей цели</div>
 <div class="drive-status"><span class="drive-state-label">Состояние привода:</span><strong id="motion" role="status" aria-live="polite">STOP</strong></div></div>
 <div class="aiming-details"><button id="resetDriveError" class="btn hide" type="button" onclick="resetMotion('all')">Сбросить ошибку</button><span class="status"><span id="caldot" class="dot"></span><span id="caltxt">Calibration</span></span></div>
 <h3>Ручное вращение</h3>
@@ -183,8 +186,8 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <button class="btn blank">-</button><button class="btn movebtn" data-dir="D"><span>▼ DOWN</span></button><button class="btn blank">-</button>
 </div>
 <div id="manualSpeeds" class="manual-speeds hide">
-<div id="azManualSpeedControl" class="manual-speed hide"><label for="azManualSpeed"><span>Скорость AZ</span><output id="azManualSpeedValue" for="azManualSpeed">—</output></label><input id="azManualSpeed" type="range" min="1" max="100" value="50" step="1" oninput="queueManualSpeed('az',this.value)" onchange="flushManualSpeed('az')"></div>
-<div id="elManualSpeedControl" class="manual-speed hide"><label for="elManualSpeed"><span>Скорость EL</span><output id="elManualSpeedValue" for="elManualSpeed">—</output></label><input id="elManualSpeed" type="range" min="1" max="100" value="50" step="1" oninput="queueManualSpeed('el',this.value)" onchange="flushManualSpeed('el')"></div>
+<div id="azManualSpeedControl" class="manual-speed hide"><label for="azManualSpeed"><span>Скорость AZ</span><span class="manual-speed-reading"><span>Задано</span><output id="azManualSpeedValue" for="azManualSpeed">—</output></span><span class="manual-speed-reading"><span>Сейчас</span><output id="azManualSpeedActual">—</output></span></label><input id="azManualSpeed" type="range" min="1" max="100" value="50" step="1" oninput="queueManualSpeed('az',this.value)" onchange="flushManualSpeed('az')"></div>
+<div id="elManualSpeedControl" class="manual-speed hide"><label for="elManualSpeed"><span>Скорость EL</span><span class="manual-speed-reading"><span>Задано</span><output id="elManualSpeedValue" for="elManualSpeed">—</output></span><span class="manual-speed-reading"><span>Сейчас</span><output id="elManualSpeedActual">—</output></span></label><input id="elManualSpeed" type="range" min="1" max="100" value="50" step="1" oninput="queueManualSpeed('el',this.value)" onchange="flushManualSpeed('el')"></div>
 </div>
 </div>
 <div class="target-controls"><div class="label">Задать угол</div><div class="row" style="margin-top:8px">
@@ -842,10 +845,15 @@ function targetLabel(t,j){
  return az&&el?'AZ '+az+'\n'+el:az||el;
 }
 function targetCanStop(j){return j.moving||j.controlMode!=='manual'||j.axes?.some(a=>a.holdArmed||(a.regulatorMode==='cascade'&&a.tracking));}
+function pendingTargetLabel(j){
+ const t=j.pending;if(!j.pendingValid||!t)return '';
+ const az=t.hasAz?Number(t.az.toFixed(1)):'',el=t.hasEl&&j.model!=='G800DXA'?Number(t.el.toFixed(1)):'';
+ return az!==''&&el!==''?`Ехать ${az}/${el}`:az!==''?`Ехать ${az}°`:el!==''?`Ехать EL ${el}°`:'';
+}
 function updateTargetButton(j){
- const b=document.getElementById('executeTarget'),stop=targetCanStop(j),label=targetLabel(buttonTarget(j),j);
- b.textContent=stop?'stop':label||'Повернуть';
- b.classList.toggle('stop',stop);b.classList.toggle('good',!stop);
+ const b=document.getElementById('executeTarget'),stop=targetCanStop(j),label=targetLabel(buttonTarget(j),j),pending=!stop&&!!pendingTargetLabel(j);
+ b.textContent=stop?'stop':pending?pendingTargetLabel(j):label||'Повернуть';
+ b.classList.toggle('stop',stop);b.classList.toggle('good',!stop&&!pending);b.classList.toggle('pending-target',pending);
  b.disabled=!stop&&!label;
  b.title=stop?'Остановить движение':label?'Повернуть к '+label.replace('\n',', '):'Нет цели для поворота';
  b.setAttribute('aria-label',stop?'stop':b.title);
@@ -861,7 +869,7 @@ async function targetAction(){
 const manualSpeedRequests={az:{pending:null,timer:null,busy:false,epoch:0},el:{pending:null,timer:null,busy:false,epoch:0}};
 function manualSpeedLabel(axis,value){
  const cascade=window._forkState?.axes?.[axis==='az'?0:1]?.regulatorMode==='cascade';
- return Number(Number(value).toPrecision(6))+(cascade?' °/с':'%');
+ return cascade?Number(value).toFixed(1)+' °/с':Math.round(Number(value))+'%';
 }
 function queueManualSpeed(axis,value){
  const p=manualSpeedRequests[axis],input=document.getElementById(axis+'ManualSpeed');if(input.disabled)return;
@@ -887,6 +895,8 @@ function renderManualSpeeds(j){
   input.min=max/20;input.max=max;input.step='any';
   if(!p.busy&&p.pending===null&&document.activeElement!==input)input.value=value;
   document.getElementById(axis+'ManualSpeedValue').textContent=manualSpeedLabel(axis,input.value);
+  const sensed=a.calibrated&&!['feedback_stale','feedback_invalid'].includes(a.motionFault)&&Number.isFinite(a.measuredVelocity);
+  setText(document.getElementById(axis+'ManualSpeedActual'),sensed?Math.abs(a.measuredVelocity).toFixed(1)+' °/с':'—');
   input.setAttribute('aria-valuetext',manualSpeedLabel(axis,input.value));
  }
  document.getElementById('manualSpeeds').classList.toggle('hide',!visible);
@@ -899,7 +909,8 @@ function updateFork(j){
  setText(document.getElementById('modelTitle'),j.deviceRole==='hud'?'HUD / '+(j.build?.board||'ESP32'):'YAESU '+(g800?'G-800DXA':'G-5500')+' / '+(j.build?.board||'ESP32'));
  document.getElementById('followMode').value=j.controlMode;
  setText(document.getElementById('hourLeft'),j.controlMode==='auto_1h'?'Осталось '+Math.ceil(j.remainingMs/60000)+' мин':'');
- setText(document.getElementById('waitingTarget'),j.pendingValid?'Ожидает: '+(j.pending.hasAz?'AZ '+j.pending.az.toFixed(1)+'° ':'')+(j.pending.hasEl&&!g800?'EL '+j.pending.el.toFixed(1)+'°':''):'Нет ожидающей цели');
+ setText(document.getElementById('waitingTarget'),j.pendingValid?'Ожидает разрешения: '+targetLabel(j.pending,j).replace('\n',' / '):'Нет ожидающей цели');
+ document.getElementById('waitingTarget').classList.toggle('pending-target',!!j.pendingValid);
  document.getElementById('waitingTarget').title=document.getElementById('waitingTarget').textContent;
  updateTargetButton(j);
  renderManualSpeeds(j);

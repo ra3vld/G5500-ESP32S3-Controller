@@ -13,7 +13,7 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   page.on('pageerror',e=>errors.push(e.message));await page.addInitScript(()=>window.G5500_HTTP_ONLY=true);
   const state={...sample,deviceRole:'controller',model:'G5500',configurationLocked:false,moving:true,
    build:{...sample.build,drive:'BTS7960'},autotune:{phase:'idle',active:false},
-   axes:sample.axes.map((a,i)=>({...a,speedEnabled:true,speedAdjustable:true,regulatorMode:i?'cascade':'simple',speedSetpoint:i?24.5:50,speedLimit:i?37.26:90,direction:1,tracking:true,motionReady:true,motionPhase:'run'}))};
+   axes:sample.axes.map((a,i)=>({...a,speedEnabled:true,speedAdjustable:true,regulatorMode:i?'cascade':'simple',speedSetpoint:i?24.5:50,speedLimit:i?37.26:90,measuredVelocity:i?-12.75:8.25,calibrated:true,direction:1,tracking:true,motionReady:true,motionPhase:'run'}))};
   let release=null,blockNext=false,active=0,maxActive=0;const moves=[],moveBodies=[];let dropStops=false,dropHolds=false,delayHold=false,releaseHold=null;
   await page.route('http://speed.test/**',async route=>{
    const request=route.request(),url=new URL(request.url());
@@ -44,6 +44,8 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   await page.goto('http://speed.test/');await page.locator('#azManualSpeed').waitFor({state:'visible'});
   assert.equal(await page.locator('#azManualSpeedValue').textContent(),'50%');
   assert.equal(await page.locator('#elManualSpeedValue').textContent(),'24.5 °/с');
+  assert.equal(await page.locator('#azManualSpeedActual').textContent(),'8.3 °/с');
+  assert.equal(await page.locator('#elManualSpeedActual').textContent(),'12.8 °/с');
   assert.equal(await page.locator('#azManualSpeed').getAttribute('max'),'90');
   assert.equal(await page.locator('#elManualSpeed').getAttribute('max'),'37.26');
   assert.equal(Number(await page.locator('#azManualSpeed').getAttribute('min')),4.5);
@@ -65,6 +67,7 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   assert.equal(posts.filter(p=>p.path==='/api/speed').length,2);assert.equal(maxActive,1);
   assert.deepEqual(posts.at(-1).form,{axis:'az',value:'80',rangeRevision:String(state.azRangeRevision)});
   await input('el',12.75);await page.waitForFunction(()=>window._forkState.axes[1].speedSetpoint===12.75);
+  assert.equal(await page.locator('#elManualSpeedValue').textContent(),'12.8 °/с');
   assert.equal(state.axes[0].speedSetpoint,80);assert.equal(state.axes[1].speedSetpoint,12.75);
   assert.equal(state.moving,true);assert.equal(state.axes[0].direction,1);assert.equal(state.axes[1].direction,1);
   assert(posts.every(p=>p.path==='/api/speed'),'sliders must not send settings/STOP/target');
@@ -91,6 +94,7 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow at ${width}`);
    assert(await page.locator('#manualSpeeds').evaluate(root=>[...root.querySelectorAll('input')].every(e=>e.getBoundingClientRect().height>=44&&e.getBoundingClientRect().right<=innerWidth)),`touch target at ${width}`);
    assert(await page.locator('#manualSpeeds').evaluate(e=>{const group=e.closest('.manual-drive'),ratio=e.getBoundingClientRect().width/(group.getBoundingClientRect().width-parseFloat(getComputedStyle(group).columnGap));return Math.abs(ratio-(innerWidth>600?1/7.2:1/3))<.01}),`compact slider column at ${width}`);
+   assert(await page.locator('.manual-drive').evaluate(e=>[...e.querySelectorAll('.btn,output')].every(n=>n.scrollWidth<=n.clientWidth)),`control text must fit at ${width}`);
    assert(await page.locator('#azManualSpeed').evaluate(e=>e.getBoundingClientRect().width/e.parentElement.getBoundingClientRect().width>.95),`track fills compact column at ${width}`);
    await page.locator('.manual-drive').screenshot({path:path.join(out,`speed-${width}.png`)});
   }
@@ -198,6 +202,51 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/target'),page.locator('#taz').press('Enter')]);
   assert.deepEqual(posts.at(-1).form,{az:'100',rangeRevision:String(state.azRangeRevision)},'Enter must omit hidden EL on G800');await unfocus();
   state.autotune.active=true;await page.evaluate(()=>upd(true));await page.waitForFunction(()=>window._forkState.autotune.active);await page.keyboard.press('ArrowRight');await page.waitForTimeout(50);assert.deepEqual(moves,[],'autotune must block keyboard starts');
-  assert.deepEqual(errors,[]);console.log('PASS: compact live speed sliders/5% minima/storage UI, Enter validation, HTTP leased keyboard/pointer holds, telemetry disconnect, lost STOP/renewal/late ACK/blur/tab/edit guards, 1100/390/320px');
+  // A received goal visibly asks for permission; only its explicit click executes it.
+  await page.evaluate(()=>{window.speedTestUpdateFork=updateFork;updateFork=()=>{};});
+  state.autotune.active=false;state.model='G5500';state.controlMode='manual';state.moving=false;
+  state.axes.forEach(a=>{a.tracking=false;a.direction=0;a.holdArmed=false;});
+  state.pendingValid=true;state.pending={hasAz:true,az:100,hasEl:true,el:100};
+  const render=()=>page.evaluate(j=>window.speedTestUpdateFork(j),state),action=page.locator('#executeTarget');
+  await render();
+  await page.locator('#taz').fill('100');await page.locator('#tel').fill('100');
+  assert.equal(await action.textContent(),'Ехать 100/100');
+  assert.equal(await action.evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(242, 201, 76)');
+  assert.equal(await page.locator('#waitingTarget').textContent(),'Ожидает разрешения: AZ 100° / EL 100°');
+  for(const width of [1100,390,320]){
+   await page.setViewportSize({width,height:1000});
+   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`pending overflow at ${width}`);
+   assert(await page.locator('#waitingTarget').evaluate(e=>parseFloat(getComputedStyle(e).fontSize)>=22&&e.scrollWidth<=e.clientWidth),'pending goal must be large and fully visible');
+   assert(await action.evaluate(e=>e.scrollWidth<=e.clientWidth),'execute label must fit the button');
+   assert(await action.evaluate(e=>{const r=document.createRange();r.setStart(e.firstChild,e.textContent.indexOf(' ')+1);r.setEnd(e.firstChild,e.textContent.length);return r.getClientRects().length===1;}),'pending coordinates must stay on one line');
+   assert(await page.locator('.manual-drive').evaluate(e=>[...e.querySelectorAll('.btn,output')].every(n=>n.scrollWidth<=n.clientWidth)),`pending control text must fit at ${width}`);
+   assert(await page.locator('.movebtn[data-dir="R"] span').evaluate(e=>{const r=document.createRange();r.setStart(e.firstChild,0);r.setEnd(e.firstChild,5);return r.getClientRects().length===1;}),'RIGHT must stay on one line');
+   await page.locator('.command-card').screenshot({path:path.join(out,`pending-${width}.png`)});
+  }
+  const countExecute=()=>posts.filter(p=>p.path==='/api/execute').length;
+  const beforeExecute=countExecute();await page.waitForTimeout(150);assert.equal(countExecute(),beforeExecute);
+  await action.click();assert.equal(countExecute(),beforeExecute+1);assert.equal(posts.at(-1).path,'/api/execute');
+  state.moving=true;await render();assert.equal(await action.textContent(),'stop');
+  assert.equal(await action.evaluate(e=>e.classList.contains('pending-target')),false,'pending must never hide STOP');
+  const stopCount=moves.length;await action.click();assert.equal(moves[stopCount],'S');
+  state.moving=false;state.pending={hasAz:false,az:0,hasEl:true,el:45};await render();assert.equal(await action.textContent(),'Ехать EL 45°');
+  state.model='G800DXA';state.pending={hasAz:true,az:0,hasEl:true,el:100};await render();assert.equal(await action.textContent(),'Ехать 0°');
+  assert.equal(await page.locator('#waitingTarget').textContent(),'Ожидает разрешения: 0°');
+  state.pendingValid=false;state.lastTarget={hasAz:true,az:170,hasEl:false,el:0};await render();
+  assert.equal(await action.textContent(),'170°');assert.equal(await action.evaluate(e=>e.classList.contains('good')),true);
+  assert.equal(await page.locator('#waitingTarget').textContent(),'Нет ожидающей цели');
+  state.axes[0].motionFault='feedback_stale';await render();assert.equal(await page.locator('#azManualSpeedActual').textContent(),'—');
+  state.axes[0].motionFault='';state.axes[0].calibrated=false;await render();assert.equal(await page.locator('#azManualSpeedActual').textContent(),'—');
+  state.axes[0].calibrated=true;state.axes[0].measuredVelocity=0;await render();assert.equal(await page.locator('#azManualSpeedActual').textContent(),'0.0 °/с');
+  state.model='G5500';state.pendingValid=true;state.pending={hasAz:true,az:450,hasEl:true,el:180};
+  for(const pending of [true,false]){
+   state.pendingValid=pending;state.lastTarget={hasAz:true,az:450,hasEl:true,el:180};await render();
+   for(const width of [390,320]){
+    await page.setViewportSize({width,height:1000});
+    assert(await page.locator('.manual-drive').evaluate(e=>[...e.querySelectorAll('.btn,output')].every(n=>n.scrollWidth<=n.clientWidth)),`maximum target labels must fit at ${width}, pending=${pending}`);
+    assert(await page.locator('#movementButtons').evaluate(e=>[...e.querySelectorAll('.btn:not(.blank)')].every(n=>{const box=n.getBoundingClientRect(),r=document.createRange();r.selectNodeContents(n);return [...r.getClientRects()].every(b=>b.left>=box.left&&b.right<=box.right+1&&b.top>=box.top&&b.bottom<=box.bottom+1);})),`button text must stay inside at ${width}, pending=${pending}`);
+   }
+  }
+  assert.deepEqual(errors,[]);console.log('PASS: pending goal/explicit execution/STOP priority, rounded setpoint and actual speed, compact live sliders, Enter, leased keyboard/pointer guards, 1100/390/320px');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});
