@@ -372,7 +372,19 @@ int main(int argc,char **argv) {
   const auto positionReads=f.actions.positionReads;
   assert(f.call("GET","/api/status").status==200 && f.actions.positionReads==positionReads);
   assert(f.call("POST","/api/target","az=120").status==409);
-  assert(f.call("GET","/api/diagnostics").status==200);
+  const auto feedbackDiagnostics=f.call("GET","/api/diagnostics");
+  assert(feedbackDiagnostics.status==200);
+  assert(feedbackDiagnostics.body.find("\"feedbackRejected\":")!=std::string::npos);
+  assert(feedbackDiagnostics.body.find("\"feedbackInvalid\":")!=std::string::npos);
+  assert(feedbackDiagnostics.body.find("\"rejectedIntervalMs\":")!=std::string::npos);
+  assert(feedbackDiagnostics.body.find("\"lastGoodPosition\":")!=std::string::npos);
+  for(const auto *axis:{"az","el"}) {
+    const auto one=f.call("GET","/api/diagnostics",std::string("axis=")+axis);
+    assert(one.status==200 && one.body.size()<=COMMAND_PAGE_MAX);
+    assert(one.body.find(std::string("\"axis\":\"")+axis+'"')!=std::string::npos);
+    assert(one.body.find("\"timing\":{")!=std::string::npos);
+  }
+  assert(f.call("GET","/api/diagnostics","axis=bad").status==400);
   assert(f.call("POST","/api/wifi","ssid=station&pass=12345678").status==200 && !f.restart.pending());
   assert(f.network.wifiConnecting() && f.network.apAlwaysOn());
   f.restart.consume(fakeHardware.now+2000);assert(!f.restart.pending());

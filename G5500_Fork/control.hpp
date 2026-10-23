@@ -104,17 +104,27 @@ struct Axis {
   MotionError motionError = MotionError::None;
   bool holdArmed = false;
 };
-enum class AutoTunePhase : uint8_t { Idle, Quiet, Start, Low, High, Coast, Reposition, Validate, Minimum, Complete, Cancelled, Failed };
+enum class AutoTunePhase : uint8_t { Idle, Quiet, Start, Low, High, Coast, Reposition, Validate, Minimum, Tracking, Complete, Cancelled, Failed };
+struct AutoTuneTrackingResult {
+  float score = 0, meanError = 0, peakError = 0, overshoot = 0;
+  unsigned completed = 0, kicks = 0, reversals = 0, stoppedMs = 0;
+  bool rejected = false;
+  const char *reason = "";
+};
 struct AutoTuneMeasurement {
   float startOutput = 0, lowOutput = 0, highOutput = 0, lowVelocity = 0, highVelocity = 0;
   float responseSeconds = 0, coastDegrees = 0;
   uint32_t startMs = 0;
 };
 // Volatile methodology for one identification run; never stored in drive settings.
+enum AutoTuneStage : unsigned { TuneKick=1, TuneModel=2, TuneMinimum=4, TuneSlow=8, TuneFast=16, TuneAll=31 };
 struct AutoTuneOptions {
   float searchStartPercent = 5, searchStepPercent = 5, workingFraction = .5f;
   float lambdaFactor = 1, positionGainFactor = 1;
   unsigned startupObservationMs = 500, plateauMinMs = 200, plateauTimeoutMs = 2500;
+  unsigned stages = TuneAll;
+  bool has(unsigned stage) const { return (stages & stage)!=0; }
+  unsigned trackingCases() const { return (has(TuneSlow)?4u:0u)+(has(TuneFast)?4u:0u); }
   bool valid(float outputLimit) const;
 };
 struct AutoTuneRealField { const char *name; float AutoTuneOptions::*member; float lo, hi; };
@@ -127,6 +137,7 @@ inline constexpr AutoTuneRealField autoTuneRealFields[] = {
 };
 struct AutoTuneIntField { const char *name; unsigned AutoTuneOptions::*member; unsigned lo, hi; };
 inline constexpr AutoTuneIntField autoTuneIntFields[] = {
+  {"tuneStages", &AutoTuneOptions::stages, 1, TuneAll},
   {"tuneStartupObservationMs", &AutoTuneOptions::startupObservationMs, 100, 2000},
   {"tunePlateauMinMs", &AutoTuneOptions::plateauMinMs, 160, 1000},
   {"tunePlateauTimeoutMs", &AutoTuneOptions::plateauTimeoutMs, 1000, 10000}
@@ -142,6 +153,7 @@ struct AutoTuneState {
   uint32_t id = 0, startedAt = 0, phaseAt = 0, tickAt = 0, sampledAt = 0, revision = 0, settledAt = 0;
   const char *reason = "";
   float origin = 0, otherPosition = 0, lower = 0, upper = 0, limit = 0, level = 0;
+  float initialSetpoint = 0;
   float phasePosition = 0, noiseLow = 0, noiseHigh = 0, noiseVelocity = 0, threshold = 0;
   float peakVelocity = 0, validationError = 0, validationTarget = 0;
   float validationOrigin = 0;
@@ -155,6 +167,22 @@ struct AutoTuneState {
   unsigned minimumSamples = 0, minimumTrial = 0, minimumPass = 0;
   uint32_t minimumAt = 0, minimumProgressAt = 0;
   bool minimumConfirm = false, minimumRaised = false, minimumCompletePending = false;
+  // Three bounded PI/P candidates, each tested at the selected speeds, two command
+  // periods and both directions through the ordinary target path.
+  std::array<AutoTuneTrackingResult, 3> trackingResults{};
+  MotionSettings trackingBase{};
+  unsigned trackingCandidate = 0, trackingCase = 0, trackingBest = 0;
+  unsigned trackingPeriodMs = 0, trackingCommand = 0, trackingSamples = 0;
+  uint32_t trackingAt = 0, trackingStoppedMs = 0;
+  float trackingSlow = 0, trackingFast = 0, trackingVelocity = 0;
+  float trackingOrigin = 0, trackingGoal = 0, trackingErrorSum = 0, trackingPeak = 0, trackingOvershoot = 0;
+  float trackingSeconds = 0;
+  float trackingVariation = 0, trackingOutput = 0, trackingStartMean = 0;
+  unsigned trackingKicks = 0, trackingReversals = 0;
+  int trackingDirection = 1, trackingLastDirection = 0;
+  MotionPhase trackingLastPhase = MotionPhase::Idle;
+  bool trackingVerified = false, trackingScored = false;
+  bool modelReady = false, proposalValidated = false;
   int validationLastDirection = 0;
   float nextLevel = 0, searchLevel = 0, minimumLevel = 0;
   float lastPosition = 0, sampleVelocity = 0, stoppingDistance = 0;
@@ -169,7 +197,7 @@ struct AutoTuneState {
   std::array<AutoTuneMeasurement, 2> measurements{};
   struct Plateau { float output = 0, velocity = 0, responseSeconds = 0; };
   std::array<Plateau, 2> confirmedHigh{};
-  bool active() const { return phase >= AutoTunePhase::Quiet && phase <= AutoTunePhase::Minimum; }
+  bool active() const { return phase >= AutoTunePhase::Quiet && phase <= AutoTunePhase::Tracking; }
 };
 struct Preset {
   std::string label;
@@ -288,6 +316,7 @@ public:
   void cancelSequence();
   void tick(uint32_t now);
   const MotionTiming &motionTiming(unsigned axis) const { return motion_[axis].timing; }
+  const MotionFeedback &motionFeedback(unsigned axis) const { return motion_[axis].feedback; }
   uint32_t remaining(uint32_t now) const;
   bool valid(Target t) const;
   bool moving() const;
@@ -310,7 +339,7 @@ private:
   bool speedUpdateStarted_ = false;
   std::array<MotionRuntime, 2> motion_{};
   unsigned controlPeriodMs_ = MotionControlPeriodMs;
-  void cancelMotion(unsigned axis);
+  void cancelMotion(unsigned axis, bool retainTarget = false);
   void motionFault(unsigned axis, MotionError, uint32_t now);
   void recoverStall(unsigned axis, uint32_t now);
   void tickMotion(unsigned axis, uint32_t now);
@@ -322,8 +351,17 @@ private:
   bool autoTuneProbe(AutoTunePhase, int direction, float level, uint32_t now);
   void autoTuneCoast(AutoTunePhase next, int direction, float level, bool relocate, uint32_t now);
   bool proposeAutoTune(uint32_t now);
+  bool validateAutoTuneProposal(uint32_t now);
+  void advanceAutoTune(uint32_t now);
+  void prepareAutoTuneMinimum(uint32_t now);
+  float autoTuneMinimumUpper() const;
+  MotionSettings autoTuneTrialMotion(MotionSettings settings) const;
   void beginAutoTuneMinimum(uint32_t now);
   void finishAutoTuneMinimumTrial(bool passed, uint32_t now);
+  void beginAutoTuneTracking(uint32_t now);
+  void tickAutoTuneTracking(uint32_t now, float dt);
+  void finishAutoTuneTrackingTrial(bool passed, uint32_t now, const char *reason = "");
+  MotionSettings autoTuneTrackingCandidate(unsigned candidate) const;
   FixedVector<Target, 16> sequence_, pendingSequence_;
   size_t sequenceIndex_ = 0;
   Result start(Target t, uint32_t now, bool retryStall = true);

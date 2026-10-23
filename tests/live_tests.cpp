@@ -37,8 +37,12 @@ int main() {
   h.selectionEpoch=h.rejected=h.timeouts=h.busy=UINT32_MAX;
   c.stopEpoch=UINT32_MAX;c.mode=Mode::AutoHour;c.pending={450,180,true,true};c.lastTarget=c.pending;
   for(auto &axis:c.axes){axis.current=axis.target=449.99f;axis.direction=-1;axis.speedOutputPercent=100;}
+  c.autoTune.phase=AutoTunePhase::Tracking;c.autoTune.axis=0;
+  c.autoTune.trackingPeriodMs=1500;c.autoTune.trackingCandidate=2;c.autoTune.trackingCase=7;
   JsonWriter worst(data,sizeof data);assert(writeLiveState(worst,c,h,3));
   assert(worst.size()<LIVE_STATE_CAPACITY-110);
+  assert(std::string(worst.data()).find("\"trackingTrial\":24")!=std::string::npos);
+  c.autoTune={};
   std::cout<<"Worst live state: "<<worst.size()<<" bytes before envelope\n";
   auto fingerprint=liveControlFingerprint(c,h);c.axes[0].current+=1;
   assert(fingerprint==liveControlFingerprint(c,h));c.axes[0].target+=1;

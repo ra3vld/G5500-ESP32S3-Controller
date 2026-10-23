@@ -155,11 +155,36 @@ Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
       if (retryStall) recoverStall(i, now);
       Axis &axis = axes[i];
       const float value = i ? nextTarget.el : nextTarget.az;
-      const bool unchanged = axis.accepted && value == axis.target && (axis.tracking || axis.holdArmed);
+      const bool unchanged = axis.accepted && value == axis.target &&
+          (axis.tracking || axis.holdArmed || (axis.completed && std::abs(value-axis.current)<=tolerance(i)));
       if(!unchanged) {
-        motion_[i].arriving=motion_[i].settling=false;
-        motion_[i].streamingTarget=axis.tracking && axis.direction*(value-axis.target)>0;
-        motion_[i].targetChangedAt=now;
+        auto &r=motion_[i];
+        r.arriving=r.settling=false;
+        const unsigned interval=uint32_t(now-r.targetChangedAt);
+        const bool streaming=r.targetTimed && (axis.tracking || axis.completed || axis.holdArmed) &&
+            value!=axis.target && (!axis.direction || axis.direction*(value-axis.target)>0) && interval<=1800;
+        if(!streaming) {r.targetIntervalMs=0;r.targetVelocity=0;}
+        else if(!r.streamingTarget) {
+          r.targetIntervalMs=std::clamp(interval,5u,1500u);
+          r.targetVelocity=interval ? std::clamp((value-axis.target)*1000/interval,-runtimeSpeed(i),runtimeSpeed(i)) : 0;
+          r.targetVelocityAt=now;r.targetVelocityPosition=value;
+        } else {
+          // Wi-Fi may deliver queued UDP packets in one burst. Their arrival
+          // spacing is not the target's physical velocity, nor a new stream.
+          const unsigned span=uint32_t(now-r.targetVelocityAt);
+          if(span>=40) {
+            const float velocity=std::clamp((value-r.targetVelocityPosition)*1000/span,-runtimeSpeed(i),runtimeSpeed(i));
+            r.targetVelocity=.75f*r.targetVelocity+.25f*velocity;
+            r.targetVelocityAt=now;r.targetVelocityPosition=value;
+          }
+          if(interval>=40) {
+            const unsigned cadence=std::clamp(interval,100u,1500u);
+            r.targetIntervalMs=cadence>=r.targetIntervalMs ? cadence : (3*r.targetIntervalMs+cadence)/4;
+          }
+        }
+        r.streamingTarget=streaming;
+        r.targetChangedAt=now;
+        r.targetTimed=true;
         motion_[i].targetDirection=(value>axis.current)-(value<axis.current);
         motion_[i].crossedTarget=false;
       }

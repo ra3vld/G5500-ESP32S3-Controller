@@ -11,6 +11,7 @@ from controller_api import ApiError, Client, SerialTransport, SocketTransport
 
 
 OPTION_LIMITS = {
+    'tuneStages': (1, 31, True),
     'tuneSearchStartPercent': (1, 100, False),
     'tuneSearchStepPercent': (1, 20, False),
     'tuneWorkingFraction': (.1, 1, False),
@@ -42,6 +43,8 @@ def hypothesis(path, name):
             raise ValueError('value out of range: ' + key)
         if integer:
             value[key] = int(number)
+    if value['mode'] == 'simple' and not value.get('tuneStages', 31) & 7:
+        raise ValueError('tracking stages require cascade mode')
     if value.get('tuneSearchStartPercent', 5) > value['outputLimit']:
         raise ValueError('search start exceeds output limit')
     if value.get('tunePlateauTimeoutMs', 2500) < 2 * value.get('tunePlateauMinMs', 200) + 200:
@@ -56,7 +59,7 @@ def body(client, method, path, arguments=None):
     return response['body']
 
 
-def experiment(client, variant, emit, interval=1, duration=180, clock=time.monotonic, sleep=time.sleep):
+def experiment(client, variant, emit, interval=1, duration=510, clock=time.monotonic, sleep=time.sleep):
     """Never apply a proposal; cancel our active trial on interruption or timeout."""
     started, identifier = clock(), None
     def record(event, **fields):
@@ -112,7 +115,7 @@ def main(argv=None):
     links.add_argument('--tcp', metavar='HOST[:PORT]')
     parser.add_argument('--baud', type=int, default=9600)
     parser.add_argument('--interval', type=float, default=1)
-    parser.add_argument('--duration', type=float, default=180)
+    parser.add_argument('--duration', type=float, default=510)
     parser.add_argument('--timeout', type=float, default=5)
     parser.add_argument('--log', help='New JSONL file for configuration, samples and result')
     parser.add_argument('--dry-run', action='store_true', help='Validate and print; do not open a device')

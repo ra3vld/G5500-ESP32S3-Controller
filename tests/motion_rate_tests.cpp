@@ -34,6 +34,23 @@ int main() {
     f.sample(999,true,at,window);assert(f.count==count && f.at==at);
   }
   PositionFilter filter;filter.sample(100,0xfffffffcu);
+  // The bounded float regression must agree with a double-precision reference
+  // even at large mechanical offsets, with timestamp jitter and ADC noise.
+  for(unsigned window:{40u,80u,400u,600u})for(float offset:{-7200.f,0.f,7200.f}) {
+    MotionFeedback f;
+    for(unsigned t=0;t<=1200;t+=period)
+      f.sample(offset+.75f*t/1000+((t/period)%3-1.f)*.02f,true,t+((t/period)%2),window);
+    double sx=0,sy=0,sxx=0,sxy=0;unsigned n=0;
+    const float latest=f.samples[(f.next+f.samples.size()-1)%f.samples.size()].position;
+    for(unsigned i=0;i<f.count;++i) {
+      const unsigned age=uint32_t(f.at-f.samples[i].at);
+      if(age>window)continue;
+      const double x=-double(age)/1000,y=double(f.samples[i].position)-latest;
+      sx+=x;sy+=y;sxx+=x*x;sxy+=x*y;++n;
+    }
+    const double reference=(n*sxy-sx*sy)/(n*sxx-sx*sx);
+    assert(std::abs(f.velocity-reference)<.001);
+  }
   assert(!filter.due(uint32_t(0xfffffffcu+period-1)));
   assert(filter.due(uint32_t(0xfffffffcu+period)));
   {

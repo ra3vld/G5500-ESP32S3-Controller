@@ -30,6 +30,10 @@ int Hardware::adcAvgMv(int pin) {
   } else {
   uint32_t s = 0;
   for (unsigned i = 0; i < MotionAdcSamples; i++) {
+    // Spread conversions across the dual-PWM profile's 1 kHz period. A burst of
+    // adjacent reads aliases switching interference into a false shaft jump.
+    // Four spaced reads leave time for both axes in the 5 ms control period.
+    if(i) delayMicroseconds(200);
     s += analogReadMilliVolts(pin);
   }
   return s / MotionAdcSamples;

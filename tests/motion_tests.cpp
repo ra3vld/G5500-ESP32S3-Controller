@@ -150,11 +150,18 @@ static void feedbackSafety() {
   auto noise=ready();noise.target({90,0,true,false},false,0);noise.tick(0);
   for(unsigned n=0;n<10;++n) noise.feedbackAt(0,40,true,20);
   CHECK(noise.axes[0].motionError==MotionError::None&&noise.axes[0].calibrated);
+  CHECK(noise.motionFeedback(0).rejectedTotal==1); // duplicate reads are one ADC event
   CHECK(noise.axes[0].current==10);
   noise.feedbackAt(0,10.02f,true,40);
   CHECK(noise.axes[0].motionError==MotionError::None&&noise.axes[0].current==10.02f);
   for(unsigned stamp=60;stamp<=100;stamp+=20) noise.feedbackAt(0,40,true,stamp);
   CHECK(noise.axes[0].motionError==MotionError::FeedbackInvalid&&!noise.axes[0].direction);
+  CHECK(noise.motionFeedback(0).invalidEvents==1);
+  CHECK(noise.motionFeedback(0).rejectedTotal==4);
+  CHECK(noise.motionFeedback(0).rejectedPosition==40);
+  CHECK(noise.motionFeedback(0).lastGoodPosition==10.02f);
+  CHECK(noise.motionFeedback(0).rejectedAt==100);
+  CHECK(noise.motionFeedback(0).rejectedIntervalMs==60);
 
   auto c=ready();c.target({90,0,true,false},false,0);c.tick(0);c.tick(501);CHECK(c.axes[0].motionError==MotionError::FeedbackStale);
   c=ready();c.motionSettings[0].mode=RegulatorMode::Cascade;c.target({90,0,true,false},false,0);c.tick(0);c.feedbackAt(0,NAN,true,20);CHECK(!c.axes[0].direction);CHECK(c.axes[0].motionError==MotionError::FeedbackInvalid);
@@ -292,12 +299,12 @@ static void nearBandStream(uint32_t epoch=0) {
     CHECK(c.target({90.6f+float(n)*.1f,0,true,false},false,epoch+now)==Result::Ok);c.tick(epoch+now);
     if(phase!=MotionPhase::Kick&&c.axes[0].motionPhase==MotionPhase::Kick)++kicks;
     phase=c.axes[0].motionPhase;
-    CHECK(c.axes[0].direction==1 && c.axes[0].speedOutputPercent>0);
+    CHECK(c.axes[0].direction==1); // overspeed may coast without cancelling the stream/kick
     CHECK(c.axes[0].motionError==MotionError::None);
   }
   CHECK(kicks==1);CHECK(std::abs(c.axes[0].target-110.6f)<.001f);
   // Repeated delivery of the last goal cannot defer settlement forever.
-  for(unsigned now=1020;now<=2000;now+=20) {
+  for(unsigned now=1020;now<=4000;now+=20) {
     c.feedbackAt(0,110.4f,true,epoch+now);c.target({110.6f,0,true,false},false,epoch+now);c.tick(epoch+now);
     if(c.axes[0].completed)break;
   }

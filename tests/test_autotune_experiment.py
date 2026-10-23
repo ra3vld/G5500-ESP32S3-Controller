@@ -110,9 +110,12 @@ class TrialTests(unittest.TestCase):
                 path.write_text(json.dumps({'test': value}))
                 return trial.hypothesis(path, 'test')
             self.assertEqual(load(VARIANT), VARIANT)
+            self.assertEqual(load(dict(VARIANT, tuneStages=4))['tuneStages'], 4)
             for change in ({'tuneLambdaFactor': .1}, {'tuneTypo': 2}, {'travel': float('nan')},
                            {'tunePlateauMinMs': 1000, 'tunePlateauTimeoutMs': 1000},
                            {'outputLimit': 10, 'tuneSearchStartPercent': 15},
+                           {'tuneStages': 0}, {'tuneStages': 32}, {'tuneStages': 1.5},
+                           {'mode': 'simple', 'tuneStages': 8},
                            {'tunePlateauMinMs': 200.5}, {'travel': True}):
                 with self.subTest(change=change), self.assertRaises(ValueError):
                     load(dict(VARIANT, **change))

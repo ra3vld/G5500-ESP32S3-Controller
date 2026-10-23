@@ -83,6 +83,8 @@ struct MotionFeedback {
   unsigned count = 0, next = 0, rejectedSamples = 0;
   bool timed = false, valid = false;
   uint32_t at = 0, rejectedAt = 0;
+  uint32_t rejectedTotal = 0, invalidEvents = 0, rejectedIntervalMs = 0;
+  float rejectedPosition = 0, lastGoodPosition = 0;
   float velocity = 0;
   float coastSeconds = 0, coastPosition = 0, coastVelocity = 0;
   uint32_t coastAt = 0;
@@ -90,6 +92,7 @@ struct MotionFeedback {
   bool powered = false, coastTracking = false;
   void sample(float position, bool calibrated, uint32_t stamp, unsigned window);
   bool progressed(int direction, float degrees, unsigned window) const;
+  float positionMean(unsigned window) const;
 };
 struct MotionRuntime {
   MotionFeedback feedback;
@@ -97,7 +100,16 @@ struct MotionRuntime {
   MotionPid positionPid, velocityPid;
   bool started = false, profileValid = false, settling = false, releasing = false, arriving = false;
   bool progressValid = false, kickDone = false, streamingTarget = false, profileTracking = false;
+  bool streamCoasting = false;
+  bool kickConfirming = false;
+  bool kickRecovery = false;
+  bool targetTimed = false;
+  uint32_t kickConfirmAt = 0;
   uint32_t targetChangedAt = 0;
+  unsigned targetIntervalMs = 0;
+  float targetVelocity = 0;
+  uint32_t targetVelocityAt = 0;
+  float targetVelocityPosition = 0;
   uint32_t at = 0, nextAt = 0, kickAt = 0, releaseAt = 0, settledAt = 0, progressAt = 0;
   float referencePosition = 0, referenceVelocity = 0, referenceAcceleration = 0;
   float ramp = 0, rampRate = 0, kickPosition = 0, progressPosition = 0;
@@ -106,6 +118,6 @@ struct MotionRuntime {
   float plannedSpeedLimit = 0;
   int kickDirection = 0, targetDirection = 0;
   bool crossedTarget = false;
-  void cancel();
+  void cancel(bool retainTarget = false);
 };
 } // namespace forkrot

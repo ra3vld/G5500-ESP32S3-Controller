@@ -79,6 +79,9 @@ int main(){
     speedStorage.loadForkSettings(reloaded);
     assert(reloaded.controller.runtimeSpeed(0)==72 && reloaded.controller.runtimeSpeed(1)==12.75f);
     assert(reloaded.controller.speeds==savedSpeed && reloaded.controller.motionSettings[1].velocity==27.5f);
+    auto adjusted=speed.motionSettings[1];adjusted.velocityKp+=1;
+    assert(speed.configureMotion(1,adjusted,40061));
+    assert(speed.runtimeSpeed(0)==72 && speed.runtimeSpeed(1)==12.75f);
     const auto status=stateJson(speed,speedRuntime.protocol,speedRuntime.loggerSettings,60);
     assert(status.find("\"speedSetpoint\":72")!=std::string::npos && status.find("\"speedAdjustable\":true")!=std::string::npos);
     assert(api(speed,speedRuntime.protocol,speedRuntime.loggerSettings,"/api/settings",{{"azSpeedPercent","40"}},80).status==200);

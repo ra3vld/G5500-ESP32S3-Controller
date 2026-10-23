@@ -256,7 +256,8 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
   auto az = field(root, "AZIMUTH"), el = field(root, "ELEVATION");
   float azimuth = 0, elevation = 0;
   if (az && (!number(az->text, azimuth) ||
-             (externalAzMode == ExternalAzMode::Shortest && (azimuth < 0 || azimuth > 7200)))) {
+             (externalAzMode == ExternalAzMode::Shortest &&
+              (azimuth > 7200 || (azimuth < 0 && !controller_.azRange.contains(azimuth)))))) {
     return packet;
   }
   if (el && (!number(el->text, elevation) || !controller_.elRange.contains(elevation) ||
@@ -339,7 +340,9 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
   }
   bool changed = lp != longPath_;
   const float base = az ? azimuth : pstBaseAzimuth_;
-  const float resolved = externalAzimuth(lp ? base + 180 : base);
+  // Like signed GS-232 coordinates, a negative PST coordinate explicitly
+  // selects a reachable mechanical position, even in shortest-heading mode.
+  const float resolved = base<0 && !lp ? base : externalAzimuth(lp ? base + 180 : base);
   if ((az || (changed && pstBaseValid_)) &&
       (!std::isfinite(resolved) || !controller_.azRange.contains(resolved))) return packet;
   if (az) {

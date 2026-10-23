@@ -326,6 +326,24 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
       }
       output << '}';return;
     }
+    const auto writeTiming=[&](unsigned i) {
+      const auto &t=runtime_.controller.motionTiming(i);
+      const auto &f=runtime_.controller.motionFeedback(i);
+      output << "{\"steps\":" << t.steps << ",\"maxIntervalMs\":" << t.maxIntervalMs
+        << ",\"lateSteps\":" << t.lateSteps << ",\"sampleCount\":" << hardware_.sampleCount(i)
+        << ",\"sampleMaxIntervalMs\":" << hardware_.sampleMaxIntervalMs(i)
+        << ",\"feedbackRejected\":" << f.rejectedTotal << ",\"feedbackInvalid\":" << f.invalidEvents
+        << ",\"rejectedAt\":" << f.rejectedAt << ",\"rejectedIntervalMs\":" << f.rejectedIntervalMs
+        << ",\"rejectedPosition\":" << f.rejectedPosition << ",\"lastGoodPosition\":" << f.lastGoodPosition << '}';
+    };
+    if(web_.hasArg("axis")) {
+      const auto axis=web_.arg("axis");
+      if(axis!="az" && axis!="el") {reply(400,"invalid_axis");return;}
+      // One live UART page: counters change between paginated requests.
+      output << "{\"axis\":" << jsonQuoted(axis.c_str())
+        << ",\"controlPeriodMs\":" << runtime_.controller.controlPeriodMs() << ",\"timing\":";
+      writeTiming(axis=="az"?0:1);output << '}';return;
+    }
     output << "{\"uptimeMs\":" << millis() << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMin\":" << heapMinBytes()
       << ",\"heapMaxBlock\":" << heapMaxBlockBytes() << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load()
       << ",\"maxFailedAllocation\":" << runtimeMetrics.largestFailedAllocation.load()
@@ -335,10 +353,7 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
       << ",\"controlPeriodMs\":" << runtime_.controller.controlPeriodMs() << ",\"motionTiming\":[";
     for (unsigned i=0;i<2;++i) {
       if(i) output << ',';
-      const auto &t=runtime_.controller.motionTiming(i);
-      output << "{\"steps\":" << t.steps << ",\"maxIntervalMs\":" << t.maxIntervalMs
-        << ",\"lateSteps\":" << t.lateSteps << ",\"sampleCount\":" << hardware_.sampleCount(i)
-        << ",\"sampleMaxIntervalMs\":" << hardware_.sampleMaxIntervalMs(i) << '}';
+      writeTiming(i);
     }
     output << "]}";return;
   }
