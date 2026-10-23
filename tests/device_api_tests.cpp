@@ -244,6 +244,25 @@ int main(int argc,char **argv) {
     assert(failureWire.body.find("\"failure\":{\"phase\":\"coast\"")!=std::string::npos);
     assert(failureWire.body.find("\"position\":90")!=std::string::npos);
     assert(failureWire.body.find("\"velocityWindowMs\":200")!=std::string::npos);
+    t.reason="reposition_timeout";t.preparationRequired=29.46f;t.preparationAvailable=28.18f;
+    t.preparationAttempts=7;
+    const auto travelWire=tuning.call("GET","/api/motion/autotune","full=1");
+    const auto travelHttp=tuning.call("GET","/api/motion/autotune","",false);
+    assert(travelWire.status==200 && travelWire.body==travelHttp.body);
+    assert(travelWire.body.find("\"requiredTravel\":29.46")!=std::string::npos);
+    assert(travelWire.body.find("\"availableTravel\":28.18")!=std::string::npos);
+    assert(travelWire.body.find("\"preparationAttempts\":7")!=std::string::npos);
+    t.trackingDurationMs={5200,10500,4600,7500};t.trackingWarmupMs={2200,4500,2200,4500};
+    t.trackingPeriodMs=1500;t.trackingTimeoutMs=763000;
+    t.trackingResults[0].failedCase=6;
+    const auto planWire=tuning.call("GET","/api/motion/autotune","full=1");
+    const auto planHttp=tuning.call("GET","/api/motion/autotune","",false);
+    assert(planWire.status==200 && planWire.body==planHttp.body);
+    assert(planWire.body.find("\"durationMs\":[5200,10500,4600,7500]")!=std::string::npos);
+    assert(planWire.body.find("\"warmupMs\":[2200,4500,2200,4500]")!=std::string::npos);
+    assert(planWire.body.find("\"failedCase\":6")!=std::string::npos);
+    assert(planWire.body.find("\"methodVersion\":14")!=std::string::npos);
+    assert(planWire.body.find("\"timeoutMs\":763000")!=std::string::npos);
     assert(tuning.call("GET","/api/motion/autotune").body.find("failure")==std::string::npos);
   }
   {

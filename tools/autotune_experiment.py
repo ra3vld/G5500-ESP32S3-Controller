@@ -38,7 +38,7 @@ def hypothesis(path, name):
         number = value[key]
         if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number):
             raise ValueError('invalid numeric value: ' + key)
-        low, high, integer = OPTION_LIMITS.get(key, (10, 90, False) if key == 'travel' else (10, 100, False))
+        low, high, integer = OPTION_LIMITS.get(key, (10, 360, False) if key == 'travel' else (10, 100, False))
         if not low <= number <= high or (integer and number != int(number)):
             raise ValueError('value out of range: ' + key)
         if integer:
@@ -59,7 +59,7 @@ def body(client, method, path, arguments=None):
     return response['body']
 
 
-def experiment(client, variant, emit, interval=1, duration=510, clock=time.monotonic, sleep=time.sleep):
+def experiment(client, variant, emit, interval=1, duration=1230, clock=time.monotonic, sleep=time.sleep):
     """Never apply a proposal; cancel our active trial on interruption or timeout."""
     started, identifier = clock(), None
     def record(event, **fields):
@@ -68,7 +68,7 @@ def experiment(client, variant, emit, interval=1, duration=510, clock=time.monot
     if initial.get('active'):
         raise ApiError('autotune already active; cancel it explicitly before starting another trial')
     method_version = initial.get('options', {}).get('methodVersion')
-    if method_version not in (1, 2):
+    if type(method_version) is not int or not 1 <= method_version <= 14:
         raise ApiError('firmware does not support this experiment methodology; update it before running trials')
     record('configuration', hypothesis=variant, previousId=initial['id'], boot=client.boot,
            methodVersion=method_version)
@@ -115,7 +115,7 @@ def main(argv=None):
     links.add_argument('--tcp', metavar='HOST[:PORT]')
     parser.add_argument('--baud', type=int, default=9600)
     parser.add_argument('--interval', type=float, default=1)
-    parser.add_argument('--duration', type=float, default=510)
+    parser.add_argument('--duration', type=float, default=1230)
     parser.add_argument('--timeout', type=float, default=5)
     parser.add_argument('--log', help='New JSONL file for configuration, samples and result')
     parser.add_argument('--dry-run', action='store_true', help='Validate and print; do not open a device')

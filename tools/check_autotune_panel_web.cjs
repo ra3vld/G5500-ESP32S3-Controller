@@ -63,6 +63,7 @@ const motion={regulatorMode:'cascade',ready:true,kickEnabled:true,holdEnabled:tr
   await page.locator('#elTuneStop').click();await page.waitForFunction(()=>!window._forkState?.moving);
   assert.equal(posts.at(-1).path,'/api/move');assert.equal(posts.at(-1).form.d,'S');
   state.axes[0].current=70;await page.evaluate(()=>upd(true));
+  await page.locator('#azTuneTravel').fill('110');
   assert(await page.locator('#azTuneStageKick').isDisabled());
   await page.locator('#azTuneStageModel').uncheck();
   for(const suffix of ['Kick','Slow','Fast'])await page.locator('#azTuneStage'+suffix).uncheck();
@@ -70,6 +71,10 @@ const motion={regulatorMode:'cascade',ready:true,kickEnabled:true,holdEnabled:tr
   await page.locator('#azTuneStart').click();
   await page.waitForFunction(()=>!document.getElementById('azTuneStart').disabled);
   assert.equal(posts.at(-1).path,'/api/motion/autotune');assert.equal(posts.at(-1).form.tuneStages,'4');
+  assert.equal(posts.at(-1).form.travel,'110');
+  const sent=posts.length;await page.locator('#azTuneTravel').fill('119');await page.locator('#azTuneStart').click();
+  assert.equal(posts.length,sent);assert.match(await page.locator('#azTuneStatus').textContent(),/Недостаточно места/);
+  await page.locator('#azTuneTravel').fill('60');
   await page.locator('#azTuneStageMinimum').uncheck();assert(await page.locator('#azTuneStart').isDisabled());
   await page.locator('#azTuneStageModel').check();assert(await page.locator('#azTuneStageKick').isChecked());
   assert(await page.locator('#azTuneStageKick').isDisabled());
@@ -87,8 +92,9 @@ const motion={regulatorMode:'cascade',ready:true,kickEnabled:true,holdEnabled:tr
   assert.equal(await page.locator('#azTuneVelocity').textContent(),'3.25 °/с');assert.equal(await page.locator('#azTuneRequestedVelocity').textContent(),'—');
   assert(await page.locator('#azTuneCenter').isDisabled());assert(await page.locator('#azTuneReset').isDisabled());
   assert(await page.locator('#azTuneStageMinimum').isDisabled());
-  state.autotune.phase='tracking';state.autotune.stages=8;state.autotune.trackingTrial=5;state.autotune.trackingTrials=12;await page.evaluate(()=>upd(true));
+  state.autotune.phase='tracking';state.autotune.stages=8;state.autotune.trackingTrial=5;state.autotune.trackingTrials=12;state.autotune.trackingTravel=15.75;state.autotune.trackingDurationMs=10500;state.autotune.trackingPeriodMs=1500;await page.evaluate(()=>upd(true));
   await page.waitForFunction(()=>document.getElementById('azTuneStatus').textContent.includes('5/12'));
+  assert.match(await page.locator('#azTuneStatus').textContent(),/15.75° за 10.50 с; команды 1500 мс/);
   assert.match(await page.locator('#azTuneStatus').textContent(),/Подбор слежения за серией команд/);
   assert.equal(await page.locator('#azTuneRequestedVelocity').textContent(),'0.00 °/с');
   assert(await page.locator('#azTuneStageSlow').isChecked());assert(!(await page.locator('#azTuneStageFast').isChecked()));
@@ -111,7 +117,7 @@ const motion={regulatorMode:'cascade',ready:true,kickEnabled:true,holdEnabled:tr
   }
   state.autotune={phase:'complete',active:false,axis:0,id:1,mode:'cascade',validationError:.2,
    options:{tuneStages:8},result:{...motion,minimumVelocity:0,minimumOutput:0,minimumSetpoint:0,holdEnabled:true},
-   tracking:{verified:true,selected:1,slowVelocity:1.5,fastVelocity:0,candidates:[{}, {meanError:.4,overshoot:.2}]}};
+   tracking:{verified:true,selected:1,slowVelocity:1.5,fastVelocity:0,durationMs:[5200,10500,0,0],candidates:[{}, {meanError:.4,overshoot:.2}]}};
   state.moving=false;await page.evaluate(()=>upd(true));
   await page.waitForFunction(()=>document.getElementById('azTuneResult').textContent.includes('вариант 2 из 3'));
   assert.match(await page.locator('#azTuneResult').textContent(),/200 \/ 1500 мс/);
@@ -133,6 +139,22 @@ const motion={regulatorMode:'cascade',ready:true,kickEnabled:true,holdEnabled:tr
    assert(await page.locator('#azTuneResult').evaluate(e=>e.scrollWidth<=e.clientWidth));
   }
   await page.setViewportSize({width:320,height:1200});await page.locator('#azTuneResult').screenshot({path:path.join(out,'failure-320.png')});
+  state.autotune={phase:'failed',active:false,axis:0,id:3,reason:'reposition_timeout',failure:{phase:'reposition',motionPhase:'idle',elapsedMs:1286,position:36.56,target:25.49,velocity:.45,output:0,threshold:1.92,stoppedVelocity:1.92,velocityWindowMs:240,requiredTravel:29.46,availableTravel:28.18,preparationAttempts:7}};
+  await page.evaluate(()=>upd(true));await page.waitForFunction(()=>document.getElementById('azTuneResult').textContent.includes('нужно 29.46°; доступно 28.18°'));
+  assert.match(await page.locator('#azTuneResult').textContent(),/Возвратов: 7\./);assert(await page.locator('#azTuneApply').isDisabled());
+  for(const width of [320,390,1100]){
+   await page.setViewportSize({width,height:1200});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+   assert(await page.locator('#azTuneResult').evaluate(e=>e.scrollWidth<=e.clientWidth));
+  }
+  await page.setViewportSize({width:320,height:1200});await page.locator('#azTuneResult').screenshot({path:path.join(out,'travel-failure-320.png')});
+  state.autotune={phase:'failed',active:false,axis:0,id:4,reason:'tracking_unstable',failure:{phase:'coast',motionPhase:'idle',elapsedMs:324,position:79.54,target:70.9,velocity:1.45,output:0,threshold:2.87,stoppedVelocity:2.87,velocityWindowMs:240},tracking:{casesPerCandidate:8,candidates:[{completed:6,failedCase:6,reason:'overshoot'},{completed:0,failedCase:0,reason:'no_progress'},{completed:6,reason:'endpoint_error'}]}};
+  await page.evaluate(()=>upd(true));await page.waitForFunction(()=>document.getElementById('azTuneResult').textContent.includes('Вариант 1: завершено 6/8'));
+  assert.match(await page.locator('#azTuneResult').textContent(),/проба 7: высокая скорость, 1500 мс/);assert(await page.locator('#azTuneApply').isDisabled());
+  for(const width of [320,390,1100]){
+   await page.setViewportSize({width,height:1600});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+   assert(await page.locator('#azTuneResult').evaluate(e=>e.scrollWidth<=e.clientWidth));
+  }
+  await page.setViewportSize({width:320,height:1600});await page.locator('#azTuneResult').screenshot({path:path.join(out,'tracking-failure-320.png')});
   state.autotune={phase:'failed',active:false,axis:0,id:1,reason:'feedback_stale'};
   state.fault='az_feedback_stale';state.axes[0].motionFault='feedback_stale';await page.evaluate(()=>upd(true));
   await page.waitForFunction(()=>document.getElementById('azTuneVelocity').textContent==='—');

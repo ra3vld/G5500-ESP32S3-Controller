@@ -11,10 +11,10 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
  try{
   const page=await browser.newPage({viewport:{width:1100,height:1000}}),posts=[],errors=[];
   page.on('pageerror',e=>errors.push(e.message));await page.addInitScript(()=>window.G5500_HTTP_ONLY=true);
-  const state={...sample,deviceRole:'controller',model:'G5500',configurationLocked:false,moving:true,
+  const state={...sample,liveControlChannel:true,deviceRole:'controller',model:'G5500',configurationLocked:false,moving:true,
    build:{...sample.build,drive:'BTS7960'},autotune:{phase:'idle',active:false},
    axes:sample.axes.map((a,i)=>({...a,speedEnabled:true,speedAdjustable:true,regulatorMode:i?'cascade':'simple',speedSetpoint:i?24.5:50,speedLimit:i?37.26:90,measuredVelocity:i?-12.75:8.25,calibrated:true,direction:1,tracking:true,motionReady:true,motionPhase:'run'}))};
-  let blockStatus=false,releaseStatus=null,statusRequests=0,holdAckDelay=0,release=null,blockNext=false,active=0,maxActive=0;const moves=[],moveBodies=[];let dropStops=false,dropHolds=false,delayHold=false,releaseHold=null;
+  let blockStatus=false,releaseStatus=null,statusRequests=0,holdAckDelay=0,release=null,blockNext=false,active=0,maxActive=0;const moves=[],moveBodies=[];let dropStops=false,dropHolds=false,delayHold=false,releaseHold=null,enforceSerial=false,lastManualSerial=0;
   await page.route('http://speed.test/**',async route=>{
    const request=route.request(),url=new URL(request.url());
    if(url.pathname==='/api/move'){
@@ -22,6 +22,7 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
     if(body.d==='H'&&holdAckDelay)await new Promise(resolve=>setTimeout(resolve,holdAckDelay));
     if(body.d==='H'&&delayHold){delayHold=false;await new Promise(resolve=>releaseHold=resolve);}
     if((body.d==='H'&&dropHolds)||(body.d!=='H'&&dropStops))return route.abort();
+    if(enforceSerial){if(Number(body.serial)<=lastManualSerial)return route.fulfill({status:409,json:{ok:false,result:'cancelled'}});lastManualSerial=Number(body.serial);}
    }
    if(request.method()==='POST'){
     const form=Object.fromEntries(new URLSearchParams(request.postData()));posts.push({path:url.pathname,form});
@@ -41,6 +42,20 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   await page.routeWebSocket('**/api/live',ws=>{
    telemetry=ws;ws.onMessage(packet=>{livePackets.push(packet);const form=Object.fromEntries(new URLSearchParams(packet));if(form.path==='/api/move'){moves.push(form.d);moveBodies.push(form);ws.send(JSON.stringify({v:1,type:'result',boot:form.boot,id:Number(form.cid),result:{ok:true,result:'ok'}}));return;}if(liveAckDelay){const p=Object.fromEntries(new URLSearchParams(packet));setTimeout(()=>ws.send(JSON.stringify({v:1,type:'result',boot:p.boot,id:Number(p.cid),result:{ok:true,result:'ok'}})),liveAckDelay);}});
    ws.send(JSON.stringify({v:1,type:'state',boot:'abcdef',revision:1,state}));
+  });
+  let control=null,controlResult='ok',dropControl=false;const controlPackets=[];
+  await page.routeWebSocket('**/api/control',ws=>{
+   control=ws;let ticker=null;
+   const context=()=>ws.send(JSON.stringify({v:1,type:'control',boot:'abcdef',selection:state.hudSelectionEpoch??0}));
+   ws.onMessage(packet=>{
+    if(packet==='v=1&control=1'){context();ticker=setInterval(context,250);return;}
+    controlPackets.push(packet);const form=Object.fromEntries(new URLSearchParams(packet));
+    moves.push(form.d);moveBodies.push(form);
+    if(enforceSerial)lastManualSerial=Number(form.serial);
+    if(dropControl&&form.d==='H')return;
+    ws.send(JSON.stringify({v:1,type:'result',boot:form.boot,id:Number(form.cid),result:{ok:controlResult==='ok',result:controlResult}}));
+   });
+   ws.onClose(()=>clearInterval(ticker));
   });
   await page.goto('http://speed.test/');await page.locator('#azManualSpeed').waitFor({state:'visible'});
   assert.equal(await page.locator('#azManualSpeedValue').textContent(),'50%');
@@ -179,25 +194,47 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   // WebSocket commands bypass busy HTTP telemetry; disconnect falls back to
   // HTTP within the same bounded gesture, without replay after reconnect.
   await page.evaluate(()=>{clearTimeout(live.retry);live.retry=null;window.G5500_HTTP_ONLY=false;connectLive(81);});
-  await page.waitForFunction(()=>live.ready,null,{timeout:3000}).catch(async e=>{console.error('live setup',await page.evaluate(()=>({socket:!!live.socket,retry:!!live.retry,boot:live.boot,ready:live.ready,last:live.last})),!!telemetry,errors);throw e;});resetMoves();
+  await page.waitForFunction(()=>live.ready&&controlLive.ready,null,{timeout:3000}).catch(async e=>{console.error('live setup',await page.evaluate(()=>({socket:!!live.socket,retry:!!live.retry,boot:live.boot,ready:live.ready,last:live.last})),!!telemetry,errors);throw e;});resetMoves();
   liveAckDelay=2000;
   await page.evaluate(()=>{window.slowLiveReply=sendLive('/api/speed',{axis:'az',value:40});});
-  await page.waitForTimeout(1700);
+  await page.keyboard.down('ArrowRight');await page.waitForTimeout(1700);
+  assert.equal(await page.evaluate(()=>keyboardHeld()),true,'telemetry ACK backlog must not block manual renewals');
+  assert(controlPackets.filter(p=>new URLSearchParams(p).get('d')==='H').length>=5);
+  await page.keyboard.up('ArrowRight');
   assert.equal(await page.evaluate(()=>live.ready&&live.pending.size===1),true,'brief TCP stall must preserve socket and pending ACK');
   assert.equal(await page.evaluate(async()=>{const r=await window.slowLiveReply;return r.status;}),200);
-  liveAckDelay=0;livePackets.length=0;
+  liveAckDelay=0;livePackets.length=0;resetMoves();
+  dropControl=true;await page.keyboard.down('ArrowRight');await page.waitForTimeout(50);
+  await page.keyboard.up('ArrowRight');control.close();await page.waitForTimeout(250);
+  assert.equal(moves.filter(d=>d==='H').length,1,'released HOLD must not be replayed through HTTP after control disconnect');
+  assert(moves.slice(1).every(d=>d==='S'),'only STOP retries may follow release');dropControl=false;
+  await page.evaluate(()=>{clearTimeout(controlLive.retry);controlLive.retry=null;connectControlLive(81);});await page.waitForFunction(()=>controlLive.ready);resetMoves();
+  enforceSerial=true;lastManualSerial=0;dropControl=true;
+  await page.keyboard.down('ArrowRight');await page.waitForTimeout(50);control.close();await page.waitForTimeout(400);
+  assert.equal(await page.evaluate(()=>keyboardHeld()),true,'executed HOLD with a lost ACK must renew with a fresh serial on HTTP fallback');
+  const renewed=moveBodies.filter(b=>b.d==='H');assert(renewed.length>=2&&Number(renewed[1].serial)>Number(renewed[0].serial));
+  await page.keyboard.up('ArrowRight');dropControl=false;enforceSerial=false;
+  await page.evaluate(()=>{clearTimeout(controlLive.retry);controlLive.retry=null;connectControlLive(81);});await page.waitForFunction(()=>controlLive.ready);resetMoves();
+  controlResult='busy';await page.keyboard.down('ArrowRight');await page.waitForFunction(()=>!keyboardHeld());await page.keyboard.up('ArrowRight');
+  assert.match(await page.locator('#forkMessage').textContent(),/устройство занято/);
+  assert.doesNotMatch(await page.locator('#forkMessage').textContent(),/нет подтверждения/);controlResult='ok';
+  dropControl=true;resetMoves();await page.keyboard.down('ArrowRight');await page.waitForTimeout(1050);
+  assert.equal(await page.evaluate(()=>keyboardHeld()),false);assert.equal(moves.at(-1),'S');
+  assert.match(await page.locator('#forkMessage').textContent(),/нет подтверждения/);await page.keyboard.up('ArrowRight');dropControl=false;resetMoves();
   await page.keyboard.down('ArrowRight');await page.waitForTimeout(250);
   telemetry.close();await page.waitForTimeout(500);
-  assert.equal(await page.evaluate(()=>keyboardHeld()),true,'disconnect must preserve the hold through HTTP fallback');
+  assert.equal(await page.evaluate(()=>keyboardHeld()),true,'telemetry disconnect must preserve the independent control stream');
   assert(moves.filter(d=>d==='H').length>=3);assert(!moves.includes('S'));
+  control.close();await page.waitForTimeout(500);assert.equal(await page.evaluate(()=>keyboardHeld()),true,'control disconnect must fall back to HTTP');
   await page.evaluate(()=>{clearTimeout(live.retry);live.retry=null;connectLive(81);});
   await page.waitForFunction(()=>live.ready);
   assert.equal(await page.evaluate(()=>keyboardHeld()),true,'same-boot reconnect must preserve the active hold');
   telemetry.send(JSON.stringify({v:1,type:'state',boot:'fedcba',revision:1,state}));
   await page.waitForFunction(()=>!keyboardHeld());
   await page.keyboard.up('ArrowRight');await page.waitForTimeout(80);assert.equal(moves.at(-1),'S');
-  assert(livePackets.some(p=>new URLSearchParams(p).get('path')==='/api/move'),'ready WebSocket must carry manual commands');
-  await page.evaluate(()=>{window.G5500_HTTP_ONLY=true;live.socket?.close();clearTimeout(live.retry);live.retry=null;});
+  assert(controlPackets.some(p=>new URLSearchParams(p).get('path')==='/api/move'),'compact control stream must carry manual commands');
+  assert(!livePackets.some(p=>new URLSearchParams(p).get('path')==='/api/move'),'manual commands must not share the large telemetry stream');
+  await page.evaluate(()=>{window.G5500_HTTP_ONLY=true;live.socket?.close();controlLive.socket?.close();clearTimeout(live.retry);live.retry=null;clearTimeout(controlLive.retry);controlLive.retry=null;});
   // Delayed HTTP HOLD ACK must not delay release or restart after its late reply.
   resetMoves();delayHold=true;await page.keyboard.down('ArrowRight');
   await page.waitForFunction(()=>keyboardStream.busy!==null);

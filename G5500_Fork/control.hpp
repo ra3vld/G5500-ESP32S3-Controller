@@ -108,6 +108,7 @@ enum class AutoTunePhase : uint8_t { Idle, Quiet, Start, Low, High, Coast, Repos
 struct AutoTuneTrackingResult {
   float score = 0, meanError = 0, peakError = 0, overshoot = 0;
   unsigned completed = 0, kicks = 0, reversals = 0, stoppedMs = 0;
+  int failedCase = -1;
   bool rejected = false;
   const char *reason = "";
 };
@@ -160,6 +161,9 @@ struct AutoTuneState {
   AutoTunePhase nextPhase = AutoTunePhase::Start;
   int nextDirection = 1;
   unsigned relocations = 0;
+  unsigned preparationAttempts = 0;
+  uint32_t preparationAt = 0;
+  float preparationRequired = 0, preparationAvailable = 0;
   uint32_t id = 0, startedAt = 0, phaseAt = 0, tickAt = 0, sampledAt = 0, revision = 0, settledAt = 0;
   const char *reason = "";
   AutoTuneFailure failure{};
@@ -177,6 +181,7 @@ struct AutoTuneState {
   float minimumSpeedSum = 0, minimumOutputSum = 0, minimumPeak = 0;
   float minimumDirectionSpeed = 0, minimumDirectionOutput = 0;
   float minimumProgress = 0;
+  std::array<float, 2> minimumStartupTravel{};
   unsigned minimumSamples = 0, minimumTrial = 0, minimumPass = 0;
   uint32_t minimumAt = 0, minimumProgressAt = 0;
   bool minimumConfirm = false, minimumRaised = false, minimumCompletePending = false;
@@ -186,10 +191,12 @@ struct AutoTuneState {
   MotionSettings trackingBase{};
   unsigned trackingCandidate = 0, trackingCase = 0, trackingBest = 0;
   unsigned trackingPeriodMs = 0, trackingCommand = 0, trackingSamples = 0;
-  uint32_t trackingAt = 0, trackingStoppedMs = 0;
+  uint32_t trackingAt = 0, trackingStoppedMs = 0, trackingTimeoutMs = 480000;
   float trackingSlow = 0, trackingFast = 0, trackingVelocity = 0;
   float trackingOrigin = 0, trackingGoal = 0, trackingErrorSum = 0, trackingPeak = 0, trackingOvershoot = 0;
-  float trackingSeconds = 0;
+  float trackingSeconds = 0, trackingReserve = 0;
+  std::array<unsigned, 4> trackingWarmupMs{}, trackingDurationMs{};
+  bool trackingPlanned = false;
   float trackingVariation = 0, trackingOutput = 0, trackingStartMean = 0;
   unsigned trackingKicks = 0, trackingReversals = 0;
   int trackingDirection = 1, trackingLastDirection = 0;
@@ -366,6 +373,7 @@ private:
   bool proposeAutoTune(uint32_t now);
   bool validateAutoTuneProposal(uint32_t now);
   bool beginAutoTuneValidation(uint32_t now);
+  bool prepareAutoTuneMove(AutoTunePhase next, int direction, float required, float available, uint32_t now);
   float autoTuneCoastReserve() const;
   float autoTuneValidationReserve() const;
   void advanceAutoTune(uint32_t now);
@@ -374,6 +382,7 @@ private:
   MotionSettings autoTuneTrialMotion(MotionSettings settings) const;
   void beginAutoTuneMinimum(uint32_t now);
   void finishAutoTuneMinimumTrial(bool passed, uint32_t now);
+  bool planAutoTuneTracking(uint32_t now);
   void beginAutoTuneTracking(uint32_t now);
   void tickAutoTuneTracking(uint32_t now, float dt);
   void finishAutoTuneTrackingTrial(bool passed, uint32_t now, const char *reason = "");

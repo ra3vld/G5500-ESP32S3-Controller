@@ -16,6 +16,7 @@ bool LiveServer::begin() {
   state_.reset(new(std::nothrow) std::array<char,LIVE_STATE_CAPACITY>{});
   if(!clients_ || !state_){clients_.reset();state_.reset();return false;}
   liveBootText(boot_,runtime_.hud.boot);
+  selection_=runtime_.hud.selectionEpoch;
   ingressRange_[0]=runtime_.controller.azRange;ingressRange_[1]=runtime_.controller.elRange;ingressEl_=runtime_.controller.model==Model::G5500;
   for(unsigned i=0;i<2;++i) {
     ingressReady_[i]=runtime_.controller.axes[i].calibrated &&
@@ -24,11 +25,13 @@ bool LiveServer::begin() {
   }
   mutex_=xSemaphoreCreateMutexStatic(&mutexStorage_);
   httpd_config_t cfg=HTTPD_DEFAULT_CONFIG();
-  cfg.server_port=81; cfg.ctrl_port=32769; cfg.max_open_sockets=4; cfg.max_uri_handlers=1;
+  cfg.server_port=81; cfg.ctrl_port=32769; cfg.max_open_sockets=4; cfg.max_uri_handlers=2;
   cfg.stack_size=6144; cfg.recv_wait_timeout=1;cfg.send_wait_timeout=1;
   cfg.open_fn=opened;cfg.close_fn=closed;cfg.global_user_ctx=this;
   if(httpd_start(&server_,&cfg)!=ESP_OK){server_=nullptr;clients_.reset();state_.reset();return false;}
   httpd_uri_t uri{};uri.uri="/api/live";uri.method=HTTP_GET;uri.handler=handler;uri.user_ctx=this;uri.is_websocket=true;uri.handle_ws_control_frames=true;
+  if(httpd_register_uri_handler(server_,&uri)!=ESP_OK){httpd_stop(server_);server_=nullptr;clients_.reset();state_.reset();return false;}
+  uri.uri="/api/control";
   if(httpd_register_uri_handler(server_,&uri)!=ESP_OK){httpd_stop(server_);server_=nullptr;clients_.reset();state_.reset();return false;}
   return true;
 }
@@ -127,6 +130,15 @@ esp_err_t LiveServer::handler(httpd_req_t *req) {
     return ESP_FAIL;
   }
   input.size=frame.len;
+  // Select before the first command, without needing a boot ID from a large
+  // telemetry frame. IDF can finish the upgrade without calling our GET handler.
+  if(std::string_view(input.data,input.size)=="v=1&control=1") {
+    Guard lock(self.mutex_);
+    for(auto &c:*self.clients_)if(c.fd==fd) {
+      c.controlOnly=true;c.revision=0;return ESP_OK;
+    }
+    return ESP_FAIL;
+  }
   LiveRequest request;if(!request.parse({input.data,input.size}))return ESP_FAIL;
   Guard lock(self.mutex_);
   for(auto &c:*self.clients_)if(c.fd==fd&&(!c.closing||request.stop())) {
@@ -247,6 +259,7 @@ void LiveServer::commands(uint32_t now) {
 void LiveServer::publish(uint32_t now) {
   if(!server_)return;
   bool any=false;{Guard lock(mutex_);
+    selection_=runtime_.hud.selectionEpoch;
     ingressRange_[0]=runtime_.controller.azRange;ingressRange_[1]=runtime_.controller.elRange;ingressEl_=runtime_.controller.model==Model::G5500;
     for(unsigned i=0;i<2;++i) {
       ingressReady_[i]=runtime_.controller.axes[i].calibrated &&
@@ -280,7 +293,7 @@ void LiveServer::writeDiagnostics(JsonWriter &j) {
   if(!server_)return;
   Guard lock(mutex_);unsigned clients=0;
   for(const auto &c:*clients_)clients+=c.fd>=0;
-  j<<",\"liveClients\":"<<clients<<",\"liveRevision\":"<<revision_<<",\"liveStateBytes\":"<<stateSize_
+  j<<",\"liveControlChannel\":true,\"liveClients\":"<<clients<<",\"liveRevision\":"<<revision_<<",\"liveStateBytes\":"<<stateSize_
    <<",\"liveWorkRuns\":"<<workRuns_<<",\"liveFrames\":"<<framesSent_
    <<",\"liveSendDeferred\":"<<sendDeferred_<<",\"liveQueueErrors\":"<<queueErrors_<<",\"liveSendErrors\":"<<sendErrors_
    <<",\"liveSendTimeouts\":"<<sendTimeouts_<<",\"liveSendErrno\":"<<sendErrno_
@@ -308,7 +321,13 @@ void LiveServer::sendWork(void *context) {
           b.cancelledFrom=b.cancelledThrough=0;
         }
         else if(b.count){auto &r=b.replies[b.head];n=r.size;std::memcpy(data,r.data,n);b.head=(b.head+1)%4;--b.count;}
-        else if(client.revision!=self.revision_&&self.stateSize_){n=self.stateSize_;std::memcpy(data,self.state_->data(),n);client.revision=self.revision_;}
+        else if(client.revision!=self.revision_&&self.stateSize_){
+          if(client.controlOnly) {
+            const int size=std::snprintf(data,LIVE_STATE_CAPACITY,"{\"v\":1,\"type\":\"control\",\"boot\":\"%s\",\"selection\":%lu}",self.boot_,(unsigned long)self.selection_);
+            if(size>0&&size_t(size)<LIVE_STATE_CAPACITY)n=size_t(size);
+          } else {n=self.stateSize_;std::memcpy(data,self.state_->data(),n);}
+          client.revision=self.revision_;
+        }
         if(n||opcode==HTTPD_WS_TYPE_PONG)out.begin(n,opcode,uint32_t(esp_timer_get_time()/1000));
       }
     }

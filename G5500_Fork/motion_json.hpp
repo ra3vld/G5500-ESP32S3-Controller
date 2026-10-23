@@ -20,7 +20,10 @@ inline bool writeAutoTune(JsonWriter &j, const Controller &c, bool full=false) {
   const unsigned cases=t.options.trackingCases(),first=t.options.has(TuneSlow)?0:4;
   if(t.active() && t.trackingPeriodMs && !t.trackingVerified)
     j << ",\"trackingTrial\":" << std::min(3*cases,t.trackingCandidate*cases+t.trackingCase-first+1)
-      << ",\"trackingTrials\":" << 3*cases;
+      << ",\"trackingTrials\":" << 3*cases
+      << ",\"trackingPeriodMs\":" << ((t.trackingCase/2)%2?1500:200)
+      << ",\"trackingDurationMs\":" << t.trackingDurationMs[t.trackingCase/2]
+      << ",\"trackingTravel\":" << (t.trackingCase<4?t.trackingSlow:t.trackingFast)*t.trackingDurationMs[t.trackingCase/2]/1000;
   if(full) {
     if(t.phase==AutoTunePhase::Failed && t.failure.phase!=AutoTunePhase::Idle) {
       const auto &f=t.failure;
@@ -29,7 +32,11 @@ inline bool writeAutoTune(JsonWriter &j, const Controller &c, bool full=false) {
         << ",\"position\":" << f.position << ",\"target\":" << f.target << ",\"velocity\":" << f.velocity
         << ",\"output\":" << f.output << ",\"threshold\":" << f.threshold << ",\"stoppedVelocity\":" << f.stoppedVelocity
         << ",\"direction\":" << f.direction << ",\"tracking\":" << (f.tracking?"true":"false")
-        << ",\"velocityWindowMs\":" << f.velocityWindowMs << '}';
+        << ",\"velocityWindowMs\":" << f.velocityWindowMs;
+      if(t.preparationRequired>0)
+        j << ",\"requiredTravel\":" << t.preparationRequired << ",\"availableTravel\":" << t.preparationAvailable
+          << ",\"preparationAttempts\":" << t.preparationAttempts;
+      j << '}';
     }
     j << ",\"options\":{";
     bool comma=false;
@@ -38,7 +45,7 @@ inline bool writeAutoTune(JsonWriter &j, const Controller &c, bool full=false) {
       comma=true;j << jsonQuoted(field.name) << ':' << t.options.*field.member;
     }
     for(const auto &field:autoTuneIntFields)j << ',' << jsonQuoted(field.name) << ':' << t.options.*field.member;
-    j << ",\"methodVersion\":8}"
+    j << ",\"methodVersion\":14},\"timeoutMs\":" << (t.trackingPeriodMs?t.trackingTimeoutMs:120000u)
       << ",\"minimumCandidate\":" << t.minimumCandidate
       << ",\"minimumSetpoint\":" << t.minimumSetpoint
       << ",\"minimumVelocity\":" << t.minimumSpeed
@@ -49,14 +56,19 @@ inline bool writeAutoTune(JsonWriter &j, const Controller &c, bool full=false) {
       << ",\"selected\":" << t.trackingBest << ",\"periodMs\":" << t.trackingPeriodMs
       << ",\"casesPerCandidate\":" << cases
       << ",\"slowVelocity\":" << (t.options.has(TuneSlow)?t.trackingSlow:0)
-      << ",\"fastVelocity\":" << (t.options.has(TuneFast)?t.trackingFast:0) << ",\"candidates\":[";
+      << ",\"fastVelocity\":" << (t.options.has(TuneFast)?t.trackingFast:0)
+      << ",\"reserve\":" << t.trackingReserve << ",\"warmupMs\":[";
+    for(unsigned n=0;n<4;++n) {if(n)j << ',';j << t.trackingWarmupMs[n];}
+    j << "],\"durationMs\":[";
+    for(unsigned n=0;n<4;++n) {if(n)j << ',';j << t.trackingDurationMs[n];}
+    j << "],\"candidates\":[";
     for(unsigned n=0;n<t.trackingResults.size();++n) {
       if(n)j << ',';
       const auto &r=t.trackingResults[n];
       j << "{\"score\":" << r.score << ",\"meanError\":" << r.meanError << ",\"peakError\":" << r.peakError
         << ",\"overshoot\":" << r.overshoot << ",\"completed\":" << r.completed
         << ",\"kicks\":" << r.kicks << ",\"reversals\":" << r.reversals << ",\"stoppedMs\":" << r.stoppedMs
-        << ",\"rejected\":" << (r.rejected?"true":"false") << ",\"reason\":" << jsonQuoted(r.reason) << '}';
+        << ",\"rejected\":" << (r.rejected?"true":"false") << ",\"failedCase\":" << r.failedCase << ",\"reason\":" << jsonQuoted(r.reason) << '}';
     }
     j << "]}";
   }

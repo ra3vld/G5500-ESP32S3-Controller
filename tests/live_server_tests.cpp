@@ -35,7 +35,7 @@ static std::string packet(unsigned id,const char *path,const char *args=""){retu
 int main(){
  MotionTestRuntime runtime;runtime.hud.begin(1,10);runtime.controller.feedback(20,30,true,true);
  LiveServer server(runtime);const auto beforeBegin=allocatedBytes;
- assert(server.begin());assert(fakeServer.cfg.max_open_sockets==4);assert(fakeServer.uri.handle_ws_control_frames);
+ assert(server.begin());assert(fakeServer.registrations==std::vector<std::string>({"/api/live","/api/control"}));assert(fakeServer.cfg.max_open_sockets==4);assert(fakeServer.uri.handle_ws_control_frames);
  assert(allocatedBytes-beforeBegin<=4096); // idle server holds no per-client queues
  const auto beforeLowHeap=allocationCalls;
  fakeHeapFree=MemoryGuard::CriticalFree;
@@ -248,6 +248,50 @@ int main(){
  httpd_req_t closePartial{fakeServer.uri.user_ctx,HTTP_POST,1000,std::string("\x03\xe8",2),HTTPD_WS_TYPE_CLOSE};assert(fakeServer.uri.handler(&closePartial)==ESP_FAIL);
  assert(fakeServer.sent.size()==sentBeforeClose);
  fakeServer.maxWrite=SIZE_MAX;fakeEspTimeUs=-1;
+ // The manual channel never puts full telemetry ahead of lease ACKs. Block
+ // a partly sent state for 1.5s while renewals/STOP use the separate TCP stream.
+ for(int fd=1000;fd<1004;++fd)if(fakeServer.websocketFds.count(fd))httpd_sess_trigger_close(&fakeServer,fd);
+ fakeServer.sent.clear();fakeServer.pendingWire.clear();fakeServer.maxWrite=7;
+ assert(connect(1000)==ESP_OK&&connect(1001)==ESP_OK);
+ assert(command(1001,"v=1&control=1")==ESP_OK);
+ fakeEspTimeUs=30000000;server.publish(30000);pumpLive();
+ assert(fakeServer.pendingWire[1000].size()==7);
+ fakeServer.blockedFd=1000;fakeServer.maxWrite=SIZE_MAX;
+ fakeEspTimeUs=30005000;server.publish(30005);pumpLive();
+ bool ready=false;for(const auto &m:fakeServer.sent)if(m.first==1001){
+   assert(m.second.size()<=125);ready|=m.second.find("\"type\":\"control\"")!=std::string::npos;
+ }assert(ready);fakeServer.sent.clear();
+ const std::string manual="&client=789&session=345&gesture=1&mask=3";
+ c.feedbackAt(0,90,true,30020);c.feedbackAt(1,90,true,30020);
+ unsigned id=1;
+ for(unsigned t=30020;t<=31520;t+=20){
+   fakeEspTimeUs=int64_t(t)*1000;
+   if((t-30020)%200==0){
+     assert(command(1001,packet(id,"/api/move",("&d=H&az=1&el=0&serial="+std::to_string(id)+manual).c_str()))==ESP_OK);++id;
+   }
+   server.commands(t);c.tick(t);assert(c.axes[0].wanted==1);
+   server.publish(t);pumpLive();
+ }
+ assert(fakeServer.pendingWire[1000].size()==7);unsigned acks=0;
+ for(const auto &m:fakeServer.sent)if(m.first==1001){
+   assert(m.second.size()<192&&m.second.find("\"type\":\"state\"")==std::string::npos);
+   if(m.second.find("\"type\":\"result\"")!=std::string::npos){++acks;assert(m.second.find("\"ok\":true")!=std::string::npos);}
+ }assert(acks==8);
+ assert(command(1001,packet(id,"/api/move",("&d=S&az=0&el=0&serial="+std::to_string(id)+manual).c_str()))==ESP_OK);
+ server.commands(31540);assert(!c.moving());fakeEspTimeUs=31540000;server.publish(31540);pumpLive();
+ runtime.hud.selectionEpoch=7;fakeEspTimeUs=31560000;server.publish(31560);pumpLive();
+ bool selection=false;for(const auto &m:fakeServer.sent)selection|=m.first==1001&&m.second.find("\"selection\":7")!=std::string::npos;
+ assert(selection);runtime.hud.selectionEpoch=0;
+ // Switching roles after an upgrade must finish any partial initial frame.
+ httpd_sess_trigger_close(&fakeServer,1000);assert(connect(1000)==ESP_OK);
+ fakeServer.sent.clear();fakeServer.maxWrite=7;fakeServer.blockedFd=-1;fakeEspTimeUs=32000000;
+ server.publish(32000);pumpLive();assert(fakeServer.pendingWire[1000].size()==7);
+ assert(command(1000,"v=1&control=1")==ESP_OK);fakeServer.maxWrite=SIZE_MAX;
+ for(unsigned t=32005;t<=32020;t+=5){fakeEspTimeUs=int64_t(t)*1000;server.publish(t);pumpLive();}
+ std::vector<std::string> switched;for(const auto &m:fakeServer.sent)if(m.first==1000)switched.push_back(m.second);
+ assert(switched.size()==2&&switched[0].find("\"type\":\"state\"")!=std::string::npos&&switched[1].find("\"type\":\"control\"")!=std::string::npos);
+ fakeEspTimeUs=-1;
+ std::cout<<"PASS: separate compact manual stream, lease renewal/STOP ACKs across 1.5s telemetry backpressure, context changes and partial upgrade\n";
  std::cout<<"PASS: partial frames resume after 1.5s, independent STOP/peers, PONG and ACK ordering, latest state and bounded stalled-client timeout\n";
  std::cout<<"PASS: actual HTTPD adapter: four clients, loop ownership, STOP priority, duplicate IDs, bounded backpressure, reconnect\n";
  std::cout<<"PASS: idle live storage <=4 KiB, 10000 queue allocations/releases (<=6 KiB/client), low-memory admission and existing STOP\n";

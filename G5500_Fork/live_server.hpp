@@ -35,7 +35,7 @@ class LiveServer {
   };
   struct Client {
     int fd=-1; uint32_t generation=0, lastId=0, revision=0;
-    bool closing=false;
+    bool closing=false, controlOnly=false;
     // Stable slot metadata survives disconnects; queues exist only while used.
     std::unique_ptr<ClientBuffers> buffers;
   };
@@ -55,6 +55,7 @@ class LiveServer {
   size_t sendWritten_=0, sendRequested_=0;
   int sendErrno_=0, sendRetryErrno_=0;
   bool workPending_=false;
+  uint32_t selection_=0;
   char boot_[17]{};
   RotationRange ingressRange_[2]{};
   bool ingressEl_=true;
