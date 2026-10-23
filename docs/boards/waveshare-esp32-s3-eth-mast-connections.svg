@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 1400">
+<rect width="2000" height="1400" fill="white"/>
+<defs><marker id="a0" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9" fill="#18344c"/></marker><marker id="a1" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9" fill="#1476a5"/></marker><marker id="a2" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9" fill="#27815a"/></marker><marker id="a3" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9" fill="#8057a6"/></marker><marker id="a4" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9" fill="#bf6418"/></marker></defs>
+<g font-family="DejaVu Sans,sans-serif">
+<text x="50" y="65" font-size="38" font-weight="700" fill="#18344c">Соединения внутри корпуса на мачте</text>
+<text x="50" y="108" font-size="23" font-weight="400" fill="#18344c">Два MT6701 на одной шине I²C: AZ с адресом 0x06 и EL с заранее изменённым адресом 0x46.</text>
+<text x="50" y="1365" font-size="21" font-weight="400" fill="#61788a">Waveshare ESP32-S3-ETH  |  AZ / EL  |  камера на мачте</text>
+<text x="1820" y="1365" font-size="21" font-weight="400" fill="#61788a">2 / 2</text>
+<rect x="50" y="150" width="620" height="750" rx="14" fill="#f2f6fa" stroke="#a6b9c8" stroke-width="2"/>
+<text x="78" y="195" font-size="29" font-weight="700" fill="#8057a6">ДАТЧИКИ AZ / EL</text>
+<text x="78" y="235" font-size="23" font-weight="400" fill="#18344c">Общая SDA/SCL; адреса 7-битные.</text>
+<text x="78" y="276" font-size="23" font-weight="400" fill="#18344c">SDA и SCL: по 4,7 кΩ к 3V3</text>
+<path d="M245,385 L620,385" fill="none" stroke="#8057a6" stroke-width="4" stroke-linejoin="round"/>
+<path d="M245,455 L620,455" fill="none" stroke="#8057a6" stroke-width="4" stroke-linejoin="round"/>
+<text x="78" y="393" font-size="22" font-weight="700" fill="#18344c">GPIO4 / SDA</text>
+<text x="78" y="463" font-size="22" font-weight="700" fill="#18344c">GPIO5 / SCL</text>
+<text x="274" y="315" font-size="20" font-weight="400" fill="#18344c">3V3</text>
+<path d="M300,322 L300,332" fill="none" stroke="#8057a6" stroke-width="4" stroke-linejoin="round"/>
+<rect x="292" y="332" width="16" height="25" fill="white" stroke="#8057a6" stroke-width="2"/>
+<path d="M300,357 L300,385" fill="none" stroke="#8057a6" stroke-width="4" stroke-linejoin="round"/>
+<circle cx="300" cy="385" r="5" fill="#8057a6"/>
+<circle cx="390" cy="385" r="7" fill="#f2f6fa"/>
+<text x="364" y="315" font-size="20" font-weight="400" fill="#18344c">3V3</text>
+<path d="M390,322 L390,332" fill="none" stroke="#8057a6" stroke-width="4" stroke-linejoin="round"/>
+<rect x="382" y="332" width="16" height="25" fill="white" stroke="#8057a6" stroke-width="2"/>
+<path d="M390,357 L390,455" fill="none" stroke="#8057a6" stroke-width="4" stroke-linejoin="round"/>
+<circle cx="390" cy="455" r="5" fill="#8057a6"/>
+<rect x="180" y="570" width="190" height="112" rx="14" fill="#f1eaf7" stroke="#8057a6" stroke-width="2"/>
+<text x="196" y="610" font-size="23" font-weight="700" fill="#18344c">MT6701 · AZ</text>
+<text x="232" y="652" font-size="25" font-weight="700" fill="#8057a6">0x06</text>
+<circle cx="260" cy="385" r="5" fill="#8057a6"/>
+<circle cx="260" cy="455" r="7" fill="#f2f6fa"/>
+<path d="M260,385 L260,570" fill="none" stroke="#8057a6" stroke-width="4" stroke-linejoin="round"/>
+<circle cx="330" cy="455" r="5" fill="#8057a6"/>
+<path d="M330,455 L330,570" fill="none" stroke="#8057a6" stroke-width="4" stroke-linejoin="round"/>
+<text x="239" y="552" font-size="18" font-weight="400" fill="#18344c">SDA</text>
+<text x="309" y="552" font-size="18" font-weight="400" fill="#18344c">SCL</text>
+<rect x="440" y="570" width="190" height="112" rx="14" fill="#f1eaf7" stroke="#8057a6" stroke-width="2"/>
+<text x="456" y="610" font-size="23" font-weight="700" fill="#18344c">MT6701 · EL</text>
+<text x="492" y="652" font-size="25" font-weight="700" fill="#8057a6">0x46</text>
+<circle cx="520" cy="385" r="5" fill="#8057a6"/>
+<circle cx="520" cy="455" r="7" fill="#f2f6fa"/>
+<path d="M520,385 L520,570" fill="none" stroke="#8057a6" stroke-width="4" stroke-linejoin="round"/>
+<circle cx="590" cy="455" r="5" fill="#8057a6"/>
+<path d="M590,455 L590,570" fill="none" stroke="#8057a6" stroke-width="4" stroke-linejoin="round"/>
+<text x="499" y="552" font-size="18" font-weight="400" fill="#18344c">SDA</text>
+<text x="569" y="552" font-size="18" font-weight="400" fill="#18344c">SCL</text>
+<text x="78" y="728" font-size="23" font-weight="700" fill="#18344c">EL: заранее изменить 0x06 → 0x46.</text>
+<text x="78" y="770" font-size="22" font-weight="400" fill="#18344c">3V3 + GND → оба модуля датчиков.</text>
+<text x="78" y="810" font-size="22" font-weight="400" fill="#18344c">100 нФ между VDD и GND у каждого.</text>
+<text x="78" y="850" font-size="22" font-weight="400" fill="#18344c">Два AS5600: совпадает адрес 0x36.</text>
+<text x="78" y="884" font-size="21" font-weight="700" fill="#8057a6">OUT / ABZ не подключаются.</text>
+<rect x="710" y="150" width="610" height="750" rx="14" fill="#f2f6fa" stroke="#a6b9c8" stroke-width="2"/>
+<text x="738" y="195" font-size="29" font-weight="700" fill="#27815a">ДВА PWM-ДРАЙВЕРА</text>
+<text x="738" y="235" font-size="23" font-weight="400" fill="#18344c">Соединения ESP32 → IBT-2</text>
+<text x="738" y="290" font-size="28" font-weight="700" fill="#27815a">Ось AZ</text>
+<text x="755" y="335" font-size="24" font-weight="700" fill="#18344c">GPIO17</text>
+<path d="M910,326 L1010,326" fill="none" stroke="#27815a" stroke-width="4" stroke-linejoin="round" marker-end="url(#a2)"/>
+<text x="1030" y="335" font-size="23" font-weight="400" fill="#18344c">RPWM</text>
+<text x="755" y="377" font-size="24" font-weight="700" fill="#18344c">GPIO16</text>
+<path d="M910,368 L1010,368" fill="none" stroke="#27815a" stroke-width="4" stroke-linejoin="round" marker-end="url(#a2)"/>
+<text x="1030" y="377" font-size="23" font-weight="400" fill="#18344c">LPWM</text>
+<text x="755" y="419" font-size="24" font-weight="700" fill="#18344c">GPIO6</text>
+<path d="M910,410 L1010,410" fill="none" stroke="#27815a" stroke-width="4" stroke-linejoin="round" marker-end="url(#a2)"/>
+<text x="1030" y="419" font-size="23" font-weight="400" fill="#18344c">R_EN + L_EN</text>
+<text x="755" y="471" font-size="22" font-weight="400" fill="#18344c">M+ / M− → свой двигатель</text>
+<text x="738" y="555" font-size="28" font-weight="700" fill="#27815a">Ось EL</text>
+<text x="755" y="600" font-size="24" font-weight="700" fill="#18344c">GPIO44</text>
+<path d="M910,591 L1010,591" fill="none" stroke="#27815a" stroke-width="4" stroke-linejoin="round" marker-end="url(#a2)"/>
+<text x="1030" y="600" font-size="23" font-weight="400" fill="#18344c">RPWM</text>
+<text x="755" y="642" font-size="24" font-weight="700" fill="#18344c">GPIO43</text>
+<path d="M910,633 L1010,633" fill="none" stroke="#27815a" stroke-width="4" stroke-linejoin="round" marker-end="url(#a2)"/>
+<text x="1030" y="642" font-size="23" font-weight="400" fill="#18344c">LPWM</text>
+<text x="755" y="684" font-size="24" font-weight="700" fill="#18344c">GPIO7</text>
+<path d="M910,675 L1010,675" fill="none" stroke="#27815a" stroke-width="4" stroke-linejoin="round" marker-end="url(#a2)"/>
+<text x="1030" y="684" font-size="23" font-weight="400" fill="#18344c">R_EN + L_EN</text>
+<text x="755" y="736" font-size="22" font-weight="400" fill="#18344c">M+ / M− → свой двигатель</text>
+<text x="738" y="798" font-size="21" font-weight="400" fill="#18344c">Каждый сигнал: 47 Ω; вход → 10 кΩ → GND</text>
+<text x="738" y="840" font-size="22" font-weight="400" fill="#18344c">VCC логики 3,3 В для HC/AHC244;</text>
+<text x="738" y="875" font-size="22" font-weight="400" fill="#18344c">для логики 5 В нужен буфер / оптопары.</text>
+<rect x="1360" y="150" width="590" height="750" rx="14" fill="#fcf8ff" stroke="#8057a6" stroke-width="2" stroke-dasharray="12 8"/>
+<text x="1388" y="195" font-size="29" font-weight="700" fill="#8057a6">ВАРИАНТ RS-485</text>
+<text x="1388" y="234" font-size="24" font-weight="700" fill="#18344c">Вместо USB Serial/JTAG и RGB</text>
+<text x="1388" y="274" font-size="22" font-weight="400" fill="#18344c">Требуется отдельный профиль прошивки.</text>
+<text x="1390" y="333" font-size="24" font-weight="700" fill="#18344c">GPIO19</text>
+<text x="1580" y="333" font-size="25" font-weight="400" fill="#18344c">TX → DI</text>
+<text x="1390" y="385" font-size="24" font-weight="700" fill="#18344c">GPIO20</text>
+<text x="1580" y="385" font-size="25" font-weight="400" fill="#18344c">RX ← RO</text>
+<text x="1390" y="437" font-size="24" font-weight="700" fill="#18344c">GPIO21</text>
+<text x="1580" y="437" font-size="25" font-weight="400" fill="#18344c">DE + /RE</text>
+<text x="1388" y="495" font-size="22" font-weight="400" fill="#18344c">GPIO19/20: точки USB D− / D+.</text>
+<text x="1388" y="533" font-size="22" font-weight="400" fill="#18344c">3,3 В; изоляция сигнала и питания.</text>
+<text x="1388" y="582" font-size="22" font-weight="400" fill="#18344c">DE + /RE: подтяжка 10 кΩ к GND.</text>
+<text x="1388" y="625" font-size="22" font-weight="400" fill="#18344c">A / B: витая пара; COM: общий шины.</text>
+<text x="1388" y="667" font-size="22" font-weight="400" fill="#18344c">120 Ω между A/B на обоих концах.</text>
+<text x="1388" y="709" font-size="22" font-weight="400" fill="#18344c">Одна цепь смещения на всю шину.</text>
+<text x="1388" y="762" font-size="22" font-weight="700" fill="#18344c">Сервисный разъём отключает 19/20/21</text>
+<text x="1388" y="800" font-size="22" font-weight="400" fill="#18344c">от RS-485 перед подключением USB.</text>
+<text x="1388" y="855" font-size="22" font-weight="700" fill="#1476a5">Кадры камеры идут по Ethernet / Wi-Fi.</text>
+<rect x="50" y="940" width="1900" height="350" rx="14" fill="#fff8ee" stroke="#bf6418" stroke-width="2"/>
+<text x="78" y="986" font-size="29" font-weight="700" fill="#bf6418">ПИТАНИЕ, ЗЕМЛЯ И МОНТАЖ</text>
+<text x="78" y="1035" font-size="23" font-weight="400" fill="#18344c">+U / 0V → предохранители ветвей → B+ / B− драйверов AZ и EL; отдельная ветвь → DC/DC 5 В → Waveshare.</text>
+<text x="78" y="1070" font-size="23" font-weight="400" fill="#18344c">Локальная GND★: ESP32, датчики, входная логика IBT-2 и B−. Силовой возврат двигателей идёт к точке питания.</text>
+<text x="78" y="1105" font-size="23" font-weight="400" fill="#18344c">Изолированная сторона RS-485 имеет свой COM; её не соединяют с GND★ в обход барьера развязки.</text>
+<text x="78" y="1140" font-size="23" font-weight="400" fill="#18344c">TF1: общая SDA / GPIO4=контакт 2, SCL / GPIO5=7, AZ EN / GPIO6=3, EL EN / GPIO7=5. Слот microSD пустой.</text>
+<text x="78" y="1175" font-size="23" font-weight="400" fill="#18344c">В настройках обеих осей: SDA=4, SCL=5; MT6701 AZ: адрес 6 (0x06), EL: 70 (0x46). Адрес датчика меняют отдельно.</text>
+<text x="78" y="1210" font-size="23" font-weight="400" fill="#18344c">Корпус и мачту подключают к системе уравнивания потенциалов; кабельные вводы защищают УЗИП.</text>
+<text x="78" y="1245" font-size="23" font-weight="400" fill="#18344c">MT6701 / AS5600: один оборот; рабочий ход не пересекает разрыв 0°/360°. Для AZ 450° нужен редуктор датчика.</text>
+</g></svg>
