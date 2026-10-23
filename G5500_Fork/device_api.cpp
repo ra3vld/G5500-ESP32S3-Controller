@@ -784,7 +784,7 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
       web_.send(400, "application/json", "{\"ok\":false,\"result\":\"invalid_or_port_conflict\"}");
       return;
     }
-    if (uart == "1" && (runtime_.controller.hardware.pins.uartRx < 0 || runtime_.controller.hardware.pins.uartTx < 0)) {
+    if (uart == "1" && board::validateHardware(runtime_.controller.hardware,true)) {
       web_.send(400, "application/json", "{\"ok\":false,\"result\":\"uart_disabled\"}");
       return;
     }

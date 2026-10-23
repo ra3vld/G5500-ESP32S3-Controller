@@ -28,6 +28,21 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    assert.match(await page.locator('#failures').textContent(),/Сбои: 2 \/ 3/);
    assert.match(await page.locator('#failures').textContent(),/30 минут/);
    assert(await page.locator('#confirm').isDisabled());
+   if(profile==='1') {
+    await page.locator('[name="pin.hudRx"]').selectOption('38');
+    assert(await page.locator('#save').isDisabled());
+    assert.match(await page.locator('#pin-validation').textContent(),/все три/);
+    await page.locator('[name="pin.hudTx"]').selectOption('39');
+    await page.locator('[name="pin.hudDe"]').selectOption('40');
+    await page.locator('[name="pin.uartDe"]').selectOption('41');
+    assert(!(await page.locator('#save').isDisabled()));
+    await page.locator('[name=bluetoothMode]').selectOption('1');
+    await page.locator('[name=bluetoothEnabled]').selectOption('1');
+    assert(await page.locator('#save').isDisabled());
+    assert.match(await page.locator('#pin-validation').textContent(),/HC-05/);
+    await page.locator('[name=bluetoothEnabled]').selectOption('0');
+    for(const name of ['hudRx','hudTx','hudDe','uartDe'])await page.locator('[name="pin.'+name+'"]').selectOption('-1');
+   }
    // Every board accepts an incomplete motor map in simulation, rejects it in physical mode.
    await page.locator('[name="pin.azAdc"]').selectOption('-1');
    await page.evaluate(()=>refresh());

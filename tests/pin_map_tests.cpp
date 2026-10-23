@@ -45,6 +45,9 @@ int main(int argc,char **argv) {
   c.simulation=true; c.pins.uartRx=-1;
   if(c.pins.uartTx>=0) assert(std::string(board::validateHardware(c))=="incomplete_uart");
   c.pins.uartTx=-1; assert(!board::validateHardware(c));
+  c.pins.uartDe=0;
+  assert(c.rs485() && std::string(board::validateHardware(c))=="incomplete_uart");
+  c.pins.uartDe=-1;
   assert(board::validateHardware(c,true));
   c.buttonGpio=-1; c.pins.led=0; c.pins.rgb=0;
   const auto conflict=board::validateHardwareDetailed(c);
@@ -88,12 +91,27 @@ int main(int argc,char **argv) {
     motor.beginDirections();motor.applyOutputs();
     assert(fakeHardware.attachCalls==4 && fakeHardware.levels[33]==LOW && fakeHardware.levels[independent.pins.azSpeedEnable]==LOW);
   }
+  // A second RS-485 port requires all signals and cannot share UART1 with HC-05.
+  HardwareConfig ports; ports.bluetooth=false;ports.simulation=true;
+  ports.pins.hudRx=ports.pins.hc05Rx;
+  assert(std::string(board::validateHardware(ports))=="incomplete_hud485");
+  ports.pins.hudTx=ports.pins.hc05Tx;ports.pins.hudDe=ports.pins.hc05State;
+  ports.buttonGpio=-1;
+  if(SELECTED_BOARD==BOARD_CROWPANEL_21) ports.pins.uartRx=ports.pins.uartTx=-1;
+  assert(ports.hudRs485() && !board::validateHardware(ports,true));
+  ports.bluetooth=true;ports.bluetoothMode=BT_HC05;
+  assert(std::string(board::validateHardware(ports))=="uart1_conflict");
+  ports.bluetooth=false;ports.pins.uartRx=ports.pins.uartTx=-1;
+  assert(!board::validateHardware(ports,true)); // Controller needs only its HUD link.
+  ports.pins.hudTx=ports.pins.hudDe;
+  assert(std::string(board::validateHardware(ports))=="gpio_conflict");
   // Both maps, CRC, legacy migration, and candidate/confirmed separation.
   HardwareRecord record; record.hasConfirmed=true; record.phase=ConfigPhase::Confirmed;
   record.good.simulation=record.candidate.simulation=true;
+  record.good.pins.uartDe=0;record.candidate.pins.hudRx=4;record.candidate.pins.hudTx=5;record.candidate.pins.hudDe=6;
   record.good.pins.led=-1; record.candidate.pins.led=0; record.candidate.buttonGpio=-1;
   const auto bytes=encodeHardware(record); HardwareRecord decoded;
-  assert(bytes[2]==3 && decodeHardware(bytes,decoded));
+  assert(bytes[2]==4 && decodeHardware(bytes,decoded));
   assert(decoded.good==record.good && decoded.candidate==record.candidate);
   auto broken=bytes; broken[36]^=1; assert(!decodeHardware(broken,decoded));
   const auto v2=encodeHardwareRecord<98>(record);
@@ -103,6 +121,10 @@ int main(int argc,char **argv) {
   record.good.pins.localAzAdc=SELECTED_BOARD==BOARD_ESP32?36:4;
   auto v3=encodeHardware(record);
   assert(decodeHardware(v3,decoded) && decoded.good==record.good);
+  const auto oldLocal=encodeHardwareRecord<154>(record);
+  assert(oldLocal[2]==3 && decodeHardware(oldLocal,decoded));
+  assert(decoded.good.local==record.good.local && decoded.good.pins.uartDe==-1);
+  record.good.pins.uartDe=-1;
   const auto legacy=encodeHardwareRecord<40>(record);
   assert(legacy[2]==1 && decodeHardware(legacy,decoded));
   assert(decoded.good.pins==PinMap{} && decoded.candidate.pins==PinMap{});
@@ -114,6 +136,14 @@ int main(int argc,char **argv) {
     assert(!board::validateHardware(decoded.good));
   }
   Preferences::database.clear(); Preferences::failedBytesKey.clear();
+  HardwareRecord prior;prior.hasConfirmed=true;prior.good.simulation=prior.candidate.simulation=true;
+  auto priorBytes=encodeHardwareRecord<154>(prior);
+  Preferences::database["hardware"]["config1"]=Preferences::Bytes(priorBytes.begin(),priorBytes.end());
+  Storage previousStorage;MotionTestRuntime previous;previousStorage.loadHardware(previous);
+  assert(!previous.recovery && previous.hardwareRecord.good==prior.good);
+  assert(!previous.controller.hardware.rs485() && !previous.controller.hardware.hudRs485());
+  assert(std::get<Preferences::Bytes>(Preferences::database["hardware"]["config1"]).size()==HardwareBytes{}.size());
+  Preferences::database.clear();
   Preferences::database["hardware"]["config1"]=Preferences::Bytes(legacy.begin(),legacy.end());
   Storage storage; MotionTestRuntime migrated; storage.loadHardware(migrated);
   assert(!migrated.recovery && migrated.hardwareRecord.hasConfirmed);

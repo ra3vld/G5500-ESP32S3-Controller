@@ -194,6 +194,7 @@ inline bool pinActive(const HardwareConfig &c,const PinDefinition &d) {
   case PinGroup::Buttons:return c.local[0]==LOCAL_INPUT_BUTTONS;
   case PinGroup::Joystick:return c.local[0]==LOCAL_INPUT_JOYSTICK;
   case PinGroup::Uart:return true;
+  case PinGroup::Hud485:return c.hudRs485();
   case PinGroup::Hc05:return c.backend()==BT_HC05;
   case PinGroup::Indicator:return true;
   case PinGroup::Tft:return DISPLAY_KIND==DISPLAY_ILI9341;
@@ -214,8 +215,12 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
       c.drive==DRIVE_SEPARATE_PWM?(c.pins.singleAxis()?1:2):1;
   if(!c.simulation && SOC_LEDC_CHANNEL_NUM<channels) return {"drive_not_supported","driveInterface"};
 #endif
-  if((c.pins.uartRx<0)!=(c.pins.uartTx<0) || (hudUart && c.pins.uartRx<0))
+  if((c.pins.uartRx<0)!=(c.pins.uartTx<0) || (((hudUart && !c.hudRs485()) || c.rs485()) && c.pins.uartRx<0))
     return {"incomplete_uart","pin.uartRx"};
+  const bool anyHud485=c.pins.hudRx>=0 || c.pins.hudTx>=0 || c.pins.hudDe>=0;
+  if(anyHud485 && !c.hudRs485()) return {"incomplete_hud485","pin.hudRx"};
+  if(c.hudRs485() && c.backend()==BT_HC05) return {"uart1_conflict","pin.hudRx","hc05"};
+  if(hudUart && c.rs485() && !c.hudRs485()) return {"hud485_required","pin.hudRx"};
   if(c.local[0]>2 || c.local[1]>1 || c.local[2]>1) return {"invalid_local_input","localInputMode"};
   if(c.local[0]==LOCAL_INPUT_BUTTONS &&
       ((c.pins.localAzNegative<0)!=(c.pins.localAzPositive<0) ||
@@ -271,6 +276,9 @@ inline HardwareConfig recoveryHardware(const HardwareRecord &r) {
       const int pin=map->*pinDefinitions[i].member;
       if(pin>=0 && (pin==c.pins.uartRx || pin==c.pins.uartTx)) uart=false;
     }
+  // Disable RS-485 in recovery until its saved wiring is confirmed.
+  if(c.rs485()) { uart=false; c.pins.uartDe=-1; }
+  c.pins.hudRx=c.pins.hudTx=c.pins.hudDe=-1;
   if(!uart) c.pins.uartRx=c.pins.uartTx=-1;
   return c;
 }

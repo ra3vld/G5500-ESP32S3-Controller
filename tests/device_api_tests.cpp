@@ -306,6 +306,14 @@ int main(int argc,char **argv) {
     const auto response=disabled.call("POST","/api/device","role=hud&wifi=existing&uart=1&port=4534");
     assert(response.status==400 && response.body.find("uart_disabled")!=response.body.npos);
   }
+  {
+    Fixture relay;auto config=relay.runtime.controller.hardware;
+    config.pins.uartRx=config.pins.uartTx=-1;
+    config.pins.hudRx=config.pins.hc05Rx;config.pins.hudTx=config.pins.hc05Tx;config.pins.hudDe=config.pins.hc05State;
+    relay.runtime.controller.configureHardware(config);
+    const auto enabled=relay.call("POST","/api/device","role=hud&wifi=existing&uart=1&port=4534");
+    assert(enabled.status==200); // Dedicated RS-485 works with UART0 disabled.
+  }
   Fixture f;auto &r=f.runtime;
   assert(f.call("GET","/api/status").body.size()<=COMMAND_PAGE_MAX);
   const auto axis=f.call("GET","/api/status","view=axis&axis=az");

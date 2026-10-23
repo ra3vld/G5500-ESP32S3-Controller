@@ -7,12 +7,23 @@
 #include "crowpanel_board.hpp"
 #include <esp_app_desc.h>
 #include <esp_system.h>
+#include <hal/uart_types.h>
+#include <driver/uart.h>
 #include <cstdio>
 #include "write_budget.hpp"
 #include <cerrno>
 #include <new>
 namespace forkrot {
 using namespace board;
+size_t Network::uartWrite(const uint8_t *data,size_t size) {
+  return rs485Reply_?rs485Reply_->write(data,size):Serial0.write(data,size);
+}
+void Network::serviceUartTx() {
+  if(!rs485Reply_)return;
+  const int available=Serial0.availableForWrite();
+  rs485Reply_->service(millis(),available>0?size_t(available):0,
+      [](const uint8_t *p,size_t n) { return Serial0.write(p,n); });
+}
 void Network::serviceHeapDiagnostics() {
   heapDiagnostics_.service(millis(),
       [this](uint8_t page, char *reply, size_t capacity) {
@@ -27,7 +38,7 @@ void Network::serviceHeapDiagnostics() {
         const int available = Serial0.availableForWrite();
         if (available <= 0) return 0;
         const size_t count = size_t(available) < size ? size_t(available) : size;
-        return Serial0.write(reinterpret_cast<const uint8_t *>(data), count);
+        return uartWrite(reinterpret_cast<const uint8_t *>(data), count);
       });
 }
 int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
@@ -131,7 +142,7 @@ void Network::sendReply(const String &s) {
     diagnostics_.dbgPrint("[BT TX] ");
     diagnostics_.dbgPrintln(s);
   } else {
-    if(runtime_.controller.hardware.pins.uartTx>=0) Serial0.print(s);
+    if(runtime_.controller.hardware.pins.uartTx>=0) uartWrite(reinterpret_cast<const uint8_t *>(s.c_str()),s.length());
     diagnostics_.dbgPstTx(s);
   }
   hardware_.flashTx();
@@ -256,7 +267,7 @@ void Network::handlePstRotatorSerial() {
     }
   }
 #endif
-  if (runtime_.hud.config.uart || runtime_.controller.hardware.pins.uartRx < 0 || runtime_.controller.hardware.pins.uartTx < 0)
+  if ((runtime_.hud.config.uart && !runtime_.controller.hardware.hudRs485()) || runtime_.controller.hardware.pins.uartRx < 0 || runtime_.controller.hardware.pins.uartTx < 0)
     return;
   static forkrot::ApiLineBuffer receiver;
   static uint32_t serialEpoch = 0;
@@ -271,13 +282,16 @@ void Network::handlePstRotatorSerial() {
   const uint32_t started = millis();
   unsigned commands = 0;
   for (unsigned bytes = 0; bytes < 128 && commands < 4 && Serial0.available() && uint32_t(millis() - started) < 2; ++bytes) {
-    if (receiver.feed((char)Serial0.read(), command)) {
+    const char byte=char(Serial0.read());
+    if(rs485Reply_)rs485Reply_->received(millis());
+    if (receiver.feed(byte, command)) {
       ++commands;
       gsReplyPort = GS_REPLY_USB;
       if(command.empty() || command.front()!='@') {diagnostics_.dbgView("[PST RX] "); diagnostics_.dbgView(command, true);}
       processGs232Command(command);
     }
   }
+  serviceUartTx();
 }
 
 void Network::handleBluetoothSerial() {
@@ -689,8 +703,31 @@ void Network::serviceLoggerUdp() {
   }
 }
 bool Network::beginSerial() {
-  if (runtime_.controller.hardware.pins.uartRx >= 0 && runtime_.controller.hardware.pins.uartTx >= 0)
-    Serial0.begin(runtime_.hud.config.uart ? 115200 : 9600, SERIAL_8N1, runtime_.controller.hardware.pins.uartRx, runtime_.controller.hardware.pins.uartTx);
+  const auto &config = runtime_.controller.hardware;
+  if (config.pins.uartRx >= 0 && config.pins.uartTx >= 0) {
+    if (config.rs485()) {
+      if(heapFreeBytes()<sizeof(Rs485Reply)+MemoryGuard::CriticalFree ||
+          heapMaxBlockBytes()<sizeof(Rs485Reply)+MemoryGuard::CriticalBlock) return false;
+      rs485Reply_.reset(new(std::nothrow) Rs485Reply);
+      if(!rs485Reply_)return false;
+      // Receive until the driver owns a complete transmission. RTS is released
+      // by IDF after the last stop bit, rather than when write() returns.
+      digitalWrite(config.pins.uartDe, LOW);
+      pinMode(config.pins.uartDe, OUTPUT);
+      Serial0.setTxBufferSize(2048);
+    }
+    Serial0.begin(runtime_.hud.config.uart && !config.hudRs485() ? 115200 : 9600, SERIAL_8N1, config.pins.uartRx, config.pins.uartTx);
+    if (config.rs485() && (!Serial0.setPins(-1, -1, -1, config.pins.uartDe) ||
+        !Serial0.setMode(UART_MODE_RS485_HALF_DUPLEX))) return false;
+  }
+  if (runtime_.hud.config.uart && config.hudRs485()) {
+    if (!hud485_) return false;
+    auto &serial=hud485_->serial;
+    digitalWrite(config.pins.hudDe, LOW);pinMode(config.pins.hudDe, OUTPUT);
+    serial.setRxBufferSize(2048);serial.setTxBufferSize(2048);
+    serial.begin(115200, SERIAL_8N1, config.pins.hudRx, config.pins.hudTx);
+    if (!serial.setPins(-1,-1,-1,config.pins.hudDe) || !serial.setMode(UART_MODE_RS485_HALF_DUPLEX)) return false;
+  }
   heapBeforeBt_ = heapFreeBytes();
   const auto backend = runtime_.recovery ? BT_NONE : runtime_.controller.hardware.backend();
   if (backend == BT_ESP32_SPP && (heapFreeBytes() < 98304 || heapMaxBlockBytes() < 32768)) return false;
@@ -709,12 +746,18 @@ bool Network::hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned 
 void Network::beginHud() {
   runtime_.hud.begin(ESP.getEfuseMac() & 0xffffffffffffULL, (uint64_t(esp_random()) << 32) | esp_random());
   runtime_.hud.setTransport(this);
-  if (runtime_.hud.config.uart) {
+  if (runtime_.hud.config.uart && runtime_.controller.hardware.hudRs485()) {
+    if (heapFreeBytes() >= sizeof(Rs485Link)+MemoryGuard::CriticalFree &&
+        heapMaxBlockBytes() >= sizeof(Rs485Link)+MemoryGuard::CriticalBlock)
+      hud485_.reset(new (std::nothrow) Rs485Link);
+    if (hud485_) hud485_->link.begin(runtime_.hud.isHud(),runtime_.hud.boot,millis());
+    else runtime_.hud.catalogError=true;
+  } else if (runtime_.hud.config.uart) {
     hudUart_.reset(new (std::nothrow) UartLink);
     if (!hudUart_)
       runtime_.hud.catalogError = true;
   }
-  if (runtime_.hud.config.uart && (runtime_.controller.hardware.pins.uartRx < 0 || runtime_.controller.hardware.pins.uartTx < 0)) {
+  if (runtime_.hud.config.uart && !runtime_.controller.hardware.hudRs485() && (runtime_.controller.hardware.pins.uartRx < 0 || runtime_.controller.hardware.pins.uartTx < 0)) {
     runtime_.hud.config.uart = false;
     runtime_.hud.catalogError = true;
   }
@@ -722,7 +765,7 @@ void Network::beginHud() {
 bool Network::sendHud(const HudEndpoint &e, const uint8_t *bytes, size_t size) {
   int error = 0;
   const bool sent =
-      e.uart ? runtime_.hud.config.uart && hudUart_ && hudUart_->tx.enqueue(bytes, size)
+      e.uart ? runtime_.hud.config.uart && (hud485_ ? hud485_->link.enqueue(bytes,size,millis()) : hudUart_ && hudUart_->tx.enqueue(bytes, size))
              : hudUdp_.send(e.address, e.port, {reinterpret_cast<const char *>(bytes), size}, &error);
   if (sent) {
     ++runtime_.hud.sent;
@@ -736,6 +779,10 @@ bool Network::sendHud(const HudEndpoint &e, const uint8_t *bytes, size_t size) {
 bool Network::deferReply(const Packet &p, uint8_t port) {
   if (p.result != Result::Deferred)
     return false;
+  // GS-232 motion commands have no success reply. On a half-duplex PC link,
+  // a delayed error could collide with the PC's next request; it stays in HUD
+  // status instead. Queries still receive their immediate position response.
+  if (port == 0 && runtime_.controller.hardware.rs485()) return true;
   for (auto &reply : deferred_)
     if (!reply.used) {
       reply = {runtime_.hud.requestId(),
@@ -788,6 +835,17 @@ void Network::serviceHud() {
     const int available = Serial0.availableForWrite();
     hudUart_->tx.drain(available > 0 ? size_t(available) : 0,
                       [](const uint8_t *data, size_t n) { return Serial0.write(data, n); });
+  }
+  if (hud.config.uart && hud485_) {
+    auto &serial=hud485_->serial;
+    for (unsigned i=0;i<512 && serial.available() && uint32_t(millis()-started)<3;++i)
+      hud485_->link.feed(uint8_t(serial.read()),millis(),[&](const uint8_t *p,size_t n) {
+        hud.receive({0,hud.config.port,true},p,n,millis());
+      });
+    const int available=serial.availableForWrite();
+    hud485_->link.service(millis(),available>0?size_t(available):0,
+        [&](const uint8_t *p,size_t n) { return serial.write(p,n); },
+        [] { return uart_wait_tx_done(UART_NUM_1,0)==ESP_OK; });
   }
   hud.service(millis());
   for (auto &reply : deferred_)

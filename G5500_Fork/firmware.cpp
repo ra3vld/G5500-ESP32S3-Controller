@@ -171,7 +171,8 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln("=== G5500 " FORK_CHIP_NAME " v1.6.23 WEB ===");
 #endif
   diagnostics_.dbgPrintln("Copyright (c) UA1CFM");
-  diagnostics_.dbgPrintln(runtime_.controller.hardware.pins.uartRx < 0 ? "UART: disabled" : runtime_.hud.config.uart
+  diagnostics_.dbgPrintln(runtime_.controller.hardware.pins.uartRx < 0 ? "UART: disabled" : runtime_.controller.hardware.rs485() && (!runtime_.hud.config.uart || runtime_.controller.hardware.hudRs485())
+                              ? "UART0: GS-232 over RS-485, 9600 8N1" : runtime_.hud.config.uart && !runtime_.controller.hardware.hudRs485()
                               ? "UART0: HUD/1, 115200 8N1; GS-232 disabled on these pins"
                               : "UART0 USB: PSTROTATOR GS-232, 9600 baud (COM number assigned by Windows)");
 #if FORK_NATIVE_USB
@@ -180,6 +181,8 @@ void Application::controllerSetup() {
 #else
   diagnostics_.dbgPrintln("UART0 bridge: GS-232 + programming; diagnostics: /diaglog");
 #endif
+  if(runtime_.hud.config.uart && runtime_.controller.hardware.hudRs485())
+    diagnostics_.dbgPrintln(runtime_.hud.isHud()?"UART1: HUD RS-485 master, 115200 8N1":"UART1: HUD RS-485 responder, 115200 8N1");
   diagnostics_.dbgPrintln("TCP 4533: Look4Sat/Hamlib + GS-232B full command set");
   diagnostics_.dbgPrintln("R4UAB DDE Client TCP: decimal comma accepted in Hamlib P az el command");
   diagnostics_.dbgPrintln(

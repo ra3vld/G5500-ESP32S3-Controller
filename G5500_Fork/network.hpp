@@ -18,6 +18,8 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include "hud_uart_tx.hpp"
+#include "rs485_hud.hpp"
+#include "rs485_reply.hpp"
 #include <WiFiServer.h>
 namespace forkrot {
 class Network : public HudTransport {
@@ -75,6 +77,9 @@ public:
   const HttpDiagnostics &httpDiagnostics() const { return http_; }
 
 private:
+  size_t uartWrite(const uint8_t *,size_t);
+  void serviceUartTx();
+  std::unique_ptr<Rs485Reply> rs485Reply_;
   void sendReply(const String &s);
   void processGs232Command(std::string_view input);
   bool processCommandApi(std::string_view input, uint8_t port);
@@ -97,6 +102,8 @@ private:
     HudUartTx tx;
   };
   std::unique_ptr<UartLink> hudUart_;
+  struct Rs485Link { HardwareSerial serial{1}; Rs485Hud link; };
+  std::unique_ptr<Rs485Link> hud485_;
   uint32_t inputEpoch_ = 0, tcpSession_ = 0, bluetoothSession_ = 0;
   struct DeferredReply {
     uint32_t id = 0, session = 0;

@@ -93,7 +93,7 @@ void Network::serviceCommandReplies() {
   else if(commandReplyPort_==0) {
     if(runtime_.controller.hardware.pins.uartTx<0) {commandReplySize_=0;return;}
     const int available=Serial0.availableForWrite();
-    if(available>0)sent=Serial0.write(data,std::min(count,size_t(available)));
+    if(available>0)sent=uartWrite(data,std::min(count,size_t(available)));
   } else if(commandReplyPort_==3) {
     if(commandReplySession_!=tcpSession_ || !rotctldClient_ || !rotctldClient_.connected()) {commandReplySize_=0;return;}
     const int n=::send(rotctldClient_.fd(),data,count,MSG_DONTWAIT);

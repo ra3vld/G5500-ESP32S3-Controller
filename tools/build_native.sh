@@ -22,6 +22,7 @@ CORE_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G55
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/keyboard_hold_tests.cpp -o build/keyboard_hold_tests
 ./build/keyboard_hold_tests
 sh tools/test_local_controls.sh
+sh tools/test_rs485.sh
 
 # WT32: PHY setup, cable/DHCP states and Ethernet reservations in every drive mode.
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=6 -I tests/ethernet_fakes -I tests/device_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp tests/ethernet_tests.cpp -o build/ethernet_tests
