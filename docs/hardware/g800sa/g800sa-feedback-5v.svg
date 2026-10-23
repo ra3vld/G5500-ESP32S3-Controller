@@ -1,0 +1,249 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3000" height="2121" viewBox="0 0 3000 2121">
+<rect width="100%" height="100%" fill="white"/>
+<text x="70" y="80" font-family="DejaVu Sans,sans-serif" font-size="46" fill="#172535" font-weight="700">G-800SA → ESP32: дифференциальный вход положения</text>
+<text x="70" y="132" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="400">Два сигнала A/B и отдельная земля G. Одна MCP6002, питание 3,3 В.</text>
+<text x="2820" y="80" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="400">1/1</text>
+<rect x="70" y="165" width="2860" height="130" rx="10" fill="#fff4db" stroke="#dfbb6b" stroke-width="2"/>
+<text x="95" y="207" font-family="DejaVu Sans,sans-serif" font-size="31" fill="#172535" font-weight="700">A → J1005/1 (P6/2). B → J1005/2 (P6/3). G → J1005/9 и GND ESP32.</text>
+<text x="95" y="250" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="400">B не соединять с GND. Проверить G по минусу C1008. Штатные провода датчика сохранить.</text>
+<text x="95" y="285" font-family="DejaVu Sans,sans-serif" font-size="27" fill="#172535" font-weight="400">Разность A−B: 0…+5 В. Каждый вход A и B относительно G: 0…+15 В.</text>
+<circle cx="100" cy="600" r="8" fill="white" stroke="#ba3833" stroke-width="3"/>
+<text x="117" y="586" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#ba3833" font-weight="700">A • вход +</text>
+<polyline points="100,600 300,600" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="300,600 325,600" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="325" y="586" width="100" height="28" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="425,600 450,600" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="315" y="540" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">R1</text>
+<text x="315" y="573" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">1 МОм, 1%</text>
+<polyline points="450,600 1080,600" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="620" cy="600" r="6" fill="#172535"/>
+<polyline points="620,600 620,700" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="620,700 620,725" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="606" y="725" width="28" height="90" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="620,815 620,840" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="620,840 620,900" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="440" y="765" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">R2</text>
+<text x="370" y="810" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">160 кОм, 1%</text>
+<circle cx="820" cy="600" r="6" fill="#172535"/>
+<polyline points="820,600 820,700" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="820,700 820,755" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="797,755 843,755" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="797,771 843,771" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="820,771 820,840" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="852" y="753" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="700">C1</text>
+<text x="852" y="790" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">10 нФ</text>
+<polyline points="820,840 820,900" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="620,900 820,900" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="720,900 720,915" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="698,915 742,915" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="706,924 734,924" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="714,933 726,933" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="675" y="966" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#526779" font-weight="400">G / GND_ESP</text>
+<circle cx="600" cy="400" r="8" fill="white" stroke="#ba3833" stroke-width="3"/>
+<text x="617" y="386" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#ba3833" font-weight="700">+3,3 В</text>
+<polyline points="600,400 780,400" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="780,400 805,400" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="805" y="386" width="100" height="28" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="905,400 930,400" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="795" y="340" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">R7</text>
+<text x="795" y="373" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">2,4 МОм, 1%</text>
+<polyline points="930,400 980,400 980,600" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="980" cy="600" r="6" fill="#172535"/>
+<polyline points="1080,510 1080,890 1400,700 1080,510" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1095" y="615" font-family="DejaVu Sans,sans-serif" font-size="32" fill="#172535" font-weight="400">+</text>
+<text x="1095" y="815" font-family="DejaVu Sans,sans-serif" font-size="32" fill="#172535" font-weight="400">−</text>
+<text x="1030" y="580" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="400">3</text>
+<text x="1030" y="780" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="400">2</text>
+<text x="1405" y="680" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="400">1</text>
+<text x="1120" y="450" font-family="DejaVu Sans,sans-serif" font-size="30" fill="#172535" font-weight="700">U1A MCP6002</text>
+<polyline points="1400,700 1900,700" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="1470" cy="700" r="6" fill="#172535"/>
+<circle cx="100" cy="1100" r="8" fill="white" stroke="#2164b7" stroke-width="3"/>
+<text x="117" y="1086" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#2164b7" font-weight="700">B • вход −</text>
+<polyline points="100,1100 300,1100" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="300,1100 325,1100" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="325" y="1086" width="100" height="28" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="425,1100 450,1100" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="315" y="1040" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">R3</text>
+<text x="315" y="1073" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">1 МОм, 1%</text>
+<polyline points="450,1100 980,1100 980,800 1080,800" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="980" cy="1040" r="6" fill="#172535"/>
+<circle cx="980" cy="930" r="6" fill="#172535"/>
+<polyline points="980,1040 1100,1040" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1100,1040 1125,1040" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1125" y="1026" width="100" height="28" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="1225,1040 1250,1040" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1115" y="980" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">R4</text>
+<text x="1115" y="1013" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">150 кОм, 1%</text>
+<polyline points="1250,1040 1470,1040 1470,700" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="1470" cy="930" r="6" fill="#172535"/>
+<polyline points="980,930 1140,930" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1140,908 1140,952" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1160,908 1160,952" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1160,930 1470,930" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1270" y="875" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">C5</text>
+<text x="1270" y="915" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">10 нФ</text>
+<text x="1020" y="1195" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="700">U1A ≈ 0,20625 + 0,15 × (A−B), В</text>
+<text x="100" y="1280" font-family="DejaVu Sans,sans-serif" font-size="30" fill="#172535" font-weight="700">G • земля: J1005/9</text>
+<circle cx="100" cy="1320" r="8" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="100,1320 630,1320" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="630,1320 630,1335" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="608,1335 652,1335" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="616,1344 644,1344" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="624,1353 636,1353" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="585" y="1386" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#526779" font-weight="400">GND_ESP</text>
+<text x="100" y="1415" font-family="DejaVu Sans,sans-serif" font-size="27" fill="#172535" font-weight="400">Сверить G с минусом C1008 при отключённом питании.</text>
+<polyline points="1900,610 1900,990 2220,800 1900,610" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1915" y="715" font-family="DejaVu Sans,sans-serif" font-size="32" fill="#172535" font-weight="400">+</text>
+<text x="1915" y="915" font-family="DejaVu Sans,sans-serif" font-size="32" fill="#172535" font-weight="400">−</text>
+<text x="1850" y="680" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="400">5</text>
+<text x="1850" y="880" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="400">6</text>
+<text x="2225" y="780" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="400">7</text>
+<text x="1940" y="550" font-family="DejaVu Sans,sans-serif" font-size="30" fill="#172535" font-weight="700">U1B MCP6002</text>
+<polyline points="2220,800 2370,800" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="2280" cy="800" r="6" fill="#172535"/>
+<polyline points="1900,900 1800,900 1800,1210" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="1800" cy="1150" r="6" fill="#172535"/>
+<polyline points="1800,1150 1950,1150" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1950,1150 1975,1150" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1975" y="1136" width="100" height="28" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="2075,1150 2100,1150" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1965" y="1090" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">R6</text>
+<text x="1965" y="1123" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">12 кОм, 1%</text>
+<polyline points="2100,1150 2280,1150 2280,800" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1800,1210 1800,1235" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1786" y="1235" width="28" height="90" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="1800,1325 1800,1350" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1830" y="1267" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">R5</text>
+<text x="1830" y="1301" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">10 кОм, 1%</text>
+<polyline points="1800,1350 1800,1380" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1800,1380 1800,1395" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1778,1395 1822,1395" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1786,1404 1814,1404" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1794,1413 1806,1413" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1755" y="1446" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#526779" font-weight="400">G / GND_ESP</text>
+<polyline points="2370,800 2395,800" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="2395" y="786" width="100" height="28" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="2495,800 2520,800" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="2385" y="740" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">R9</text>
+<text x="2385" y="773" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">1 кОм</text>
+<polyline points="2520,800 2850,800" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="2850" cy="800" r="8" fill="white" stroke="#087b64" stroke-width="3"/>
+<text x="2867" y="786" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#087b64" font-weight="700">AZ ADC</text>
+<circle cx="2600" cy="800" r="6" fill="#172535"/>
+<polyline points="2600,800 2600,900" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2600,900 2600,955" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2577,955 2623,955" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2577,971 2623,971" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2600,971 2600,1040" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="2632" y="953" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="700"></text>
+<text x="2632" y="990" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400"></text>
+<text x="2420" y="960" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">C2</text>
+<text x="2420" y="1000" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">100 нФ</text>
+<polyline points="2600,1040 2600,1100" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2600,1100 2600,1115" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2578,1115 2622,1115" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2586,1124 2614,1124" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2594,1133 2606,1133" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="2555" y="1166" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#526779" font-weight="400">G</text>
+<circle cx="2730" cy="800" r="6" fill="#172535"/>
+<polyline points="2730,800 2730,620" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2730,510 2730,545" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2708,545 2752,545" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2708,545 2708,535" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2752,545 2752,555" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2730,545 2708,585 2752,585 2730,545" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2730,585 2730,620" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="2765" y="552" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">D1</text>
+<text x="2765" y="588" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">BAT85</text>
+<text x="2683" y="538" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#172535" font-weight="400">K</text>
+<text x="2683" y="605" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#172535" font-weight="400">A</text>
+<polyline points="2730,510 2730,450" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="2660" y="420" font-family="DejaVu Sans,sans-serif" font-size="27" fill="#ba3833" font-weight="700">+3,3 В</text>
+<polyline points="2730,800 2730,900" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2730,900 2730,935" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2708,935 2752,935" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2708,935 2708,925" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2752,935 2752,945" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2730,935 2708,975 2752,975 2730,935" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2730,975 2730,1010" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="2765" y="942" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">D2</text>
+<text x="2765" y="978" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">BAT85</text>
+<text x="2683" y="928" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#172535" font-weight="400">K</text>
+<text x="2683" y="995" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#172535" font-weight="400">A</text>
+<polyline points="2730,1010 2730,1100" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2730,1100 2730,1115" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2708,1115 2752,1115" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2716,1124 2744,1124" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2724,1133 2736,1133" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="2685" y="1166" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#526779" font-weight="400">G</text>
+<rect x="2380" y="1240" width="550" height="170" rx="10" fill="#edf5ff" stroke="#9bbbe0" stroke-width="2"/>
+<text x="2400" y="1285" font-family="DejaVu Sans,sans-serif" font-size="26" fill="#172535" font-weight="700">ADC подключать напрямую.</text>
+<text x="2400" y="1330" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="400">Второй делитель 6,8/4,7 кОм</text>
+<text x="2400" y="1375" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="400">между R9 и ADC не ставить.</text>
+<rect x="70" y="1490" width="900" height="400" rx="10" fill="#f2f6fa" stroke="#bfd0df" stroke-width="2"/>
+<text x="100" y="1540" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="700">ПИТАНИЕ U1: 8 → +3,3 В; 4 → G</text>
+<polyline points="170,1610 820,1610" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="100" y="1595" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#ba3833" font-weight="700">+3,3 В</text>
+<polyline points="170,1800 820,1800" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="820,1800 820,1815" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="798,1815 842,1815" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="806,1824 834,1824" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="814,1833 826,1833" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="775" y="1866" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#526779" font-weight="400">G / GND_ESP</text>
+<rect x="120" y="1670" width="100" height="80" rx="10" fill="white" stroke="#172535" stroke-width="2"/>
+<text x="140" y="1720" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">U1</text>
+<polyline points="170,1610 170,1670" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="170,1750 170,1800" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="135" y="1655" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#172535" font-weight="400">8</text>
+<text x="135" y="1783" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#172535" font-weight="400">4</text>
+<circle cx="330" cy="1610" r="6" fill="#172535"/>
+<polyline points="330,1640 330,1695" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="307,1695 353,1695" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="307,1711 353,1711" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="330,1711 330,1780" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="362" y="1693" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="700">C3</text>
+<text x="362" y="1730" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">100 нФ</text>
+<polyline points="330,1610 330,1640" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="330,1780 330,1800" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="330" cy="1800" r="6" fill="#172535"/>
+<circle cx="520" cy="1610" r="6" fill="#172535"/>
+<polyline points="520,1640 520,1695" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="497,1695 543,1695" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="497,1711 543,1711" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="520,1711 520,1780" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="552" y="1693" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="700">C4</text>
+<text x="552" y="1730" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">1 мкФ</text>
+<polyline points="520,1610 520,1640" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="520,1780 520,1800" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="520" cy="1800" r="6" fill="#172535"/>
+<circle cx="740" cy="1610" r="6" fill="#172535"/>
+<polyline points="740,1610 740,1640" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="740,1640 740,1665" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="726" y="1665" width="28" height="90" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="740,1755 740,1780" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="770" y="1697" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">R8</text>
+<text x="770" y="1731" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">510 Ом</text>
+<polyline points="740,1780 740,1800" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="740" cy="1800" r="6" fill="#172535"/>
+<rect x="1000" y="1490" width="930" height="400" rx="10" fill="#f2f6fa" stroke="#bfd0df" stroke-width="2"/>
+<text x="1030" y="1540" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="700">ПЕРЕДАЧА ПРИ ПИТАНИИ 3,30 В</text>
+<text x="1030" y="1600" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="700">UADC ≈ 0,45375 + 0,33 × (A−B), В</text>
+<text x="1030" y="1660" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">A−B = 0 В → ADC ≈ 0,454 В</text>
+<text x="1030" y="1710" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">A−B = 1,2 В → ADC ≈ 0,850 В</text>
+<text x="1030" y="1760" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">A−B = 5 В → ADC ≈ 2,104 В</text>
+<text x="1030" y="1820" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="400">Смещение сохраняет работу ОУ вдали от нуля.</text>
+<text x="1030" y="1860" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="400">В прошивке: калибровка по нескольким точкам.</text>
+<rect x="1960" y="1490" width="970" height="400" rx="10" fill="#f2f6fa" stroke="#bfd0df" stroke-width="2"/>
+<text x="1990" y="1540" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="700">ДЕТАЛИ И ПОДКЛЮЧЕНИЕ</text>
+<text x="1990" y="1595" font-family="DejaVu Sans,sans-serif" font-size="26" fill="#172535" font-weight="400">U1: MCP6002-I/SN, SOIC-8. R1–R7: 1%.</text>
+<text x="1990" y="1645" font-family="DejaVu Sans,sans-serif" font-size="26" fill="#172535" font-weight="400">R1 = R3; R4 = R2∥R7 = 150 кОм.</text>
+<text x="1990" y="1695" font-family="DejaVu Sans,sans-serif" font-size="26" fill="#172535" font-weight="400">Подбор отношений до 0,1% уменьшает</text>
+<text x="1990" y="1735" font-family="DejaVu Sans,sans-serif" font-size="26" fill="#172535" font-weight="400">влияние общего напряжения A/B.</text>
+<text x="1990" y="1785" font-family="DejaVu Sans,sans-serif" font-size="26" fill="#172535" font-weight="400">C1/C5: 10 нФ, одинаковые; C2/C3: 100 нФ.</text>
+<text x="1990" y="1825" font-family="DejaVu Sans,sans-serif" font-size="26" fill="#172535" font-weight="400">C4: 1 мкФ. R8/R9: 1–5%, 0,25 Вт.</text>
+<text x="1990" y="1865" font-family="DejaVu Sans,sans-serif" font-size="26" fill="#172535" font-weight="400">Керамика X7R ≥16 В; C3 у выводов U1.</text>
+<polyline points="70,2020 2930,2020" fill="none" stroke="#b4c8d7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="70" y="2063" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="400">G — земля CNTL-UNIT, не провод B датчика. Не добавлять связь G с силовым минусом N ради скорости.</text>
+<text x="70" y="2100" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#526779" font-weight="400">G-800SA • Штатные кнопки, реле реверса, концевики и кабель ротатора сохраняются.</text>
+</svg>

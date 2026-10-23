@@ -311,6 +311,6 @@
 <text x="70" y="2009.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#51627a">* VD не стабилизирован: при делителе 1,2/1 кОм около 4,55 В без нагрузки. Проверить относительно pin 5. SPEED — для передних кнопок.</text>
 <text x="52" y="2075.5" font-family="DejaVu Sans,sans-serif" font-size="20" font-weight="normal" fill="#51627a">Выход 0–5 В номинальный: крайние уровни зависят от питания, нагрузки и размаха ОУ. Измерить перед подключением.</text>
 <text x="52" y="2113.0" font-family="DejaVu Sans,sans-serif" font-size="19" font-weight="normal" fill="#51627a">ADC S2/S3: 5 В → 2,04 В; при 5,5 В и допусках резисторов 1% не более 2,275 В. Повторить калибровку.</text>
-<text x="52" y="2150.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#51627a">Номера EXT CONTROL не обозначают вид со стороны пайки. Точка = соединение. Схема пока не проверена на оборудовании.</text>
+<text x="52" y="2150.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="normal" fill="#51627a">Номера EXT CONTROL не обозначают вид со стороны пайки. Точка = соединение. </text>
 <text x="52" y="2188.0" font-family="DejaVu Sans,sans-serif" font-size="18" font-weight="bold" fill="#087f71">Лучше подобрать под МК: S2 — R3 6,8 кОм / R11 4,7 кОм; S3 — R3 4,7 кОм / R11 5,1 кОм. Оба 1%; вход ≤5,5 В.</text>
 </svg>

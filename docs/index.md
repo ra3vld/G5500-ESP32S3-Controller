@@ -27,7 +27,7 @@
 ## Подключение приводов и схемы
 
 - [Выбор силового интерфейса](hardware/index.md).
-- [G-5500](hardware/g5500/index.md), [G-800DXA](hardware/g800dxa/index.md).
+- [G-5500](hardware/g5500/index.md), [G-800DXA](hardware/g800dxa/index.md), [G-800SA и переделка скорости](hardware/g800sa/index.md).
 - [BTS7960 / IBT-2](hardware/bts7960/index.md), [отдельные направления и PWM](hardware/separate-pwm.md).
 - [Входы датчиков ADC](hardware/adc-input.md), [изоляция обратной связи Yaesu](hardware/yaesu-feedback-isolation.md).
 

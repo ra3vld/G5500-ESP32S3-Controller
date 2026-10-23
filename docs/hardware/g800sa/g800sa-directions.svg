@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3000" height="2121" viewBox="0 0 3000 2121">
+<rect width="100%" height="100%" fill="white"/>
+<text x="70" y="80" font-family="DejaVu Sans,sans-serif" font-size="46" fill="#172535" font-weight="700">G-800SA: команды RIGHT / LEFT и подключение ESP32</text>
+<text x="70" y="132" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="400">Два сухих нормально разомкнутых контакта подключаются параллельно штатным кнопкам.</text>
+<text x="2820" y="80" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="400">3/3</text>
+<rect x="70" y="165" width="2860" height="90" rx="10" fill="#edf5ff" stroke="#9bbbe0" stroke-width="2"/>
+<text x="95" y="204" font-family="DejaVu Sans,sans-serif" font-size="30" fill="#172535" font-weight="700">K1/K2: реле 5 В с контактом COM/NO. Q1/Q2: BC337-40. На GPIO подаётся только логика 3,3 В.</text>
+<text x="95" y="240" font-family="DejaVu Sans,sans-serif" font-size="27" fill="#172535" font-weight="400">Не подавать напряжение из ESP32 на контакты S2/S3. Используются только изолированные контакты реле.</text>
+<rect x="70" y="320" width="1360" height="1120" rx="10" fill="#f2f6fa" stroke="#bfd0df" stroke-width="2"/>
+<text x="100" y="375" font-family="DejaVu Sans,sans-serif" font-size="34" fill="#172535" font-weight="700">Канал K1 • RIGHT / CW</text>
+<circle cx="110" cy="720" r="8" fill="white" stroke="#2164b7" stroke-width="3"/>
+<text x="127" y="706" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#2164b7" font-weight="700">GPIO16</text>
+<polyline points="110,720 380,720" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="380,720 405,720" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="405" y="706" width="100" height="28" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="505,720 530,720" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="395" y="660" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">R10</text>
+<text x="395" y="693" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">330 Ом</text>
+<polyline points="530,720 640,720" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="640" cy="720" r="6" fill="#172535"/>
+<polyline points="640,820 640,845" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="626" y="845" width="28" height="90" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="640,935 640,960" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="670" y="877" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">R11</text>
+<text x="670" y="911" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">10 кОм</text>
+<polyline points="640,720 640,820" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="640,960 640,975" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="618,975 662,975" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="626,984 654,984" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="634,993 646,993" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="595" y="1026" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#526779" font-weight="400">GND_ESP</text>
+<polyline points="640,680 640,760" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="640,695 750,635 750,530" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="640,745 750,810 750,960" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="750,960 750,975" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="728,975 772,975" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="736,984 764,984" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="744,993 756,993" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="705" y="1026" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#526779" font-weight="400">GND_ESP</text>
+<polyline points="720,768 750,810 702,798" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="615" y="666" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">B</text>
+<text x="766" y="805" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">E</text>
+<text x="766" y="620" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">C</text>
+<text x="920" y="860" font-family="DejaVu Sans,sans-serif" font-size="27" fill="#172535" font-weight="700">Q1 BC337-40</text>
+<rect x="720" y="430" width="60" height="100" fill="white" stroke="#172535" stroke-width="3"/>
+<text x="800" y="485" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">K1 • катушка 5 В</text>
+<polyline points="750,430 750,400" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="680" y="395" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#ba3833" font-weight="700">+5V_ESP</text>
+<polyline points="750,420 1090,420 1090,455" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="750" cy="420" r="6" fill="#172535"/>
+<polyline points="1068,455 1112,455" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1090,455 1068,500 1112,500 1090,455" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1090,500 1090,550 750,550" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="750" cy="550" r="6" fill="#172535"/>
+<text x="1125" y="465" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#172535" font-weight="400">K</text>
+<text x="1125" y="515" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#172535" font-weight="400">A</text>
+<text x="1070" y="610" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">D1 1N4007</text>
+<text x="105" y="1100" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="700">K1.1 • только COM и NO</text>
+<circle cx="410" cy="1210" r="8" fill="white" stroke="#172535" stroke-width="3"/>
+<circle cx="720" cy="1210" r="8" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="410,1210 660,1160" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="720,1210 1220,1210" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="410,1210 150,1210" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="140" y="1270" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="700">S2A</text>
+<text x="1120" y="1270" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="700">S2B</text>
+<text x="105" y="1350" font-family="DejaVu Sans,sans-serif" font-size="27" fill="#172535" font-weight="400">S2A–S2B: пара, замыкающаяся при RIGHT.</text>
+<text x="105" y="1400" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">Штатный переключатель и его остальные соединения сохранить.</text>
+<rect x="1500" y="320" width="1360" height="1120" rx="10" fill="#f2f6fa" stroke="#bfd0df" stroke-width="2"/>
+<text x="1530" y="375" font-family="DejaVu Sans,sans-serif" font-size="34" fill="#172535" font-weight="700">Канал K2 • LEFT / CCW</text>
+<circle cx="1540" cy="720" r="8" fill="white" stroke="#2164b7" stroke-width="3"/>
+<text x="1557" y="706" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#2164b7" font-weight="700">GPIO15</text>
+<polyline points="1540,720 1810,720" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1810,720 1835,720" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1835" y="706" width="100" height="28" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="1935,720 1960,720" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1825" y="660" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">R12</text>
+<text x="1825" y="693" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">330 Ом</text>
+<polyline points="1960,720 2070,720" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="2070" cy="720" r="6" fill="#172535"/>
+<polyline points="2070,820 2070,845" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="2056" y="845" width="28" height="90" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="2070,935 2070,960" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="2100" y="877" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">R13</text>
+<text x="2100" y="911" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">10 кОм</text>
+<polyline points="2070,720 2070,820" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2070,960 2070,975" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2048,975 2092,975" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2056,984 2084,984" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2064,993 2076,993" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="2025" y="1026" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#526779" font-weight="400">GND_ESP</text>
+<polyline points="2070,680 2070,760" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2070,695 2180,635 2180,530" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2070,745 2180,810 2180,960" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2180,960 2180,975" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2158,975 2202,975" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2166,984 2194,984" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2174,993 2186,993" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="2135" y="1026" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#526779" font-weight="400">GND_ESP</text>
+<polyline points="2150,768 2180,810 2132,798" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="2045" y="666" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">B</text>
+<text x="2196" y="805" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">E</text>
+<text x="2196" y="620" font-family="DejaVu Sans,sans-serif" font-size="23" fill="#172535" font-weight="400">C</text>
+<text x="2350" y="860" font-family="DejaVu Sans,sans-serif" font-size="27" fill="#172535" font-weight="700">Q2 BC337-40</text>
+<rect x="2150" y="430" width="60" height="100" fill="white" stroke="#172535" stroke-width="3"/>
+<text x="2230" y="485" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="700">K2 • катушка 5 В</text>
+<polyline points="2180,430 2180,400" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="2110" y="395" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#ba3833" font-weight="700">+5V_ESP</text>
+<polyline points="2180,420 2520,420 2520,455" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="2180" cy="420" r="6" fill="#172535"/>
+<polyline points="2498,455 2542,455" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2520,455 2498,500 2542,500 2520,455" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2520,500 2520,550 2180,550" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="2180" cy="550" r="6" fill="#172535"/>
+<text x="2555" y="465" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#172535" font-weight="400">K</text>
+<text x="2555" y="515" font-family="DejaVu Sans,sans-serif" font-size="22" fill="#172535" font-weight="400">A</text>
+<text x="2500" y="610" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">D2 1N4007</text>
+<text x="1535" y="1100" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="700">K2.1 • только COM и NO</text>
+<circle cx="1840" cy="1210" r="8" fill="white" stroke="#172535" stroke-width="3"/>
+<circle cx="2150" cy="1210" r="8" fill="white" stroke="#172535" stroke-width="3"/>
+<polyline points="1840,1210 2090,1160" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="2150,1210 2650,1210" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1840,1210 1580,1210" fill="none" stroke="#172535" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1570" y="1270" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="700">S3A</text>
+<text x="2550" y="1270" font-family="DejaVu Sans,sans-serif" font-size="29" fill="#172535" font-weight="700">S3B</text>
+<text x="1535" y="1350" font-family="DejaVu Sans,sans-serif" font-size="27" fill="#172535" font-weight="400">S3A–S3B: пара, замыкающаяся при LEFT.</text>
+<text x="1535" y="1400" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#172535" font-weight="400">Штатный переключатель и его остальные соединения сохранить.</text>
+<rect x="70" y="1500" width="2860" height="430" rx="10" fill="#f2f6fa" stroke="#bfd0df" stroke-width="2"/>
+<text x="100" y="1555" font-family="DejaVu Sans,sans-serif" font-size="34" fill="#172535" font-weight="700">Подключение к нашему контроллеру • начальные GPIO</text>
+<text x="100" y="1615" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="700">Сигнал</text>
+<text x="1100" y="1615" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="700">ESP32-S3</text>
+<text x="1580" y="1615" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="700">S2 Mini</text>
+<text x="2170" y="1615" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="700">ESP32 WROOM/WROVER</text>
+<text x="100" y="1670" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">LEFT / CCW → Q2</text>
+<text x="1100" y="1670" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">15</text>
+<text x="1580" y="1670" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">34</text>
+<text x="2170" y="1670" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">25</text>
+<text x="100" y="1725" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">RIGHT / CW → Q1</text>
+<text x="1100" y="1725" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">16</text>
+<text x="1580" y="1725" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">16</text>
+<text x="2170" y="1725" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">26</text>
+<text x="100" y="1780" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">PWM → U8 ADuM1201</text>
+<text x="1100" y="1780" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">21</text>
+<text x="1580" y="1780" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">21</text>
+<text x="2170" y="1780" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">32</text>
+<text x="100" y="1835" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">AZ ← U1B MCP6002</text>
+<text x="1100" y="1835" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">4</text>
+<text x="1580" y="1835" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">4</text>
+<text x="2170" y="1835" font-family="DejaVu Sans,sans-serif" font-size="28" fill="#172535" font-weight="400">34</text>
+<text x="100" y="1895" font-family="DejaVu Sans,sans-serif" font-size="26" fill="#172535" font-weight="400">Модель G-800DXA (одна AZ), привод YAESU, физический режим; EL не подключать. Без скорости: флажок 0–5 В выключен.</text>
+<polyline points="70,2020 2930,2020" fill="none" stroke="#b4c8d7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="70" y="2063" font-family="DejaVu Sans,sans-serif" font-size="25" fill="#172535" font-weight="400">Для K1/K2 подходят SRD-05VDC-SL-C; используйте распиновку своего реле. NC свободен. Питание ESP/катушек: стабилизированные 5 В.</text>
+<text x="70" y="2100" font-family="DejaVu Sans,sans-serif" font-size="24" fill="#526779" font-weight="400">G-800SA • Штатные кнопки, реле реверса, концевики и кабель ротатора сохраняются.</text>
+</svg>
