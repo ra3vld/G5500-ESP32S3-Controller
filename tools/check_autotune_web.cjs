@@ -95,7 +95,7 @@ vm.runInContext(script.slice(script.indexOf('function motionFaultText('),script.
  }
  state.pendingValid=false;state.presetActive=false;
  state.controlMode='manual';node('azMotionForm').dataset.dirty='1';await vm.runInContext("autoTuneAction('start','az')",context);assert.match(feedback.at(-1),/Сначала сохраните/);
- assert.match(source,/«В середину» — переведет в ручной режим/);assert.match(source,/Запуск автотюна переведет в ручной режим/);
+ assert.match(source,/Кнопка переводит контроллер в ручной режим и поворачивает ось в середину диапазона/);assert.match(source,/Запуск автотюна переведет в ручной режим/);
  assert.match(source,/type="button" id="\$\{axis\}TuneStart"/);
  state.controlMode='manual';delete node('azMotionForm').dataset.dirty;delete state.axes[0].measuredVelocity;vm.runInContext('renderAutoTune(window._forkState)',context);assert.equal(node('azTuneVelocity').textContent,'—');
  state.moving=true;vm.runInContext('renderAutoTune(window._forkState)',context);assert(!node('azTuneCenter').disabled);assert(node('azTuneStart').disabled);assert(!node('azTuneStop').disabled);
