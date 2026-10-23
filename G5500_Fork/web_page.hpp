@@ -636,7 +636,7 @@ function queueLiveRender(){if(!liveFrame)liveFrame=requestAnimationFrame(renderL
 function connectLive(port){
  if(port!==0)connectControlLive(port);
  if(port===0||live.socket||live.retry||window.G5500_HTTP_ONLY)return;
- const socket=new WebSocket('ws://'+location.hostname+':'+(port||81)+'/api/live');live.socket=socket;live.last=Date.now();
+ const socket=new WebSocket('ws://'+location.hostname+':'+(port||81)+'/api/live');live.socket=socket;live.last=Date.now();live.probeAt=0;
  socket.onmessage=event=>{
   if(live.socket!==socket)return;
   let message;try{message=JSON.parse(event.data)}catch(e){socket.close();return}
@@ -712,7 +712,17 @@ function sendLive(path,body,timeoutMs=liveTimeoutMs,channel=live){
   try{channel.socket.send(packet)}catch(e){clearTimeout(timer);channel.pending.delete(id);reject(e)}
  });
 }
-setInterval(()=>{if(live.socket&&Date.now()-live.last>liveTimeoutMs)disconnectLive(live.socket,window._forkState?.livePort);if(controlLive.socket&&Date.now()-controlLive.last>liveTimeoutMs)disconnectControlLive(controlLive.socket,window._forkState?.livePort);updateConnection()},250);
+setInterval(()=>{
+ const now=Date.now(),socket=live.socket;
+ // A small bidirectional exchange refreshes TCP ACKs on a lossy link. Keep
+ // state freshness tied to real telemetry; a PONG never masks stale data.
+ if(httpState?.liveHeartbeat&&socket?.readyState===WebSocket.OPEN&&now-live.last>=400&&now-(live.probeAt||0)>=250&&!socket.bufferedAmount){
+  try{socket.send('v=1&ping=1');live.probeAt=now}catch(e){socket.close()}
+ }
+ if(live.socket&&now-live.last>liveTimeoutMs)disconnectLive(live.socket,window._forkState?.livePort);
+ if(controlLive.socket&&now-controlLive.last>liveTimeoutMs)disconnectControlLive(controlLive.socket,window._forkState?.livePort);
+ updateConnection();
+},250);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){queueLiveRender();upd(true)}});
 async function forkPost(path,body){
  const success={'/api/settings':'Настройки сохранены','/api/preset':'Предустановка сохранена','/api/device':'Настройки устройства сохранены','/api/hud/select':'Поворотка выбрана','/api/hud/peers':body.action==='remove'?'Поворотка удалена':body.name?'Имя поворотки сохранено':'Поворотка добавлена','/api/hud/discover':'Поиск устройств запущен'}[path];

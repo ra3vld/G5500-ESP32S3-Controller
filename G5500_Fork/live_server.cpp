@@ -3,6 +3,7 @@
 #if defined(ARDUINO_ARCH_ESP32) && WEB_INTERFACE_ENABLED
 #include "heap_metrics.hpp"
 #include "bounded_socket_write.hpp"
+#include <tcp_peer.hpp>
 #include <esp_timer.h>
 #include <freertos/task.h>
 #include <lwip/sockets.h>
@@ -118,7 +119,10 @@ esp_err_t LiveServer::handler(httpd_req_t *req) {
   const bool control=frame.type==HTTPD_WS_TYPE_PING||frame.type==HTTPD_WS_TYPE_PONG||frame.type==HTTPD_WS_TYPE_CLOSE;
   if((frame.type!=HTTPD_WS_TYPE_TEXT&&!control)||frame.len>(control?125:LIVE_INPUT_CAPACITY)||!frame.final)return ESP_FAIL;
   Message input;frame.payload=reinterpret_cast<uint8_t *>(input.data);
-  if(httpd_ws_recv_frame(req,&frame,LIVE_INPUT_CAPACITY)!=ESP_OK)return ESP_FAIL;
+  // IDF uses len==0 to parse a new frame header. An empty control frame is
+  // already complete after the first read; a second read consumes the next
+  // frame (or waits for it and disconnects a healthy peer).
+  if(frame.len&&httpd_ws_recv_frame(req,&frame,LIVE_INPUT_CAPACITY)!=ESP_OK)return ESP_FAIL;
   if(control) {
     if(frame.type==HTTPD_WS_TYPE_PONG)return ESP_OK;
     if(frame.type==HTTPD_WS_TYPE_CLOSE) {
@@ -134,6 +138,14 @@ esp_err_t LiveServer::handler(httpd_req_t *req) {
     return ESP_FAIL;
   }
   input.size=frame.len;
+  if(std::string_view(input.data,input.size)=="v=1&ping=1") {
+    Guard lock(self.mutex_);
+    for(auto &c:*self.clients_)if(c.fd==fd&&!c.closing) {
+      if(!c.buffers->pongPending)c.buffers->pongSize=0;
+      c.buffers->pongPending=true;return ESP_OK;
+    }
+    return ESP_FAIL;
+  }
   // Select before the first command, without needing a boot ID from a large
   // telemetry frame. IDF can finish the upgrade without calling our GET handler.
   if(std::string_view(input.data,input.size)=="v=1&control=1") {
@@ -288,7 +300,8 @@ void LiveServer::publish(uint32_t now) {
   }
   bool queue=false;
   {Guard lock(mutex_);
-    bool needed=false;for(const auto &c:*clients_)needed|=c.fd>=0&&(c.closing||c.buffers->outgoing.active()||c.buffers->pongPending||c.buffers->count||c.buffers->cancelledFrom||c.revision!=revision_);
+    bool needed=false;for(const auto &c:*clients_)needed|=c.fd>=0&&(c.closing||c.buffers->outgoing.active()||c.buffers->pongPending||c.buffers->count||c.buffers->cancelledFrom||
+        (c.revision!=revision_&&(!c.ackWaiting||uint32_t(now-c.ackCheckedAt)>=20)));
     if(needed&&!workPending_&&uint32_t(now-wakeAt_)>=5){workPending_=true;wakeAt_=now;queue=true;}
   }
   if(queue&&httpd_queue_work(server_,sendWork,this)!=ESP_OK){Guard lock(mutex_);workPending_=false;++queueErrors_;}
@@ -297,9 +310,13 @@ void LiveServer::writeDiagnostics(JsonWriter &j) {
   if(!server_)return;
   Guard lock(mutex_);unsigned clients=0;
   for(const auto &c:*clients_)clients+=c.fd>=0;
-  j<<",\"liveControlChannel\":true,\"liveClients\":"<<clients<<",\"liveRevision\":"<<revision_<<",\"liveStateBytes\":"<<stateSize_
+  j<<",\"liveControlChannel\":true,\"liveHeartbeat\":true,\"liveClients\":"<<clients<<",\"liveRevision\":"<<revision_<<",\"liveStateBytes\":"<<stateSize_
    <<",\"liveWorkRuns\":"<<workRuns_<<",\"liveFrames\":"<<framesSent_
    <<",\"liveSendDeferred\":"<<sendDeferred_<<",\"liveQueueErrors\":"<<queueErrors_<<",\"liveSendErrors\":"<<sendErrors_
+   <<",\"liveMemoryDeferred\":"<<memoryDeferred_<<",\"liveSocketDeferred\":"<<socketDeferred_
+   <<",\"liveAckDeferred\":"<<ackDeferred_
+   <<",\"liveAckTimeouts\":"<<ackTimeouts_
+   <<",\"liveSendMemoryRetries\":"<<sendMemoryRetries_
    <<",\"liveSendTimeouts\":"<<sendTimeouts_<<",\"liveSendErrno\":"<<sendErrno_
    <<",\"liveSendRetryErrno\":"<<sendRetryErrno_<<",\"liveSendRetryErrors\":"<<sendRetryErrors_
    <<",\"liveSendWritten\":"<<sendWritten_<<",\"liveSendRequested\":"<<sendRequested_
@@ -309,14 +326,24 @@ void LiveServer::sendWork(void *context) {
   auto &self=*static_cast<LiveServer *>(context);
   {Guard lock(self.mutex_);++self.workRuns_;}
   for(auto &client:*self.clients_) {
-    int fd;bool close=false;
+    int fd;bool close=false,checkSpace=false;
     // Only HTTPD closes/replaces client buffers. Runtime only queues commands
     // and results under the mutex; the outgoing frame remains HTTPD-owned.
     {Guard lock(self.mutex_);fd=client.fd;if(fd<0)continue;
       if(httpd_ws_get_fd_info(self.server_,fd)!=HTTPD_WS_CLIENT_WEBSOCKET)continue;
+      const auto &b=*client.buffers;
+      checkSpace=!client.closing&&!client.controlOnly&&!b.outgoing.active()&&!b.pongPending&&!b.cancelledFrom&&!b.count;
+    }
+    // Never take lwIP's core lock while holding the controller/HTTPD mutex.
+    const size_t capacity=checkSpace?tcpPeerFrameCapacity(fd):size_t(-1);
+    {Guard lock(self.mutex_);
+      // The loop can publish a larger revision while the TCP snapshot is read.
+      // Compare its current size here, rather than admitting an older length.
+      const bool waitingSpace=checkSpace&&client.revision!=self.revision_&&self.stateSize_&&
+          capacity<self.stateSize_+(self.stateSize_<126?2:4);
       close=client.closing&&!client.buffers->stop.size;
       auto &b=*client.buffers;auto &out=b.outgoing;
-      if(!close&&!out.active()) {
+      if(!close&&!client.closing&&!out.active()) {
         size_t n=0;uint8_t opcode=HTTPD_WS_TYPE_TEXT;char *data=out.payload();
         if(b.pongPending){n=b.pongSize;std::memcpy(data,b.pong,n);b.pongPending=false;opcode=HTTPD_WS_TYPE_PONG;}
         else if(b.cancelledFrom){
@@ -325,31 +352,47 @@ void LiveServer::sendWork(void *context) {
           b.cancelledFrom=b.cancelledThrough=0;
         }
         else if(b.count){auto &r=b.replies[b.head];n=r.size;std::memcpy(data,r.data,n);b.head=(b.head+1)%4;--b.count;}
-        else if(client.revision!=self.revision_&&self.stateSize_){
+        else if(client.revision!=self.revision_&&self.stateSize_&&!waitingSpace){
           if(client.controlOnly) {
             const int size=std::snprintf(data,LIVE_STATE_CAPACITY,"{\"v\":1,\"type\":\"control\",\"boot\":\"%s\",\"selection\":%lu}",self.boot_,(unsigned long)self.selection_);
             if(size>0&&size_t(size)<LIVE_STATE_CAPACITY)n=size_t(size);
           } else {n=self.stateSize_;std::memcpy(data,self.state_->data(),n);}
           client.revision=self.revision_;
+          client.ackWaiting=false;
         }
-        if(n||opcode==HTTPD_WS_TYPE_PONG)out.begin(n,opcode,uint32_t(esp_timer_get_time()/1000));
+        else if(waitingSpace){
+          const auto now=uint32_t(esp_timer_get_time()/1000);
+          if(!client.ackWaiting)client.ackStartedAt=now;
+          client.ackWaiting=true;client.ackCheckedAt=now;++self.ackDeferred_;
+          if(uint32_t(now-client.ackStartedAt)>=LiveFrameTimeoutMs){
+            ++self.ackTimeouts_;++self.sendErrors_;++self.sendTimeouts_;
+            self.sendErrno_=self.sendRetryErrno_=ETIMEDOUT;self.sendElapsedMs_=uint32_t(now-client.ackStartedAt);
+            self.sendWritten_=self.sendRequested_=self.sendRetryErrors_=self.sendMemoryRetries_=0;
+            client.closing=true;close=!b.stop.size;
+          }
+        }
+        if(n||opcode==HTTPD_WS_TYPE_PONG){out.begin(n,opcode,uint32_t(esp_timer_get_time()/1000));b.memoryWaits=0;}
       }
     }
     auto &out=client.buffers->outgoing;
     if(!close&&out.active()) {
       const uint32_t now=uint32_t(esp_timer_get_time()/1000);const auto retries=out.retries;
-      const auto step=out.pump(now,[=](const char *data,size_t size)->int{
-        if(size>256&&!networkBulkTxReady()){errno=EAGAIN;return -1;}
+      bool memoryWait=false;
+      const auto step=out.pump(now,[=,&memoryWait](const char *data,size_t size)->int{
+        if(size>256&&!networkBulkTxReady()){memoryWait=true;errno=EAGAIN;return -1;}
         return ::send(fd,data,size,MSG_DONTWAIT);
       });
       const int error=errno;
       {Guard lock(self.mutex_);
         self.sendDeferred_+=out.retries-retries;
+        if(memoryWait){++self.memoryDeferred_;++client.buffers->memoryWaits;}
+        else self.socketDeferred_+=out.retries-retries;
         if(step==LiveFrame<LIVE_STATE_CAPACITY>::Step::Complete){++self.framesSent_;out.clear();}
         else if(step==LiveFrame<LIVE_STATE_CAPACITY>::Step::Failed){
           ++self.sendErrors_;self.sendErrno_=error;self.sendRetryErrno_=out.retryError;
           self.sendRetryErrors_=out.retries;self.sendElapsedMs_=now-out.started;
           self.sendWritten_=out.written();self.sendRequested_=out.requested();
+          self.sendMemoryRetries_=client.buffers->memoryWaits;
           if(error==ETIMEDOUT)++self.sendTimeouts_;
           close=true;
         }

@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
+#include <tcp_peer.hpp>
 static size_t allocationCalls=0, releasedCalls=0, allocatedBytes=0;
 void *operator new(size_t size) {
   if(void *p=std::malloc(size?size:1)){++allocationCalls;allocatedBytes+=size;return p;}
@@ -67,12 +68,16 @@ int main(){
    const auto sent=fakeServer.sent.size();
    runtime.controller.axes[0].target+=1;
    fakeHeapFree=fragmented?65536:32767;fakeHeapBlock=fragmented?12287:32768;
-   server.publish(fragmented?20:15);pumpLive();
+   server.publish(fragmented?25:15);pumpLive();
    assert(fakeServer.sent.size()==sent);
    fakeHeapFree=65536;fakeHeapBlock=32768;
-   server.publish(fragmented?25:20);pumpLive();
+   server.publish(fragmented?30:20);pumpLive();
    assert(fakeServer.sent.size()>sent);
  }
+ char pressureText[2048];JsonWriter pressure(pressureText,sizeof pressureText);server.writeDiagnostics(pressure);
+ const std::string pressureDetails(pressure.data(),pressure.size());
+ assert(pressureDetails.find("\"liveMemoryDeferred\":8")!=std::string::npos);
+ assert(pressureDetails.find("\"liveSocketDeferred\":0")!=std::string::npos);
  // Exercise the production send override with real short writes and a reader
  // paused longer than the previous 5 ms timeout. No radio or motors are used.
  assert(fakeSendOverride);
@@ -307,7 +312,71 @@ int main(){
  for(unsigned t=32005;t<=32020;t+=5){fakeEspTimeUs=int64_t(t)*1000;server.publish(t);pumpLive();}
  std::vector<std::string> switched;for(const auto &m:fakeServer.sent)if(m.first==1000)switched.push_back(m.second);
  assert(switched.size()==2&&switched[0].find("\"type\":\"state\"")!=std::string::npos&&switched[1].find("\"type\":\"control\"")!=std::string::npos);
+ // TCP cannot accept the next complete frame until ACKs release space.
+ // Hold one full peer while another receives updates; snapshots coalesce.
+ for(int fd=1000;fd<1004;++fd)if(fakeServer.websocketFds.count(fd))httpd_sess_trigger_close(&fakeServer,fd);
+ fakeServer.sent.clear();fakeServer.maxWrite=SIZE_MAX;
+ assert(connect(1000)==ESP_OK&&connect(1001)==ESP_OK);
+ auto publishAt=[&](unsigned t){fakeEspTimeUs=int64_t(t)*1000;server.publish(t);pumpLive();};
+ publishAt(40000);fakeServer.sent.clear();fakeTcpPending.insert(1000);
+ for(unsigned t=40200;t<=41400;t+=200){c.axes[0].current=float(t-40000)/100;publishAt(t);}
+ unsigned healthy=0;for(const auto &m:fakeServer.sent){assert(m.first!=1000);if(m.first==1001)++healthy;}assert(healthy==7);
+ // Even on the telemetry socket, PONG and STOP results bypass ACK pacing.
+ httpd_req_t ackPing{fakeServer.uri.user_ctx,HTTP_POST,1000,"ack-probe",HTTPD_WS_TYPE_PING};assert(fakeServer.uri.handler(&ackPing)==ESP_OK);
+ assert(command(1000,packet(1,"/api/move","&d=S"))==ESP_OK);
+ server.commands(41405);assert(!c.moving());publishAt(41405);publishAt(41410);
+ bool ackPong=false,ackStop=false;
+ for(const auto &m:fakeServer.sent)if(m.first==1000){
+   ackPong|=m.second=="ack-probe";ackStop|=m.second.find("\"type\":\"result\"")!=std::string::npos;
+   assert(m.second.find("\"type\":\"state\"")==std::string::npos);
+ }assert(ackPong&&ackStop);
+ // Empty RFC control frames must not read another header. A browser's text
+ // probe queues a coalesced PONG without executing or acknowledging commands.
+ httpd_req_t emptyPing{fakeServer.uri.user_ctx,HTTP_POST,1000,"",HTTPD_WS_TYPE_PING};
+ assert(fakeServer.uri.handler(&emptyPing)==ESP_OK&&emptyPing.receiveCalls==1);publishAt(41415);
+ assert(fakeServer.sent.back().first==1000&&fakeServer.sent.back().second.empty()&&fakeServer.opcodes.back().second==HTTPD_WS_TYPE_PONG);
+ httpd_req_t emptyPong{fakeServer.uri.user_ctx,HTTP_POST,1000,"",HTTPD_WS_TYPE_PONG};
+ assert(fakeServer.uri.handler(&emptyPong)==ESP_OK&&emptyPong.receiveCalls==1);
+ const auto targetBeforeProbe=c.axes[0].target;
+ assert(command(1000,"v=1&ping=1")==ESP_OK&&command(1000,"v=1&ping=1")==ESP_OK);publishAt(41420);
+ assert(fakeServer.sent.back().first==1000&&fakeServer.sent.back().second.empty()&&fakeServer.opcodes.back().second==HTTPD_WS_TYPE_PONG);
+ assert(c.axes[0].target==targetBeforeProbe&&!c.moving());
+ fakeServer.sent.clear();fakeTcpPending.clear();c.axes[0].current=42;publishAt(41650);
+ unsigned latest=0;for(const auto &m:fakeServer.sent)if(m.first==1000){++latest;assert(m.second.find("\"az\":42")!=std::string::npos);}assert(latest==1);
+ // ACK pacing applies only between frames. A partial frame must finish even
+ // if TCP retains the first fragment, preserving the WebSocket boundary.
+ httpd_sess_trigger_close(&fakeServer,1000);assert(connect(1000)==ESP_OK);
+ fakeServer.maxWrite=7;publishAt(42000);assert(fakeServer.pendingWire[1000].size()==7);
+ fakeTcpPending.insert(1000);fakeServer.maxWrite=SIZE_MAX;fakeServer.sent.clear();publishAt(42005);
+ bool completed=false;for(const auto &m:fakeServer.sent)completed|=m.first==1000&&m.second.find("\"type\":\"state\"")!=std::string::npos;assert(completed);
+ // A permanently unacknowledged peer expires independently. STOP received
+ // at its deadline still executes before that connection is discarded.
+ c.axes[0].target+=1;publishAt(42200);publishAt(47180);assert(fakeServer.websocketFds.count(1000));
+ assert(command(1000,packet(1,"/api/move","&d=S"))==ESP_OK);
+ publishAt(47200);assert(fakeServer.websocketFds.count(1000));
+ const auto beforePendingStop=fakeServer.sent.size();publishAt(47205);
+ assert(fakeServer.websocketFds.count(1000));
+ for(size_t i=beforePendingStop;i<fakeServer.sent.size();++i)assert(fakeServer.sent[i].first!=1000);
+ server.commands(47206);assert(!c.moving());publishAt(47210);
+ assert(!fakeServer.websocketFds.count(1000)&&fakeServer.websocketFds.count(1001));
+ char ackText[2048];JsonWriter ackDiagnostic(ackText,sizeof ackText);server.writeDiagnostics(ackDiagnostic);
+ assert(std::string(ackDiagnostic.data(),ackDiagnostic.size()).find("\"liveAckTimeouts\":1")!=std::string::npos);
+ fakeTcpPending.clear();assert(connect(1000)==ESP_OK);fakeServer.sent.clear();publishAt(47215);
+ bool fresh=false;for(const auto &m:fakeServer.sent)fresh|=m.first==1000&&m.second.find("\"type\":\"state\"")!=std::string::npos;assert(fresh);
+ // A loop publication can grow the frame while HTTPD snapshots TCP outside
+ // the application mutex. Admission must use the current frame's size.
+ for(int fd=1000;fd<1004;++fd)if(fakeServer.websocketFds.count(fd))httpd_sess_trigger_close(&fakeServer,fd);
+ assert(connect(1000)==ESP_OK);publishAt(50000);
+ const auto oldFrameBytes=fakeServer.sent.back().second.size()+4;
+ httpd_sess_trigger_close(&fakeServer,1000);assert(connect(1000)==ESP_OK);fakeServer.sent.clear();
+ fakeTcpCapacity=oldFrameBytes;
+ fakeTcpCapacityHook=[&]{c.fault="longer fault text published while TCP capacity is being read";fakeEspTimeUs=50200000;server.publish(50200);};
+ publishAt(50005);assert(fakeServer.sent.empty());
+ fakeTcpCapacity=size_t(-1);publishAt(50220);
+ assert(fakeServer.sent.size()==1&&fakeServer.sent[0].second.find("longer fault text")!=std::string::npos);
+ c.fault="";
  fakeEspTimeUs=-1;
+ std::cout<<"PASS: TCP ACK pacing coalesces snapshots, preserves peers/STOP/PONG and partial frames, expires stalled peers and resets on reconnect\n";
  std::cout<<"PASS: separate compact manual stream, lease renewal/STOP ACKs across 1.5s telemetry backpressure, context changes and partial upgrade\n";
  std::cout<<"PASS: partial frames resume after 1.5s, independent STOP/peers, PONG and ACK ordering, latest state and bounded stalled-client timeout\n";
  std::cout<<"PASS: actual HTTPD adapter: four clients, loop ownership, STOP priority, duplicate IDs, bounded backpressure, reconnect\n";

@@ -16,7 +16,7 @@ enum httpd_ws_client_info_t {HTTPD_WS_CLIENT_INVALID,HTTPD_WS_CLIENT_HTTP,HTTPD_
 struct httpd_ws_frame_t {bool final=true,fragmented=false;httpd_ws_type_t type=HTTPD_WS_TYPE_TEXT;uint8_t *payload=nullptr;size_t len=0;};
 struct FakeHttpd;
 using httpd_handle_t=FakeHttpd*;
-struct httpd_req_t {void *user_ctx;int method,fd;std::string payload;httpd_ws_type_t type=HTTPD_WS_TYPE_TEXT;bool final=true;};
+struct httpd_req_t {void *user_ctx;int method,fd;std::string payload;httpd_ws_type_t type=HTTPD_WS_TYPE_TEXT;bool final=true;unsigned receiveCalls=0;};
 struct httpd_config_t {int server_port=0,ctrl_port=0,max_open_sockets=0,max_uri_handlers=0,backlog_conn=0,stack_size=0,recv_wait_timeout=0,send_wait_timeout=0;esp_err_t(*open_fn)(httpd_handle_t,int)=nullptr;void(*close_fn)(httpd_handle_t,int)=nullptr;void *global_user_ctx=nullptr;};
 struct httpd_uri_t {const char *uri=nullptr;int method=0;esp_err_t(*handler)(httpd_req_t*)=nullptr;void *user_ctx=nullptr;bool is_websocket=false,handle_ws_control_frames=false;};
 inline httpd_config_t HTTPD_DEFAULT_CONFIG(){return {};}
@@ -30,7 +30,7 @@ inline void *httpd_get_global_user_ctx(httpd_handle_t s){return s->cfg.global_us
 inline esp_err_t httpd_sess_set_send_override(httpd_handle_t,int,int(*fn)(httpd_handle_t,int,const char*,size_t,int)){fakeSendOverride=fn;return ESP_OK;}
 inline int httpd_req_to_sockfd(httpd_req_t *r){return r->fd;}
 inline httpd_ws_client_info_t httpd_ws_get_fd_info(httpd_handle_t s,int fd){return s->websocketFds.count(fd)?HTTPD_WS_CLIENT_WEBSOCKET:HTTPD_WS_CLIENT_HTTP;}
-inline esp_err_t httpd_ws_recv_frame(httpd_req_t *r,httpd_ws_frame_t *f,size_t max){f->type=r->type;f->final=r->final;f->len=r->payload.size();if(max){if(max<f->len)return ESP_FAIL;std::memcpy(f->payload,r->payload.data(),f->len);}return ESP_OK;}
+inline esp_err_t httpd_ws_recv_frame(httpd_req_t *r,httpd_ws_frame_t *f,size_t max){++r->receiveCalls;f->type=r->type;f->final=r->final;f->len=r->payload.size();if(max){if(max<f->len)return ESP_FAIL;std::memcpy(f->payload,r->payload.data(),f->len);}return ESP_OK;}
 inline esp_err_t httpd_queue_work(httpd_handle_t s,void(*fn)(void*),void *p){s->work=fn;s->context=p;return ESP_OK;}
 inline esp_err_t httpd_ws_send_frame_async(httpd_handle_t s,int fd,httpd_ws_frame_t *f){if(fd==s->failedFd)return ESP_FAIL;s->sent.emplace_back(fd,std::string(reinterpret_cast<char*>(f->payload),f->len));return ESP_OK;}
 inline esp_err_t httpd_ws_send_frame(httpd_req_t *r,httpd_ws_frame_t *f){return httpd_ws_send_frame_async(&fakeServer,r->fd,f);}

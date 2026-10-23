@@ -109,9 +109,12 @@ int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
         static_cast<unsigned long>(http_.requests));
   case 4: {
     const auto tcp = tcpMemory();
-    return std::snprintf(reply, capacity, "TCP stats=%s active=%u closing=%u timewait=%u pcbBytes=%u\r\n",
+    return std::snprintf(reply, capacity, "TCP stats=%s active=%u closing=%u timewait=%u pcbBytes=%u livePeers=%u unsent=%lu unacked=%lu buf=%lu wnd=%lu cwnd=%lu retry=%u\r\n",
         tcp.available ? "OK" : "unavailable", unsigned(tcp.active), unsigned(tcp.closing),
-        unsigned(tcp.timewait), unsigned(tcp.pcbBytes));
+        unsigned(tcp.timewait), unsigned(tcp.pcbBytes),unsigned(tcp.livePeers),
+        static_cast<unsigned long>(tcp.liveUnsent),static_cast<unsigned long>(tcp.liveUnacked),
+        static_cast<unsigned long>(tcp.liveBuffer),static_cast<unsigned long>(tcp.liveWindow),
+        static_cast<unsigned long>(tcp.liveCwnd),unsigned(tcp.liveRetries));
   }
   case 5: {
     const auto mode = WiFi.getMode();
