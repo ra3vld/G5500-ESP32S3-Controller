@@ -10,9 +10,9 @@ struct Settings {
   bool encoderInverted = true;
 };
 inline bool commandPortAllowed(unsigned port) {
-  // ArduinoOTA, mDNS and (when enabled) the live HTTPD control socket.
+  // ArduinoOTA, mDNS and the enabled HTTPD control sockets.
   return port && port<=65535 && port!=3232 && port!=5353 &&
-      (!WEB_INTERFACE_ENABLED || port!=32769);
+      (!WEB_INTERFACE_ENABLED || port!=32769) && (!CAMERA_ENABLED || port!=32770);
 }
 struct Response {
   int status = 200;

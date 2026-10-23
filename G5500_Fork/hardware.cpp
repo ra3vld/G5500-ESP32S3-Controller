@@ -335,8 +335,9 @@ void Hardware::beginAdc() {
   const auto &p=runtime_.controller.hardware.pins;
   if (runtime_.hud.isHud() || runtime_.recovery || runtime_.controller.hardware.simulation || board::validateHardware(runtime_.controller.hardware)) return;
   analogReadResolution(12);
-  analogSetPinAttenuation(p.azAdc, ADC_11db); analogRead(p.azAdc);
-  if (board::adc(p.elAdc)) { analogSetPinAttenuation(p.elAdc, ADC_11db); analogRead(p.elAdc); }
+  // Arduino 3.3 configures the ADC channel on its first read, before per-pin attenuation.
+  analogRead(p.azAdc); analogSetPinAttenuation(p.azAdc, ADC_11db);
+  if (board::adc(p.elAdc)) { analogRead(p.elAdc); analogSetPinAttenuation(p.elAdc, ADC_11db); }
 }
 #if CROWPANEL_LOCAL_DRIVE
 void Hardware::crowpanelFault() {

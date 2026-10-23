@@ -116,6 +116,33 @@ class BuildConfigTests(unittest.TestCase):
         self.assertEqual((sketch/'partitions.csv').read_bytes(),(self.source/'partitions_esp32.csv').read_bytes())
         self.assertEqual((sketch/'board_wt32_eth01.hpp').read_bytes(),(self.source/'board_wt32_eth01.hpp').read_bytes())
 
+    def test_waveshare_camera_and_motor_profile(self):
+        self.compile(dict(SELECTED_BOARD=7, FORK_S3=1, CAMERA_ENABLED=1, DRIVE_SIMULATION=0,
+                          **{'forkrot::board::PIN_AZ_ADC':4,'forkrot::board::PIN_EL_ADC':5,
+                             'forkrot::board::PIN_UART_RX':-1,'forkrot::board::PIN_UART_TX':-1}),
+                     ['BOARD_PROFILE=7','CONFIG_IDF_TARGET_ESP32S3=1','DRIVE_INTERFACE=2'])
+        self.compile(dict(CAMERA_ENABLED=0), ['BOARD_PROFILE=7','CAMERA_ENABLED=0'])
+        for flags in (['BOARD_PROFILE=1','CAMERA_ENABLED=1'],
+                      ['BOARD_PROFILE=7','WEB_INTERFACE_ENABLED=0'],
+                      ['BOARD_PROFILE=7','DISPLAY_KIND=1'],
+                      ['BOARD_PROFILE=7','USER_BUTTON_GPIO=8']):
+            self.compile({},flags,success=False)
+        for camera in (0,1):
+            for drive in (0,1,2):
+                self.compile({},['BOARD_PROFILE=7',f'CAMERA_ENABLED={camera}',f'DRIVE_INTERFACE={drive}'])
+        result=subprocess.run([sys.executable,str(self.root/'tools/build_platformio.py'),
+                               '--env','waveshare_esp32s3_eth','--dry-run'],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        config=configparser.ConfigParser(interpolation=None)
+        config.read(self.root/'build/platformio-config/waveshare_esp32s3_eth.ini')
+        self.assertIn('-DBOARD_PROFILE=BOARD_WAVESHARE_S3_ETH',config['env:selected']['build_flags'])
+        self.assertIn('-DDRIVE_INTERFACE=DRIVE_BTS7960',config['env:selected']['build_flags'])
+        result=subprocess.run([sys.executable,str(self.root/'tools/prepare_sketch.py'),
+                               '--target','waveshare-s3-eth'],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        sketch=self.root/'build/arduino-waveshare-s3-eth/G5500_Fork'
+        self.assertEqual((sketch/'partitions.csv').read_bytes(),(self.source/'partitions_s3.csv').read_bytes())
+
     def test_simulation_and_external_bluetooth(self):
         self.edit(BOARD_PROFILE=4, BLUETOOTH_ENABLED=1, BLUETOOTH_MODE='BT_HC05', DRIVE_SIMULATION=1)
         self.compile(dict(BLUETOOTH_BACKEND=1, DRIVE_SIMULATION=1))

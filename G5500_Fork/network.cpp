@@ -592,7 +592,7 @@ void Network::serviceApSubnet() {
   const bool wifi=WiFi.status()==WL_CONNECTED;
   const uint32_t sta=wifi?uint32_t(WiFi.localIP()):0, mask=wifi?uint32_t(WiFi.subnetMask()):0;
   uint32_t eth=0,ethMask=0;
-#if SELECTED_BOARD == BOARD_WT32_ETH01
+#if SELECTED_BOARD == BOARD_WT32_ETH01 || SELECTED_BOARD == BOARD_WAVESHARE_S3_ETH
   if(ethernetConnected()) { eth=uint32_t(ETH.localIP());ethMask=uint32_t(ETH.subnetMask()); }
 #endif
   const uint32_t ap=uint32_t(WiFi.softAPIP());

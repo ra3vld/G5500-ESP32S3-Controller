@@ -151,6 +151,7 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 @media(max-width:760px){#settingsPanel .range-editors,#settingsPanel .calibration-grid{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:600px){.settings-details>summary{padding:16px;gap:16px}.settings-details>summary h2{font-size:17px}.settings-content{padding:16px}#settingsPanel .row,#settingsPanel .device-fields{grid-template-columns:minmax(0,1fr);gap:16px}#settingsPanel .settings-pane{padding:12px}#settingsPanel .form-actions>.btn{width:100%}#settingsPanel .form-actions{gap:10px}#settingsPanel .range-form .row{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel .profile-options{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel #azmc{grid-column:1/-1}#settingsPanel .device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
+.camera-image{display:block;width:100%;max-width:640px;aspect-ratio:4/3;object-fit:contain;margin:12px auto 0;border-radius:10px;background:#08121a}.camera-image[hidden]{display:none}
 </style></head><body><div class="wrap">
 <header class="page-header">
 <h1 id="modelTitle">YAESU G-5500 / ESP32</h1>
@@ -204,6 +205,7 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 </div>
 <div class="card"><div class="label">Предустановки</div><div id="presetButtons" class="preset-grid" style="margin-top:10px"></div>
 </div>
+<section class="card" id="cameraCard" hidden aria-labelledby="cameraTitle"><h2 id="cameraTitle">Камера</h2><p id="cameraMessage" class="hint" role="status">Подключение к камере…</p><img id="cameraImage" class="camera-image" alt="Изображение с камеры" hidden width="640" height="480"/></section>
 <div class="card current-status" id="currentStatus" aria-label="Текущий статус устройства">
 <div><span>Сеть</span><b id="statusWifi">—</b></div>
 <div><span>Bluetooth</span><b id="statusBt">—</b></div>
@@ -451,6 +453,45 @@ async function settingsRequest(path,options={}){
 
 
 const pageTabs=['control','settings','history'];
+const cameraView={state:null,timer:0,timeout:0,loading:false,generation:0};
+const cameraErrors={camera_psram_missing:'Камера недоступна: проверьте включение OPI PSRAM в прошивке.',camera_init_failed:'Камера не найдена. Проверьте шлейф и питание, затем перезапустите плату.',camera_server_failed:'Не удалось запустить камеру. Перезапустите плату.'};
+function stopCamera(){
+ clearTimeout(cameraView.timer);clearTimeout(cameraView.timeout);cameraView.timer=cameraView.timeout=0;
+ cameraView.loading=false;++cameraView.generation;
+ const img=document.getElementById('cameraImage');img.onload=img.onerror=null;img.removeAttribute('src');img.hidden=true;
+}
+function cameraVisible(){return !document.hidden&&!document.getElementById('controlPanel').hidden;}
+function cameraAvailable(state){return !!state?.cameraSupported&&!!state.cameraReady&&Number.isInteger(state.cameraPort)&&state.cameraPort>0&&state.cameraPort<=65535;}
+function refreshCamera(){
+ const state=cameraView.state;
+ if(!cameraAvailable(state)||!cameraVisible()){stopCamera();return;}
+ if(cameraView.loading||cameraView.timer)return;
+ const img=document.getElementById('cameraImage'),message=document.getElementById('cameraMessage');
+ const requestAt=performance.now();
+ const generation=++cameraView.generation;cameraView.loading=true;
+ const finish=ok=>{
+  if(generation!==cameraView.generation)return;
+  clearTimeout(cameraView.timeout);cameraView.timeout=0;cameraView.loading=false;
+  img.onload=img.onerror=null;img.hidden=!ok;
+  message.textContent=ok?'Обновляется автоматически':'Нет изображения. Повторное подключение…';
+  const waitMs=ok?Math.max(0,125-(performance.now()-requestAt)):3000;
+  cameraView.timer=setTimeout(()=>{cameraView.timer=0;refreshCamera();},waitMs);
+ };
+ img.onload=()=>finish(true);img.onerror=()=>finish(false);
+ const url=new URL('/camera.jpg',location.href);url.port=String(state.cameraPort);url.searchParams.set('t',Date.now());
+ img.src=url.href;
+ cameraView.timeout=setTimeout(()=>{if(generation!==cameraView.generation)return;img.onload=img.onerror=null;img.removeAttribute('src');finish(false);},5000);
+}
+function updateCamera(state){
+ const previous=cameraView.state;cameraView.state=state;
+ document.getElementById('cameraCard').hidden=!state.cameraSupported;
+ if(!cameraAvailable(state)){
+  stopCamera();document.getElementById('cameraMessage').textContent=cameraErrors[state.cameraError]||'Камера недоступна';return;
+ }
+ if(!previous?.cameraReady||previous.cameraPort!==state.cameraPort)stopCamera();
+ refreshCamera();
+}
+document.addEventListener('visibilitychange',refreshCamera);
 function selectTab(name,updateHash=true){
  if(!pageTabs.includes(name))name='control';
  if(name!=='control')releaseKeyboardAxes();
@@ -463,6 +504,7 @@ function selectTab(name,updateHash=true){
  }
  if(updateHash&&location.hash!=='#'+name)location.hash=name;
  if(!settings)document.getElementById('settingsFeedback').hidden=true;
+ refreshCamera();
  if(opening)loadRssi();
  if(updateHash)(settings?document.querySelector('.wrap'):window).scrollTo({top:0,behavior:'instant'});
 }
@@ -1336,6 +1378,7 @@ function currentPosition(j,axis){
  return Number.isFinite(j[axis])?Number(j[axis]).toFixed(1):'—';
 }
 function renderStatus(j){
+updateCamera(j);
 setText(az,currentPosition(j,'az'));setText(el,currentPosition(j,'el'));
 for(const axis of ['az','el'])document.getElementById(axis).title=currentPosition(j,axis)==='NC'?'NC — not calibrated: ось не откалибрована':'';
 updateFork(j);

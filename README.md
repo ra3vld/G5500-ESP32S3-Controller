@@ -1,6 +1,6 @@
 # G5500 Controller
 
-Прошивка контроллера антенных поворотных устройств Yaesu G-5500, G-800DXA и независимых DC-приводов. Поддерживает ESP32 WROOM/WROVER, ESP32-S3, ESP32-S2, WT32-ETH01 с Ethernet и CrowPanel 2.1.
+Прошивка контроллера антенных поворотных устройств Yaesu G-5500, G-800DXA и независимых DC-приводов. Поддерживает ESP32 WROOM/WROVER, ESP32-S3, ESP32-S2, WT32-ETH01 с Ethernet, [Waveshare ESP32-S3-ETH с камерой](docs/boards/waveshare-esp32-s3-eth.md) и CrowPanel 2.1.
 
 ## Возможности
 

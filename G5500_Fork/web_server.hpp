@@ -13,6 +13,7 @@
 #include "device_actions.hpp"
 #include "live_server.hpp"
 #include "ota.hpp"
+#include "camera.hpp"
 namespace forkrot {
 class WebInterface {
 public:
@@ -51,7 +52,7 @@ public:
   bool otaLocked() const { return ota_.locked(); }
   void abortForRecovery() { ota_.cancel(); }
   void setupWeb();
-  void writeDiagnostics(JsonWriter &j) { j << "\"livePort\":" << (live_.started()?81:0); live_.writeDiagnostics(j); }
+  void writeDiagnostics(JsonWriter &j) { j << "\"livePort\":" << (live_.started()?81:0); live_.writeDiagnostics(j); camera_.writeStatus(j); }
   void serviceLiveCommands() { live_.commands(millis()); }
   void publishLive() { live_.publish(millis()); }
 
@@ -72,6 +73,7 @@ private:
   Network &network_;
   Storage &storage_;
   LiveServer live_{runtime_};
+  Camera camera_;
   BoundedWebServer web_{80};
   RestartDelay &restart_;
   Ota &ota_;

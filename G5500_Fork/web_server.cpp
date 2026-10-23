@@ -95,6 +95,11 @@ void WebInterface::setupWeb() {
   }
   web_.begin();
   if(!live_.begin())diagnostics_.dbgPrintln("[LIVE] WebSocket unavailable; HTTP fallback");
+  camera_.begin();
+#if CAMERA_ENABLED
+  diagnostics_.dbgPrintln(camera_.ready() ? "[CAMERA] ready: JPEG 640x480 on port 82"
+                                        : String("[CAMERA] ")+camera_.error());
+#endif
 }
 }
 #endif

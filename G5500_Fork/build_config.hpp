@@ -22,9 +22,15 @@
 // BOARD_S2_LEGACY — прежняя проводка S2; только DRIVE_YAESU.
 // BOARD_ESP32     — ESP32 WROOM / WROVER.
 // BOARD_WT32_ETH01 — Wireless-Tag WT32-ETH01, LAN8720 Ethernet, без дисплея.
+// BOARD_WAVESHARE_S3_ETH — Waveshare ESP32-S3-ETH, W5500 + DVP-камера.
 // BOARD_CROWPANEL_21 — Elecrow DHE03921D, круглый ST7701 480x480.
 #ifndef BOARD_PROFILE
 #define BOARD_PROFILE BOARD_AUTO
+#endif
+
+// DVP-камера Waveshare: JPEG на главной странице. 0 освобождает её GPIO.
+#ifndef CAMERA_ENABLED
+#define CAMERA_ENABLED (SELECTED_BOARD == BOARD_WAVESHARE_S3_ETH)
 #endif
 
 // Только переделанная CrowPanel: GPIO6/P48 — ADC вместо подсветки,

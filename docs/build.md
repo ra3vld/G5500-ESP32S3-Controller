@@ -98,6 +98,8 @@ pio run -e esp32s3_n16r8_joystick -j4
 
 Для [WT32-ETH01 с Ethernet](boards/wt32-eth01.md) используйте `pio run -e wt32_eth01` либо `./tools/build_arduino.sh wt32-eth01`. Профиль имеет свою распиновку, работает без дисплея и требует внешнего USB–UART для записи. Вариант `wt32_eth01_noweb` поддерживает ArduinoOTA через командный API.
 
+Для [Waveshare ESP32-S3-ETH с камерой и двумя BTS7960](boards/waveshare-esp32-s3-eth.md) используйте `pio run -e waveshare_esp32s3_eth`. Линии слота microSD отданы датчикам и ENABLE. Вариант `waveshare_esp32s3_eth_nocam` сохраняет привод и Ethernet, отключая камеру.
+
 ## Сборка классического ESP32
 
 ```sh

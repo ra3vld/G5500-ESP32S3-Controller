@@ -9,6 +9,8 @@
 #include "board_s2_mini.hpp"
 #elif SELECTED_BOARD == BOARD_WT32_ETH01
 #include "board_wt32_eth01.hpp"
+#elif SELECTED_BOARD == BOARD_WAVESHARE_S3_ETH
+#include "board_waveshare_s3_eth.hpp"
 #elif SELECTED_BOARD == BOARD_ESP32
 #include "board_esp32.hpp"
 #elif SELECTED_BOARD == BOARD_CROWPANEL_21

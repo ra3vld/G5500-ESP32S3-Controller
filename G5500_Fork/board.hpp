@@ -9,7 +9,7 @@
 #error "Only ESP32, ESP32-S2 and ESP32-S3 are supported"
 #endif
 #endif
-#if ((CONFIG_IDF_TARGET_ESP32S2 && SELECTED_BOARD != BOARD_S2_LEGACY && SELECTED_BOARD != BOARD_S2_MINI) || (CONFIG_IDF_TARGET_ESP32S3 && SELECTED_BOARD != BOARD_S3 && SELECTED_BOARD != BOARD_CROWPANEL_21) || (CONFIG_IDF_TARGET_ESP32 && !FORK_CLASSIC_ESP32))
+#if ((CONFIG_IDF_TARGET_ESP32S2 && SELECTED_BOARD != BOARD_S2_LEGACY && SELECTED_BOARD != BOARD_S2_MINI) || (CONFIG_IDF_TARGET_ESP32S3 && !FORK_S3) || (CONFIG_IDF_TARGET_ESP32 && !FORK_CLASSIC_ESP32))
 #error "Board profile does not match the chip"
 #endif
 #if FORK_CLASSIC_ESP32 && (ARDUINO_USB_MODE || ARDUINO_USB_CDC_ON_BOOT)
@@ -23,7 +23,7 @@
 #if FORK_CLASSIC_ESP32
 #define FORK_CHIP_NAME "ESP32"
 #define FORK_USB_NAME "UART bridge"
-#elif SELECTED_BOARD != BOARD_S3 && SELECTED_BOARD != BOARD_CROWPANEL_21
+#elif !FORK_S3
 #define FORK_CHIP_NAME "ESP32-S2"
 #define FORK_USB_NAME "CDC"
 #else
@@ -45,16 +45,19 @@ inline constexpr const char *AP_SSID = "G5500-Rotator", *AP_PASS = "";
 // Exclude flash/PSRAM and native USB pins. S2 Mini additionally requires a header pin.
 constexpr bool gpio(int n) {
   if (n < 0) return false;
+#if SELECTED_BOARD == BOARD_WAVESHARE_S3_ETH
+  if(ethernetPin(n) || cameraPin(n)) return false;
+#endif
   if (SELECTED_BOARD == BOARD_WT32_ETH01)
     return n==1 || n==2 || n==3 || n==4 || n==5 || n==12 || n==14 || n==15 ||
            n==17 || n==32 || n==33 || n==35 || n==36 || n==39;
   if (FORK_CLASSIC_ESP32) return n <= 39 && !(n >= 6 && n <= 11) && n != 16 && n != 17 && n != 20 && n != 24 && !(n >= 28 && n <= 31) && n != 37 && n != 38;
-  if (SELECTED_BOARD == BOARD_S3 || SELECTED_BOARD == BOARD_CROWPANEL_21) return n <= 48 && n != 22 && n != 23 && n != 24 && n != 25 && !(n >= 26 && n <= 37) && n != 19 && n != 20;
+  if (FORK_S3) return n <= 48 && n != 22 && n != 23 && n != 24 && n != 25 && !(n >= 26 && n <= 37) && n != 19 && n != 20;
   if (SELECTED_BOARD == BOARD_S2_MINI) return (n <= 18 || n == 21 || (n >= 33 && n <= 40));
   return n <= 46 && !(n >= 22 && n <= 32) && n != 19 && n != 20;
 }
-constexpr bool output(int n) { return gpio(n) && (FORK_CLASSIC_ESP32 ? n < 34 : (SELECTED_BOARD == BOARD_S3 || SELECTED_BOARD == BOARD_CROWPANEL_21) || n != 46); }
-constexpr bool pullup(int n) { return gpio(n) && (FORK_CLASSIC_ESP32 ? n < 34 : (SELECTED_BOARD == BOARD_S3 || SELECTED_BOARD == BOARD_CROWPANEL_21) || n != 46); }
+constexpr bool output(int n) { return gpio(n) && (FORK_CLASSIC_ESP32 ? n < 34 : (FORK_S3) || n != 46); }
+constexpr bool pullup(int n) { return gpio(n) && (FORK_CLASSIC_ESP32 ? n < 34 : (FORK_S3) || n != 46); }
 constexpr bool adc(int n) { return gpio(n) && (FORK_CLASSIC_ESP32 ? n >= 32 : n >= 1 && n <= 10); }
 inline constexpr int localInputPins[] = {
 #if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
@@ -146,7 +149,7 @@ static_assert(adc(PIN_AZ_ADC) && output(PIN_LEFT) && output(PIN_RIGHT) && output
 #endif
 #if SELECTED_BOARD != BOARD_CROWPANEL_21
 static_assert(adc(PIN_AZ_ADC) && adc(PIN_EL_ADC), "Feedback must use ADC1 GPIO");
-static_assert(output(PIN_LEFT) && output(PIN_RIGHT) && output(PIN_UP) && output(PIN_DOWN) && output(PIN_SPEED) && output(PIN_UART_TX), "Invalid output GPIO");
+static_assert(output(PIN_LEFT) && output(PIN_RIGHT) && output(PIN_UP) && output(PIN_DOWN) && output(PIN_SPEED) && (PIN_UART_TX<0 || output(PIN_UART_TX)), "Invalid output GPIO");
 #endif
 #if DRIVE_INTERFACE != DRIVE_YAESU && !CROWPANEL_LOCAL_DRIVE
 static_assert(output(PIN_EL_SPEED), "Independent drive requires two speed/enable outputs");
@@ -158,6 +161,10 @@ static_assert(SOC_LEDC_CHANNEL_NUM >= (CROWPANEL_LOCAL_DRIVE ? 2 : DRIVE_INTERFA
 inline const char *fixedPinOwner(int n) {
 #if SELECTED_BOARD == BOARD_WT32_ETH01
   if(ethernetPin(n)) return "ethernet.rmii";
+#endif
+#if SELECTED_BOARD == BOARD_WAVESHARE_S3_ETH
+  if(ethernetPin(n)) return "ethernet.spi";
+  if(cameraPin(n)) return "camera";
 #endif
 #if DISPLAY_KIND == DISPLAY_CROWPANEL_21
   if(n==PIN_I2C_SDA || n==PIN_I2C_SCL) return "crowpanel.i2c";
@@ -174,7 +181,7 @@ inline const char *unavailablePinOwner(int n) {
   if(const auto *owner=fixedPinOwner(n)) return owner;
   if(gpio(n)) return nullptr;
   if((FORK_CLASSIC_ESP32 && ((n>=6 && n<=11) || n==16 || n==17)) ||
-      ((SELECTED_BOARD==BOARD_S3 || SELECTED_BOARD==BOARD_CROWPANEL_21) && n>=26 && n<=37) ||
+      ((FORK_S3) && n>=26 && n<=37) ||
       ((SELECTED_BOARD==BOARD_S2_LEGACY || SELECTED_BOARD==BOARD_S2_MINI) && n>=22 && n<=32)) return "flash_psram";
   if(!FORK_CLASSIC_ESP32 && (n==19 || n==20)) return "usb";
   return "unavailable";

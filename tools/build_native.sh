@@ -29,6 +29,12 @@ sh tools/test_modbus.sh
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=6 -I tests/ethernet_fakes -I tests/device_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp tests/ethernet_tests.cpp -o build/ethernet_tests
 ./build/ethernet_tests
 
+# Waveshare: camera/Ethernet reservations, four native motor PWM and capture failures.
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=7 -DDRIVE_INTERFACE=2 -I tests/ethernet_fakes -I tests/device_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp tests/waveshare_tests.cpp -o build/waveshare_tests
+./build/waveshare_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=7 -I tests/camera_fakes -I tests/fakes -I G5500_Fork G5500_Fork/camera.cpp tests/camera_tests.cpp -o build/camera_tests
+./build/camera_tests
+
 # Persisted GPIO ownership and adapters on every board, including both CrowPanel profiles.
 for board in 1 2 3 4 5; do
   extra=""
