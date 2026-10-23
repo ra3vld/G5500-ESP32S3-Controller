@@ -104,7 +104,7 @@ struct Axis {
   MotionError motionError = MotionError::None;
   bool holdArmed = false;
 };
-enum class AutoTunePhase : uint8_t { Idle, Quiet, Start, Low, High, Coast, Reposition, Validate, Complete, Cancelled, Failed };
+enum class AutoTunePhase : uint8_t { Idle, Quiet, Start, Low, High, Coast, Reposition, Validate, Minimum, Complete, Cancelled, Failed };
 struct AutoTuneMeasurement {
   float startOutput = 0, lowOutput = 0, highOutput = 0, lowVelocity = 0, highVelocity = 0;
   float responseSeconds = 0, coastDegrees = 0;
@@ -146,6 +146,15 @@ struct AutoTuneState {
   float peakVelocity = 0, validationError = 0, validationTarget = 0;
   float validationOrigin = 0;
   unsigned validationPass = 0, validationReversals = 0;
+  // Candidate minimum is accepted only after independent starts in both
+  // directions, then repeated at the selected level before Apply is enabled.
+  float minimumCandidate = 0, minimumSetpoint = 0, minimumSpeed = 0, minimumOutput = 0;
+  float minimumSpeedSum = 0, minimumOutputSum = 0, minimumPeak = 0;
+  float minimumDirectionSpeed = 0, minimumDirectionOutput = 0;
+  float minimumProgress = 0;
+  unsigned minimumSamples = 0, minimumTrial = 0, minimumPass = 0;
+  uint32_t minimumAt = 0, minimumProgressAt = 0;
+  bool minimumConfirm = false, minimumRaised = false, minimumCompletePending = false;
   int validationLastDirection = 0;
   float nextLevel = 0, searchLevel = 0, minimumLevel = 0;
   float lastPosition = 0, sampleVelocity = 0, stoppingDistance = 0;
@@ -160,7 +169,7 @@ struct AutoTuneState {
   std::array<AutoTuneMeasurement, 2> measurements{};
   struct Plateau { float output = 0, velocity = 0, responseSeconds = 0; };
   std::array<Plateau, 2> confirmedHigh{};
-  bool active() const { return phase >= AutoTunePhase::Quiet && phase <= AutoTunePhase::Validate; }
+  bool active() const { return phase >= AutoTunePhase::Quiet && phase <= AutoTunePhase::Minimum; }
 };
 struct Preset {
   std::string label;
@@ -201,6 +210,8 @@ public:
   std::array<SpeedSettings, 2> speeds{};
   std::array<MotionSettings, 2> motionSettings{};
   AutoTuneState autoTune{};
+  unsigned controlPeriodMs() const { return controlPeriodMs_; }
+  Result setControlFrequency(unsigned hz, uint32_t now);
   Result centerForAutoTune(unsigned axis, uint32_t now);
   Result startAutoTune(unsigned axis, RegulatorMode mode, float travel, float outputLimit, uint32_t now, const AutoTuneOptions &options = {});
   Result cancelAutoTune(uint32_t now);
@@ -276,6 +287,7 @@ public:
   }
   void cancelSequence();
   void tick(uint32_t now);
+  const MotionTiming &motionTiming(unsigned axis) const { return motion_[axis].timing; }
   uint32_t remaining(uint32_t now) const;
   bool valid(Target t) const;
   bool moving() const;
@@ -297,6 +309,7 @@ private:
   uint32_t lastSpeedUpdateAt_ = 0;
   bool speedUpdateStarted_ = false;
   std::array<MotionRuntime, 2> motion_{};
+  unsigned controlPeriodMs_ = MotionControlPeriodMs;
   void cancelMotion(unsigned axis);
   void motionFault(unsigned axis, MotionError, uint32_t now);
   void recoverStall(unsigned axis, uint32_t now);
@@ -309,6 +322,8 @@ private:
   bool autoTuneProbe(AutoTunePhase, int direction, float level, uint32_t now);
   void autoTuneCoast(AutoTunePhase next, int direction, float level, bool relocate, uint32_t now);
   bool proposeAutoTune(uint32_t now);
+  void beginAutoTuneMinimum(uint32_t now);
+  void finishAutoTuneMinimumTrial(bool passed, uint32_t now);
   FixedVector<Target, 16> sequence_, pendingSequence_;
   size_t sequenceIndex_ = 0;
   Result start(Target t, uint32_t now, bool retryStall = true);

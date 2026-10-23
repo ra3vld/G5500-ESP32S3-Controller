@@ -165,7 +165,7 @@ class CommandApiTests(unittest.TestCase):
         self.assertEqual(axis['speedSetpoint'], 25)
         full = client.request('GET', '/api/motion/autotune', {'full': '1'})['body']
         self.assertEqual(full['options']['tuneLambdaFactor'], 1)
-        self.assertEqual(full['options']['methodVersion'], 1)
+        self.assertEqual(full['options']['methodVersion'], 2)
         rejected = client.request('POST', '/api/motion/autotune', dict(
             action='start', axis='az', mode='simple', id=full['id'], travel=60,
             outputLimit=50, tuneMisspelled=1))

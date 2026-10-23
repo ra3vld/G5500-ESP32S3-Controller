@@ -29,11 +29,10 @@ int Hardware::adcAvgMv(int pin) {
   return 0;
   } else {
   uint32_t s = 0;
-  for (int i = 0; i < 25; i++) {
+  for (unsigned i = 0; i < MotionAdcSamples; i++) {
     s += analogReadMilliVolts(pin);
-    delayMicroseconds(150);
   }
-  return s / 25;
+  return s / MotionAdcSamples;
   }
 }
 
@@ -43,7 +42,9 @@ int Hardware::filteredMv(unsigned axis) {
     return 0;
   auto &filter = filters_[axis];
   const uint32_t now = millis();
-  return filter.due(now) ? filter.sample(adcAvgMv(axis ? p.elAdc : p.azAdc), now) : filter.value();
+  if (!filter.due(now,runtime_.controller.controlPeriodMs())) return filter.value();
+  const int mv = adcAvgMv(axis ? p.elAdc : p.azAdc);
+  return filter.sample(mv, millis(),runtime_.controller.controlPeriodMs()); // timestamp the completed conversion
 }
 bool Hardware::buttonReleased() const {
   if (runtime_.controller.hardware.buttonGpio < 0) return true;

@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <cstddef>
+#include "motion_timing.hpp"
 namespace forkrot {
 enum class RegulatorMode : uint8_t { Simple, Cascade };
 enum class MotionPhase : uint8_t { Idle, Kick, Run, Braking, Holding, Fault };
@@ -77,7 +78,8 @@ struct MotionPid {
 // zero-motion evidence only when a new ADC conversion has actually occurred.
 struct MotionFeedback {
   struct Sample { float position = 0; uint32_t at = 0; };
-  std::array<Sample, 32> samples{};
+  // Preserve the entire maximum 600 ms window, including both endpoints.
+  std::array<Sample, 600 / 5 + 2> samples{};
   unsigned count = 0, next = 0, rejectedSamples = 0;
   bool timed = false, valid = false;
   uint32_t at = 0, rejectedAt = 0;
@@ -91,11 +93,12 @@ struct MotionFeedback {
 };
 struct MotionRuntime {
   MotionFeedback feedback;
+  MotionTiming timing;
   MotionPid positionPid, velocityPid;
   bool started = false, profileValid = false, settling = false, releasing = false, arriving = false;
   bool progressValid = false, kickDone = false, streamingTarget = false, profileTracking = false;
   uint32_t targetChangedAt = 0;
-  uint32_t at = 0, kickAt = 0, releaseAt = 0, settledAt = 0, progressAt = 0;
+  uint32_t at = 0, nextAt = 0, kickAt = 0, releaseAt = 0, settledAt = 0, progressAt = 0;
   float referencePosition = 0, referenceVelocity = 0, referenceAcceleration = 0;
   float ramp = 0, rampRate = 0, kickPosition = 0, progressPosition = 0;
   float kickBase = 0, kickPeak = 0, releaseOutput = 0;

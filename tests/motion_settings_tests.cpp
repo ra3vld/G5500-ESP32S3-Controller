@@ -5,6 +5,47 @@
 #include <limits>
 using namespace forkrot;
 int main(){
+  {
+    Preferences::database.clear();Storage storage;Runtime r;
+    auto &c=r.controller;c.hardware.simulation=false;c.hardware.drive=DRIVE_BTS7960;c.speedEnabled=true;
+    for(unsigned hz:{50u,100u,200u}) {
+      assert(api(c,r.protocol,r.loggerSettings,"/api/settings",{{"controlHz",std::to_string(hz)}},0).status==200);
+      assert(c.controlPeriodMs()==1000/hz);
+      assert(storage.saveForkSettings(r));Runtime reload;reload.controller.hardware=c.hardware;
+      storage.loadForkSettings(reload);assert(reload.controller.controlPeriodMs()==1000/hz);
+    }
+    const auto saved=c.motionSettings;
+    for(const char *bad:{"0","51","150","201","100.5","nan"}) {
+      assert(api(c,r.protocol,r.loggerSettings,"/api/settings",{{"controlHz",bad},{"azMotionVelocity","10"}},0).status==400);
+      assert(c.controlPeriodMs()==5 && c.motionSettings==saved);
+    }
+    c.feedbackAt(0,90,true,0);c.feedbackAt(1,90,true,0);
+    assert(c.jog(0,1,false,0)==Result::Ok);c.tick(0);
+    assert(api(c,r.protocol,r.loggerSettings,"/api/settings",{{"controlHz","50"}},1).status==200);
+    assert(!c.moving() && !c.axes[0].tracking && !c.axes[1].holdArmed);
+    Preferences::database.clear();
+  }
+  {
+    Preferences::database.clear();Runtime r;Storage storage;
+    auto &c=r.controller;c.hardware.simulation=false;c.hardware.drive=DRIVE_BTS7960;
+    c.feedbackAt(0,90,true,0);c.feedbackAt(1,90,true,0);
+    assert(c.setRuntimeSpeed(0,20,0)==Result::Ok);
+    assert(c.jog(0,1,false,0)==Result::Ok);c.tick(0);assert(c.axes[0].direction==1);
+    const auto opened=Preferences::opened.size();
+    assert(storage.serviceRuntimeSpeeds(r,40000));
+    if(MotionControlPeriodMs<20) {
+      assert(c.runtimeSpeeds.dirty && Preferences::opened.size()==opened);
+      assert(c.axes[0].direction==1);
+      // Forced restart flush is retained even when an axis is active.
+      assert(storage.serviceRuntimeSpeeds(r,40001,true));
+      assert(!c.runtimeSpeeds.dirty);
+      assert(c.setRuntimeSpeed(0,21,40002)==Result::Ok);
+      assert(storage.serviceRuntimeSpeeds(r,80002));assert(c.runtimeSpeeds.dirty);
+      c.stopNow(-1,80003);
+      assert(storage.serviceRuntimeSpeeds(r,80003));assert(!c.runtimeSpeeds.dirty);
+    } else assert(!c.runtimeSpeeds.dirty);
+    Preferences::database.clear();
+  }
   // Main-page speed commands change live setpoints independently of saved tuning.
   {
     Runtime speedRuntime; auto &speed=speedRuntime.controller;
@@ -32,6 +73,7 @@ int main(){
     assert(reloaded.controller.runtimeSpeed(0)==savedSpeed[0].speedPercent && reloaded.controller.runtimeSpeed(1)==27.5f);
     assert(speedStorage.serviceRuntimeSpeeds(speedRuntime,40039));
     assert(!Preferences::database.count("forkspeed")); // 40 s after the LAST axis change.
+    if(MotionControlPeriodMs<20) speed.stopNow(-1,40040);
     assert(speedStorage.serviceRuntimeSpeeds(speedRuntime,40040));
     assert(!speed.runtimeSpeeds.dirty);
     speedStorage.loadForkSettings(reloaded);

@@ -51,9 +51,11 @@ static void completed(bool cascade,unsigned axis,uint32_t stamp=0) {
   CHECK(r.c.target({100,100,true,true},true,r.now)==Result::Busy);
   CHECK(r.c.manualDrive(1,1,1,1,1,1,0,false,r.now)==Result::Busy);
   CHECK(r.c.jog(1-axis,1,false,r.now)==Result::Busy);
-  for(unsigned n=0;n<6000 && r.c.autoTune.active();++n){r.step();CHECK(r.c.axes[axis].speedOutputPercent<=50.001f);CHECK(!r.c.axes[1-axis].direction);}
+  bool sawMinimum=false;
+  for(unsigned n=0;n<6000 && r.c.autoTune.active();++n){r.step();sawMinimum|=r.c.autoTune.phase==AutoTunePhase::Minimum;CHECK(r.c.axes[axis].speedOutputPercent<=50.001f);CHECK(!r.c.axes[1-axis].direction);}
   if(r.c.autoTune.phase!=AutoTunePhase::Complete)std::cerr<<"tune "<<cascade<<" axis "<<axis<<" phase "<<Controller::autoTunePhaseName(r.c.autoTune.phase)<<" reason "<<r.c.autoTune.reason<<" motion "<<r.c.fault<<" pos "<<r.position<<" low0 "<<r.c.autoTune.measurements[0].lowVelocity<<" high0 "<<r.c.autoTune.measurements[0].highVelocity<<" low1 "<<r.c.autoTune.measurements[1].lowVelocity<<" high1 "<<r.c.autoTune.measurements[1].highVelocity<<" error "<<r.c.autoTune.validationError<<'\n';
   CHECK(r.c.autoTune.phase==AutoTunePhase::Complete);CHECK(r.c.autoTune.proposedMotion.valid());
+  CHECK(sawMinimum);CHECK(r.c.autoTune.minimumConfirm);CHECK(r.c.autoTune.minimumSpeed>0);
   CHECK(r.c.autoTune.validationPass==1);
   CHECK(r.c.motionSettings[axis]==original);CHECK(r.c.speeds[axis]==speed);CHECK(!r.c.moving());CHECK(!r.c.axes[axis].holdArmed);
   CHECK(r.c.autoTune.measurements[0].startOutput>20);CHECK(r.c.autoTune.measurements[1].startOutput>20);
@@ -64,6 +66,10 @@ static void completed(bool cascade,unsigned axis,uint32_t stamp=0) {
   const auto proposed=r.c.autoTune.proposedMotion;CHECK(r.c.applyAutoTune(r.c.autoTune.id,r.now)==Result::Ok);
   CHECK(r.c.motionSettings[axis]==proposed);CHECK(!r.c.moving());CHECK(r.c.applyAutoTune(r.c.autoTune.id,r.now)==Result::Unavailable);
   if(cascade)CHECK(r.c.speeds[axis]==speed);
+  CHECK(r.c.runtimeSpeed(axis)<=r.c.runtimeSpeedLimit(axis));
+  // The autotune selects the verified slow point. These load-rejection checks
+  // deliberately exercise the separately identified upper working speed.
+  CHECK(r.c.setRuntimeSpeed(axis,r.c.runtimeSpeedLimit(axis),r.now)==Result::Ok);
   if(cascade)for(int direction:{-1,1}) {
     r.c.stopNow(-1,r.now);r.position=90;r.velocity=0;r.filter={};r.c.resetFeedback(int(axis),r.now);r.c.feedbackAt(axis,90,true,r.now);
     for(unsigned n=0;n<30;++n)r.step();
@@ -85,6 +91,32 @@ static void completed(bool cascade,unsigned axis,uint32_t stamp=0) {
 
 }
 static void safety() {
+  {
+    Rig probe(true);const auto original=probe.c.motionSettings[0];
+    const auto speeds=probe.c.speeds;const auto overrides=probe.c.runtimeSpeeds.values;
+    CHECK(probe.start()==Result::Ok);
+    for(unsigned n=0;n<6000 && probe.c.autoTune.active() && probe.c.autoTune.phase!=AutoTunePhase::Minimum;++n)probe.step();
+    CHECK(probe.c.autoTune.phase==AutoTunePhase::Minimum);
+    CHECK(probe.c.setControlFrequency(200,probe.now)==Result::Busy);
+    CHECK(probe.c.applyAutoTune(probe.c.autoTune.id,probe.now)==Result::Unavailable);
+    probe.c.stopNow(-1,probe.now);
+    CHECK(probe.c.autoTune.phase==AutoTunePhase::Cancelled);CHECK(!probe.c.moving());
+    CHECK(probe.c.motionSettings[0]==original);CHECK(probe.c.speeds==speeds);
+    CHECK(probe.c.runtimeSpeeds.values==overrides);
+  }
+  {
+    Rig probe;CHECK(probe.start()==Result::Ok);
+    for(unsigned n=0;n<6000 && probe.c.autoTune.active() &&
+        !(probe.c.autoTune.phase==AutoTunePhase::Minimum && probe.c.autoTune.minimumSamples>5);++n)probe.step();
+    CHECK(probe.c.autoTune.phase==AutoTunePhase::Minimum);
+    const float rejected=probe.c.autoTune.minimumCandidate;
+    probe.jam=true;probe.velocity=0;
+    for(unsigned n=0;n<60 && probe.c.autoTune.phase==AutoTunePhase::Minimum;++n)probe.step();
+    CHECK(probe.c.autoTune.phase!=AutoTunePhase::Minimum);
+    CHECK(probe.c.autoTune.minimumSpeed==0); // a brief start cannot qualify a paused shaft
+    CHECK(probe.c.autoTune.minimumCandidate>rejected || probe.c.autoTune.phase==AutoTunePhase::Failed);
+    probe.c.stopNow(-1,probe.now);
+  }
   Rig r;const auto m=r.c.motionSettings[0];const auto s=r.c.speeds[0];CHECK(r.start()==Result::Ok);
   for(unsigned n=0;n<65;++n)r.step();
   r.c.stopNow(-1,r.now);
@@ -149,6 +181,7 @@ static void startupConfirmation(unsigned axis,float movement,uint32_t stamp=0) {
   }
   CHECK(extendedSearch);
   if(movement==1) {CHECK(extendedKick);CHECK(confirmedKick);}
+  if(r.c.autoTune.phase!=AutoTunePhase::Complete)std::cerr<<"startup "<<movement<<" axis "<<axis<<" reason "<<r.c.autoTune.reason<<" time "<<uint32_t(r.now-stamp)<<" candidate "<<r.c.autoTune.minimumCandidate<<" best "<<r.c.autoTune.minimumSpeed<<" output "<<r.c.autoTune.minimumOutput<<"\n";
   CHECK(r.c.autoTune.phase==AutoTunePhase::Complete);CHECK(r.c.autoTune.validationPass==1);
   for(const auto &p:r.c.autoTune.measurements) {
     CHECK(p.startOutput>=28 && p.startOutput<=35);CHECK(p.lowVelocity>0);CHECK(p.highVelocity>p.lowVelocity);
@@ -545,7 +578,7 @@ static void runtimeMethodology() {
   CHECK(r.c.motionSettings[0]==saved);CHECK(r.c.speeds[0]==speed);
   char out[4096];JsonWriter j(out,sizeof out);CHECK(writeAutoTune(j,r.c,true));
   CHECK(std::string(j.data()).find("\"tuneSearchStartPercent\":15")!=std::string::npos);
-  CHECK(std::string(j.data()).find("\"methodVersion\":1")!=std::string::npos);
+  CHECK(std::string(j.data()).find("\"methodVersion\":2")!=std::string::npos);
   const auto previous=r.c.autoTune.id;
   r.position=90;r.velocity=0;r.c.resetFeedback(0,r.now);r.c.feedbackAt(0,90,true,r.now);
   Form again{{"action","start"},{"axis","az"},{"mode","simple"},{"travel","60"},{"outputLimit","50"},{"id",std::to_string(previous)}};

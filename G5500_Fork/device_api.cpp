@@ -297,12 +297,21 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
       }
       output << '}';return;
     }
-    output << "{\"heapFree\":" << heapFreeBytes() << ",\"heapMin\":" << heapMinBytes()
+    output << "{\"uptimeMs\":" << millis() << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMin\":" << heapMinBytes()
       << ",\"heapMaxBlock\":" << heapMaxBlockBytes() << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load()
       << ",\"maxFailedAllocation\":" << runtimeMetrics.largestFailedAllocation.load()
       << ",\"loopMaxUs\":" << runtimeMetrics.loopMaxUs << ",\"loopsOver20ms\":" << runtimeMetrics.loopsOver20ms
       << ",\"webEnabled\":" << (WEB_INTERFACE_ENABLED?"true":"false") << ",\"bluetoothSupported\":" << (BLUETOOTH_SUPPORT?"true":"false")
-      << ",\"psramBytes\":" << heap_caps_get_total_size(MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT) << '}';return;
+      << ",\"psramBytes\":" << heap_caps_get_total_size(MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT)
+      << ",\"controlPeriodMs\":" << runtime_.controller.controlPeriodMs() << ",\"motionTiming\":[";
+    for (unsigned i=0;i<2;++i) {
+      if(i) output << ',';
+      const auto &t=runtime_.controller.motionTiming(i);
+      output << "{\"steps\":" << t.steps << ",\"maxIntervalMs\":" << t.maxIntervalMs
+        << ",\"lateSteps\":" << t.lateSteps << ",\"sampleCount\":" << hardware_.sampleCount(i)
+        << ",\"sampleMaxIntervalMs\":" << hardware_.sampleMaxIntervalMs(i) << '}';
+    }
+    output << "]}";return;
   }
   if(path=="/api/network" && method=="GET") {
     const bool connected=WiFi.status()==WL_CONNECTED;
@@ -956,9 +965,12 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
   if(method=="POST" && (path=="/api/mode" || path=="/api/execute" || path=="/api/preset" || path=="/api/preset/run" || path=="/api/settings" || path=="/api/motion/reset" || path=="/api/motion/autotune" || path=="/api/speed")) {
       auto oldModel = runtime_.controller.model;
       auto oldSettings = runtime_.loggerSettings;
+      const auto oldControlPeriod=runtime_.controller.controlPeriodMs();
       actions_.updatePosition();
       auto response = callApi(path,arguments);
       if (response.status == 200) {
+        // Apply the frequency-change STOP to GPIO before synchronous NVS writes.
+        if(oldControlPeriod!=runtime_.controller.controlPeriodMs())hardware_.applyOutputs();
         if (oldModel != runtime_.controller.model) {
           // Old calibration was already saved on each calibration edit.
           actions_.loadPrefs();

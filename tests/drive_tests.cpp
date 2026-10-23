@@ -75,17 +75,18 @@ void filters() {
   CHECK(f.sample(3000,now)==1005); CHECK(f.sample(0,now+1)==1005);
   CHECK(f.sample(1000,now+20)==1000);
   PositionFilter wrap; wrap.sample(10,0xfffffff0u);
-  CHECK(!wrap.due(3)); CHECK(wrap.due(4));
+  const uint32_t after=0xfffffff0u+MotionControlPeriodMs;
+  CHECK(!wrap.due(after-1)); CHECK(wrap.due(after));
   CHECK(wrap.maxIntervalMs()==0);
   wrap.sample(20,4); CHECK(wrap.maxIntervalMs()==20);
   wrap.sample(30,2004); CHECK(wrap.maxIntervalMs()==2000);
   wrap.sample(40,2024); CHECK(wrap.maxIntervalMs()==2000);
   fakeHardware = {}; MotionTestRuntime r; Hardware h(r);
   fakeHardware.millivolts[PIN_AZ_ADC]=1200;
-  CHECK(h.filteredMv(0)==1200); CHECK(fakeHardware.readsMv==25);
+  CHECK(h.filteredMv(0)==1200); CHECK(fakeHardware.readsMv==MotionAdcSamples);
   fakeHardware.millivolts[PIN_AZ_ADC]=3000;
-  fakeHardware.now=19; CHECK(h.filteredMv(0)==1200); CHECK(fakeHardware.readsMv==25);
-  int raw=0,mv=0; h.adcDiagRead(PIN_AZ_ADC,raw,mv); CHECK(raw==3000 && mv==3000); CHECK(fakeHardware.readsRaw==25 && fakeHardware.readsMv==50);
+  fakeHardware.now=MotionControlPeriodMs-1; CHECK(h.filteredMv(0)==1200); CHECK(fakeHardware.readsMv==MotionAdcSamples);
+  int raw=0,mv=0; h.adcDiagRead(PIN_AZ_ADC,raw,mv); CHECK(raw==3000 && mv==3000); CHECK(fakeHardware.readsRaw==25 && fakeHardware.readsMv==MotionAdcSamples+25);
   fakeHardware.now=20; h.filteredMv(0);
   for (unsigned t : {40u,60u,80u}) { fakeHardware.now=t; fakeHardware.millivolts[PIN_AZ_ADC]=1200; h.filteredMv(0); }
   fakeHardware.now=100; fakeHardware.millivolts[PIN_AZ_ADC]=3000; CHECK(h.filteredMv(0)==1200);

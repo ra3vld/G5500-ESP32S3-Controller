@@ -42,6 +42,14 @@ def state(identifier=11, active=True, phase='search'):
 
 
 class TrialTests(unittest.TestCase):
+    def test_minimum_speed_method_version(self):
+        initial = state(10, False)
+        initial['options']['methodVersion'] = 2
+        records = []
+        trial.experiment(Client([initial, state(active=False, phase='complete')]),
+                         VARIANT, records.append, sleep=lambda _: None)
+        self.assertEqual(records[0]['methodVersion'], 2)
+
     def test_result_and_effective_options_logged_without_apply(self):
         client = Client([state(10, False), state(), state(active=False, phase='complete')])
         records = []

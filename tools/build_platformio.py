@@ -21,6 +21,7 @@ p.add_argument('--drive',choices=['yaesu','separate-pwm','bts7960'])
 p.add_argument('--pwm-inverted',choices=['0','1'],help='Invert only BTS7960 RPWM/LPWM for optocoupler wiring')
 p.add_argument('--pio',default=os.environ.get('PIO','pio'))
 p.add_argument('--jobs',type=int,default=4)
+p.add_argument('--motion-hz',type=int,choices=[50,100,200],help='Control/feedback rate; 100/200 Hz require hardware timing and noise checks')
 p.add_argument('--dry-run',action='store_true')
 a=p.parse_args()
 config=configparser.ConfigParser(interpolation=None);config.read(ROOT/'platformio.ini')
@@ -77,6 +78,9 @@ if a.drive:
 if a.pwm_inverted is not None:
     flags=[f for f in flags if not f.startswith('-DBTS7960_PWM_INVERTED=')]
     flags.append('-DBTS7960_PWM_INVERTED='+a.pwm_inverted)
+if a.motion_hz is not None:
+    flags=[f for f in flags if not f.startswith('-DMOTION_CONTROL_PERIOD_MS=')]
+    flags.append('-DMOTION_CONTROL_PERIOD_MS='+str(1000//a.motion_hz))
 deps='' if kind==0 else 'lvgl/lvgl @ 9.6.0' if kind==3 else 'arduino-libraries/LiquidCrystal @ 1.0.7' if kind==2 else option('display_tft','lib_deps')
 # Classic SPP uses IDF directly; no additional Bluetooth library is needed.
 work=ROOT/'build/platformio-config';work.mkdir(parents=True,exist_ok=True)

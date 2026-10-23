@@ -65,7 +65,7 @@ def experiment(client, variant, emit, interval=1, duration=180, clock=time.monot
     if initial.get('active'):
         raise ApiError('autotune already active; cancel it explicitly before starting another trial')
     method_version = initial.get('options', {}).get('methodVersion')
-    if method_version != 1:
+    if method_version not in (1, 2):
         raise ApiError('firmware does not support this experiment methodology; update it before running trials')
     record('configuration', hypothesis=variant, previousId=initial['id'], boot=client.boot,
            methodVersion=method_version)

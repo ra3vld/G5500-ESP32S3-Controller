@@ -12,6 +12,7 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DRGB_INDICATOR_TEST -I tests/r
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/ota_fakes -I G5500_Fork G5500_Fork/ota.cpp tests/ota_tests.cpp -o build/ota_tests
 ./build/ota_tests
 sh tools/build_ruckig_native.sh
+sh tools/test_motion_rates.sh
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork/src/ruckig tests/ruckig_workspace_tests.cpp build/motion/libruckig.a -o build/ruckig_workspace_tests
 ./build/ruckig_workspace_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/socket_write_tests.cpp -o build/socket_write_tests

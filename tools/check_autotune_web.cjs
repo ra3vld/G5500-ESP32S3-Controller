@@ -47,9 +47,11 @@ vm.runInContext(script.slice(script.indexOf('function motionFaultText('),script.
  assert(node('azTuneCenter').disabled);assert(node('azTuneReset').disabled);assert(!node('azTuneStop').disabled);
  const blocked=posts.length;await vm.runInContext("autoTunePrepare('center','az')",context);await vm.runInContext("autoTunePrepare('reset','az')",context);assert.equal(posts.length,blocked);
  await vm.runInContext("autoTunePrepare('stop','az')",context);assert.equal(posts.at(-1).path,'/api/move');assert.equal(posts.at(-1).body.d,'S');
+ state.autotune.phase='minimum';vm.runInContext('renderAutoTune(window._forkState)',context);assert.match(node('azTuneStatus').textContent,/минимальной устойчивой скорости/);assert(node('azTuneApply').disabled);
+ result.minimumVelocity=1.5;result.minimumOutput=18;
  state.autotune={phase:'complete',active:false,axis:0,id:1,mode:'cascade',validationError:.12};context.details={...state.autotune,result};
  vm.runInContext('renderAutoTune(window._forkState)',context);await new Promise(resolve=>setImmediate(resolve));
- assert(!node('azTuneApply').disabled);assert(node('elTuneApply').disabled);assert.match(node('azTuneResult').textContent,/Положение P \/ I \/ D/);assert.match(node('azTuneResult').textContent,/Удержание выключено/);
+ assert(!node('azTuneApply').disabled);assert.match(node('azTuneResult').textContent,/Проверенная минимальная скорость: 1.500/);assert(node('elTuneApply').disabled);assert.match(node('azTuneResult').textContent,/Положение P \/ I \/ D/);assert.match(node('azTuneResult').textContent,/Удержание выключено/);
  await vm.runInContext("autoTuneAction('apply','az')",context);assert.equal(posts.at(-1).body.id,1);
  state.autotune={phase:'cancelled',active:false,axis:0,id:1,reason:'stopped'};
  vm.runInContext('renderAutoTune(window._forkState)',context);assert.match(node('azTuneStatus').textContent,/STOP/);assert.equal(node('azTuneResult').textContent,'');assert(node('azTuneApply').disabled);

@@ -280,9 +280,11 @@ void Application::controllerLoop() {
   network_.handleBluetoothSerial(); // selected Bluetooth transport / GS-232B
   network_.handleRotctldTcp();       // Wi-Fi TCP 4533 / Look4Sat / Hamlib rotctld
   web_server_.serviceLiveCommands();
+  if (runtime_.controller.controlPeriodMs() < 20) updatePosition();
   hardware_.controlRotator();
   display_.serviceTouch();
   network_.serviceHud();
+  if (runtime_.controller.controlPeriodMs() < 20) updatePosition();
   hardware_.controlRotator();
   web_server_.publishLive();
   network_.serviceCommandReplies();
@@ -305,12 +307,13 @@ void Application::controllerLoop() {
     runtime_.hud.presetsDirty = false;
     storage_.saveProfilePresets(runtime_);
   }
+  if (runtime_.controller.controlPeriodMs() < 20) updatePosition();
   hardware_.controlRotator();
   display_.serviceTouch();
   display_.updateLocalDisplay();
   hardware_.updateRgb();
   runtimeMetrics.recordLoop(uint32_t(micros() - startedUs));
-  delay(5);
+  delay(runtime_.controller.controlPeriodMs() < 20 ? 1 : 5);
 }
 } // namespace forkrot
 namespace {

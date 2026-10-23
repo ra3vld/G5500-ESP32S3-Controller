@@ -151,6 +151,17 @@ class BuildConfigTests(unittest.TestCase):
         config.read(self.root / 'build/platformio-config/esp32_4mb.ini')
         return config['env:selected']
 
+    def test_motion_rate_build_option(self):
+        self.assertNotIn('MOTION_CONTROL_PERIOD_MS', self.selected_config()['build_flags'])
+        for hz, period in ((50,20),(100,10),(200,5)):
+            config = self.selected_config('--motion-hz', str(hz))
+            self.assertIn(f'-DMOTION_CONTROL_PERIOD_MS={period}', config['build_flags'])
+        for period in (5,10,20,0,1,7,25):
+            result = subprocess.run(['g++','-std=c++17','-fsyntax-only','-I',str(self.source),
+                                     f'-DMOTION_CONTROL_PERIOD_MS={period}','-x','c++','-'],
+                                    input='#include "motion_timing.hpp"\n', text=True, capture_output=True)
+            self.assertEqual(result.returncode == 0, period in (5,10,20), result.stderr)
+
     def test_dependencies_follow_formatted_settings_and_flags(self):
         self.edit(DISPLAY_KIND='DISPLAY_LCD1602', BLUETOOTH_ENABLED=0)
         config = self.selected_config()

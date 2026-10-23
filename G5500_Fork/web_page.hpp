@@ -249,7 +249,7 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <div class="field"><label for="forkSettings-elSlowdownDegrees">Начинать замедление за, °</label><input aria-describedby="forkSettings-elSlowdownDegrees-help" id="forkSettings-elSlowdownDegrees" max="90" min="1" name="elSlowdownDegrees" required="" step="1" type="number" value="2"/><p class="field-help" id="forkSettings-elSlowdownDegrees-help">Расстояние до зоны отключения EL, с которого начинается снижение скорости. Увеличьте, если привод не успевает замедлиться.</p></div>
 <div class="field"><label for="elDecelerationFactor">Коэффициент торможения EL</label><input aria-describedby="elDecelerationFactor-help" id="elDecelerationFactor" max="10" min="0.1" name="elDecelerationFactor" required="" step="0.1" type="number" value="1"/><p class="field-help" id="elDecelerationFactor-help">Множитель темпа снижения выхода EL: 1 — обычный, 2 — вдвое быстрее, 0,5 — вдвое медленнее. STOP отключает выход сразу.</p></div>
 </div><div class="hint">Выход EL: <b id="elSpeedOutput">0%</b></div></div><p class="hint">Реверс: торможение и пауза 300 мс перед сменой направления. STOP выключает привод сразу.</p></div>
-<div class="form-actions"><button class="btn good" type="submit">Сохранить настройки</button></div></form></div></details></section><section class="card settings-section" id="motionSettings"><details class="settings-details" ontoggle="if(this.open)loadMotionSettings()"><summary><h2>Регуляторы движения<span class="section-caption">S-профиль, страгивание и удержание AZ / EL</span></h2></summary><div class="settings-content"><p class="hint">Простой регулятор задаёт выход в процентах и отключает привод по ручному выбегу. Каскад регулирует положение и скорость в °/с; удержание доступно только в нём. Изменение настроек останавливает ось.</p><div id="motionForms"></div></div></details></section><section class="card settings-section" id="calibrationSettings"><details class="settings-details" ontoggle="if(this.open){loadAzCalibration();loadElCalibration();}"><summary id="caltoggle"><h2>Диапазоны и калибровка<span class="section-caption">Упоры и измерения датчиков AZ / EL</span></h2></summary><div class="settings-content" id="calbody">
+<div class="form-actions"><button class="btn good" type="submit">Сохранить настройки</button></div></form></div></details></section><section class="card settings-section" id="motionSettings"><details class="settings-details" ontoggle="if(this.open)loadMotionSettings()"><summary><h2>Регуляторы движения<span class="section-caption">S-профиль, страгивание и удержание AZ / EL</span></h2></summary><div class="settings-content"><p class="hint">Простой регулятор задаёт выход в процентах и отключает привод по ручному выбегу. Каскад регулирует положение и скорость в °/с; удержание доступно только в нём. Изменение настроек останавливает ось.</p><form id="controlFrequencyForm" class="settings-pane" onsubmit="saveControlFrequency(event)"><div class="row"><div class="field"><label for="controlHz">Частота контура и датчиков положения</label><select id="controlHz" name="controlHz"><option value="50">50 Гц · 20 мс</option><option value="100">100 Гц · 10 мс</option><option value="200">200 Гц · 5 мс</option></select><p class="field-help">Общая для AZ и EL. Смена частоты останавливает обе оси; настройка сохраняется без перезагрузки. 200 Гц — экспериментальный режим, задержки зависят от нагрузки.</p></div></div><div class="form-actions"><button class="btn good" type="submit">Сохранить частоту</button></div></form><div id="motionForms"></div></div></details></section><section class="card settings-section" id="calibrationSettings"><details class="settings-details" ontoggle="if(this.open){loadAzCalibration();loadElCalibration();}"><summary id="caltoggle"><h2>Диапазоны и калибровка<span class="section-caption">Упоры и измерения датчиков AZ / EL</span></h2></summary><div class="settings-content" id="calbody">
 <h3>1. Выберите диапазоны</h3><div class="range-editors"><section class="range-editor settings-pane"><h3>Азимут · AZ</h3>
 <div class="seg profile-options">
 <button class="btn" id="azm36" aria-describedby="azProfileHelp" onclick="setAzMode(36)">P36 · 360°</button>
@@ -557,16 +557,18 @@ function updateConnection(){
  node.dataset.state=state;node.title=hint;setText(node,text);
  updateConnectionFavicon(state==='online');
 }
-function renderLive(){liveFrame=0;if(httpState)renderStatus(live.ready&&live.state?{...httpState,...live.state}:httpState);}
+function liveFresh(){return live.ready&&Date.now()-live.last<=1000}
+function renderLive(){liveFrame=0;if(httpState)renderStatus(liveFresh()&&live.state?{...httpState,...live.state}:httpState);}
 function queueLiveRender(){if(!liveFrame)liveFrame=requestAnimationFrame(renderLive);}
 function connectLive(port){
  if(port===0||live.socket||live.retry||window.G5500_HTTP_ONLY)return;
- const socket=new WebSocket('ws://'+location.hostname+':'+(port||81)+'/api/live');live.socket=socket;
+ const socket=new WebSocket('ws://'+location.hostname+':'+(port||81)+'/api/live');live.socket=socket;live.last=Date.now();
  socket.onmessage=event=>{
+  if(live.socket!==socket)return;
   let message;try{message=JSON.parse(event.data)}catch(e){socket.close();return}
   if(message.v!==1||!message.boot)return;
-  live.last=Date.now();
   if(message.type==='state'){
+   live.last=Date.now();
    if(live.boot&&message.boot!==live.boot){releaseKeyboardAxes();for(const p of live.pending.values()){clearTimeout(p.timer);p.reject(new Error('restarted'))}live.pending.clear();live.revision=0;live.state=null;}
    if(live.ready&&message.boot===live.boot&&message.revision<=live.revision)return;
    const changed=live.state&&live.state.hudSelectionEpoch!==message.state.hudSelectionEpoch;
@@ -583,12 +585,19 @@ function connectLive(port){
  };
  socket.onclose=()=>{
   if(live.socket!==socket)return;
-  live.socket=null;live.ready=false;live.state=null;live.revision=0;
-  updateConnection();
-  for(const p of live.pending.values()){clearTimeout(p.timer);p.reject(new Error('disconnected'))}live.pending.clear();
-  live.retry=setTimeout(()=>{live.retry=null;connectLive(port)},1000);upd(true);
+  disconnectLive(socket,port);
  };
  socket.onerror=()=>socket.close();
+}
+function disconnectLive(socket,port){
+ if(live.socket!==socket)return;
+ // Closing a broken TCP connection can take tens of seconds. Stop using its
+ // stale overlay immediately; late callbacks cannot affect the replacement.
+ live.socket=null;live.ready=false;live.state=null;live.revision=0;
+ connection.state=httpState;queueLiveRender();updateConnection();
+ for(const p of live.pending.values()){clearTimeout(p.timer);p.reject(new Error('disconnected'))}live.pending.clear();
+ live.retry=setTimeout(()=>{live.retry=null;connectLive(port)},1000);
+ socket.close();upd(true);
 }
 function sendLive(path,body){
  if(!live.ready||live.socket?.readyState!==WebSocket.OPEN)return Promise.reject(new Error('offline'));
@@ -601,7 +610,7 @@ function sendLive(path,body){
   try{live.socket.send(packet)}catch(e){clearTimeout(timer);live.pending.delete(id);reject(e)}
  });
 }
-setInterval(()=>{if(live.ready&&Date.now()-live.last>liveTimeoutMs)live.socket.close();updateConnection()},250);
+setInterval(()=>{if(live.socket&&Date.now()-live.last>liveTimeoutMs)disconnectLive(live.socket,window._forkState?.livePort);updateConnection()},250);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){queueLiveRender();upd(true)}});
 async function forkPost(path,body){
  const success={'/api/settings':'Настройки сохранены','/api/preset':'Предустановка сохранена','/api/device':'Настройки устройства сохранены','/api/hud/select':'Поворотка выбрана','/api/hud/peers':body.action==='remove'?'Поворотка удалена':body.name?'Имя поворотки сохранено':'Поворотка добавлена','/api/hud/discover':'Поиск устройств запущен'}[path];
@@ -658,7 +667,7 @@ function initMotionForms(){
    field.innerHTML=`<label for="${key}">${label}</label><input id="${key}" name="${key}" type="number" min="${min}" max="${max}" step="${step}" required aria-describedby="${key}Help"><p class="field-help" id="${key}Help">${help}</p>`;f.querySelector('.motion-fields').append(field);
   }
   const tuner=document.createElement('div');tuner.className='settings-group';tuner.dataset.motionGroup='variable';
-  tuner.innerHTML=`<h3>Автотюн</h3><div class="kv"><div>Положение<br><strong id="${axis}TunePosition">—</strong></div><div>Измеренная скорость<br><strong id="${axis}TuneVelocity">—</strong></div><div>Заданная скорость<br><strong id="${axis}TuneRequestedVelocity">—</strong></div><div>Выход привода<br><strong id="${axis}TuneOutput">—</strong></div><div>Диапазон<br><strong id="${axis}TuneRange">—</strong></div><div>Свободный ход − / +<br><strong id="${axis}TuneRoom">—</strong></div></div><p id="${axis}TuneDriveState" role="status" aria-live="polite">Нет данных о приводе</p><div class="form-actions"><button class="btn" type="button" id="${axis}TuneCenter" onclick="autoTunePrepare('center','${axis}')">В середину диапазона</button><button class="btn" type="button" id="${axis}TuneReset" onclick="autoTunePrepare('reset','${axis}')" disabled>Сбросить ошибки</button><button class="btn stop" type="button" id="${axis}TuneStop" onclick="autoTunePrepare('stop','${axis}')" disabled>STOP</button></div><p class="hint">К середине — с сохранёнными настройками, без удержания после достижения. Предел пробного выхода действует только во время автотюна.</p><p class="hint">Пробные движения в обе стороны и проверочное наведение. Сначала выберите ручной режим и освободите ход вокруг текущей позиции. STOP отменяет процедуру. Предложенные параметры сохраняются только кнопкой «Применить»; удержание остаётся выключенным.</p><div class="row"><div class="field"><label for="${axis}TuneTravel">Допустимый ход в каждую сторону, °</label><input id="${axis}TuneTravel" type="number" min="10" max="90" step="1" value="60"><p class="field-help">Весь выбранный ход должен находиться внутри откалиброванного диапазона с запасом до упоров.</p></div><div class="field"><label for="${axis}TuneLimit">Предел пробного выхода, %</label><input id="${axis}TuneLimit" type="number" min="10" max="100" step="1" value="50"><p class="field-help">Не выше сохранённого максимального выхода оси.</p></div></div><p id="${axis}TuneStatus" role="status" aria-live="polite">Готов к запуску</p><div id="${axis}TuneResult" class="hint"></div><div class="form-actions"><button class="btn" type="button" id="${axis}TuneStart" onclick="autoTuneAction('start','${axis}')">Запустить автотюн</button><button class="btn" type="button" id="${axis}TuneCancel" onclick="autoTuneAction('cancel','${axis}')" disabled>Отменить</button><button class="btn good" type="button" id="${axis}TuneApply" onclick="autoTuneAction('apply','${axis}')" disabled>Применить результат</button></div>`;
+  tuner.innerHTML=`<h3>Автотюн</h3><div class="kv"><div>Положение<br><strong id="${axis}TunePosition">—</strong></div><div>Измеренная скорость<br><strong id="${axis}TuneVelocity">—</strong></div><div>Заданная скорость<br><strong id="${axis}TuneRequestedVelocity">—</strong></div><div>Выход привода<br><strong id="${axis}TuneOutput">—</strong></div><div>Диапазон<br><strong id="${axis}TuneRange">—</strong></div><div>Свободный ход − / +<br><strong id="${axis}TuneRoom">—</strong></div></div><p id="${axis}TuneDriveState" role="status" aria-live="polite">Нет данных о приводе</p><div class="form-actions"><button class="btn" type="button" id="${axis}TuneCenter" onclick="autoTunePrepare('center','${axis}')">В середину диапазона</button><button class="btn" type="button" id="${axis}TuneReset" onclick="autoTunePrepare('reset','${axis}')" disabled>Сбросить ошибки</button><button class="btn stop" type="button" id="${axis}TuneStop" onclick="autoTunePrepare('stop','${axis}')" disabled>STOP</button></div><p class="hint">К середине — с сохранёнными настройками, без удержания после достижения. Предел пробного выхода действует только во время автотюна.</p><p class="hint">Пробные движения в обе стороны, проверочное наведение и поиск минимальной устойчивой скорости с повторными запусками из покоя. Сначала выберите ручной режим и освободите ход вокруг текущей позиции. STOP отменяет процедуру. Предложенные параметры сохраняются только кнопкой «Применить»; удержание остаётся выключенным.</p><div class="row"><div class="field"><label for="${axis}TuneTravel">Допустимый ход в каждую сторону, °</label><input id="${axis}TuneTravel" type="number" min="10" max="90" step="1" value="60"><p class="field-help">Весь выбранный ход должен находиться внутри откалиброванного диапазона с запасом до упоров.</p></div><div class="field"><label for="${axis}TuneLimit">Предел пробного выхода, %</label><input id="${axis}TuneLimit" type="number" min="10" max="100" step="1" value="50"><p class="field-help">Не выше сохранённого максимального выхода оси.</p></div></div><p id="${axis}TuneStatus" role="status" aria-live="polite">Готов к запуску</p><div id="${axis}TuneResult" class="hint"></div><div class="form-actions"><button class="btn" type="button" id="${axis}TuneStart" onclick="autoTuneAction('start','${axis}')">Запустить автотюн</button><button class="btn" type="button" id="${axis}TuneCancel" onclick="autoTuneAction('cancel','${axis}')" disabled>Отменить</button><button class="btn good" type="button" id="${axis}TuneApply" onclick="autoTuneAction('apply','${axis}')" disabled>Применить результат</button></div>`;
   tuner.addEventListener('input',e=>e.stopPropagation());f.append(tuner);
   f.addEventListener('input',()=>{f.dataset.dirty='1';motionVisibility(f)});f.onsubmit=saveMotion;root.append(f);motionVisibility(f);
  }
@@ -670,9 +679,15 @@ function motionVisibility(f){
   field.classList.toggle('hide',!visible);for(const input of field.querySelectorAll('input,select'))input.disabled=!visible;
  }
 }
+async function saveControlFrequency(e){
+ e.preventDefault();const form=e.target;
+ if(await forkPost('/api/settings',{controlHz:form.elements.controlHz.value})){delete form.dataset.dirty;await loadMotionSettings();await upd(true)}
+}
+document.getElementById('controlFrequencyForm').addEventListener('change',e=>e.currentTarget.dataset.dirty='1');
 async function loadMotionSettings(){
  if(window._forkState?.deviceRole==='hud')return;
  try{const r=await fetch('/api/motion',{cache:'no-store'});if(!r.ok)return;const config=await r.json();
+  const frequency=document.getElementById('controlFrequencyForm');if(!frequency.dataset.dirty)frequency.elements.controlHz.value=String(1000/config.controlPeriodMs);
   for(const [i,axis] of ['az','el'].entries()){
    const f=document.getElementById(axis+'MotionForm'),m=config.axes[i];if(!m||f.dataset.dirty)continue;
    f.elements[axis+'RegulatorMode'].value=m.regulatorMode;
@@ -742,8 +757,8 @@ function renderAutoTune(j){
  if(j.deviceRole==='hud')return;
  const t=j.autotune||{phase:'idle',active:false,axis:-1};
  if(autoTuneDetails&&autoTuneDetails.id!==t.id)autoTuneDetails=null;
- const phases={idle:t.reason==='applied'?'Результат сохранён':'Готов к запуску',quiet:'Оценка шума датчика',start:'Поиск уровня страгивания',low:'Проверка рабочего выхода',high:'Измерение отклика',coast:'Измерение выбега',reposition:'Подготовка следующего пробного хода',validate:'Проверочное наведение',complete:'Готово. Проверьте и примените результат',cancelled:'Автотюн отменён',failed:'Автотюн остановлен'};
- const reasons={stopped:'STOP',cancelled:'по команде пользователя',mode_changed:'изменён режим',hardware_changed:'изменено оборудование',calibration_changed:'изменена калибровка',feedback_or_configuration:'нет достоверных свежих измерений или изменён диапазон',timeout:'превышено время процедуры',other_axis_moved:'изменилась неподвижная ось',travel_limit:'выход за безопасную границу пробного участка',insufficient_travel:'привод не успевает безопасно завершить измерение на этом участке; увеличьте разрешённый ход',feedback_noise:'слишком шумный датчик',no_start:'не удалось тронуться в пределах заданного выхода',start_rejected:'команда движения отклонена',no_sustained_motion:'нет устойчивого рабочего выхода',unstable_response:'неустойчивая измеренная скорость',insufficient_response:'слишком мал отклик на изменение выхода',settle_timeout:'не удалось подтвердить остановку или достижение',validation_error:'слишком большая ошибка проверочного наведения',model_invalid:'не удалось получить допустимые параметры'};
+ const phases={idle:t.reason==='applied'?'Результат сохранён':'Готов к запуску',quiet:'Оценка шума датчика',start:'Поиск уровня страгивания',low:'Проверка рабочего выхода',high:'Измерение отклика',coast:'Измерение выбега',reposition:'Подготовка следующего пробного хода',validate:'Проверочное наведение',minimum:'Поиск минимальной устойчивой скорости',complete:'Готово. Проверьте и примените результат',cancelled:'Автотюн отменён',failed:'Автотюн остановлен'};
+ const reasons={stopped:'STOP',cancelled:'по команде пользователя',mode_changed:'изменён режим',hardware_changed:'изменено оборудование',calibration_changed:'изменена калибровка',feedback_or_configuration:'нет достоверных свежих измерений или изменён диапазон',timeout:'превышено время процедуры',other_axis_moved:'изменилась неподвижная ось',travel_limit:'выход за безопасную границу пробного участка',insufficient_travel:'привод не успевает безопасно завершить измерение на этом участке; увеличьте разрешённый ход',feedback_noise:'слишком шумный датчик',no_start:'не удалось тронуться в пределах заданного выхода',start_rejected:'команда движения отклонена',no_sustained_motion:'нет устойчивого рабочего выхода',unstable_response:'неустойчивая измеренная скорость',insufficient_response:'слишком мал отклик на изменение выхода',settle_timeout:'не удалось подтвердить остановку или достижение',minimum_speed_unstable:'Не удалось подтвердить непрерывное движение на малой скорости.',control_frequency_changed:'Частота контура изменена. Запустите автотюн заново.',validation_error:'слишком большая ошибка проверочного наведения',model_invalid:'не удалось получить допустимые параметры'};
  reasons.control_timing='слишком большая задержка расчёта';reasons.motion_storage_failed='не удалось сохранить параметры';
  for(const [i,axis] of ['az','el'].entries()){
   const own=t.axis===i,status=document.getElementById(axis+'TuneStatus');
@@ -781,9 +796,10 @@ function autoTuneSummary(t,r){
  const n=value=>Number(value).toPrecision(4);
  const selected=t.mode==='simple'?`Рабочий выход / подход: ${r.speedPercent} / ${r.approachSpeedPercent}%\nВыбег: ${n(r.coastDegrees)}°; замедление за ${r.slowdownDegrees}°\nРазгон / торможение: ${r.accelerationMs} / ${r.decelerationMs} мс; коэффициент торможения ${r.decelerationFactor}`:
   `Положение P / I / D: ${n(r.PositionKp)} / ${n(r.PositionKi)} / ${n(r.PositionKd)}\nСкорость P / I / D: ${n(r.VelocityKp)} / ${n(r.VelocityKi)} / ${n(r.VelocityKd)}\nСкорость: ${n(r.Velocity)} °/с; ускорение / торможение: ${n(r.Acceleration)} / ${n(r.Deceleration)} °/с²\nМинимальный выход движения: ${r.SustainingPercent??0}%\nРывок: ${n(r.Jerk)} °/с³; упреждение: ${n(r.Feedforward)} % на °/с\nДопуск позиции: ${n(r.PositionTolerance)}°; гистерезис удержания: ${n(r.HoldResumeDegrees)}°`;
- return selected+`\nМаксимальный выход: ${n(r.OutputLimitPercent)}%; пуск: ${n(r.KickPercent)}%, нарастание ${r.KickMs} мс, ожидание до ${Math.max(r.KickMs,r.StallMs||0)} мс; снятие ${r.KickReleaseMs} мс\nПодтверждение движения: ${n(r.MovementDegrees)}°; порог остановки: ${n(r.StoppedVelocity)} °/с\nОшибка проверочного наведения: ${Number(t.validationError).toFixed(2)}°. Удержание выключено.`;
+ return selected+(r.minimumVelocity>0?`\nПроверенная минимальная скорость: ${n(r.minimumVelocity)} °/с; выход: ${n(r.minimumOutput)}%.${r.minimumSetpoint>0?` Уставка: ${n(r.minimumSetpoint)} ${t.mode==='cascade'?'°/с':'%'}.`:''} После применения выбирается эта уставка.`:'')+`\nМаксимальный выход: ${n(r.OutputLimitPercent)}%; пуск: ${n(r.KickPercent)}%, нарастание ${r.KickMs} мс, ожидание до ${Math.max(r.KickMs,r.StallMs||0)} мс; снятие ${r.KickReleaseMs} мс\nПодтверждение движения: ${n(r.MovementDegrees)}°; порог остановки: ${n(r.StoppedVelocity)} °/с\nОшибка проверочного наведения: ${Number(t.validationError).toFixed(2)}°. Удержание выключено.`;
 }
 function renderMotionStatus(j){
+ document.getElementById('controlFrequencyForm').querySelector('button').disabled=!!j.autotune?.active||!!j.configurationLocked;
  const hud=j.deviceRole==='hud';document.getElementById('motionSettings').classList.toggle('hide',hud||j.build?.drive==='NONE');
  const phases={idle:'Остановлен',kick:'Страгивание',run:'Движение',braking:'Торможение',holding:'Удержание',fault:'Ошибка'};
  for(const [i,axis] of ['az','el'].entries()){
@@ -1163,12 +1179,12 @@ function pct(v,m){v=Math.max(0,Math.min(m,v));return(v/m*100).toFixed(1)+'%'}
 let statusPending=false,statusRefreshQueued=false;
 async function upd(force=false){
 if(otaBusy)return;
-if(live.ready&&!force)return;
+if(liveFresh()&&!force)return;
 if(statusPending){if(force)statusRefreshQueued=true;return;}
 statusPending=true;
 const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5000);
 try{const response=await fetch('/api/status',{cache:'no-store',signal:controller.signal});if(!response.ok)throw new Error('status unavailable');const j=await response.json();if(!j||typeof j!=='object'||!['controller','hud'].includes(j.deviceRole))throw new Error('invalid status');
-connection.httpOnline=true;connection.httpLast=Date.now();connection.state=live.ready&&live.state?{...j,...live.state}:j;updateConnection();
+connection.httpOnline=true;connection.httpLast=Date.now();connection.state=liveFresh()&&live.state?{...j,...live.state}:j;updateConnection();
 httpState=j;connectLive(j.livePort);queueLiveRender();
 if(document.querySelector('#calibrationSettings details').open){loadAzCalibration();loadElCalibration();}
 }catch(e){

@@ -302,8 +302,10 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     bool enabled = controller.speedEnabled;
     auto speeds = controller.speeds;
     auto motion = controller.motionSettings;
+    unsigned controlHz=1000/controller.controlPeriodMs();
     bool motionTouched[2]{};
     bool valid = true;
+    if(has(form,"controlHz"))valid=integer(get(form,"controlHz"),controlHz,50,200)&&validMotionHz(controlHz);
     // Compile-time hardware configuration is read-only, including attempted aliases.
     for (const auto &entry : form) {
       if (entry.first == "drive" || entry.first == "display" || entry.first == "bluetooth" || entry.first == "bluetoothBackend" || entry.first == "pins" || entry.first == "build" || entry.first == "board" || entry.first == "boardProfile" ||
@@ -430,6 +432,8 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     if(valid && (motion[0].ready || motion[1].ready) && !prepareMotionPlanner())
       return {503,"{\"ok\":false,\"result\":\"unavailable\"}"};
     if (valid) {
+      if(controlHz!=1000/controller.controlPeriodMs() && controller.setControlFrequency(controlHz,now)!=Result::Ok)
+        return {503,"{\"ok\":false,\"result\":\"unavailable\"}"};
       if (model != controller.model) {
         controller.setModel(model);
         protocol.resetPst();

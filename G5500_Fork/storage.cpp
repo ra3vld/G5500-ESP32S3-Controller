@@ -555,7 +555,13 @@ void Storage::saveTouchCalibration(const TouchCalibration &touchCalibration) {
 }
 
 void Storage::loadForkSettings(Runtime &runtime) {
-  prefs_.begin("forkcfg", true);
+  if(!runtime.hud.isHud()) {
+    prefs_.begin("forkmotion",true);
+    const unsigned hz=prefs_.getUInt("controlhz",1000/MotionControlPeriodMs);
+    runtime.controller.setControlFrequency(validMotionHz(hz)?hz:50,0);
+    prefs_.end();
+  }
+  prefs_.begin("forkcfg",true);
   runtime.controller.model =
       prefs_.getUChar("model", 0) == 1 ? forkrot::Model::G800DXA : forkrot::Model::G5500;
   if (!runtime.hud.isHud() && !runtime.controller.hardware.simulation && runtime.controller.hardware.pins.singleAxis()) runtime.controller.model = Model::G800DXA;
@@ -637,6 +643,9 @@ void Storage::loadForkSettings(Runtime &runtime) {
 bool Storage::serviceRuntimeSpeeds(Runtime &runtime, uint32_t now, bool force) {
   auto &speeds=runtime.controller.runtimeSpeeds;
   if(runtime.hud.isHud() || !speeds.dirty || (!force && !speeds.due(now))) return true;
+  // Flash writes can suspend the control thread. In a fast loop, keep the
+  // pending value until STOP; a controlled restart still explicitly flushes.
+  if(!force && runtime.controller.controlPeriodMs()<20 && runtime.controller.moving()) return true;
   const auto record=encodeRuntimeSpeeds(speeds);
   bool valid=false;
   if(prefs_.begin("forkspeed",false)) {
@@ -732,7 +741,8 @@ bool Storage::saveForkSettings(const Runtime &runtime) {
   if(runtime.hud.isHud()) return true;
   const bool opened=prefs_.begin("forkmotion",false);
   if(!opened) { prefs_.end(); return false; }
-  bool valid=true;
+  prefs_.putUInt("controlhz",1000/runtime.controller.controlPeriodMs());
+  bool valid=prefs_.getUInt("controlhz",0)==1000/runtime.controller.controlPeriodMs();
   for(unsigned i=0;i<2;++i) {
     char key[12]; std::snprintf(key,sizeof key,"%c%u%u%u",runtime.controller.hardware.simulation?'s':'r',
         unsigned(runtime.controller.hardware.drive),unsigned(runtime.controller.model),i);

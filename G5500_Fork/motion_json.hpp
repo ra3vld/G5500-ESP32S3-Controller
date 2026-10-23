@@ -24,7 +24,12 @@ inline bool writeAutoTune(JsonWriter &j, const Controller &c, bool full=false) {
       comma=true;j << jsonQuoted(field.name) << ':' << t.options.*field.member;
     }
     for(const auto &field:autoTuneIntFields)j << ',' << jsonQuoted(field.name) << ':' << t.options.*field.member;
-    j << ",\"methodVersion\":1}";
+    j << ",\"methodVersion\":2}"
+      << ",\"minimumCandidate\":" << t.minimumCandidate
+      << ",\"minimumSetpoint\":" << t.minimumSetpoint
+      << ",\"minimumVelocity\":" << t.minimumSpeed
+      << ",\"minimumOutput\":" << t.minimumOutput
+      << ",\"minimumVerified\":" << (t.phase==AutoTunePhase::Complete?"true":"false");
   }
   if(full && t.phase==AutoTunePhase::Complete) {
     const auto &m=t.proposedMotion;const auto &s=t.proposedSpeed;
@@ -32,6 +37,8 @@ inline bool writeAutoTune(JsonWriter &j, const Controller &c, bool full=false) {
       << ",\"accelerationMs\":" << s.accelerationMs << ",\"decelerationMs\":" << s.decelerationMs
       << ",\"slowdownDegrees\":" << s.slowdownDegrees << ",\"coastDegrees\":" << s.coastDegrees
       << ",\"decelerationFactor\":" << s.decelerationFactor;
+    j << ",\"minimumSetpoint\":" << t.minimumSetpoint
+      << ",\"minimumVelocity\":" << t.minimumSpeed << ",\"minimumOutput\":" << t.minimumOutput;
     for(const auto &field:motionRealFields)j << ",\"" << field.name << "\":" << m.*field.member;
     for(const auto &field:motionIntFields)j << ",\"" << field.name << "\":" << m.*field.member;
     j << '}';
@@ -63,7 +70,7 @@ inline void writeAxisMotion(JsonWriter &j, const Controller &c, unsigned i) {
     << ",\"holdArmed\":" << (a.holdArmed ? "true" : "false");
 }
 inline bool writeMotionConfiguration(JsonWriter &j, const Controller &c) {
-  j << "{\"axes\":[";
+  j << "{\"controlPeriodMs\":" << c.controlPeriodMs() << ",\"axes\":[";
   for (unsigned i=0;i<2;++i) {
     if(i) j << ',';
     const auto &m=reportedMotion(c,i);
