@@ -132,7 +132,7 @@ void MotionFeedback::sample(float position, bool calibrated, uint32_t stamp, uns
     // A fresh ADC conversion is still fresh before calibration, but cannot
     // contribute a velocity. This keeps simple calibration jog available.
     if(std::isfinite(position)) at=stamp;
-    count=next=0;velocity=0;coastSeconds=0;powered=coastTracking=false;return;
+    count=next=0;velocity=0;coastSeconds=0;staticCoastFactor={};powered=coastTracking=false;return;
   }
   if(!wasValid) { count=next=0;velocity=0; }
   // Fast deadlines can produce a short interval after a late conversion.
@@ -184,6 +184,9 @@ float MotionFeedback::positionMean(unsigned window) const {
   float sum=0;unsigned n=0;
   for(unsigned i=0;i<count;++i)if(uint32_t(at-samples[i].at)<=window) {sum+=samples[i].position-latest;++n;}
   return n ? latest+sum/n : latest;
+}
+float MotionFeedback::staticCoastDistance(float velocity) const {
+  return velocity*velocity*staticCoastFactor[velocity>0 ? 1 : 0];
 }
 void Controller::cancelMotion(unsigned i,bool retainTarget) {
   motion_[i].cancel(retainTarget);
@@ -245,6 +248,9 @@ void Controller::feedbackAt(unsigned i, float position, bool calibrated, uint32_
       if(travel>cfg.movementDegrees/2 && f.coastVelocity>.001f) {
         const float seconds=std::clamp(travel/f.coastVelocity,.02f,2.f);
         f.coastSeconds=f.coastSeconds>0 ? .5f*(f.coastSeconds+seconds) : seconds;
+        auto &factor=f.staticCoastFactor[f.coastDirection>0 ? 1 : 0];
+        const float measured=seconds/f.coastVelocity;
+        factor=factor>0 ? .5f*(factor+measured) : measured;
       }
       f.coastTracking=false;
     }
@@ -373,14 +379,34 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
   const float streamAdvance=std::clamp(r.targetVelocity*std::min(streamElapsed,r.targetIntervalMs)/1000,
       -m.positionTolerance/4,m.positionTolerance/4)*streamFade;
   const float streamPosition=std::clamp(axis.target+streamAdvance,range(i).start,range(i).end);
+  // Wait out the existing packet-cadence window before changing one-shot
+  // behavior. In-flight streams (including their first point) keep the same
+  // coast, kick and progress rules. Duplicate goals do not renew this window.
+  const bool staticTarget=cascade && axis.tracking && !axis.holdArmed && !autoTune.active() &&
+      r.targetTimed && streamElapsed>=streamTimeout;
   const bool moving = std::abs(axis.measuredVelocity) > m.stoppedVelocity;
-  const float predictedCoast=std::abs(axis.measuredVelocity)*r.feedback.coastSeconds;
-  const bool coastToTarget=distance*axis.measuredVelocity>0 && std::abs(distance)<=predictedCoast;
+  const float predictedCoast=staticTarget ? r.feedback.staticCoastDistance(axis.measuredVelocity) :
+      std::abs(axis.measuredVelocity)*r.feedback.coastSeconds;
+  const bool coastConfirmed=!staticTarget || (moving &&
+      r.feedback.progressed(sign(axis.measuredVelocity),m.movementDegrees/4,m.velocityWindowMs));
+  const bool coastToTarget=coastConfirmed && distance*axis.measuredVelocity>0 && std::abs(distance)<=predictedCoast;
   // A one-shot positioning move may coast beyond its goal, but only active
   // holding is allowed to reverse and correct that overshoot. Latch the actual
   // crossing, then wait for measured rest before reporting completion.
   if (cascade && axis.tracking && !axis.holdArmed && !passingTarget &&
       r.targetDirection && distance*r.targetDirection<=0) r.crossedTarget=true;
+  if (!staticTarget) r.staticProgressValid=false;
+  else if(axis.calibrated && r.feedback.timed) {
+    // Observe the entire stationary-goal attempt, including zero-output
+    // braking and renewed kicks. Neither can grant a fresh stall interval.
+    const float remaining=std::abs(axis.target-r.feedback.positionMean(m.velocityWindowMs));
+    if(!r.staticProgressValid || r.staticProgressRemaining-remaining>=std::min(.1f,m.movementDegrees)) {
+      r.staticProgressValid=true;r.staticProgressAt=now;r.staticProgressRemaining=remaining;
+    } else if(uint32_t(now-r.staticProgressAt)>=m.stallMs &&
+              std::abs(distance)>m.positionTolerance && !r.crossedTarget) {
+      motionFault(i,MotionError::Stalled,now);return;
+    }
+  }
   if (cascade && axis.tracking && (std::abs(distance)<=m.positionTolerance || coastToTarget || r.arriving || r.crossedTarget) && !passingTarget) {
     if (!r.arriving) {
       r.arriving=true; r.profileValid=false; r.kickDone=false; r.releasing=false;

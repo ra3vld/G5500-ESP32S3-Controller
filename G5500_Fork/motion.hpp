@@ -87,6 +87,9 @@ struct MotionFeedback {
   float rejectedPosition = 0, lastGoodPosition = 0;
   float velocity = 0;
   float coastSeconds = 0, coastPosition = 0, coastVelocity = 0;
+  // Separate directional distance/v^2 estimates for a stationary goal.
+  // The stream controller retains its original coastSeconds model.
+  std::array<float, 2> staticCoastFactor{};
   uint32_t coastAt = 0;
   int coastDirection = 0;
   bool powered = false, coastTracking = false;
@@ -94,6 +97,7 @@ struct MotionFeedback {
   float velocityInWindow(unsigned window) const;
   bool progressed(int direction, float degrees, unsigned window) const;
   float positionMean(unsigned window) const;
+  float staticCoastDistance(float velocity) const;
 };
 struct MotionRuntime {
   MotionFeedback feedback;
@@ -105,6 +109,9 @@ struct MotionRuntime {
   bool kickConfirming = false;
   bool kickRecovery = false;
   bool targetTimed = false;
+  bool staticProgressValid = false;
+  uint32_t staticProgressAt = 0;
+  float staticProgressRemaining = 0;
   uint32_t kickConfirmAt = 0;
   uint32_t targetChangedAt = 0;
   unsigned targetIntervalMs = 0;
