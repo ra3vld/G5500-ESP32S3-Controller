@@ -1,6 +1,7 @@
 // G5500 Fork; GPL-3.0.
 #pragma once
 #include "pin_map.hpp"
+#include "position_sensor_config.hpp"
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -10,6 +11,10 @@ inline constexpr const char *localSettingNames[] = {"localInputMode", "localAzIn
   "localAzMin", "localAzCenter", "localAzMax", "localElMin", "localElCenter", "localElMax", "localDeadzone", "localHysteresis"};
 using LocalSettings = std::array<uint16_t,11>;
 struct HardwareConfig {
+  SensorSettings sensors{0,6,0,0,6,0};
+  unsigned sensorType(unsigned axis) const { return sensors[axis*3]; }
+  unsigned sensorAddress(unsigned axis) const { return sensors[axis*3+1]; }
+  unsigned sensorZero(unsigned axis) const { return sensors[axis*3+2]; }
   LocalSettings local{LOCAL_INPUT_MODE, LOCAL_AZ_INVERT, LOCAL_EL_INVERT,
     LOCAL_AZ_ADC_MIN, LOCAL_AZ_ADC_CENTER, LOCAL_AZ_ADC_MAX,
     LOCAL_EL_ADC_MIN, LOCAL_EL_ADC_CENTER, LOCAL_EL_ADC_MAX, LOCAL_ADC_DEADZONE, LOCAL_ADC_HYSTERESIS};
@@ -36,12 +41,20 @@ struct HardwareConfig {
     return backend() == BT_ESP32_SPP ? "ESP32_SPP" : backend() == BT_HC05 ? "HC05" : "NONE";
   }
   bool operator==(const HardwareConfig &b) const {
-    return local == b.local && drive == b.drive && simulation == b.simulation && bluetooth == b.bluetooth &&
+    return sensors == b.sensors && local == b.local && drive == b.drive && simulation == b.simulation && bluetooth == b.bluetooth &&
         bluetoothMode == b.bluetoothMode && forceAp == b.forceAp && buttonGpio == b.buttonGpio &&
         buttonLow == b.buttonLow && buttonPullup == b.buttonPullup && pwmInverted == b.pwmInverted && pins == b.pins;
   }
   bool operator!=(const HardwareConfig &b) const { return !(*this == b); }
 };
+// Exact calibration identity; changing sensor/wiring/zero cannot reuse ADC calibration.
+inline uint64_t positionSensorIdentity(const HardwareConfig &c,unsigned axis) {
+  if(!c.sensorType(axis)) return 0; // preserve existing potentiometer records
+  return uint64_t(c.sensorType(axis)) | (uint64_t(c.sensorAddress(axis))<<8) |
+      (uint64_t(c.sensorZero(axis))<<16) |
+      (uint64_t(uint8_t(axis?c.pins.elSensorSda:c.pins.azSensorSda))<<32) |
+      (uint64_t(uint8_t(axis?c.pins.elSensorScl:c.pins.azSensorScl))<<40);
+}
 enum class ConfigPhase : uint8_t { Confirmed, Pending, Testing, Recovery, Starting };
 enum class RecoveryReason : uint8_t { None, Unconfirmed, LowMemory, Allocation, Radio, Storage, Invalid, Requested, Initial };
 inline const char *recoveryReasonName(RecoveryReason r) {
@@ -105,11 +118,12 @@ struct HardwareRecord {
 using LegacyHardwareBytes = std::array<uint8_t,40>;
 using PinHardwareBytes = std::array<uint8_t,98>; // version 2, 29 GPIO roles
 using LocalHardwareBytes = std::array<uint8_t,154>; // version 3, 35 GPIO roles
-using HardwareBytes = std::array<uint8_t,40 + pinDefinitions.size()*2 + LocalSettings{}.size()*4>;
+using UartHardwareBytes = std::array<uint8_t,162>; // version 4, 39 GPIO roles
+using HardwareBytes = std::array<uint8_t,40 + pinDefinitions.size()*2 + LocalSettings{}.size()*4 + SensorSettings{}.size()*4>;
 template<size_t N> inline std::array<uint8_t,N> encodeHardwareRecord(const HardwareRecord &r) {
-  static_assert(N==40 || N==98 || N==154 || N==HardwareBytes{}.size(), "Unknown hardware format");
+  static_assert(N==40 || N==98 || N==154 || N==162 || N==HardwareBytes{}.size(), "Unknown hardware format");
   std::array<uint8_t,N> b{};
-  b[0]='H'; b[1]='W'; b[2]=N==40?1:N==98?2:N==154?3:4; b[3]=SELECTED_BOARD; b[4]=DISPLAY_KIND;
+  b[0]='H'; b[1]='W'; b[2]=N==40?1:N==98?2:N==154?3:N==162?4:5; b[3]=SELECTED_BOARD; b[4]=DISPLAY_KIND;
   b[5]=uint8_t(r.phase); b[6]=uint8_t(r.reason); b[7]=r.hasConfirmed;
   for(unsigned i=0;i<4;++i) b[8+i]=uint8_t(r.generation>>(8*i));
   auto put=[&](unsigned at,const HardwareConfig &c) {
@@ -119,7 +133,7 @@ template<size_t N> inline std::array<uint8_t,N> encodeHardwareRecord(const Hardw
   };
   put(12,r.good); put(21,r.candidate);
   for(unsigned i=0;i<4;++i) b[30+i]=uint8_t(r.probeCounter>>(8*i));
-  constexpr size_t count=N==40?0:N==98?29:N==154?35:pinDefinitions.size();
+  constexpr size_t count=N==40?0:N==98?29:N==154?35:N==162?39:pinDefinitions.size();
   if constexpr(N!=40) for(size_t i=0;i<count;++i) {
     b[36+i]=uint8_t(r.good.pins.*pinDefinitions[i].member);
     b[36+count+i]=uint8_t(r.candidate.pins.*pinDefinitions[i].member);
@@ -129,6 +143,11 @@ template<size_t N> inline std::array<uint8_t,N> encodeHardwareRecord(const Hardw
     const auto at=36+count*2+(c*LocalSettings{}.size()+i)*2;
     b[at]=uint8_t(value); b[at+1]=uint8_t(value>>8);
   }
+  if constexpr(N==HardwareBytes{}.size()) for(unsigned c=0;c<2;++c) for(size_t i=0;i<SensorSettings{}.size();++i) {
+    const auto value=(c?r.candidate:r.good).sensors[i];
+    const auto at=36+count*2+LocalSettings{}.size()*4+(c*SensorSettings{}.size()+i)*2;
+    b[at]=uint8_t(value);b[at+1]=uint8_t(value>>8);
+  }
   uint32_t crc=2166136261u;
   for(size_t i=0;i<N-4;++i) crc=(crc^b[i])*16777619u;
   for(unsigned i=0;i<4;++i) b[N-4+i]=uint8_t(crc>>(8*i));
@@ -136,7 +155,7 @@ template<size_t N> inline std::array<uint8_t,N> encodeHardwareRecord(const Hardw
 }
 inline HardwareBytes encodeHardware(const HardwareRecord &r) { return encodeHardwareRecord<HardwareBytes{}.size()>(r); }
 template<size_t N> inline bool decodeHardware(const std::array<uint8_t,N> &b,HardwareRecord &r) {
-  if(b[0]!='H' || b[1]!='W' || b[2]!=(N==40?1:N==98?2:N==154?3:4) || b[3]!=SELECTED_BOARD || b[4]!=DISPLAY_KIND ||
+  if(b[0]!='H' || b[1]!='W' || b[2]!=(N==40?1:N==98?2:N==154?3:N==162?4:5) || b[3]!=SELECTED_BOARD || b[4]!=DISPLAY_KIND ||
       b[5]>uint8_t(ConfigPhase::Starting) || b[6]>uint8_t(RecoveryReason::Initial) || b[7]>1) return false;
   HardwareRecord next;
   next.phase=ConfigPhase(b[5]); next.reason=RecoveryReason(b[6]); next.hasConfirmed=b[7];
@@ -150,7 +169,7 @@ template<size_t N> inline bool decodeHardware(const std::array<uint8_t,N> &b,Har
     c.buttonPullup=b[at+7]; c.pwmInverted=b[at+8]; return true;
   };
   if(!get(12,next.good) || !get(21,next.candidate)) return false;
-  constexpr size_t count=N==40?0:N==98?29:N==154?35:pinDefinitions.size();
+  constexpr size_t count=N==40?0:N==98?29:N==154?35:N==162?39:pinDefinitions.size();
   if constexpr(N!=40) for(size_t i=0;i<count;++i) {
     next.good.pins.*pinDefinitions[i].member=int8_t(b[36+i]);
     next.candidate.pins.*pinDefinitions[i].member=int8_t(b[36+count+i]);
@@ -158,6 +177,10 @@ template<size_t N> inline bool decodeHardware(const std::array<uint8_t,N> &b,Har
   if constexpr(N!=40 && N!=98) for(unsigned c=0;c<2;++c) for(size_t i=0;i<LocalSettings{}.size();++i) {
     const auto at=36+count*2+(c*LocalSettings{}.size()+i)*2;
     (c?next.candidate:next.good).local[i]=uint16_t(b[at])|(uint16_t(b[at+1])<<8);
+  }
+  if constexpr(N==HardwareBytes{}.size()) for(unsigned c=0;c<2;++c) for(size_t i=0;i<SensorSettings{}.size();++i) {
+    const auto at=36+count*2+LocalSettings{}.size()*4+(c*SensorSettings{}.size()+i)*2;
+    (c?next.candidate:next.good).sensors[i]=uint16_t(b[at])|(uint16_t(b[at+1])<<8);
   }
   if(encodeHardwareRecord<N>(next)!=b) return false;
   if constexpr(N==40) {

@@ -10,12 +10,22 @@ namespace forkrot {
 void WebInterface::sendHtml(const char *raw, size_t rawSize, const unsigned char *gzip, size_t gzipSize) {
   const String encoding = web_.header("Accept-Encoding");
   web_.sendHeader("Vary", "Accept-Encoding");
+#if !FORK_S3 && !FORK_CLASSIC_ESP32
+  // Keep both I2C feedback and TFT support within the S2's existing OTA slots.
+  // LTO can discard the uncompressed HTML when this profile only serves gzip.
+  (void)raw; (void)rawSize;
+  if (!encoding.length() || acceptsGzip(encoding.c_str())) {
+    web_.sendHeader("Content-Encoding", "gzip");
+    web_.sendPage(200, "text/html; charset=utf-8", reinterpret_cast<const char *>(gzip), gzipSize);
+  } else web_.send(406, "application/json", "{\"error\":\"gzip_required\"}");
+#else
   if (acceptsGzip(encoding.c_str())) {
     web_.sendHeader("Content-Encoding", "gzip");
     web_.sendPage(200, "text/html; charset=utf-8", reinterpret_cast<const char *>(gzip), gzipSize);
   } else {
     web_.sendPage(200, "text/html; charset=utf-8", raw, rawSize);
   }
+#endif
 }
 void WebInterface::serveApi(std::string_view method,std::string_view path,FormView arguments,bool fixed) {
   JsonWriter j(statusBuffer_,sizeof statusBuffer_);

@@ -7,6 +7,7 @@
 #include "crowpanel_drive.hpp"
 #include "rgb_indicator.hpp"
 #include "local_input.hpp"
+#include "position_sensors.hpp"
 namespace forkrot {
 
 enum RgbState : uint8_t { RGB_IDLE, RGB_RX, RGB_TX, RGB_HEARTBEAT };
@@ -27,6 +28,9 @@ public:
     lastHeartbeatMs = millis();
   }
   int adcAvgMv(int pin);
+  int positionValue(unsigned axis);
+  bool positionValid(unsigned axis) const { return positionValid_[axis]; }
+  void positionDiagRead(unsigned axis,int &raw,int &value);
   int filteredMv(unsigned axis);
   uint32_t sampledAt(unsigned axis) const { return filters_[axis].sampledAt(); }
   uint32_t sampleMaxIntervalMs(unsigned axis) const { return filters_[axis].maxIntervalMs(); }
@@ -58,6 +62,10 @@ private:
   bool pwmReady = false, pwmFailed = false, directionsStarted_ = false;
   bool attached_[4] = {};
   PositionFilter filters_[2];
+  PositionSensors sensors_;
+  bool positionValid_[2]{};
+  uint32_t positionAttemptAt_[2]{};
+  bool positionAttempted_[2]{};
 #if CROWPANEL_LOCAL_DRIVE
   CrowPanelDrive crowpanelDrive_;
   void crowpanelFault();

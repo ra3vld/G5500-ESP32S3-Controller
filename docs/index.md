@@ -15,6 +15,7 @@
 - [Выбор конфигурации, GPIO и настройки оборудования](setup/configuration.md).
 - [Wi-Fi и сетевые порты](setup/network.md).
 - [Диапазоны и калибровка AZ / EL](setup/az-range.md).
+- [Датчики положения MT6701 и AS5600](setup/position-sensors.md).
 - [Регуляторы движения и автотюн](setup/regulator-tuning.md).
 - [Подбор методики автотюна через API](setup/autotune-experiments.md).
 

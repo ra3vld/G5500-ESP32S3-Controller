@@ -72,9 +72,14 @@ function addPoint(a,raw,mv){
 }
 function fmt(v,n=0){return Number(v).toFixed(n)}
 function updateAxis(prefix,raw,mv,arr){
+  const encoder=axisSources[prefix]!=='ADC';
+  document.getElementById(prefix+'Pin').textContent=prefix.toUpperCase()+' — '+axisSources[prefix]+(encoder?' · I²C':'');
+  document.getElementById(prefix+'raw').parentElement.firstChild.nodeValue=encoder?'Отсчёт датчика':'RAW ADC';
+  document.getElementById(prefix+'mv').parentElement.firstChild.nodeValue=encoder?'С учётом нуля':'CAL mV';
+  for(const suffix of ['lin','dmv','pct'])document.getElementById(prefix+suffix).parentElement.hidden=encoder;
   let lin=raw*3100/4095, d=mv-lin, pct=lin>50?100*d/lin:0;
-  document.getElementById(prefix+'raw').textContent=raw;
-  document.getElementById(prefix+'mv').textContent=mv;
+  document.getElementById(prefix+'raw').textContent=raw<0?'Ошибка чтения':raw;
+  document.getElementById(prefix+'mv').textContent=mv<0?'—':mv;
   document.getElementById(prefix+'lin').textContent=fmt(lin,1);
   document.getElementById(prefix+'dmv').textContent=(d>=0?'+':'')+fmt(d,1);
   document.getElementById(prefix+'pct').textContent=(pct>=0?'+':'')+fmt(pct,2)+'%';
@@ -100,14 +105,18 @@ function draw(){
   series(azPts,'#33b8ff');if(hasEl)series(elPts,'#ffb347');
   x.fillStyle='#33b8ff';x.fillText('AZ',right-95,top+14);x.fillStyle='#ffb347';if(hasEl)x.fillText('EL',right-60,top+14);x.fillStyle='#96a9b7';x.fillText('RAW ADC',right-80,bottom+32);
 }
+const axisSources={az:'ADC',el:'ADC'};
 async function upd(){
   try{
     let j=await (await fetch('/api/adcdiag',{cache:'no-store'})).json();
     hasEl=j.hasEl!==false;
     for(const id of ['adcElCard','adcElHelp','adcElLegend'])document.getElementById(id).style.display=hasEl?'':'none';
     document.querySelector('.grid').style.gridTemplateColumns=hasEl?'':'1fr';
-    addPoint(azPts,j.azRaw,j.azMv); if(hasEl)addPoint(elPts,j.elRaw,j.elMv);
-    updateAxis('az',j.azRaw,j.azMv,azPts); if(hasEl)updateAxis('el',j.elRaw,j.elMv,elPts);
+    axisSources.az=j.azSensor||'ADC';axisSources.el=j.elSensor||'ADC';
+    if(axisSources.az==='ADC')addPoint(azPts,j.azRaw,j.azMv);
+    if(hasEl&&axisSources.el==='ADC')addPoint(elPts,j.elRaw,j.elMv);
+    updateAxis('az',j.azRaw,j.azValue??j.azMv,azPts); if(hasEl)updateAxis('el',j.elRaw,j.elValue??j.elMv,elPts);
+    chart.closest('.card').hidden=axisSources.az!=='ADC'&&(!hasEl||axisSources.el!=='ADC');
     draw();
   }catch(e){}
 }

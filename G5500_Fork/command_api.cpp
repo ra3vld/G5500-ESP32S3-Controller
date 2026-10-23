@@ -33,12 +33,12 @@ void base64(JsonWriter &j, std::string_view s) {
   }
 }
 }
-bool CommandForm::parse(std::string_view text) {
+bool CommandForm::parse(std::string_view text,size_t limit) {
   count = 0;
-  if (text.size() > COMMAND_INPUT_MAX) return false;
+  if (limit>=sizeof bytes || text.size() > limit) return false;
   size_t used = 0;
   while (!text.empty()) {
-    if (count == entries.size()) return false;
+    if (count == (limit>COMMAND_INPUT_MAX?entries.size():64)) return false;
     const auto amp = text.find('&');
     const auto pair = text.substr(0, amp);
     const auto equal = pair.find('=');
@@ -53,7 +53,7 @@ bool CommandForm::parse(std::string_view text) {
           if (i+2 >= raw.size() || hex(raw[i+1]) < 0 || hex(raw[i+2]) < 0) return false;
           c = unsigned(hex(raw[i+1])*16 + hex(raw[i+2])); i += 2;
         } else if (c == '+') c = ' ';
-        if (c < 32 || c == 127 || used == COMMAND_INPUT_MAX) return false;
+        if (c < 32 || c == 127 || used == limit) return false;
         bytes[used++] = char(c);
       }
       values[part] = {bytes+start,used-start};

@@ -68,6 +68,7 @@ void DeviceApi::writeHardwareStatus(JsonWriter &j, bool compact, std::string_vie
       << ",\"pwmInverted\":" << unsigned(c.pwmInverted) << ",\"pins\":";
     writePinMap(j,c.pins);
     for(unsigned i=0;i<11;++i) j << ',' << jsonQuoted(localSettingNames[i]) << ':' << c.local[i];
+    for(unsigned i=0;i<SensorSettings{}.size();++i) j << ',' << jsonQuoted(sensorSettingNames[i]) << ':' << c.sensors[i];
     j << '}';
   };
   const auto &r = runtime_.hardwareRecord;
@@ -142,6 +143,8 @@ void DeviceApi::writeConfiguration(JsonWriter &j) {
     << ",\"rotctldManualFollow\":" << (p.manualFollow.rotctld?"true":"false")
     << ",\"azProfile\":" << jsonQuoted(azProfileName(c.azProfile)) << ",\"azStart\":" << c.azRange.start << ",\"azSpan\":" << c.azRange.span()
     << ",\"elProfile\":" << jsonQuoted(elProfileName(c.elProfile)) << ",\"elStart\":" << c.elRange.start << ",\"elSpan\":" << c.elRange.span()
+    << ",\"azSensor\":" << jsonQuoted(sensorName(c.hardware.sensorType(0)))
+    << ",\"elSensor\":" << jsonQuoted(sensorName(c.hardware.sensorType(1)))
     << ",\"speedEnabled\":" << (c.speedEnabled?"true":"false");
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   j << ",\"encoderInverted\":" << (s.encoderInverted?"true":"false");
@@ -211,7 +214,7 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
     if(method=="GET" && path=="/api/hardware/pins") { writePinCapabilities(output,runtime_.hardwareHudUart); return; }
     if(method=="GET" && path=="/api/hardware") { writeHardwareStatus(output,command,web_.value("view")); return; }
     if(method!="POST") { reply(405,"method_not_allowed"); return; }
-    char encoded[1025]; JsonWriter fields(encoded,sizeof encoded);
+    char encoded[1537]; JsonWriter fields(encoded,sizeof encoded);
     for(auto entry:arguments) {
       if(entry.first.find_first_of("&=")!=entry.first.npos || entry.second.find_first_of("&=")!=entry.second.npos) { reply(400,"invalid_form"); return; }
       if(fields.size())fields << '&';
@@ -391,14 +394,17 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
       return;
     }
     int azRaw = 0, azMv = 0, elRaw = 0, elMv = 0;
-    hardware_.adcDiagRead(runtime_.controller.hardware.pins.azAdc, azRaw, azMv);
+    hardware_.positionDiagRead(0, azRaw, azMv);
     if (runtime_.controller.model == forkrot::Model::G5500) {
-      hardware_.adcDiagRead(runtime_.controller.hardware.pins.elAdc, elRaw, elMv);
+      hardware_.positionDiagRead(1, elRaw, elMv);
     }
     String j = String("{\"hasEl\":") +
                (runtime_.controller.model == forkrot::Model::G5500 ? "true" : "false") +
-               ",\"azRaw\":" + String(azRaw) + ",\"azMv\":" + String(azMv) +
-               ",\"elRaw\":" + String(elRaw) + ",\"elMv\":" + String(elMv) + "}";
+               ",\"azRaw\":" + String(azRaw) + ",\"azMv\":" + (runtime_.controller.hardware.sensorType(0)?String("null"):String(azMv)) +
+               ",\"elRaw\":" + String(elRaw) + ",\"elMv\":" + (runtime_.controller.hardware.sensorType(1)?String("null"):String(elMv)) +
+               ",\"azValue\":" + String(azMv) + ",\"elValue\":" + String(elMv) +
+               ",\"azSensor\":\"" + String(sensorName(runtime_.controller.hardware.sensorType(0))) +
+               "\",\"elSensor\":\"" + String(sensorName(runtime_.controller.hardware.sensorType(1))) + "\"}";
     web_.send(200, "application/json", j);
 
     return;
@@ -503,7 +509,8 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
       web_.send(400, "text/plain", "NO EL AXIS");
       return;
     }
-    int a = hardware_.adcAvgMv(runtime_.controller.hardware.pins.azAdc), e = hardware_.adcAvgMv(runtime_.controller.hardware.pins.elAdc);
+    int a = hardware_.positionValue(0), e = hardware_.positionValue(1);
+    if ((p.startsWith("az") && a<0) || (p.startsWith("el") && e<0)) { web_.send(409,"text/plain","POSITION SENSOR UNAVAILABLE");return; }
     if (p.startsWith("el") && calibrationState.elProfile == EL_CUSTOM) { web_.send(400,"text/plain","USE /api/elcal"); return; }
     if (p.startsWith("az")) {
       if (calibrationState.gsAzMode == AZ_CUSTOM) { web_.send(400,"text/plain","USE /api/azcal"); return; }
@@ -561,8 +568,8 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
     }
     if (p == "O" || p == "O2" || p == "F" || p == "F2") {
       actions_.captureGs232Cal(p);
-      const bool saved = runtime_.controller.fault != "calibration_save_failed";
-      web_.send(saved ? 200 : 503, "text/plain", saved ? "2-POINT SAVED" : "CALIBRATION SAVE FAILED");
+      const bool saved = runtime_.controller.fault != "calibration_save_failed" && runtime_.controller.fault != "position_sensor_unavailable";
+      web_.send(saved ? 200 : 503, "text/plain", saved ? "2-POINT SAVED" : "CALIBRATION SAVE FAILED OR SENSOR UNAVAILABLE");
     } else {
       web_.send(400, "text/plain", "BAD COMMAND");
     }
@@ -585,7 +592,7 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
       return;
     }
     calibration_.state().cal.valid = calibration_.selectedCalibrationValid();
-    const bool saved = runtime_.controller.fault != "calibration_save_failed";
+    const bool saved = runtime_.controller.fault != "calibration_save_failed" && runtime_.controller.fault != "position_sensor_unavailable";
     web_.send(saved ? 200 : 503, "text/plain", saved ? calibration_.calibrationModeName() : "CALIBRATION SAVE FAILED");
 
     return;
@@ -719,6 +726,8 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
       << ",\"azMulti45\":" << (calibrationState.az45MultiValid ? "true" : "false")
       << ",\"elMulti\":" << (calibration_.activeElMultiValid() ? "true" : "false")
       << ",\"calMode\":" << jsonQuoted(calibrationState.calibrationMode == CAL_MULTI_POINT ? "multi" : "2")
+      << ",\"azSensor\":" << jsonQuoted(sensorName(runtime_.controller.hardware.sensorType(0)))
+      << ",\"elSensor\":" << jsonQuoted(sensorName(runtime_.controller.hardware.sensorType(1)))
       << ",\"az2p0\":" << az2z << ",\"az2pf\":" << az2f
       << ",\"el2p0\":" << (calibration_.activeElOSet() ? calibration_.activeEl2Zero() : -1)
       << ",\"el2pf\":" << (calibration_.activeElFSet() ? calibration_.activeEl2Full() : -1)

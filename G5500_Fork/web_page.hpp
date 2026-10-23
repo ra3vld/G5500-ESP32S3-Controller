@@ -299,11 +299,11 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 <div class="calibration-grid hide" id="panelm">
 <section class="settings-pane"><div class="calhead"><h3>Азимут · AZ</h3><div class="callive"><span data-cal-position="az">--.-</span><span>°</span></div></div>
 <p class="hint" id="azCalProgress" role="status"></p><div class="point-list" id="azPointList"></div>
-<div class="hide" id="customAzPoints"><form class="inline-form" onsubmit="addAzPoint(event)"><label for="azPointAngle">Угол новой точки, °</label><input aria-describedby="azPointAngle-help" id="azPointAngle" required="" step="0.1" type="number"/><button class="btn" type="submit">Добавить и запомнить</button><p class="field-help" id="azPointAngle-help">Установите антенну на нужный угол AZ и остановите её. Введите этот угол с шагом 0,1°: кнопка добавит точку и сразу запомнит текущее показание ADC.</p></form></div>
+<div class="hide" id="customAzPoints"><form class="inline-form" onsubmit="addAzPoint(event)"><label for="azPointAngle">Угол новой точки, °</label><input aria-describedby="azPointAngle-help" id="azPointAngle" required="" step="0.1" type="number"/><button class="btn" type="submit">Добавить и запомнить</button><p class="field-help" id="azPointAngle-help">Установите антенну на нужный угол AZ и остановите её. Введите этот угол с шагом 0,1°: кнопка добавит точку и сразу запомнит текущее показание датчика.</p></form></div>
 <div class="form-actions"><button class="btn calreset" onclick="resetCal('az','multi')">Сбросить AZ</button></div></section>
 <section class="settings-pane el-setting"><div class="calhead"><h3>Элевация · EL</h3><div class="callive"><span data-cal-position="el">--.-</span><span>°</span></div></div>
 <p class="hint" id="elCalProgress" role="status"></p><div class="point-list" id="elPointList"></div>
-<div class="hide" id="customElPoints"><form class="inline-form" onsubmit="addElPoint(event)"><label for="elPointAngle">Угол новой точки, °</label><input aria-describedby="elPointAngle-help" id="elPointAngle" required="" step="0.1" type="number"/><button class="btn" type="submit">Добавить и запомнить</button><p class="field-help" id="elPointAngle-help">Установите антенну на нужный угол EL и остановите её. Введите этот угол с шагом 0,1°: кнопка добавит точку и сразу запомнит текущее показание ADC.</p></form></div>
+<div class="hide" id="customElPoints"><form class="inline-form" onsubmit="addElPoint(event)"><label for="elPointAngle">Угол новой точки, °</label><input aria-describedby="elPointAngle-help" id="elPointAngle" required="" step="0.1" type="number"/><button class="btn" type="submit">Добавить и запомнить</button><p class="field-help" id="elPointAngle-help">Установите антенну на нужный угол EL и остановите её. Введите этот угол с шагом 0,1°: кнопка добавит точку и сразу запомнит текущее показание датчика.</p></form></div>
 <div class="form-actions"><button class="btn calreset" onclick="resetCal('el','multi')">Сбросить EL</button></div></section>
 </div>
 </div></details></section><section class="card settings-section" id="presetSettings"><details class="settings-details"><summary><h2>Предустановки<span class="section-caption">Четыре сохранённых положения</span></h2></summary><div class="settings-content"><form id="presetEditor" onsubmit="savePreset(event)">
@@ -1271,16 +1271,17 @@ async function loadAxisCalibration(axis){
 }
 async function loadAzCalibration(){return loadAxisCalibration('az')}
 function renderCalibrationPoints(axis,mode,points,custom,storageFault){
+ const encoder=window._forkState?.[axis+'Sensor']&&window._forkState[axis+'Sensor']!=='ADC',unit=encoder?'отсч.':'мВ';
  const prefix=axis+(mode==='2'?'2':''),list=document.getElementById(prefix+'PointList');
- const key=JSON.stringify([points,custom,storageFault]);if(list.dataset.points===key)return;
+ const key=JSON.stringify([points,custom,storageFault,unit]);if(list.dataset.points===key)return;
  list.dataset.points=key;list.replaceChildren();
  const captured=points.filter(p=>p.mv>=0).length;
  const differences=points.slice(1).map((p,i)=>p.mv-points[i].mv);
  const valid=captured===points.length&&(mode==='2'?Math.abs(differences[0])>100:differences.every(v=>v>0)||differences.every(v=>v<0));
- document.getElementById(prefix+'CalProgress').textContent='Записано '+captured+' из '+points.length+'. '+(storageFault?'Ошибка сохранённой калибровки.':captured<points.length?'Запомните оставшиеся положения.':valid?'Калибровка готова.':mode==='2'?'Разница напряжений должна превышать 100 мВ.':'Напряжения должны последовательно расти или убывать.');
+ document.getElementById(prefix+'CalProgress').textContent='Записано '+captured+' из '+points.length+'. '+(storageFault?'Ошибка сохранённой калибровки.':captured<points.length?'Запомните оставшиеся положения.':valid?'Калибровка готова.':mode==='2'?'Разница показаний должна превышать 100 '+unit+'.':'Показания должны последовательно расти или убывать.');
  for(const [i,p] of points.entries()){
   const row=document.createElement('div');row.className='point-row';row.dataset.angle=p.angle;
-  const label=document.createElement('span');label.textContent=(i===0?'Начало':i===points.length-1?'Конец':'Точка '+(i+1))+' · '+p.angle+'° · '+(p.mv<0?'не записано':p.mv+' мВ');row.append(label);
+  const label=document.createElement('span');label.textContent=(i===0?'Начало':i===points.length-1?'Конец':'Точка '+(i+1))+' · '+p.angle+'° · '+(p.mv<0?'не записано':p.mv+' '+unit);row.append(label);
   const capture=document.createElement('button');capture.className='btn '+(p.mv>=0?'good':'warn');capture.textContent='Запомнить положение';
   if(mode==='2'){const command=(i===0?'o':'f')+(axis==='el'?'2':'');capture.id='b2_'+axis+(i===0?'o':'f');capture.onclick=()=>cal2(command)}
   else capture.onclick=()=>custom?axisCalibrationPost(axis,'/api/'+axis+'cal',{op:'capture',angle:p.angle}):cal(axis+p.angle);
@@ -1305,7 +1306,7 @@ async function axisCalibrationPost(axis,path,body,notice=null){
  const message=document.getElementById(axis+'RangeMessage');
  try{const r=await settingsRequest(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});const j=r.json();
  if(!r.ok||j.ok===false){const error=j.error==='invalid_point'?'Проверьте угол: точка должна быть внутри диапазона, без повторов; максимум 16 точек.':j.error==='invalid_range'?'Проверьте начало и полный ход.':'Не удалось сохранить настройки '+label;setText(message,error);notice.finish(false,error);return false;}
- const text=body.op?(body.op==='add_capture'?'Точка '+label+' '+body.angle+'° добавлена, текущее показание ADC запомнено':body.op==='capture'?'Положение '+label+' '+body.angle+'° запомнено':body.op==='add'?'Точка '+label+' '+body.angle+'° добавлена':'Точка '+label+' '+body.angle+'° удалена'):'Диапазон '+label+' сохранён';
+ const text=body.op?(body.op==='add_capture'?'Точка '+label+' '+body.angle+'° добавлена, текущее показание датчика запомнено':body.op==='capture'?'Положение '+label+' '+body.angle+'° запомнено':body.op==='add'?'Точка '+label+' '+body.angle+'° добавлена':'Точка '+label+' '+body.angle+'° удалена'):'Диапазон '+label+' сохранён';
  delete document.getElementById(axis+'RangeForm').dataset.dirty;setText(message,text);notice.finish(true,text);
  await upd(true);await (axis==='az'?loadAzCalibration():loadElCalibration());return true;
  }catch(e){const error='Подтверждение не получено. Проверьте связь и настройки '+label+' перед повтором.';setText(message,error);notice.finish(false,error);return false;}

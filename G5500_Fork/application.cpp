@@ -25,17 +25,18 @@ void Application::updatePosition() {
   // Each axis uses the calibration of its active range profile.
   int az = hardware_.filteredMv(0),
       el = runtime_.controller.model == forkrot::Model::G5500 ? hardware_.filteredMv(1) : 0;
-  runtime_.currentAz = calibration_.mapAz(az);
-  runtime_.currentEl = calibration_.mapEl(el);
+  if(hardware_.positionValid(0)) runtime_.currentAz = calibration_.mapAz(az);
+  if(hardware_.positionValid(1)) runtime_.currentEl = calibration_.mapEl(el);
   calibrationState.cal.valid = calibration_.selectedCalibrationValid();
   if (runtime_.controller.model == forkrot::Model::G800DXA) {
     runtime_.currentEl = 0;
   }
   for (unsigned i=0; i<2; ++i) runtime_.controller.feedbackAt(
-      i, i ? runtime_.currentEl : runtime_.currentAz,
-      calibrationState.calibrationMode == CAL_MULTI_POINT
+      i, runtime_.controller.hardware.sensorType(i) && !hardware_.positionValid(i)
+          ? NAN : (i ? runtime_.currentEl : runtime_.currentAz),
+      hardware_.positionValid(i) && (calibrationState.calibrationMode == CAL_MULTI_POINT
           ? (i ? calibration_.activeElMultiValid() : calibration_.activeAzMultiValid())
-          : (i ? calibration_.activeElLinearValid() : calibration_.activeAzLinearValid()),
+          : (i ? calibration_.activeElLinearValid() : calibration_.activeAzLinearValid())),
       hardware_.sampledAt(i));
   }
 }
@@ -121,14 +122,14 @@ void Application::setGsAzMode(uint8_t m) {
 bool Application::editAzPoint(const char *op, float angle) {
   if (runtime_.hud.isHud()) return false;
   const auto old = calibration_.state();
-  if (!calibration_.editAzPoint(op, angle, hardware_.adcAvgMv(runtime_.controller.hardware.pins.azAdc))) return false;
+  if (!calibration_.editAzPoint(op, angle, hardware_.positionValue(0))) return false;
   if (!saveCal()) { calibration_.state() = old; return false; }
   return true;
 }
 bool Application::editElPoint(const char *op, float angle) {
   if (runtime_.hud.isHud()) return false;
   const auto old = calibration_.state();
-  if (!calibration_.editElPoint(op, angle, hardware_.adcAvgMv(runtime_.controller.hardware.pins.elAdc))) return false;
+  if (!calibration_.editElPoint(op, angle, hardware_.positionValue(1))) return false;
   if (!saveCal()) { calibration_.state() = old; return false; }
   return true;
 }
@@ -141,15 +142,17 @@ void Application::captureGs232Cal(const String &cmd) {
     return;
   }
 
-  int az = hardware_.adcAvgMv(runtime_.controller.hardware.pins.azAdc);
-  int el = hardware_.adcAvgMv(runtime_.controller.hardware.pins.elAdc);
+  const bool elAxis=cmd=="O2" || cmd=="F2";
+  const int value=hardware_.positionValue(elAxis?1:0);
+  if(value<0) { runtime_.controller.fault="position_sensor_unavailable";return; }
+  if(runtime_.controller.fault=="position_sensor_unavailable") runtime_.controller.fault.clear();
 
   if (cmd == "O" || cmd == "F") {
-    calibration_.captureAzEndpoint(cmd == "F", az);
+    calibration_.captureAzEndpoint(cmd == "F", value);
   } else if (cmd == "O2") {
-    calibration_.captureElEndpoint(false, el);
+    calibration_.captureElEndpoint(false, value);
   } else if (cmd == "F2") {
-    calibration_.captureElEndpoint(true, el);
+    calibration_.captureElEndpoint(true, value);
   } else {
     return;
   }

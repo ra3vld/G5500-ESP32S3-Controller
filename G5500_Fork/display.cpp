@@ -402,17 +402,17 @@ void Display::drawCalHome() {
   }
 
   tftText(8, 223, 2, TFT_MUTED, TFT_BG,
-          String("A") + String(hardware_.adcAvgMv(runtime_.controller.hardware.pins.azAdc)) +
+          String("A") + String(hardware_.positionValue(0)) + (runtime_.controller.hardware.sensorType(0)?" ct":" mV") +
               (runtime_.controller.model == forkrot::Model::G5500
-                   ? String(" E") + String(hardware_.adcAvgMv(runtime_.controller.hardware.pins.elAdc))
-                   : String("")) +
-              " mV");
+                   ? String(" E") + String(hardware_.positionValue(1)) + (runtime_.controller.hardware.sensorType(1)?" ct":" mV")
+                   : String("")));
 }
 
 void Display::drawCalAxis(bool az) {
   const auto &state = calibration_.state();
   const auto range = az ? calibration_.activeAzRange() : calibration_.activeElRange();
   const String axis = az ? "AZ" : "EL";
+  const char *unit=runtime_.controller.hardware.sensorType(az?0:1)?" ct":" mV";
   drawCalHeader(axis + " CAL");
   if (az) {
     tftButton(8, 36, 96, 26, "P36", state.gsAzMode == AZ_P36);
@@ -431,9 +431,9 @@ void Display::drawCalAxis(bool az) {
     tftText(8, 125, 1, TFT_MUTED, TFT_BG, "START");
     tftText(167, 125, 1, TFT_MUTED, TFT_BG, "END");
     tftText(8, 140, 2, TFT_MUTED, TFT_BG,
-            startSet ? String(az ? calibration_.activeAz2Zero() : calibration_.activeEl2Zero()) + " mV" : "--- mV");
+            startSet ? String(az ? calibration_.activeAz2Zero() : calibration_.activeEl2Zero()) + unit : String("---")+unit);
     tftText(167, 140, 2, TFT_MUTED, TFT_BG,
-            endSet ? String(az ? calibration_.activeAz2Full() : calibration_.activeEl2Full()) + " mV" : "--- mV");
+            endSet ? String(az ? calibration_.activeAz2Full() : calibration_.activeEl2Full()) + unit : String("---")+unit);
     tftButton(8, 166, 304, 45, "RESET " + axis);
     tftText(8, 222, 1, TFT_MUTED, TFT_BG, "START -> END | Stop, then tap angle");
   } else {
@@ -709,7 +709,8 @@ void Display::resetTouchCalAxis(bool az) {
 
 void Display::captureTouchMultiAz(uint8_t idx) {
   auto &calibrationState = calibration_.state();
-  int mv = hardware_.adcAvgMv(runtime_.controller.hardware.pins.azAdc);
+  int mv = hardware_.positionValue(0);
+  if(mv<0) return;
   if (calibrationState.gsAzMode == AZ_CUSTOM) {
     if (idx < calibrationState.custom.count) actions_.editAzPoint("capture", calibrationState.custom.range.start+calibrationState.custom.degrees[idx]);
     tftNeedsRedraw=true; return;
@@ -740,7 +741,9 @@ void Display::captureTouchMultiEl(uint8_t idx) {
   if (idx >= EL_CAL_N) {
     return;
   }
-  calibration_.state().elCalMv[idx] = hardware_.adcAvgMv(runtime_.controller.hardware.pins.elAdc);
+  const int value=hardware_.positionValue(1);
+  if(value<0) return;
+  calibration_.state().elCalMv[idx] = value;
   calibration_.refreshMultiCalValidity();
   actions_.saveCal();
   tftNeedsRedraw = true;

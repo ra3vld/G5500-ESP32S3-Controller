@@ -111,7 +111,7 @@ int main(int argc,char **argv) {
   record.good.pins.uartDe=0;record.candidate.pins.hudRx=4;record.candidate.pins.hudTx=5;record.candidate.pins.hudDe=6;
   record.good.pins.led=-1; record.candidate.pins.led=0; record.candidate.buttonGpio=-1;
   const auto bytes=encodeHardware(record); HardwareRecord decoded;
-  assert(bytes[2]==4 && decodeHardware(bytes,decoded));
+  assert(bytes[2]==5 && decodeHardware(bytes,decoded));
   assert(decoded.good==record.good && decoded.candidate==record.candidate);
   auto broken=bytes; broken[36]^=1; assert(!decodeHardware(broken,decoded));
   const auto v2=encodeHardwareRecord<98>(record);
@@ -121,6 +121,9 @@ int main(int argc,char **argv) {
   record.good.pins.localAzAdc=SELECTED_BOARD==BOARD_ESP32?36:4;
   auto v3=encodeHardware(record);
   assert(decodeHardware(v3,decoded) && decoded.good==record.good);
+  const auto oldUart=encodeHardwareRecord<162>(record);
+  assert(oldUart[2]==4 && decodeHardware(oldUart,decoded));
+  assert(decoded.good.sensors==SensorSettings({0,6,0,0,6,0}));
   const auto oldLocal=encodeHardwareRecord<154>(record);
   assert(oldLocal[2]==3 && decodeHardware(oldLocal,decoded));
   assert(decoded.good.local==record.good.local && decoded.good.pins.uartDe==-1);

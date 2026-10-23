@@ -178,13 +178,14 @@ public:
   }
   // Recovery must not depend on String header allocation or the normal parser.
   // Payload is flash or the existing status buffer, valid across service calls.
-  void sendFixed(int code, const char *type, const char *data, size_t size, bool allowKeepAlive = false) {
+  void sendFixed(int code, const char *type, const char *data, size_t size, bool allowKeepAlive = false, bool gzip = false) {
     char header[256];
     keepAliveResponse_ = allowKeepAlive && persistentCandidate_ && code == 200;
     const int count = std::snprintf(header, sizeof header,
         "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %u\r\n"
-        "Cache-Control: no-store\r\nConnection: %s\r\n\r\n",
+        "Cache-Control: no-store\r\n%sConnection: %s\r\n\r\n",
         code, code == 200 ? "OK" : "Error", type, unsigned(size),
+        gzip ? "Content-Encoding: gzip\r\nVary: Accept-Encoding\r\n" : "",
         keepAliveResponse_ ? "keep-alive" : "close");
     if (count <= 0 || size_t(count) >= sizeof header ||
         _currentClientWrite(header, size_t(count)) != size_t(count)) return;

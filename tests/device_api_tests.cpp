@@ -64,6 +64,37 @@ struct Fixture {
   }
 };
 int main(int argc,char **argv) {
+#if SELECTED_BOARD == BOARD_ESP32
+  {
+    Fixture sensors;
+    auto &c=sensors.runtime.controller;
+    auto cfg=c.hardware;cfg.simulation=false;cfg.sensors={1,6,0,2,54,0};
+    cfg.pins.azSensorSda=cfg.pins.elSensorSda=21;cfg.pins.azSensorScl=cfg.pins.elSensorScl=22;
+    c.configureHardware(cfg);fakeI2c[0]={};fakeI2c[1]={};
+    fakeI2c[0].devices[6][3]=0xff;fakeI2c[0].devices[6][4]=0xfc;
+    fakeI2c[0].devices[54][0xb]=0x20;fakeI2c[0].devices[54][0xc]=0x0a;fakeI2c[0].devices[54][0xd]=0xbc;
+    sensors.hardware.beginAdc();
+    const auto diag=sensors.call("GET","/api/adcdiag","",false);
+    assert(diag.status==200 && diag.body.find("\"azRaw\":16383")!=diag.body.npos);
+    assert(diag.body.find("\"azMv\":null")!=diag.body.npos && diag.body.find("\"elValue\":2748")!=diag.body.npos);
+    assert(diag.body.find("\"azSensor\":\"MT6701\"")!=diag.body.npos);
+    assert(sensors.call("GET","/api/config","",false).body.find("\"elSensor\":\"AS5600\"")!=std::string::npos);
+    fakeI2c[0].devices[54][0xb]=0;
+    assert(sensors.call("GET","/api/adcdiag","",false).body.find("\"elValue\":-1")!=std::string::npos);
+    const auto unavailable=sensors.call("POST","/api/cal","p=el0",false);
+    assert(unavailable.status==409 && sensors.calibration.state().elCalMv[0]==-1);
+  }
+  {
+    Fixture sensors;
+    const auto body="token=11&generation=1&simulation=0&azSensor=1&azSensorAddress=6&pin.azSensorSda=21&pin.azSensorScl=22&pin.azAdc=-1";
+    assert(sensors.call("POST","/api/hardware",body,false).status==200);
+    const auto state=sensors.call("GET","/api/hardware","",false);
+    assert(state.body.find("\"azSensor\":1")!=state.body.npos);
+    assert(sensors.runtime.hardwareRecord.good.sensorType(0)==0 && sensors.runtime.hardwareRecord.candidate.sensorType(0)==1);
+    const auto bad=sensors.call("POST","/api/hardware","token=11&generation=2&azSensor=2&azSensorAddress=6",false);
+    assert(bad.status==400 && bad.body.find("invalid_position_sensor")!=bad.body.npos);
+  }
+#endif
   {
     Fixture mb;
     assert(mb.storage.loadModbus(mb.runtime)&&mb.runtime.modbus==ModbusConfig{});

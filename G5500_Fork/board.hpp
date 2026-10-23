@@ -195,6 +195,8 @@ inline bool pinActive(const HardwareConfig &c,const PinDefinition &d) {
   switch(d.group) {
   case PinGroup::Drive:
     if(c.simulation) return false;
+    if(d.member==&PinMap::azAdc && c.sensorType(0)) return false;
+    if(d.member==&PinMap::elAdc && c.sensorType(1)) return false;
     if(c.pins.singleAxis() && (d.member==&PinMap::elAdc || d.member==&PinMap::elNegative ||
         d.member==&PinMap::elPositive || d.member==&PinMap::elSpeedEnable)) return false;
     return d.member!=&PinMap::elSpeedEnable || c.drive!=DRIVE_YAESU;
@@ -202,6 +204,8 @@ inline bool pinActive(const HardwareConfig &c,const PinDefinition &d) {
   case PinGroup::Joystick:return c.local[0]==LOCAL_INPUT_JOYSTICK;
   case PinGroup::Uart:return true;
   case PinGroup::Hud485:return c.hudRs485();
+  case PinGroup::SensorAz:return !c.simulation && c.sensorType(0)!=0;
+  case PinGroup::SensorEl:return !c.simulation && !c.pins.singleAxis() && c.sensorType(1)!=0;
   case PinGroup::Hc05:return c.backend()==BT_HC05;
   case PinGroup::Indicator:return true;
   case PinGroup::Tft:return DISPLAY_KIND==DISPLAY_ILI9341;
@@ -210,6 +214,19 @@ inline bool pinActive(const HardwareConfig &c,const PinDefinition &d) {
   return false;
 }
 inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool hudUart=false) {
+  for(unsigned i=0;i<2;++i) {
+    const auto at=i*3;
+    if(c.sensorType(i)>2 || c.sensorAddress(i)<1 || c.sensorAddress(i)>127 ||
+        (c.sensorType(i)==2 && c.sensorAddress(i)!=0x36) ||
+        (c.sensorType(i) && c.sensorZero(i)>=sensorCounts(c.sensorType(i))))
+      return {"invalid_position_sensor",sensorSettingNames[at]};
+  }
+  const bool sharedSensors=c.sensorType(0) && c.sensorType(1) && !c.pins.singleAxis() &&
+      c.pins.azSensorSda==c.pins.elSensorSda && c.pins.azSensorScl==c.pins.elSensorScl;
+  if(sharedSensors && c.sensorAddress(0)==c.sensorAddress(1))
+    return {"sensor_address_conflict","elSensorAddress"};
+  if(DISPLAY_KIND==DISPLAY_CROWPANEL_21 && c.sensorType(0) && c.sensorType(1) &&
+      !c.pins.singleAxis() && !sharedSensors) return {"sensor_bus_unavailable","elSensor"};
   if(!BLUETOOTH_SUPPORT && c.bluetooth) return {"bluetooth_not_supported","bluetoothEnabled"};
   if(c.drive>DRIVE_BTS7960 || c.bluetoothMode<BT_HC05 || c.bluetoothMode>BT_AUTO ||
       (c.pwmInverted && c.drive!=DRIVE_BTS7960)) return {"invalid_hardware"};
@@ -264,6 +281,8 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
       if(const auto *owner=fixedPinOwner(pin)) return {"gpio_conflict",d.field,owner,pin};
     }
     if(!pinActive(c,d)) continue;
+    // Both axes may use one physical bus, provided their addresses differ.
+    if(sharedSensors && d.group==PinGroup::SensorEl) continue;
     if(auto error=add(pin,d.field,d.kind,!d.optional,d.group==PinGroup::Buttons)) return error;
   }
   if(auto error=add(c.buttonGpio,"buttonGpio",PinKind::Input,false,c.buttonPullup)) return error;

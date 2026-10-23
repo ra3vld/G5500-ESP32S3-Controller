@@ -20,7 +20,7 @@ template<size_t N = 512> inline std::array<uint8_t,N> calibrationRecord(const Ca
   size_t at=0;
   const auto putWord=[&](uint32_t v) { for (int b=0;b<4;++b) out[at++]=uint8_t(v >> (8*b)); };
   const auto real=[&](float v) { uint32_t w; std::memcpy(&w,&v,4); putWord(w); };
-  putWord(0x31525a41); putWord(N == 384 ? 1 : 2); putWord(s.gsAzMode); putWord(s.calibrationMode);
+  putWord(0x31525a41); putWord(N == 384 ? 1 : 3); putWord(s.gsAzMode); putWord(s.calibrationMode);
   for (int v : {s.cal.az36_0,s.cal.az36Max,s.cal.az45_0,s.cal.az45Max,s.cal.el0,s.cal.elMax}) putWord(uint32_t(v));
   for (bool v : {s.az36OSet,s.az36FSet,s.az45OSet,s.az45FSet,s.elOSet,s.elFSet}) putWord(v);
   for (int v : s.az36CalMv) putWord(uint32_t(v));
@@ -33,6 +33,10 @@ template<size_t N = 512> inline std::array<uint8_t,N> calibrationRecord(const Ca
   };
   custom(s.custom);
   if constexpr (N == 512) { putWord(s.elProfile); custom(s.customEl); }
+  if constexpr (N == 512) {
+    at=480;
+    for(auto id:s.sensorIdentity) {putWord(uint32_t(id));putWord(uint32_t(id>>32));}
+  }
   at=out.size()-4; putWord(calibrationCrc(out.data(),out.size()-4));
   return out;
 }
@@ -42,11 +46,13 @@ template<size_t N> inline bool readCalibrationRecord(const std::array<uint8_t,N>
   const auto getWord=[&]() { uint32_t v=0; for (int b=0;b<4;++b) v|=uint32_t(in[at++])<<(8*b); return v; };
   const auto real=[&]() { uint32_t w=getWord(); float v; std::memcpy(&v,&w,4); ok &= std::isfinite(v); return v; };
   const auto boolean=[&]() { auto v=getWord(); ok &= v<=1; return v!=0; };
-  const auto mv=[&]() { int32_t v=int32_t(getWord()); ok &= v>=-1 && v<=10000; return int(v); };
+  const auto mv=[&]() { int32_t v=int32_t(getWord()); ok &= v>=-1 && v<=16383; return int(v); };
   at=in.size()-4;
   if (getWord()!=calibrationCrc(in.data(),in.size()-4)) return false;
   at=0;
-  if (getWord()!=0x31525a41 || getWord()!=(N == 384 ? 1u : 2u)) return false;
+  if (getWord()!=0x31525a41) return false;
+  const auto version=getWord();
+  if(N==384 ? version!=1 : (version!=2 && version!=3)) return false;
   auto profile=getWord(), mode=getWord();
   if ((profile!=0 && profile!=36 && profile!=45) || mode>1) return false;
   CalibrationState next;
@@ -71,6 +77,7 @@ template<size_t N> inline bool readCalibrationRecord(const std::array<uint8_t,N>
     auto el=getWord();if(el!=EL_CUSTOM && el!=EL_STANDARD)return false;
     next.elProfile=uint8_t(el);
     if(!custom(next.customEl,el==EL_CUSTOM))return false;
+    if(version==3) {at=480;for(auto &id:next.sensorIdentity){id=getWord();id|=uint64_t(getWord())<<32;}}
   }
   next.az36LinearValid=next.az36OSet && next.az36FSet && std::abs(next.cal.az36Max-next.cal.az36_0)>100;
   next.az45LinearValid=next.az45OSet && next.az45FSet && std::abs(next.cal.az45Max-next.cal.az45_0)>100;

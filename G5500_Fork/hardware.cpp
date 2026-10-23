@@ -41,14 +41,32 @@ int Hardware::adcAvgMv(int pin) {
 }
 
 int Hardware::filteredMv(unsigned axis) {
-  const auto &p=runtime_.controller.hardware.pins;
   if (runtime_.hud.isHud() || runtime_.recovery)
     return 0;
   auto &filter = filters_[axis];
   const uint32_t now = millis();
+  const unsigned period=runtime_.controller.controlPeriodMs();
+  if(runtime_.controller.hardware.sensorType(axis) && positionAttempted_[axis] &&
+      uint32_t(now-positionAttemptAt_[axis])<period) return filter.value();
   if (!filter.due(now,runtime_.controller.controlPeriodMs())) return filter.value();
-  const int mv = adcAvgMv(axis ? p.elAdc : p.azAdc);
-  return filter.sample(mv, millis(),runtime_.controller.controlPeriodMs()); // timestamp the completed conversion
+  positionAttempted_[axis]=true;positionAttemptAt_[axis]=now;
+  const int value = positionValue(axis);
+  if(value<0) return filter.value(); // failed reads never advance the feedback timestamp
+  return filter.sample(value, millis(),runtime_.controller.controlPeriodMs()); // timestamp the completed conversion
+}
+int Hardware::positionValue(unsigned axis) {
+  if(axis>1 || runtime_.hud.isHud() || runtime_.recovery) return -1;
+  const auto &c=runtime_.controller.hardware;
+  if(c.simulation) return 0;
+  const int pin=axis?c.pins.elAdc:c.pins.azAdc;
+  const int value=c.sensorType(axis)?sensors_.read(c,axis):board::adc(pin)?adcAvgMv(pin):-1;
+  positionValid_[axis]=value>=0;
+  return value;
+}
+void Hardware::positionDiagRead(unsigned axis,int &raw,int &value) {
+  if(runtime_.controller.hardware.sensorType(axis)) {
+    value=positionValue(axis);raw=sensors_.raw(axis);
+  } else adcDiagRead(axis?runtime_.controller.hardware.pins.elAdc:runtime_.controller.hardware.pins.azAdc,raw,value);
 }
 bool Hardware::buttonReleased() const {
   if (runtime_.controller.hardware.buttonGpio < 0) return true;
@@ -257,6 +275,8 @@ void Hardware::applyOutputs() {
   if (runtime_.controller.configurationLocked) { outputsOff(); return; }
   if (runtime_.hud.isHud()) return;
   const auto &c = runtime_.controller.hardware;
+  if(!c.simulation) for(unsigned i=0;i<2;++i)
+    if(c.sensorType(i) && !positionValid_[i]) runtime_.controller.feedbackAt(i,NAN,false,millis());
   if (c.simulation) {
     // Both runtime implementations are compiled; the virtual path never owns motor pins.
   }
@@ -335,9 +355,12 @@ void Hardware::beginAdc() {
   const auto &p=runtime_.controller.hardware.pins;
   if (runtime_.hud.isHud() || runtime_.recovery || runtime_.controller.hardware.simulation || board::validateHardware(runtime_.controller.hardware)) return;
   analogReadResolution(12);
+  sensors_.begin(runtime_.controller.hardware);
   // Arduino 3.3 configures the ADC channel on its first read, before per-pin attenuation.
-  analogRead(p.azAdc); analogSetPinAttenuation(p.azAdc, ADC_11db);
-  if (board::adc(p.elAdc)) { analogRead(p.elAdc); analogSetPinAttenuation(p.elAdc, ADC_11db); }
+  if (!runtime_.controller.hardware.sensorType(0) && board::adc(p.azAdc)) {
+    analogRead(p.azAdc); analogSetPinAttenuation(p.azAdc, ADC_11db);
+  }
+  if (!runtime_.controller.hardware.sensorType(1) && board::adc(p.elAdc)) { analogRead(p.elAdc); analogSetPinAttenuation(p.elAdc, ADC_11db); }
 }
 #if CROWPANEL_LOCAL_DRIVE
 void Hardware::crowpanelFault() {

@@ -25,6 +25,7 @@ struct CalibrationEndpoints {
   bool valid = false;
 };
 struct CalibrationState {
+  uint64_t sensorIdentity[2]{};
   CalibrationEndpoints cal;
   CalibrationMode calibrationMode = CAL_GS232_2POINT;
   uint8_t gsAzMode = 45;
@@ -40,6 +41,25 @@ struct CalibrationState {
   bool az36OSet = false, az36FSet = false, az45OSet = false, az45FSet = false;
   bool elOSet = false, elFSet = false;
 };
+inline void bindPositionSensors(CalibrationState &s,const HardwareConfig &c) {
+  for(unsigned axis=0;axis<2;++axis) {
+    const uint64_t identity=positionSensorIdentity(c,axis);
+    if(s.sensorIdentity[axis]==identity) continue;
+    s.sensorIdentity[axis]=identity;
+    auto &custom=axis?s.customEl:s.custom;
+    custom.zeroSet=custom.fullSet=false;
+    std::fill_n(custom.millivolts,AZ_CUSTOM_CAL_N,-1);
+    if(!axis) {
+      s.az36OSet=s.az36FSet=s.az45OSet=s.az45FSet=false;
+      s.az36LinearValid=s.az45LinearValid=s.az36MultiValid=s.az45MultiValid=false;
+      std::fill_n(s.az36CalMv,AZ36_CAL_N,-1);std::fill_n(s.az45CalMv,AZ45_CAL_N,-1);
+    } else {
+      s.elOSet=s.elFSet=s.elLinearValid=s.elMultiValid=false;
+      std::fill_n(s.elCalMv,EL_CAL_N,-1);
+    }
+    s.cal.valid=false;
+  }
+}
 
 float clampf(float v, float lo, float hi);
 float mapCal(int raw, int a, int b, float maxd);

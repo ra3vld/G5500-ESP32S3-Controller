@@ -33,4 +33,17 @@ inline bool acceptsGzip(std::string_view header) {
   }
   return false; // identity remains available to clients not requesting gzip
 }
+inline bool requestAcceptsGzip(std::string_view request) {
+  // With no Accept-Encoding field HTTP permits any content coding.
+  while(!request.empty()) {
+    const auto end=request.find("\r\n");
+    const auto line=request.substr(0,end);
+    const auto colon=line.find(':');
+    if(colon!=line.npos && headerEquals(line.substr(0,colon),"accept-encoding"))
+      return acceptsGzip(trimHttpSpace(line.substr(colon+1)));
+    if(end==request.npos || line.empty()) break;
+    request.remove_prefix(end+2);
+  }
+  return true;
+}
 } // namespace forkrot

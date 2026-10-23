@@ -2,7 +2,8 @@
 #include "build_config.hpp"
 #if WEB_INTERFACE_ENABLED
 #include "web_server.hpp"
-#include "hardware_page.hpp"
+#include "web_assets.hpp"
+#include "web_encoding.hpp"
 #include "command_api.hpp"
 namespace forkrot {
 bool WebInterface::handleHardwareRequest(std::string_view request) {
@@ -12,7 +13,11 @@ bool WebInterface::handleHardwareRequest(std::string_view request) {
   const auto query=target.find('?');
   const auto path=target.substr(0,query);
   if(method=="GET" && (path=="/hardware" || path=="/recovery" || (runtime_.recovery && path=="/"))) {
-    web_.sendFixed(200,"text/html; charset=utf-8",HARDWARE_PAGE,sizeof HARDWARE_PAGE-1);return true;
+    if(!requestAcceptsGzip(request)) {
+      static constexpr char error[]="{\"error\":\"gzip_required\"}";
+      web_.sendFixed(406,"application/json",error,sizeof error-1);return true;
+    }
+    web_.sendFixed(200,"text/html; charset=utf-8",reinterpret_cast<const char *>(HARDWARE_PAGE_GZIP),sizeof HARDWARE_PAGE_GZIP,false,true);return true;
   }
   if(path=="/api/hardware" || path.substr(0,14)=="/api/hardware/") {
     // The response reuses the raw request buffer. Preserve the route before
@@ -24,7 +29,7 @@ bool WebInterface::handleHardwareRequest(std::string_view request) {
     CommandForm form;
     const auto body=request.find("\r\n\r\n");
     const bool valid=method=="GET" ? (query==target.npos || form.parse(target.substr(query+1))) :
-        (body!=request.npos && form.parse(request.substr(body+4)));
+        (body!=request.npos && form.parse(request.substr(body+4),1536));
     if(!valid) {static constexpr char error[]="{\"error\":\"invalid_form\"}";web_.sendFixed(400,"application/json",error,sizeof error-1);return true;}
     JsonWriter j(statusBuffer_,sizeof statusBuffer_);int status=200;const char *type="application/json";
     actions_.deviceRequest(savedMethod,savedPath,form.view(),j,status,type);

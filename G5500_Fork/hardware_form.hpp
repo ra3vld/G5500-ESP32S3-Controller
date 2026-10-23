@@ -19,8 +19,10 @@ inline bool hardwareUnsigned(std::string_view text, uint32_t &out) {
 inline bool parseHardwareForm(std::string_view body, HardwareForm &out, bool settings, const HardwareConfig &base = HardwareConfig{}) {
   constexpr std::string_view names[] = {"token","generation","driveInterface","simulation","bluetoothEnabled",
     "bluetoothMode","forceApSta","buttonGpio","buttonActiveLow","buttonPullup","pwmInverted"};
-  if (body.empty() || body.size() > 1024) return false;
-  HardwareForm next; next.config=base; uint64_t seen = 0;
+  if (body.empty() || body.size() > 1536) return false;
+  HardwareForm next; next.config=base;
+  std::array<bool,11+pinDefinitions.size()+LocalSettings{}.size()+SensorSettings{}.size()> seen{};
+  unsigned fields=0;
   for (;;) {
     const auto end = body.find('&');
     const auto part = body.substr(0,end);
@@ -32,13 +34,23 @@ inline bool parseHardwareForm(std::string_view body, HardwareForm &out, bool set
     const auto *pin=pinDefinition(name);
     unsigned local=0;
     while(local<11 && name!=localSettingNames[local]) ++local;
+    unsigned sensor=0;
+    while(sensor<SensorSettings{}.size() && name!=sensorSettingNames[sensor]) ++sensor;
     if(key==11) {
       if(pin) key=11+unsigned(pin-pinDefinitions.data());
       else if(local<11) key=11+pinDefinitions.size()+local;
+      else if(sensor<SensorSettings{}.size()) key=11+pinDefinitions.size()+LocalSettings{}.size()+sensor;
       else return false;
     }
-    if ((!settings && key > 1) || (seen & (uint64_t(1)<<key))) return false;
-    seen |= uint64_t(1)<<key;
+    if ((!settings && key > 1) || seen[key]) return false;
+    seen[key]=true; ++fields;
+    if(sensor<SensorSettings{}.size()) {
+      uint32_t value=0;
+      if(!hardwareUnsigned(text,value) || value>16383) return false;
+      next.config.sensors[sensor]=uint16_t(value);
+      if(end==body.npos) break;
+      body.remove_prefix(end+1); continue;
+    }
     if(local<11) {
       uint32_t value=0;
       if(!hardwareUnsigned(text,value) || value>4095) return false;
@@ -77,7 +89,7 @@ inline bool parseHardwareForm(std::string_view body, HardwareForm &out, bool set
     if (end == body.npos) break;
     body.remove_prefix(end+1);
   }
-  if ((seen & 3u)!=3u || (settings ? seen==3u : seen!=3u) || !next.token || !next.generation) return false;
+  if (!seen[0] || !seen[1] || (settings ? fields==2 : fields!=2) || !next.token || !next.generation) return false;
   out=next; return true;
 }
 } // namespace forkrot

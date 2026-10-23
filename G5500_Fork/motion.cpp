@@ -257,7 +257,7 @@ void Controller::feedbackAt(unsigned i, float position, bool calibrated, uint32_
     f.powered=powered;
   }
   const bool active=axes[i].wanted || axes[i].direction || axes[i].tracking || axes[i].holdArmed;
-  if (!axes[i].calibrated && active && variableSpeed(i) &&
+  if (!axes[i].calibrated && active && (variableSpeed(i) || hardware.sensorType(i)) &&
       (wasCalibrated || axes[i].tracking || axes[i].holdArmed || !std::isfinite(position))) {
     ++f.invalidEvents;
     motionFault(i, MotionError::FeedbackInvalid, stamp);

@@ -55,7 +55,7 @@ inline bool persistentOtaRequest(std::string_view request, size_t completeSize) 
   return route && requestKeepsConnection(request, completeSize);
 }
 inline constexpr size_t HTTP_MAX_ARGUMENTS = 40;
-inline bool boundedForm(std::string_view text, size_t &arguments) {
+inline bool boundedForm(std::string_view text, size_t &arguments,size_t limit=HTTP_MAX_ARGUMENTS) {
   auto decodedSize = [](std::string_view value, size_t limit) {
     size_t length = 0;
     auto hex = [](unsigned char c) -> int {
@@ -78,7 +78,7 @@ inline bool boundedForm(std::string_view text, size_t &arguments) {
   };
   if (text.empty()) return true;
   for (;;) {
-    if (++arguments > HTTP_MAX_ARGUMENTS) return false;
+    if (++arguments > limit) return false;
     const auto end = text.find('&');
     const auto part = text.substr(0, end);
     const auto equal = part.find('=');
@@ -150,8 +150,10 @@ inline RequestState inspectRequest(std::string_view bytes, size_t capacity, size
   const auto url = requestLine.substr(methodEnd + 1, urlEnd - methodEnd - 1);
   if (url.empty() || url.front() != '/' || url.find(' ') != url.npos) return RequestState::Invalid;
   const auto query = url.find('?');
+  const auto path=url.substr(0,query);
+  const size_t argumentLimit=path=="/api/hardware" || path.substr(0,14)=="/api/hardware/"?80:HTTP_MAX_ARGUMENTS;
   size_t arguments = 0;
-  if (query != url.npos && !boundedForm(url.substr(query + 1), arguments)) return RequestState::TooLarge;
+  if (query != url.npos && !boundedForm(url.substr(query + 1), arguments,argumentLimit)) return RequestState::TooLarge;
   pos += 2;
   unsigned headers = 0;
   size_t bodySize = 0;
@@ -189,7 +191,7 @@ inline RequestState inspectRequest(std::string_view bytes, size_t capacity, size
   const bool otaChunk = requestLine.substr(0, methodEnd) == "POST" &&
                         url.substr(0, 22) == "/api/ota/write?offset=";
   if (bodySize && !otaChunk && (requestLine.substr(0, methodEnd) != "POST" ||
-      !boundedForm(bytes.substr(headerSize, bodySize), arguments))) return RequestState::TooLarge;
+      !boundedForm(bytes.substr(headerSize, bodySize), arguments,argumentLimit))) return RequestState::TooLarge;
   if (otaChunk && bodySize > 2048) return RequestState::TooLarge;
   if (completeSize) *completeSize = headerSize + bodySize;
   return RequestState::Ready;

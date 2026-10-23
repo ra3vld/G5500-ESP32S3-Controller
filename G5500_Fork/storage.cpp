@@ -118,6 +118,9 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
     } else if(prefs_.getBytesLength("config1")==LocalHardwareBytes{}.size()) {
       LocalHardwareBytes legacy{};
       valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
+    } else if(prefs_.getBytesLength("config1")==UartHardwareBytes{}.size()) {
+      UartHardwareBytes legacy{};
+      valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
     } else valid = prefs_.getBytesLength("config1") == bytes.size() &&
         prefs_.getBytes("config1", bytes.data(), bytes.size()) == bytes.size() && decodeHardware(bytes, record);
   }
@@ -276,6 +279,7 @@ void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredenti
     } else if (recordSize == CalibrationRecordV1{}.size() && !saveCal(runtime, calibration)) {
       runtime.controller.fault = "calibration_save_failed";
     }
+    bindPositionSensors(calibrationState,runtime.controller.hardware);
     calibration.refreshMultiCalValidity();
     calibrationState.cal.valid = calibration.selectedCalibrationValid();
     runtime.controller.setRange(calibration.activeAzRange(), calibrationState.gsAzMode);
@@ -446,6 +450,7 @@ void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredenti
   }
 
   calibrationState.cal.valid = calibration.selectedCalibrationValid();
+  bindPositionSensors(calibrationState,runtime.controller.hardware);
   // Migrate once, including format 4, without changing the legacy keys' meaning.
   if (!saveCal(runtime, calibration)) runtime.controller.fault = "calibration_save_failed";
   runtime.controller.setRange(calibration.activeAzRange(), calibrationState.gsAzMode);

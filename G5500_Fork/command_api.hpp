@@ -5,10 +5,10 @@
 namespace forkrot {
 inline constexpr size_t COMMAND_INPUT_MAX = 1024, COMMAND_REPLY_MAX = 1200, COMMAND_PAGE_MAX = 672;
 struct CommandForm {
-  char bytes[COMMAND_INPUT_MAX + 1]{};
-  std::array<FormArgument, 64> entries;
+  char bytes[1537]{}; // larger only for the hardware HTTP form
+  std::array<FormArgument, 80> entries;
   size_t count = 0;
-  bool parse(std::string_view text);
+  bool parse(std::string_view text, size_t limit = COMMAND_INPUT_MAX);
   std::string_view get(std::string_view name) const;
   FormView view() const { return {entries.data(), count}; }
 };
