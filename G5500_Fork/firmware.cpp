@@ -38,6 +38,7 @@ void Application::failConfiguration(RecoveryReason reason) {
   runtime_.controller.configurationLocked = true;
   __atomic_store_n(&recoveryLatch, RecoveryCookie, __ATOMIC_RELAXED);
   if (recoveryReserve_) { heap_caps_free(recoveryReserve_); recoveryReserve_ = nullptr; }
+  if(reason==RecoveryReason::Allocation)network_.reportAllocationFailures();
   ota_.cancel();
   storage_.enterRecovery(runtime_, reason);
   delay(100);

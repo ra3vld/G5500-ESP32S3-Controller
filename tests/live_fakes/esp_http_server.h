@@ -17,7 +17,7 @@ struct httpd_ws_frame_t {bool final=true,fragmented=false;httpd_ws_type_t type=H
 struct FakeHttpd;
 using httpd_handle_t=FakeHttpd*;
 struct httpd_req_t {void *user_ctx;int method,fd;std::string payload;httpd_ws_type_t type=HTTPD_WS_TYPE_TEXT;bool final=true;};
-struct httpd_config_t {int server_port=0,ctrl_port=0,max_open_sockets=0,max_uri_handlers=0,stack_size=0,recv_wait_timeout=0,send_wait_timeout=0;esp_err_t(*open_fn)(httpd_handle_t,int)=nullptr;void(*close_fn)(httpd_handle_t,int)=nullptr;void *global_user_ctx=nullptr;};
+struct httpd_config_t {int server_port=0,ctrl_port=0,max_open_sockets=0,max_uri_handlers=0,backlog_conn=0,stack_size=0,recv_wait_timeout=0,send_wait_timeout=0;esp_err_t(*open_fn)(httpd_handle_t,int)=nullptr;void(*close_fn)(httpd_handle_t,int)=nullptr;void *global_user_ctx=nullptr;};
 struct httpd_uri_t {const char *uri=nullptr;int method=0;esp_err_t(*handler)(httpd_req_t*)=nullptr;void *user_ctx=nullptr;bool is_websocket=false,handle_ws_control_frames=false;};
 inline httpd_config_t HTTPD_DEFAULT_CONFIG(){return {};}
 struct FakeHttpd {httpd_config_t cfg;httpd_uri_t uri;std::vector<std::string> registrations;void(*work)(void*)=nullptr;void *context=nullptr;int failedFd=-1;std::vector<int> closed;std::vector<std::pair<int,std::string>> sent;std::set<int> websocketFds;int blockedFd=-1;size_t maxWrite=SIZE_MAX;std::map<int,std::string> wire,pendingWire;std::vector<std::pair<int,int>> opcodes;};

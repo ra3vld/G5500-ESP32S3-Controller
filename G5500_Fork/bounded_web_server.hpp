@@ -250,6 +250,7 @@ private:
                 pageRetryErrno_ ? pageRetryErrno_ : ETIMEDOUT, pageSent_, pageSize_);
       releaseClient(); return;
     }
+    if (!networkBulkTxReady()) return;
     // A healthy heap can drain at loop speed. Retain conservative pacing when
     // radio/BT traffic leaves little RAM, and never spin waiting for TCP space.
     const uint32_t interval = heapFreeBytes() >= 32768 && heapMaxBlockBytes() >= 6144 ? 5 : 20;

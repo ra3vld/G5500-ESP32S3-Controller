@@ -25,7 +25,11 @@ bool LiveServer::begin() {
   }
   mutex_=xSemaphoreCreateMutexStatic(&mutexStorage_);
   httpd_config_t cfg=HTTPD_DEFAULT_CONFIG();
-  cfg.server_port=81; cfg.ctrl_port=32769; cfg.max_open_sockets=4; cfg.max_uri_handlers=2;
+  cfg.server_port=81; cfg.ctrl_port=32769; cfg.max_uri_handlers=2;
+  // Keep one HTTPD slot free to accept/reject an excess peer immediately.
+  // At its session limit IDF stops accepting: reconnecting browsers otherwise
+  // accumulate queued sockets/buffers instead of reaching our admission check.
+  cfg.max_open_sockets=clients_->size()+1;cfg.backlog_conn=1;
   cfg.stack_size=6144; cfg.recv_wait_timeout=1;cfg.send_wait_timeout=1;
   cfg.open_fn=opened;cfg.close_fn=closed;cfg.global_user_ctx=this;
   if(httpd_start(&server_,&cfg)!=ESP_OK){server_=nullptr;clients_.reset();state_.reset();return false;}
@@ -52,8 +56,8 @@ esp_err_t LiveServer::opened(httpd_handle_t server,int fd) {
   for(auto &c:*self.clients_)if(c.fd<0){
     // Decline a new browser before it eats the control/recovery headroom.
     // Existing clients, including their STOP queue, keep their buffers.
-    if(heapFreeBytes()<sizeof(ClientBuffers)+MemoryGuard::CriticalFree ||
-       heapMaxBlockBytes()<sizeof(ClientBuffers)+MemoryGuard::CriticalBlock)return ESP_FAIL;
+    if(heapFreeBytes()<sizeof(ClientBuffers)+MemoryGuard::HealthyFree ||
+       heapMaxBlockBytes()<sizeof(ClientBuffers)+MemoryGuard::HealthyBlock)return ESP_FAIL;
     std::unique_ptr<ClientBuffers> buffers(new(std::nothrow) ClientBuffers{});
     if(!buffers)return ESP_FAIL;
     const auto gen=c.generation+1;c=Client{};c.buffers=std::move(buffers);
@@ -334,7 +338,10 @@ void LiveServer::sendWork(void *context) {
     auto &out=client.buffers->outgoing;
     if(!close&&out.active()) {
       const uint32_t now=uint32_t(esp_timer_get_time()/1000);const auto retries=out.retries;
-      const auto step=out.pump(now,[=](const char *data,size_t size){return ::send(fd,data,size,MSG_DONTWAIT);});
+      const auto step=out.pump(now,[=](const char *data,size_t size)->int{
+        if(size>256&&!networkBulkTxReady()){errno=EAGAIN;return -1;}
+        return ::send(fd,data,size,MSG_DONTWAIT);
+      });
       const int error=errno;
       {Guard lock(self.mutex_);
         self.sendDeferred_+=out.retries-retries;

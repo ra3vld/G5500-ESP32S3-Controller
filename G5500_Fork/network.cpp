@@ -42,6 +42,34 @@ void Network::serviceHeapDiagnostics() {
         return uartWrite(reinterpret_cast<const uint8_t *>(data), count);
       });
 }
+void Network::reportAllocationFailures() {
+  // Called after outputs are stopped and the recovery reserve is released.
+  // Emit the captured caller before the automatic reboot clears RAM. This
+  // path uses fixed buffers and never sends diagnostics onto a Modbus bus.
+#if !FORK_NATIVE_USB
+  if(runtime_.controller.hardware.pins.uartTx<0 || (modbus_&&runtime_.modbus.pc))return;
+#endif
+  static constexpr uint8_t newline[]={'\r','\n'};
+#if FORK_NATIVE_USB
+  diagnostics_.nativeWrite(newline,sizeof newline);
+#else
+  uartWrite(newline,sizeof newline);
+#endif
+  char line[256];
+  for(uint8_t page=7;page<=8;++page) {
+    const int size=formatHeapDiagnostics(page,line,sizeof line);
+    if(size<=0)continue;
+    const auto count=std::min(size_t(size),sizeof line-1);
+#if FORK_NATIVE_USB
+    diagnostics_.nativeWrite(reinterpret_cast<const uint8_t *>(line),count);
+#else
+    uartWrite(reinterpret_cast<const uint8_t *>(line),count);
+#endif
+  }
+#if !FORK_NATIVE_USB
+  Serial0.flush();
+#endif
+}
 int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
   switch (page) {
   case 0: {

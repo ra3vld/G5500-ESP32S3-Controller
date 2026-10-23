@@ -14,4 +14,10 @@ inline uint32_t heapMinBytes() {
 inline uint32_t heapMaxBlockBytes() {
   return heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 }
+// A successful socket write still queues later lwIP/Wi-Fi allocations on
+// another task. Stop feeding bulk traffic before those bursts consume the
+// control/recovery reserve, including on a fragmented heap.
+inline bool networkBulkTxReady() {
+  return heapFreeBytes() >= 32768 && heapMaxBlockBytes() >= 12288;
+}
 } // namespace forkrot

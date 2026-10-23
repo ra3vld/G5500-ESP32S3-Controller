@@ -1475,7 +1475,13 @@ void Controller::tickAutoTune(uint32_t now) {
   }
   const float velocity=t.direction*a.measuredVelocity;
   if(f.at!=t.positionAt) {
-    t.sampleVelocity=(a.current-t.lastPosition)*1000/uint32_t(f.at-t.positionAt);
+    const float delta=a.current-t.lastPosition;
+    // The quiet-stage position noise must not become an apparent startup
+    // speed when divided by one short sample interval. Otherwise the live
+    // guard cuts every return pulse before breakaway near the departure edge.
+    // Keep the measured-velocity guard and every displacement beyond noise.
+    const float noise=2*(t.noiseHigh-t.noiseLow);
+    t.sampleVelocity=std::copysign(std::max(0.f,std::abs(delta)-noise),delta)*1000/uint32_t(f.at-t.positionAt);
     t.lastPosition=a.current;t.positionAt=f.at;
   }
   const float coast=std::max({t.stoppingDistance,t.measurements[0].coastDegrees,t.measurements[1].coastDegrees});

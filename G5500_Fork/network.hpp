@@ -56,6 +56,7 @@ public:
   bool bluetoothMac(char (&address)[18]) const { return bluetooth_.macAddress(address); }
   void handleBluetoothSerial();
   void serviceHeapDiagnostics();
+  void reportAllocationFailures();
   bool beginCommandApi();
   void setupCommandUdp();
   void serviceCommandUdp();

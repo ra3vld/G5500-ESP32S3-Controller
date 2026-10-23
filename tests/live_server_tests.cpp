@@ -35,12 +35,16 @@ static std::string packet(unsigned id,const char *path,const char *args=""){retu
 int main(){
  MotionTestRuntime runtime;runtime.hud.begin(1,10);runtime.controller.feedback(20,30,true,true);
  LiveServer server(runtime);const auto beforeBegin=allocatedBytes;
- assert(server.begin());assert(fakeServer.registrations==std::vector<std::string>({"/api/live","/api/control"}));assert(fakeServer.cfg.max_open_sockets==4);assert(fakeServer.uri.handle_ws_control_frames);
+ assert(server.begin());assert(fakeServer.registrations==std::vector<std::string>({"/api/live","/api/control"}));assert(fakeServer.cfg.max_open_sockets==5&&fakeServer.cfg.backlog_conn==1);assert(fakeServer.uri.handle_ws_control_frames);
  assert(allocatedBytes-beforeBegin<=4096); // idle server holds no per-client queues
  const auto beforeLowHeap=allocationCalls;
  fakeHeapFree=MemoryGuard::CriticalFree;
  assert(connect(999)==ESP_FAIL && allocationCalls==beforeLowHeap);
  fakeHeapFree=65536;fakeHeapBlock=MemoryGuard::CriticalBlock;
+ assert(connect(999)==ESP_FAIL && allocationCalls==beforeLowHeap);
+ fakeHeapFree=MemoryGuard::HealthyFree;fakeHeapBlock=32768;
+ assert(connect(999)==ESP_FAIL && allocationCalls==beforeLowHeap);
+ fakeHeapFree=65536;fakeHeapBlock=MemoryGuard::HealthyBlock;
  assert(connect(999)==ESP_FAIL && allocationCalls==beforeLowHeap);
  fakeHeapBlock=32768;
  for(unsigned i=0;i<10000;++i) {
@@ -57,6 +61,18 @@ int main(){
  httpd_req_t legacy{fakeServer.uri.user_ctx,HTTP_GET,999,{}};assert(fakeServer.uri.handler(&legacy)==ESP_OK);
  httpd_sess_trigger_close(&fakeServer,999);fakeServer.sent.clear();
  for(int fd=1000;fd<1004;++fd)assert(connect(fd)==ESP_OK);
+ // Radio allocations happen after send() returns: defer bulk frames while
+ // either byte or contiguous headroom is low, retaining their exact offset.
+ for(bool fragmented:{false,true}) {
+   const auto sent=fakeServer.sent.size();
+   runtime.controller.axes[0].target+=1;
+   fakeHeapFree=fragmented?65536:32767;fakeHeapBlock=fragmented?12287:32768;
+   server.publish(fragmented?20:15);pumpLive();
+   assert(fakeServer.sent.size()==sent);
+   fakeHeapFree=65536;fakeHeapBlock=32768;
+   server.publish(fragmented?25:20);pumpLive();
+   assert(fakeServer.sent.size()>sent);
+ }
  // Exercise the production send override with real short writes and a reader
  // paused longer than the previous 5 ms timeout. No radio or motors are used.
  assert(fakeSendOverride);
@@ -95,7 +111,8 @@ int main(){
  assert(fatalDetails.find("\"liveSendWritten\":0")!=std::string::npos);
  assert(fatalDetails.find("\"liveSendTimeouts\":1")!=std::string::npos);
 
- assert(connect(1004)==ESP_FAIL);
+ const auto beforeExcess=allocationCalls;
+ assert(connect(1004)==ESP_FAIL&&allocationCalls==beforeExcess);
  assert(command(1000,packet(1,"/api/target","&az=90"))==ESP_OK);
  assert(runtime.controller.axes[0].target!=90); // HTTPD cannot execute a control command.
  server.commands(5);assert(runtime.controller.axes[0].target==90);
