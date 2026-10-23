@@ -14,7 +14,7 @@ from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "docs/hardware/g800dxa-adum1201"
+OUT = ROOT / "docs/hardware/g800dxa/g800dxa-adum1201"
 INK = "#17324d"
 GRAY = "#5c6c7d"
 COLORS = {"GND": GRAY, "3V3": "#8654a3", "VY": "#bc6512", "VD": "#bc6512",

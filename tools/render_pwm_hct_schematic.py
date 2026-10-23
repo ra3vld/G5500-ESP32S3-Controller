@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 from PIL import Image, ImageDraw, ImageFont
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'docs/hardware/independent-pwm-bts7960-hct'
+OUT=ROOT/'docs/hardware/bts7960/independent-pwm-bts7960-hct'
 W,H=2400,1730
 FONT='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 BOLD='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'

@@ -2,38 +2,57 @@
 
 [О проекте](../README.md)
 
-[Управление через RS‑485](rs485.md): прямое GS‑232 и подключение компьютера через HUD.
-
 ## Первый запуск
 
-1. [Выберите конфигурацию](configuration.md#выбор-конфигурации) и [схему подключения](hardware.md).
+1. [Выберите конфигурацию](setup/configuration.md#выбор-конфигурации) и [схему подключения](hardware/index.md).
 2. [Соберите и запишите прошивку через USB](build.md).
 3. Выполните [первое подключение и настройку](quickstart.md#первое-подключение).
-4. Задайте [диапазоны и калибровку](az-range.md), затем [регуляторы](regulator-tuning.md).
-5. Перейдите к [управлению](usage.md) и [подключению внешних программ](integrations.md).
+4. Задайте [диапазоны и калибровку](setup/az-range.md), затем [регуляторы](setup/regulator-tuning.md).
+5. Перейдите к [управлению](control/index.md) и [подключению внешних программ](integrations/index.md).
 
-## Подключение
+## Настройка
 
-- [Платы, начальные GPIO и настройки оборудования](configuration.md); [классический ESP32](classic-esp32.md), [WT32-ETH01 с Ethernet](wt32-eth01.md).
-- [G-5500](hardware/g5500-guide.md), [G-800DXA](hardware/g800dxa-guide.md), [BTS7960 / IBT-2](hardware/independent-pwm-bts7960.md), [отдельные направления и PWM](hardware/separate-pwm.md).
-- [Входы датчиков ADC](hardware/adc-input.md), [кнопки и джойстик](local-controls.md).
-- [CrowPanel: экран и жесты](crowpanel-21.md), [переделка CrowPanel для локального AZ](crowpanel-az.md).
+- [Выбор конфигурации, GPIO и настройки оборудования](setup/configuration.md).
+- [Wi-Fi и сетевые порты](setup/network.md).
+- [Диапазоны и калибровка AZ / EL](setup/az-range.md).
+- [Регуляторы движения и автотюн](setup/regulator-tuning.md).
+- [Подбор методики автотюна через API](setup/autotune-experiments.md).
 
-## Управление и обслуживание
+## Платы и дисплеи
 
-- [Веб, режимы, предустановки и скорость](usage.md).
-- [HUD: удалённый пульт](hud.md).
-- [Логгеры и программы слежения](integrations.md).
-- [Генератор и отправка команд с компьютера](control-generator.md).
-- [Wi-Fi и сетевые порты](network.md).
-- [Обновление прошивки](ota.md), [диагностика и восстановление](diagnostics.md).
+- [Классический ESP32 WROOM/WROVER](boards/classic-esp32.md).
+- [WT32-ETH01 с Ethernet](boards/wt32-eth01.md).
+- [CrowPanel: экран и жесты](boards/crowpanel-21.md), [переделка CrowPanel для локального AZ](boards/crowpanel-az.md).
+
+## Подключение приводов и схемы
+
+- [Выбор силового интерфейса](hardware/index.md).
+- [G-5500](hardware/g5500/index.md), [G-800DXA](hardware/g800dxa/index.md).
+- [BTS7960 / IBT-2](hardware/bts7960/index.md), [отдельные направления и PWM](hardware/separate-pwm.md).
+- [Входы датчиков ADC](hardware/adc-input.md), [изоляция обратной связи Yaesu](hardware/yaesu-feedback-isolation.md).
+
+## Управление
+
+- [Веб, режимы, предустановки и скорость](control/index.md).
+- [Кнопки и джойстик](control/local-controls.md).
+- [HUD: удалённый пульт](control/hud.md).
+- [Генератор и отправка команд с компьютера](control/control-generator.md).
+
+## Внешние программы и интеграции
+
+- [Логгеры и программы слежения](integrations/index.md).
+- [RS‑485: прямое GS‑232 и подключение компьютера через HUD](integrations/rs485.md).
+- [Modbus RTU: общая линия с маркером и карта регистров](integrations/modbus-rtu.md).
 
 ## Внешние API
 
-- [Общие правила и HTTP API](api.md).
-- [Modbus RTU: общая линия с маркером и карта регистров](modbus-rtu.md).
-- [WebSocket](live.md), [командный API UART/USB, UDP и TCP](command-api.md).
-- [Подбор методики автотюна и запись результатов](autotune-experiments.md).
+- [Общие правила и HTTP API](api/index.md).
+- [WebSocket](api/live.md), [командный API UART/USB, UDP и TCP](api/command-api.md).
+
+## Обслуживание
+
+- [Обновление прошивки](maintenance/ota.md).
+- [Диагностика и восстановление](maintenance/diagnostics.md).
 
 ## Лицензии и авторство
 

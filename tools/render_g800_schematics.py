@@ -220,7 +220,7 @@ def render_common():
     text(52,2136,'Номера EXT CONTROL не обозначают вид со стороны пайки. Точка = соединение. Схема пока не проверена на оборудовании.',18,muted)
     text(52,2174,'Лучше подобрать под МК: S2 — R3 6,8 кОм / R11 4,7 кОм; S3 — R3 4,7 кОм / R11 5,1 кОм. Оба 1%; вход ≤5,5 В.',18,green,b=True)
     svg.append('</svg>')
-    p=ROOT/'docs/hardware/g800dxa-connection'
+    p=ROOT/'docs/hardware/g800dxa/g800dxa-connection'
     p.with_suffix('.svg').write_text('\n'.join(svg),encoding='utf-8')
     im.resize((W,H),Image.Resampling.LANCZOS).save(p.with_suffix('.png'))
     print(p.with_suffix('.svg'));print(p.with_suffix('.png'))
@@ -378,7 +378,7 @@ def render_isolated():
     text(75,2100,'Подбирать под МК: S2 — 6,8 / 4,7 кОм; S3 — 4,7 / 5,1 кОм. Оба 1%; вход ≤5,5 В. R35 не подключать к +5V_ISO.',20,orange)
     text(52,2190,'Диапазон скорости 0–5 В номинальный; реальные крайние уровни измерить под нагрузкой до подключения двигателя.',20,muted)
     svg.append('</svg>')
-    p=ROOT/'docs/hardware/g800dxa-speed-isolated'
+    p=ROOT/'docs/hardware/g800dxa/g800dxa-speed-isolated'
     p.with_suffix('.svg').write_text('\n'.join(svg),encoding='utf-8')
     im.resize((W,H),Image.Resampling.LANCZOS).save(p.with_suffix('.png'))
     print(p.with_suffix('.svg'));print(p.with_suffix('.png'))

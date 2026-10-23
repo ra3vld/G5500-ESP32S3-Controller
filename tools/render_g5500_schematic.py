@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / 'docs/hardware/g5500-esp32s3-tft-schematic.svg'
+SOURCE = ROOT / 'docs/hardware/g5500/g5500-esp32s3-tft-schematic.svg'
 
 
 def main():

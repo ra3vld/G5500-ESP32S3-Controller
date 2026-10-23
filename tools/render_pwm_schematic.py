@@ -11,7 +11,7 @@ import tempfile
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'docs/hardware'
+OUT = ROOT / 'docs/hardware/bts7960'
 W, H = 2400, 1800
 FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 BOLD = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'

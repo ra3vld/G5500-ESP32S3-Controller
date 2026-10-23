@@ -29,7 +29,7 @@
 
 // Только переделанная CrowPanel: GPIO6/P48 — ADC вместо подсветки,
 // RX/TX — привод AZ; GPIO0/BOOT — инверсный PWM Yaesu / разрешение BTS7960.
-// Обычная CrowPanel должна оставаться с 0. Инструкция: docs/crowpanel-az.md.
+// Обычная CrowPanel должна оставаться с 0. Инструкция: docs/boards/crowpanel-az.md.
 #ifndef CROWPANEL_LOCAL_DRIVE
 #define CROWPANEL_LOCAL_DRIVE 0
 #endif
@@ -50,7 +50,7 @@
 // 3. ЛОКАЛЬНОЕ УПРАВЛЕНИЕ ОСЯМИ (параметры сборки, не NVS).
 // NONE — отключено; BUTTONS — четыре кнопки на GND; JOYSTICK — два ADC1.
 // -1 отключает пару кнопок / аналоговый вход соответствующей оси.
-// Подключение и примеры: docs/local-controls.md.
+// Подключение и примеры: docs/control/local-controls.md.
 #ifndef LOCAL_INPUT_MODE
 #define LOCAL_INPUT_MODE LOCAL_INPUT_NONE
 #endif

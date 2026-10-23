@@ -36,7 +36,7 @@ Arduino IDE: откройте `G5500_Fork/G5500_Fork.ino` вместе с его
 pio run -e esp32s3_n16r8
 ```
 
-Это только сборка. [Запись через USB](docs/build.md#первая-прошивка-через-usb), [выбор других плат](docs/configuration.md#выбор-конфигурации), [вся документация](docs/index.md).
+Это только сборка. [Запись через USB](docs/build.md#первая-прошивка-через-usb), [выбор других плат](docs/setup/configuration.md#выбор-конфигурации), [вся документация](docs/index.md).
 
 ## Лицензия
 
@@ -45,11 +45,11 @@ pio run -e esp32s3_n16r8
 ## Документация
 
 - [Первый запуск](docs/quickstart.md), [сборка и USB-прошивка](docs/build.md).
-- [Выбор платы и настройка оборудования](docs/configuration.md), [схемы подключения](docs/hardware.md).
-- [Диапазоны и калибровка](docs/az-range.md), [регуляторы движения и автотюн](docs/regulator-tuning.md).
-- [Веб-управление](docs/usage.md), [кнопки и джойстик](docs/local-controls.md).
-- [CrowPanel 2.1](docs/crowpanel-21.md), [удалённый пульт HUD](docs/hud.md).
-- [Внешние программы](docs/integrations.md), [Wi-Fi и сетевые порты](docs/network.md).
-- [Обновление прошивки](docs/ota.md), [диагностика и восстановление](docs/diagnostics.md).
-- [HTTP API](docs/api.md), [WebSocket](docs/live.md), [командный API](docs/command-api.md).
+- [Выбор платы и настройка оборудования](docs/setup/configuration.md), [схемы подключения](docs/hardware/index.md).
+- [Диапазоны и калибровка](docs/setup/az-range.md), [регуляторы движения и автотюн](docs/setup/regulator-tuning.md).
+- [Веб-управление](docs/control/index.md), [кнопки и джойстик](docs/control/local-controls.md).
+- [CrowPanel 2.1](docs/boards/crowpanel-21.md), [удалённый пульт HUD](docs/control/hud.md).
+- [Внешние программы](docs/integrations/index.md), [Wi-Fi и сетевые порты](docs/setup/network.md).
+- [Обновление прошивки](docs/maintenance/ota.md), [диагностика и восстановление](docs/maintenance/diagnostics.md).
+- [HTTP API](docs/api/index.md), [WebSocket](docs/api/live.md), [командный API](docs/api/command-api.md).
 - [Полное оглавление документации](docs/index.md).
