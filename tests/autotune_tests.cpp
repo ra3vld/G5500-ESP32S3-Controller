@@ -541,15 +541,20 @@ static void exhaustedMinimum() {
   CHECK(r.c.axes[0].motionError==MotionError::None);CHECK(!r.c.moving());
 }
 static void preparation() {
-  for(unsigned axis:{0u,1u}) {
+  for(auto mode:{Mode::Manual,Mode::Auto,Mode::AutoHour}) for(unsigned axis:{0u,1u}) {
     Rig r(true,axis);r.c.motionSettings[axis].holdEnabled=true;
     const auto settings=r.c.motionSettings[axis];const auto speed=r.c.speeds[axis];
     CHECK(r.c.setRange({-50,190},AZ_CUSTOM));
     r.c.elRange={-45,190};
     r.c.feedbackAt(0,90,true,0);r.c.feedbackAt(1,90,true,0);
+    // Center takes over existing motion and discards deferred commands.
+    CHECK(r.c.jog(1-axis,1,false,0)==Result::Ok);
+    r.c.pendingValid=true;r.c.presetActive=true;r.c.mode=mode;
     Protocol p(r.c);Settings cfg;
     CHECK(api(r.c,p,cfg,"/api/motion/autotune",{{"action","center"},{"axis",axis?"el":"az"},{"rangeRevision",std::to_string(r.c.rangeRevision)}},0).status==200);
     CHECK(r.c.axes[axis].target==(axis?72.5f:70.f));CHECK(r.c.axes[axis].tracking);
+    CHECK(r.c.mode==Mode::Manual);CHECK(!r.c.pendingValid && !r.c.presetActive);
+    CHECK(!r.c.axes[1-axis].direction && !r.c.axes[1-axis].wanted);
     CHECK(!r.c.axes[axis].holdArmed);CHECK(!r.c.axes[1-axis].tracking);
     CHECK(r.c.motionSettings[axis]==settings);CHECK(r.c.speeds[axis]==speed);
     r.c.stopNow(-1,20);CHECK(!r.c.moving());
@@ -557,13 +562,19 @@ static void preparation() {
     CHECK(!r.c.axes[axis].tracking);
   }
   Rig r;CHECK(r.start()==Result::Ok);CHECK(r.c.centerForAutoTune(0,0)==Result::Busy);
-  r.c.cancelAutoTune(0);r.c.mode=Mode::Auto;CHECK(r.c.centerForAutoTune(0,0)==Result::Busy);
-  r.c.mode=Mode::Manual;r.c.axes[1].motionError=MotionError::Stalled;
-  CHECK(r.c.centerForAutoTune(0,0)==Result::Unavailable);CHECK(!r.c.moving());
+  r.c.cancelAutoTune(0);r.c.mode=Mode::Auto;r.c.axes[1].motionError=MotionError::Stalled;
+  CHECK(r.c.centerForAutoTune(0,0)==Result::Unavailable);CHECK(!r.c.moving());CHECK(r.c.mode==Mode::Auto);
   r.c.resetMotion(-1,0);r.c.axes[0].calibrated=false;CHECK(r.c.centerForAutoTune(0,0)==Result::NotCalibrated);
   r.c.axes[0].calibrated=true;CHECK(r.c.centerForAutoTune(0,501)==Result::Unavailable);
   CHECK(r.c.centerForAutoTune(2,0)==Result::Unavailable);
   r.c.configurationLocked=true;CHECK(r.c.centerForAutoTune(0,0)==Result::Unavailable);
+  for(auto mode:{Mode::Auto,Mode::AutoHour}) for(unsigned axis:{0u,1u}) {
+    Rig tune(false,axis);tune.c.mode=mode;tune.c.pendingValid=true;tune.c.presetActive=true;
+    CHECK(tune.start(1)==Result::Invalid);CHECK(tune.c.mode==mode && tune.c.pendingValid);
+    CHECK(tune.start()==Result::Ok);CHECK(tune.c.mode==Mode::Manual);
+    CHECK(!tune.c.pendingValid && !tune.c.presetActive);CHECK(tune.c.autoTune.active());
+    tune.c.cancelAutoTune(0);CHECK(tune.c.mode==Mode::Manual);
+  }
 }
 static void transport() {
   Rig r;Protocol p(r.c);Settings settings;

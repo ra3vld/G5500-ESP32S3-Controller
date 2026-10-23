@@ -15,7 +15,7 @@ const motion={regulatorMode:'cascade',ready:true,kickEnabled:true,holdEnabled:tr
   const page=await browser.newPage({viewport:{width:390,height:950}}),posts=[],errors=[];
   page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(10000);
   page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR',e.message);});await page.addInitScript(()=>window.G5500_HTTP_ONLY=true);
-  const state={...sample,deviceRole:'controller',model:'G5500',configurationLocked:false,controlMode:'manual',moving:false,pendingValid:false,presetActive:false,fault:'',
+  const state={...sample,deviceRole:'controller',model:'G5500',configurationLocked:false,controlMode:'auto',moving:false,pendingValid:false,presetActive:false,fault:'',
    az:0,el:12.25,azStart:-50,azMax:190,elStart:-45,elMax:190,azRangeRevision:7,elRangeRevision:7,autotune:{phase:'idle',active:false,axis:-1,id:0},
    build:{...sample.build,drive:'BTS7960'},
    axes:[{...sample.axes[0],current:0,calibrated:true,speedEnabled:true,regulatorMode:'cascade',motionReady:true,motionPhase:'idle',motionFault:'',direction:0,tracking:false,holdArmed:false,measuredVelocity:0,requestedVelocity:0,speedOutputPercent:0},
@@ -25,7 +25,7 @@ const motion={regulatorMode:'cascade',ready:true,kickEnabled:true,holdEnabled:tr
    if(req.method()==='POST'||url.pathname==='/api/move'){
     const form=Object.fromEntries(req.method()==='POST'?new URLSearchParams(req.postData()):url.searchParams);posts.push({path:url.pathname,form});
     if(url.pathname==='/api/motion/reset'){state.fault='';state.axes.forEach(a=>{a.motionFault='';a.motionPhase='idle';});}
-    if(url.pathname==='/api/motion/autotune'&&form.action==='center'){const i=form.axis==='az'?0:1;state.moving=true;state.axes[i].tracking=true;state.axes[i].motionPhase='run';}
+    if(url.pathname==='/api/motion/autotune'&&form.action==='center'){const i=form.axis==='az'?0:1;state.controlMode='manual';state.moving=true;state.axes[i].tracking=true;state.axes[i].motionPhase='run';}
     if(url.pathname==='/api/move'){state.moving=false;state.axes.forEach(a=>{a.tracking=false;a.holdArmed=false;a.motionPhase='idle';});}
     return route.fulfill({json:{ok:true,result:'ok'}});
    }
@@ -55,7 +55,10 @@ const motion={regulatorMode:'cascade',ready:true,kickEnabled:true,holdEnabled:tr
   await page.waitForTimeout(150);
   assert(posts.some(p=>p.path==='/api/settings'&&p.form.azMotionSustainingPercent==='16'));
 
+  assert.match(await page.locator('#elTuneCenter').locator('..').locator('..').textContent(),/переведет в ручной режим/);
+  assert.equal(state.controlMode,'auto');
   await page.locator('#elTuneCenter').click();assert.equal(posts.at(-1).form.axis,'el');assert.equal(posts.at(-1).form.action,'center');assert.equal(posts.at(-1).form.rangeRevision,'7');
+  assert.equal(state.controlMode,'manual');
   await page.waitForFunction(()=>document.getElementById('azTuneStart').disabled&&!document.getElementById('elTuneStop').disabled);
   await page.locator('#elTuneStop').click();await page.waitForFunction(()=>!window._forkState?.moving);
   assert.equal(posts.at(-1).path,'/api/move');assert.equal(posts.at(-1).form.d,'S');

@@ -750,15 +750,17 @@ const char *Controller::autoTunePhaseName(AutoTunePhase phase) {
 }
 Result Controller::centerForAutoTune(unsigned i, uint32_t now) {
   if(remote || configurationLocked || i>1 || (i==1 && model!=Model::G5500) || !variableSpeed(i)) return Result::Unavailable;
-  if(autoTune.active() || mode!=Mode::Manual || moving() || pendingValid || presetActive || sequenceCount() ||
-      axes[0].tracking || axes[1].tracking || axes[0].holdArmed || axes[1].holdArmed) return Result::Busy;
+  if(autoTune.active()) return Result::Busy;
   if(!axes[i].calibrated) return Result::NotCalibrated;
-  if(driveFault || !fault.empty() || axes[0].motionError!=MotionError::None || axes[1].motionError!=MotionError::None)
+  if(driveFault || !fault.empty() || !motionSettings[i].ready ||
+      axes[0].motionError!=MotionError::None || axes[1].motionError!=MotionError::None)
     return Result::Unavailable;
   const auto &feedback=motion_[i].feedback;
   if(!feedback.timed || !feedback.valid || uint32_t(now-feedback.at)>motionSettings[i].feedbackTimeoutMs)
     return Result::Unavailable;
   const auto bounds=range(i);const float middle=bounds.start+bounds.span()/2;
+  stopNow(-1,now);
+  setMode(Mode::Manual,now);
   const auto result=start({middle,middle,i==0,i==1},now,false);
   // Preparation is a one-shot movement, even if normal positioning uses hold.
   // Keep the saved hold preference intact for subsequent ordinary targets.
@@ -779,7 +781,7 @@ Result Controller::startAutoTune(unsigned i, RegulatorMode mode, float travel, f
   if(mode==RegulatorMode::Simple)selected.stages&=~(TuneSlow|TuneFast);
   if (remote || configurationLocked || i>1 || (i==1 && model!=Model::G5500) || !variableSpeed(i)) return Result::Unavailable;
   if (autoTune.active() || moving() || axes[0].tracking || axes[1].tracking || axes[0].holdArmed || axes[1].holdArmed ||
-      mode != motionSettings[i].mode || this->mode!=Mode::Manual || pendingValid || presetActive || sequenceCount()) return Result::Busy;
+      mode != motionSettings[i].mode) return Result::Busy;
   const auto &m=motionSettings[i];const auto &f=motion_[i].feedback;
   if (!axes[i].calibrated) return Result::NotCalibrated;
   if (driveFault || !fault.empty() || axes[0].motionError!=MotionError::None || axes[1].motionError!=MotionError::None ||
@@ -795,6 +797,7 @@ Result Controller::startAutoTune(unsigned i, RegulatorMode mode, float travel, f
   const uint32_t id=autoTune.id+1;
   const float setpoint=runtimeSpeed(i);
   stopNow(-1,now);
+  setMode(Mode::Manual,now);
   autoTune={};auto &t=autoTune;t.options=selected;t.initialSetpoint=setpoint;
   t.proposalValidated=!selected.has(TuneKick|TuneModel);
   t.id=id?id:1;t.axis=int(i);t.mode=mode;t.origin=axes[i].current;t.otherPosition=axes[1-i].current;

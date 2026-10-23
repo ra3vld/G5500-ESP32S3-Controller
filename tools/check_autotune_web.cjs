@@ -85,11 +85,20 @@ vm.runInContext(script.slice(script.indexOf('function motionFaultText('),script.
  vm.runInContext('renderAutoTune(window._forkState)',context);assert.match(node('azTuneStatus').textContent,/STOP/);assert.equal(node('azTuneResult').textContent,'');assert(node('azTuneApply').disabled);
  const count=posts.length;state.axes[0].current=10;await vm.runInContext("autoTuneAction('start','az')",context);
  assert.equal(posts.length,count);assert.match(node('azTuneStatus').textContent,/Недостаточно места/);
- state.axes[0].current=90;state.controlMode='auto';await vm.runInContext("autoTuneAction('start','az')",context);assert.match(node('azTuneStatus').textContent,/ручной режим/);
+ state.axes[0].current=90;
+ for(const mode of ['auto','auto_1h']){
+  state.controlMode=mode;state.pendingValid=true;state.presetActive=true;
+  vm.runInContext('renderAutoTune(window._forkState)',context);assert(!node('azTuneCenter').disabled);
+  await vm.runInContext("autoTunePrepare('center','az')",context);assert.equal(posts.at(-1).body.action,'center');
+  const count=posts.length;await vm.runInContext("autoTuneAction('start','az')",context);
+  assert.equal(posts.length,count+1);assert.equal(posts.at(-1).body.action,'start');
+ }
+ state.pendingValid=false;state.presetActive=false;
  state.controlMode='manual';node('azMotionForm').dataset.dirty='1';await vm.runInContext("autoTuneAction('start','az')",context);assert.match(feedback.at(-1),/Сначала сохраните/);
+ assert.match(source,/«В середину» — переведет в ручной режим/);assert.match(source,/Запуск автотюна переведет в ручной режим/);
  assert.match(source,/type="button" id="\$\{axis\}TuneStart"/);
  state.controlMode='manual';delete node('azMotionForm').dataset.dirty;delete state.axes[0].measuredVelocity;vm.runInContext('renderAutoTune(window._forkState)',context);assert.equal(node('azTuneVelocity').textContent,'—');
- state.moving=true;vm.runInContext('renderAutoTune(window._forkState)',context);assert(node('azTuneCenter').disabled);assert(node('azTuneStart').disabled);assert(!node('azTuneStop').disabled);
- const countMoving=posts.length;await vm.runInContext("autoTunePrepare('center','az')",context);assert.equal(posts.length,countMoving);
+ state.moving=true;vm.runInContext('renderAutoTune(window._forkState)',context);assert(!node('azTuneCenter').disabled);assert(node('azTuneStart').disabled);assert(!node('azTuneStop').disabled);
+ const countMoving=posts.length;await vm.runInContext("autoTunePrepare('center','az')",context);assert.equal(posts.length,countMoving+1);assert.equal(posts.at(-1).body.action,'center');
  console.log('PASS: autotune telemetry, mechanical midpoint, reset, independent STOP, motion/tuning guards, bounded start, run ID, preview and Apply');
 })().catch(e=>{console.error(e);process.exit(1)});

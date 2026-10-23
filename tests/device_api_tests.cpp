@@ -213,9 +213,11 @@ int main(int argc,char **argv) {
     c.feedbackAt(0,90,true,fakeHardware.now);c.feedbackAt(1,45,true,fakeHardware.now);
     const auto defaults=tuning.call("GET","/api/motion/autotune","full=1");
     assert(defaults.status==200 && defaults.body.find("\"tuneSearchStartPercent\":5")!=std::string::npos);
+    assert(tuning.call("POST","/api/mode","mode=auto",false).status==200);
     const std::string start="action=start&axis=az&mode=simple&id=0&travel=60&outputLimit=50&tuneSearchStartPercent=15&tuneSearchStepPercent=10&tuneLambdaFactor=2";
     assert(tuning.call("POST","/api/motion/autotune",start).status==200);
     assert(c.autoTune.active() && c.autoTune.options.searchStartPercent==15);
+    assert(c.mode==Mode::Manual);
     const auto compact=tuning.call("GET","/api/motion/autotune");
     assert(compact.status==200 && compact.body.find("options")==std::string::npos);
     const auto full=tuning.call("GET","/api/motion/autotune","full=1");
