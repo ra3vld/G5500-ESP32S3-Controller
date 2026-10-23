@@ -602,13 +602,13 @@ function disconnectLive(socket,port){
  live.retry=setTimeout(()=>{live.retry=null;connectLive(port)},1000);
  socket.close();upd(true);
 }
-function sendLive(path,body){
+function sendLive(path,body,timeoutMs=liveTimeoutMs){
  if(!live.ready||live.socket?.readyState!==WebSocket.OPEN)return Promise.reject(new Error('offline'));
  const stop=path==='/api/move'&&['S','A','E'].includes(body.d);
  if(live.pending.size>=(stop?9:8)||live.socket.bufferedAmount>(stop?4096:2048))return Promise.resolve({status:503,json:async()=>({ok:false,result:'busy'})});
  const id=++live.next,packet=new URLSearchParams({...body,v:1,cid:id,boot:live.boot,selection:body.selection??window._forkState?.hudSelectionEpoch??0,path}).toString();
  return new Promise((resolve,reject)=>{
-  const timer=setTimeout(()=>{live.pending.delete(id);resolve({status:504,json:async()=>({ok:false,result:'timeout'})})},liveTimeoutMs);
+  const timer=setTimeout(()=>{live.pending.delete(id);resolve({status:504,json:async()=>({ok:false,result:'timeout'})})},timeoutMs);
   live.pending.set(id,{resolve,reject,timer});
   try{live.socket.send(packet)}catch(e){clearTimeout(timer);live.pending.delete(id);reject(e)}
  });
@@ -773,10 +773,13 @@ async function autoTuneAction(action,axis){
 function renderAutoTune(j){
  if(j.deviceRole==='hud')return;
  const t=j.autotune||{phase:'idle',active:false,axis:-1};
- if(autoTuneDetails&&autoTuneDetails.id!==t.id)autoTuneDetails=null;
+ if(autoTuneDetails&&(autoTuneDetails.id!==t.id||autoTuneDetails.phase!==t.phase))autoTuneDetails=null;
  const phases={idle:t.reason==='applied'?'Результат сохранён':'Готов к запуску',quiet:'Оценка шума датчика',start:'Поиск уровня страгивания',low:'Проверка рабочего выхода',high:'Измерение отклика',coast:'Измерение выбега',reposition:'Подготовка следующего пробного хода',validate:'Проверочное наведение',minimum:'Поиск минимальной устойчивой скорости',tracking:'Подбор слежения за серией команд',complete:'Готово. Проверьте и примените результат',cancelled:'Автотюн отменён',failed:'Автотюн остановлен'};
- const reasons={stopped:'STOP',cancelled:'по команде пользователя',mode_changed:'изменён режим',hardware_changed:'изменено оборудование',calibration_changed:'изменена калибровка',feedback_or_configuration:'нет достоверных свежих измерений или изменён диапазон',timeout:'превышено время процедуры',other_axis_moved:'изменилась неподвижная ось',travel_limit:'выход за безопасную границу пробного участка',insufficient_travel:'привод не успевает безопасно завершить измерение на этом участке; увеличьте разрешённый ход',feedback_noise:'слишком шумный датчик',no_start:'не удалось тронуться в пределах заданного выхода',start_rejected:'команда движения отклонена',no_sustained_motion:'нет устойчивого рабочего выхода',unstable_response:'неустойчивая измеренная скорость',insufficient_response:'слишком мал отклик на изменение выхода',settle_timeout:'не удалось подтвердить остановку или достижение',minimum_speed_unstable:'Не удалось подтвердить непрерывное движение на малой скорости.',control_frequency_changed:'Частота контура изменена. Запустите автотюн заново.',validation_error:'слишком большая ошибка проверочного наведения',model_invalid:'не удалось получить допустимые параметры'};
+ const reasons={stopped:'STOP',cancelled:'по команде пользователя',mode_changed:'изменён режим',hardware_changed:'изменено оборудование',calibration_changed:'изменена калибровка',feedback_or_configuration:'нет достоверных свежих измерений или изменён диапазон',timeout:'превышено время процедуры',other_axis_moved:'изменилась неподвижная ось',travel_limit:'выход за безопасную границу пробного участка',insufficient_travel:'в разрешённом участке не помещается следующая безопасная проба',feedback_noise:'слишком шумный датчик',no_start:'не удалось тронуться в пределах заданного выхода',start_rejected:'команда движения отклонена',no_sustained_motion:'нет устойчивого рабочего выхода',unstable_response:'неустойчивая измеренная скорость',insufficient_response:'слишком мал отклик на изменение выхода',settle_timeout:'Не подтверждён покой или достижение цели. Эта прошивка не указала этап; обновите её для точной диагностики.',minimum_speed_unstable:'Не удалось подтвердить непрерывное движение на малой скорости.',control_frequency_changed:'Частота контура изменена. Запустите автотюн заново.',validation_error:'слишком большая ошибка проверочного наведения',model_invalid:'не удалось получить допустимые параметры'};
  reasons.tracking_unstable='Не найдены устойчивые параметры слежения за серией команд.';reasons.control_timing='слишком большая задержка расчёта';reasons.motion_storage_failed='не удалось сохранить параметры';
+ reasons.coast_timeout='После снятия выхода не подтверждён покой. Проверьте шум датчика и окно скорости; увеличение пускового выхода здесь не поможет.';
+ reasons.reposition_timeout='Не завершён возврат перед пробой. Проверьте свободный ход, трение и достаточность пробного выхода.';
+ reasons.validation_timeout='Предложенные настройки не подтвердили достижение цели. Сверьте ошибку позиции и скорость ниже; для нового подбора выберите «Рабочие параметры».';
  for(const [i,axis] of ['az','el'].entries()){
   const own=t.axis===i,status=document.getElementById(axis+'TuneStatus');
   if(own&&t.active&&typeof t.stages==='number')for(const [suffix,bit] of autoTuneStageFields)document.getElementById(axis+'TuneStage'+suffix).checked=!!(t.stages&bit);
@@ -809,13 +812,22 @@ function renderAutoTune(j){
   document.getElementById(axis+'TuneApply').disabled=autoTuneRequest||t.phase!=='complete'||!own||autoTuneDetails?.id!==t.id;
   document.querySelector('#'+axis+'MotionForm button[type=submit]').disabled=!!t.active;
   const result=document.getElementById(axis+'TuneResult');
-  if(!own||t.phase!=='complete')setText(result,'');
-  else if(autoTuneDetails){const r=autoTuneDetails.result;result.style.whiteSpace='pre-line';setText(result,r?autoTuneSummary(autoTuneDetails,r):'')}
+  if(!own||!['complete','failed'].includes(t.phase))setText(result,'');
+  else if(autoTuneDetails){const r=autoTuneDetails.result;result.style.whiteSpace='pre-line';setText(result,t.phase==='failed'?autoTuneFailureSummary(autoTuneDetails):r?autoTuneSummary(autoTuneDetails,r):'')}
+  else setText(result,'');
  }
- if(t.phase==='complete'&&autoTuneResultKey!==String(t.id)){
-  autoTuneResultKey=String(t.id);
-  fetch('/api/motion/autotune',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error();return r.json()}).then(details=>{if(details.id!==window._forkState?.autotune?.id||details.phase!=='complete'||window._forkState?.autotune?.phase!=='complete')return;autoTuneDetails=details;renderAutoTune(window._forkState)}).catch(()=>{autoTuneResultKey='';settingsFeedback('Не удалось прочитать результат автотюна.')});
+ const detailKey=String(t.id)+':'+t.phase;
+ if(['complete','failed'].includes(t.phase)&&autoTuneResultKey!==detailKey){
+  autoTuneResultKey=detailKey;
+  fetch('/api/motion/autotune?full=1',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error();return r.json()}).then(details=>{if(details.id!==window._forkState?.autotune?.id||details.phase!==t.phase||window._forkState?.autotune?.phase!==t.phase)return;autoTuneDetails=details;renderAutoTune(window._forkState)}).catch(()=>{autoTuneResultKey='';settingsFeedback('Не удалось прочитать подробности автотюна.')});
  }
+}
+function autoTuneFailureSummary(t){
+ const f=t.failure;if(!f)return '';
+ const phases={idle:'Применение результата',quiet:'Оценка шума',start:'Поиск страгивания',low:'Рабочий выход',high:'Измерение отклика',coast:'Ожидание покоя после снятия выхода',reposition:'Возврат перед пробой',validate:'Проверочное наведение',minimum:'Поиск минимальной скорости',tracking:'Серия команд'};
+ const n=v=>typeof v==='number'&&Number.isFinite(v)?v.toFixed(2):'—';
+ const target=['validate','reposition','tracking'].includes(f.phase)?`\nЦель: ${n(f.target)}°; ошибка позиции: ${n(f.position-f.target)}°.`:'';
+ return `Этап: ${phases[f.phase]||f.phase}; время: ${n(f.elapsedMs/1000)} с.\nВ момент остановки: положение ${n(f.position)}°; выход ${n(f.output)}%.${target}\nИзмеренная скорость: ${n(f.velocity)} °/с; порог покоя автотюна: ${n(f.threshold)} °/с; порог регулятора: ${n(f.stoppedVelocity)} °/с.\nОкно скорости: ${n(f.velocityWindowMs)} мс.`;
 }
 function autoTuneSummary(t,r){
  const n=value=>Number(value).toPrecision(4);
@@ -1007,10 +1019,16 @@ function keyboardPacket(d,mask,az=0,el=0){
 }
 async function keyboardReply(r){const j=await r.json();return r.status<300&&(j.ok||(r.status===202&&j.result==='deferred'));}
 async function transmitKeyboard(packet){
+ // Keep command ACKs clear of full HTTP status/page transfers. Both paths
+ // share one deadline shorter than the controller's 1 s input lease.
+ const deadline=performance.now()+900;
+ if(live.ready){
+  try{return await keyboardReply(await sendLive('/api/move',packet,900));}
+  catch(e){/* A disconnected socket may still fall back within this deadline. */}
+ }
+ const remaining=deadline-performance.now();if(remaining<=0)return false;
  try{
-  // Manual holds have their own bounded request/ACK stream. A telemetry
-  // WebSocket reconnect must not abort a healthy HTTP control stream.
-  const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),400);
+  const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),remaining);
   try{return await keyboardReply(await fetch('/api/move',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(packet),signal:abort.signal,keepalive:packet.d!=='H'}));}
   finally{clearTimeout(timer);}
  }catch(e){return false;}
@@ -1038,14 +1056,14 @@ async function sendKeyboardHold(){
  if(document.hidden||document.getElementById('controlPanel').hidden||j?.configurationLocked||j?.autotune?.active||k.context.key!==keyboardContext(j)){releaseKeyboardAxes();return;}
  if(k.busy?.gesture===k.gesture)return;
  const az=keyboardAxes.az?.direction==='L'?-1:keyboardAxes.az?1:0,el=keyboardAxes.el?.direction==='D'?-1:keyboardAxes.el?1:0;
- const packet=keyboardPacket('H',k.context.mask,az,el),token={gesture:k.gesture,version:k.version};k.busy=token;
+ const packet=keyboardPacket('H',k.context.mask,az,el),token={gesture:k.gesture,version:k.version,started:performance.now()};k.busy=token;
  try{
   if(!await transmitKeyboard(packet)&&token.gesture===k.gesture&&token.version===k.version&&keyboardHeld()){
    releaseKeyboardAxes();document.getElementById('forkMessage').textContent='Ручное управление остановлено: нет подтверждения команды.';
   }
  }finally{
   if(k.busy===token)k.busy=null;
-  if(token.gesture===k.gesture&&token.version!==k.version&&keyboardHeld())sendKeyboardHold();
+  if(token.gesture===k.gesture&&keyboardHeld()&&(token.version!==k.version||performance.now()-token.started>=200))sendKeyboardHold();
  }
 }
 function startManualAxis(axis,input){
@@ -1053,6 +1071,7 @@ function startManualAxis(axis,input){
  if(!j||j.configurationLocked||j.autotune?.active||document.getElementById('controlPanel').hidden)return false;
  if(keyboardHeld()&&k.context.key!==keyboardContext(j))releaseKeyboardAxes();
  if(!keyboardHeld()){
+  statusController?.abort();
   k.gesture=(k.gesture+1)>>>0||1;
   k.context={key:keyboardContext(j),mask:j.model==='G800DXA'?1:3,selection:j.hudSelectionEpoch??0,range:j.azRangeRevision};
   k.timer=setInterval(sendKeyboardHold,200);
@@ -1211,22 +1230,23 @@ async function saveAp(){
  catch(e){notice.finish(false,'Подтверждение не получено. Проверьте связь и настройки точки доступа перед повтором.');}
 }
 function pct(v,m){v=Math.max(0,Math.min(m,v));return(v/m*100).toFixed(1)+'%'}
-let statusPending=false,statusRefreshQueued=false;
+let statusPending=false,statusRefreshQueued=false,statusController=null;
 async function upd(force=false){
-if(otaBusy)return;
+if(otaBusy||keyboardHeld())return;
 if(liveFresh()&&!force)return;
 if(statusPending){if(force)statusRefreshQueued=true;return;}
 statusPending=true;
-const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5000);
+const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5000);statusController=controller;
 try{const response=await fetch('/api/status',{cache:'no-store',signal:controller.signal});if(!response.ok)throw new Error('status unavailable');const j=await response.json();if(!j||typeof j!=='object'||!['controller','hud'].includes(j.deviceRole))throw new Error('invalid status');
 connection.httpOnline=true;connection.httpLast=Date.now();connection.state=liveFresh()&&live.state?{...j,...live.state}:j;updateConnection();
 httpState=j;connectLive(j.livePort);queueLiveRender();
 if(document.querySelector('#calibrationSettings details').open){loadAzCalibration();loadElCalibration();}
 }catch(e){
+ if(controller.signal.aborted&&keyboardHeld())return;
  connection.httpOnline=false;updateConnection();
  const wifi=document.getElementById('statusWifi'),addresses=networkAddresses(httpState);setText(wifi,['Нет связи',...(addresses.length?['Последние адреса:',...addresses]:[])].join('\n'));wifi.className='offline';wifi.title='Не удалось обновить статус устройства';
  for(const id of ['statusBt','statusSignal','statusMemory','statusUptime']){const node=document.getElementById(id);setText(node,'—');node.className='';}
-}finally{clearTimeout(timeout);statusPending=false;if(statusRefreshQueued){statusRefreshQueued=false;queueMicrotask(()=>upd(true));}}}
+}finally{clearTimeout(timeout);statusController=null;statusPending=false;if(statusRefreshQueued){statusRefreshQueued=false;queueMicrotask(()=>upd(true));}}}
 function currentPosition(j,axis){
  if(j.deviceRole==='hud'&&!j.hudOnline)return '—';
  if(j.axes?.[axis==='az'?0:1]?.calibrated===false)return 'NC';

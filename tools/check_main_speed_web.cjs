@@ -14,11 +14,12 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   const state={...sample,deviceRole:'controller',model:'G5500',configurationLocked:false,moving:true,
    build:{...sample.build,drive:'BTS7960'},autotune:{phase:'idle',active:false},
    axes:sample.axes.map((a,i)=>({...a,speedEnabled:true,speedAdjustable:true,regulatorMode:i?'cascade':'simple',speedSetpoint:i?24.5:50,speedLimit:i?37.26:90,measuredVelocity:i?-12.75:8.25,calibrated:true,direction:1,tracking:true,motionReady:true,motionPhase:'run'}))};
-  let release=null,blockNext=false,active=0,maxActive=0;const moves=[],moveBodies=[];let dropStops=false,dropHolds=false,delayHold=false,releaseHold=null;
+  let blockStatus=false,releaseStatus=null,statusRequests=0,holdAckDelay=0,release=null,blockNext=false,active=0,maxActive=0;const moves=[],moveBodies=[];let dropStops=false,dropHolds=false,delayHold=false,releaseHold=null;
   await page.route('http://speed.test/**',async route=>{
    const request=route.request(),url=new URL(request.url());
    if(url.pathname==='/api/move'){
     const body=Object.fromEntries(request.method()==='POST'?new URLSearchParams(request.postData()):url.searchParams);moves.push(body.d);moveBodies.push(body);
+    if(body.d==='H'&&holdAckDelay)await new Promise(resolve=>setTimeout(resolve,holdAckDelay));
     if(body.d==='H'&&delayHold){delayHold=false;await new Promise(resolve=>releaseHold=resolve);}
     if((body.d==='H'&&dropHolds)||(body.d!=='H'&&dropStops))return route.abort();
    }
@@ -30,7 +31,7 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
     }
     return route.fulfill({json:{ok:true,result:'ok'}});
    }
-   if(url.pathname==='/api/status')return route.fulfill({json:state});
+   if(url.pathname==='/api/status'){++statusRequests;if(blockStatus)await new Promise(resolve=>releaseStatus=resolve);return route.fulfill({json:state});}
    if(url.pathname==='/api/motion')return route.fulfill({json:{axes:[]}});
    if(url.pathname==='/api/rssi')return route.fulfill({json:{values:[],count:0,min:null,max:null,avg:null}});
    if(url.pathname.startsWith('/api/'))return route.fulfill({json:{ok:true,items:[],points:[],peers:[]}});
@@ -38,7 +39,7 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   });
   let telemetry=null,liveAckDelay=0;const livePackets=[];
   await page.routeWebSocket('**/api/live',ws=>{
-   telemetry=ws;ws.onMessage(packet=>{livePackets.push(packet);if(liveAckDelay){const p=Object.fromEntries(new URLSearchParams(packet));setTimeout(()=>ws.send(JSON.stringify({v:1,type:'result',boot:p.boot,id:Number(p.cid),result:{ok:true,result:'ok'}})),liveAckDelay);}});
+   telemetry=ws;ws.onMessage(packet=>{livePackets.push(packet);const form=Object.fromEntries(new URLSearchParams(packet));if(form.path==='/api/move'){moves.push(form.d);moveBodies.push(form);ws.send(JSON.stringify({v:1,type:'result',boot:form.boot,id:Number(form.cid),result:{ok:true,result:'ok'}}));return;}if(liveAckDelay){const p=Object.fromEntries(new URLSearchParams(packet));setTimeout(()=>ws.send(JSON.stringify({v:1,type:'result',boot:p.boot,id:Number(p.cid),result:{ok:true,result:'ok'}})),liveAckDelay);}});
    ws.send(JSON.stringify({v:1,type:'state',boot:'abcdef',revision:1,state}));
   });
   await page.goto('http://speed.test/');await page.locator('#azManualSpeed').waitFor({state:'visible'});
@@ -134,6 +135,26 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   await page.waitForTimeout(80);assert.deepEqual(moves,['H','S'],'leaving control tab must close the gesture');
   resetMoves();await page.keyboard.press('ArrowRight');await page.waitForTimeout(50);assert.deepEqual(moves,[]);
   await page.evaluate(()=>selectTab('control'));await unfocus();
+  // Starting manual input aborts a slow full-status read and prevents new
+  // polling requests from starving HOLD/STOP on the serial HTTP server.
+  resetMoves();blockStatus=true;const polling=page.waitForRequest('**/api/status');
+  await page.evaluate(()=>{window.blockedManualStatus=upd(true);});await polling;
+  await page.keyboard.down('ArrowRight');
+  await page.waitForFunction(()=>!statusPending&&keyboardHeld());const statusAtHold=statusRequests;
+  await page.waitForTimeout(1100);assert.equal(statusRequests,statusAtHold);
+  assert.equal(await page.evaluate(()=>keyboardHeld()),true);
+  blockStatus=false;releaseStatus();await page.keyboard.up('ArrowRight');await page.waitForTimeout(100);
+  // A 600ms ACK is healthy; renew immediately after it rather than adding
+  // another timer interval to an already delayed request.
+  resetMoves();holdAckDelay=600;await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(1600);assert.equal(await page.evaluate(()=>keyboardHeld()),true);
+  assert(moves.filter(d=>d==='H').length>=3);await page.keyboard.up('ArrowRight');
+  holdAckDelay=0;await page.waitForTimeout(700);
+  // Missing ACKs still stop within the 900ms command deadline.
+  resetMoves();holdAckDelay=1600;await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(1050);assert.equal(await page.evaluate(()=>keyboardHeld()),false);
+  assert.equal(moves.at(-1),'S');await page.keyboard.up('ArrowRight');
+  holdAckDelay=0;await page.waitForTimeout(700);
   // Long holds use a fixed renewal rate, independent of OS repeat speed/flags.
   resetMoves();await page.keyboard.down('ArrowRight');
   await page.evaluate(()=>{for(let i=0;i<30;++i)document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));});
@@ -155,8 +176,8 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   resetMoves();await page.keyboard.down('ArrowDown');
   await page.evaluate(()=>document.addEventListener('keyup',event=>event.stopImmediatePropagation(),{once:true}));
   await page.keyboard.up('ArrowDown');await page.waitForTimeout(80);assert.deepEqual(moves,['H','S']);
-  // Run the actual WebSocket callbacks: telemetry loss must not interrupt
-  // independently acknowledged HTTP holds, for keys and pointer buttons alike.
+  // WebSocket commands bypass busy HTTP telemetry; disconnect falls back to
+  // HTTP within the same bounded gesture, without replay after reconnect.
   await page.evaluate(()=>{clearTimeout(live.retry);live.retry=null;window.G5500_HTTP_ONLY=false;connectLive(81);});
   await page.waitForFunction(()=>live.ready,null,{timeout:3000}).catch(async e=>{console.error('live setup',await page.evaluate(()=>({socket:!!live.socket,retry:!!live.retry,boot:live.boot,ready:live.ready,last:live.last})),!!telemetry,errors);throw e;});resetMoves();
   liveAckDelay=2000;
@@ -167,15 +188,15 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   liveAckDelay=0;livePackets.length=0;
   await page.keyboard.down('ArrowRight');await page.waitForTimeout(250);
   telemetry.close();await page.waitForTimeout(500);
-  assert.equal(await page.evaluate(()=>keyboardHeld()),true,'telemetry disconnect must not cancel acknowledged HTTP input');
+  assert.equal(await page.evaluate(()=>keyboardHeld()),true,'disconnect must preserve the hold through HTTP fallback');
   assert(moves.filter(d=>d==='H').length>=3);assert(!moves.includes('S'));
   await page.evaluate(()=>{clearTimeout(live.retry);live.retry=null;connectLive(81);});
   await page.waitForFunction(()=>live.ready);
-  assert.equal(await page.evaluate(()=>keyboardHeld()),true,'same-boot reconnect must preserve HTTP hold');
+  assert.equal(await page.evaluate(()=>keyboardHeld()),true,'same-boot reconnect must preserve the active hold');
   telemetry.send(JSON.stringify({v:1,type:'state',boot:'fedcba',revision:1,state}));
   await page.waitForFunction(()=>!keyboardHeld());
   await page.keyboard.up('ArrowRight');await page.waitForTimeout(80);assert.equal(moves.at(-1),'S');
-  assert.deepEqual(livePackets,[],'manual commands must not share telemetry WebSocket');
+  assert(livePackets.some(p=>new URLSearchParams(p).get('path')==='/api/move'),'ready WebSocket must carry manual commands');
   await page.evaluate(()=>{window.G5500_HTTP_ONLY=true;live.socket?.close();clearTimeout(live.retry);live.retry=null;});
   // Delayed HTTP HOLD ACK must not delay release or restart after its late reply.
   resetMoves();delayHold=true;await page.keyboard.down('ArrowRight');

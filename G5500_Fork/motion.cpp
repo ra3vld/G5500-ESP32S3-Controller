@@ -141,19 +141,23 @@ void MotionFeedback::sample(float position, bool calibrated, uint32_t stamp, uns
   if (count && uint32_t(stamp-at) > 5000) { count = 0; next = 0; velocity = 0; }
   at = stamp;
   samples[next] = {position, stamp}; next = (next+1)%samples.size(); count = std::min(count+1, unsigned(samples.size()));
+  velocity=velocityInWindow(window);
+}
+float MotionFeedback::velocityInWindow(unsigned window) const {
+  if(!valid || !count)return 0;
+  const float position=samples[(next+samples.size()-1)%samples.size()].position;
   // Both coordinates are relative and bounded by the short sensor window.
   // Single precision is sufficient here and uses ESP32's hardware FPU; double
   // regression over 122 samples on both axes consumes the 200 Hz time budget.
   float sx=0, sy=0, sxx=0, sxy=0; unsigned n=0;
   for (unsigned i=0; i<count; ++i) {
-    const uint32_t age = uint32_t(stamp-samples[i].at);
+    const uint32_t age = uint32_t(at-samples[i].at);
     if (age > window) continue;
     const float x = -float(age)/1000, y = samples[i].position-position;
     sx+=x; sy+=y; sxx+=x*x; sxy+=x*y; ++n;
   }
   const float denominator = n*sxx-sx*sx;
-  if (n >= 2 && denominator > 1e-10) velocity = float((n*sxy-sx*sy)/denominator);
-  else velocity=0;
+  return n>=2 && denominator>1e-10 ? float((n*sxy-sx*sy)/denominator) : 0;
 }
 void MotionRuntime::cancel(bool retainTarget) {
   const auto saved = feedback;
@@ -466,6 +470,21 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
                    (axis.current-r.kickPosition)*r.kickDirection,axis.measuredVelocity*r.kickDirection,m.kickMs*2/3) :
                uint32_t(now-r.kickAt)>=std::max(m.kickMs,m.stallMs)) {
       auto &t=autoTune;
+      if(t.active() && t.axis==int(i) && t.phase==AutoTunePhase::Minimum) {
+        // An experimental low-speed start is allowed to fail. Retry the next
+        // candidate instead of latching a normal-drive kick fault.
+        if(t.options.has(TuneKick) && !t.trackingVerified && t.proposedMotion.kickPercent<std::floor(t.limit)) {
+          t.proposedMotion.kickPercent=std::min(std::floor(t.limit),
+              t.proposedMotion.kickPercent+t.options.searchStepPercent);
+          t.searchLevel=t.proposedMotion.kickPercent;
+          t.proposalValidated=false;t.minimumPass=0;
+          autoTuneCoast(AutoTunePhase::Minimum,t.direction,t.minimumCandidate,false,now);return;
+        }
+        finishAutoTuneMinimumTrial(false,now);return;
+      }
+      if(t.active() && t.axis==int(i) && t.phase==AutoTunePhase::Tracking) {
+        finishAutoTuneTrackingTrial(false,now,"no_progress");return;
+      }
       if(t.active() && t.axis==int(i) &&
           (t.phase==AutoTunePhase::Low || t.phase==AutoTunePhase::High || t.phase==AutoTunePhase::Reposition) &&
           t.searchLevel<t.limit) {
@@ -728,6 +747,8 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
       r.progressAt=now; r.progressPosition=progressPosition; r.progressValid=true;
     } else if (uint32_t(now-r.progressAt) >= m.stallMs) {
       if(tuning) raiseAutoTuneMinimum(now);
+      else if(autoTune.active() && autoTune.axis==int(i) && autoTune.phase==AutoTunePhase::Tracking)
+        finishAutoTuneTrackingTrial(false,now,"no_progress");
       else motionFault(i,MotionError::Stalled,now);
     } else if(!tuning && cascade && passingTarget && m.kickEnabled && r.kickDone && !r.releasing &&
         desired*distance>m.movementDegrees && uint32_t(now-r.progressAt)>=
@@ -824,6 +845,16 @@ void Controller::autoTuneLevel(float level) {
 }
 void Controller::raiseAutoTuneMinimum(uint32_t now) {
   auto &t=autoTune;
+  if(t.phase==AutoTunePhase::Start) {
+    // The shared progress watchdog can expire before the startup observation
+    // window. No motion at a search level means "try more output", not a
+    // failed working model (which has not even been identified yet).
+    if(t.searchLevel<std::floor(t.limit)) {
+      t.searchLevel=std::min(std::floor(t.limit),t.searchLevel+t.options.searchStepPercent);
+      autoTuneCoast(AutoTunePhase::Start,t.direction,t.searchLevel,false,now);
+    } else finishAutoTune(AutoTunePhase::Failed,"no_start",now);
+    return;
+  }
   if(t.phase==AutoTunePhase::Minimum){finishAutoTuneMinimumTrial(false,now);return;}
   if(t.phase==AutoTunePhase::Validate && t.trackingVerified) {
     finishAutoTune(AutoTunePhase::Failed,"validation_error",now);return;
@@ -873,6 +904,11 @@ void Controller::autoTuneCoast(AutoTunePhase next,int direction,float level,bool
 }
 void Controller::finishAutoTune(AutoTunePhase phase,const char *reason,uint32_t now) {
   auto &t=autoTune;if(!t.active())return;
+  if(phase==AutoTunePhase::Failed) {
+    const auto &a=axes[unsigned(t.axis)];const auto &m=motionSettings[unsigned(t.axis)];
+    t.failure={t.phase,a.motionPhase,uint32_t(now-t.phaseAt),a.current,a.target,a.measuredVelocity,
+        a.speedOutputPercent,t.threshold,m.stoppedVelocity,a.direction,a.tracking,m.velocityWindowMs};
+  }
   t.phase=phase;t.reason=reason;t.internal=true;
   stopNow(-1,now);
   const unsigned i=unsigned(t.axis);speeds[i]=t.originalSpeed;motionSettings[i]=t.originalMotion;
@@ -908,10 +944,15 @@ bool Controller::proposeAutoTune(uint32_t now) {
   const float gain=std::max((a.highVelocity-a.lowVelocity)/(a.highOutput-a.lowOutput),
                             (b.highVelocity-b.lowVelocity)/(b.highOutput-b.lowOutput));
   if(!std::isfinite(gain) || gain<=0)return false;
-  // Fast drives need several fresh samples without another 200 ms of delay
-  // after the position filter. Validate the resulting feedback with the
-  // candidate, rather than compensating estimator lag with aggressive I.
-  if(t.mode==RegulatorMode::Cascade) m.velocityWindowMs=std::min(m.velocityWindowMs,80u);
+  // A shorter window helps fast drives, but its noise must be measured too.
+  // Retain the saved window if 80 ms amplifies noise beyond the configured
+  // stopped-speed allowance or the lowest measured sustainable velocity.
+  const float shortThreshold=std::max(.2f,3*t.shortNoiseVelocity);
+  if(t.mode==RegulatorMode::Cascade && shortThreshold<speed &&
+      shortThreshold<=std::max(t.threshold,t.originalMotion.stoppedVelocity)) {
+    m.velocityWindowMs=std::min(m.velocityWindowMs,80u);
+    t.threshold=std::max(t.threshold,shortThreshold);
+  }
   const float delay=std::max(.02f,float(m.velocityWindowMs)/2000);
   const float tau=std::clamp(std::max(a.responseSeconds,b.responseSeconds),.05f,5.f);
   const float lambda=std::max(.5f,2*(tau+delay))*t.options.lambdaFactor;
@@ -1002,6 +1043,18 @@ void Controller::advanceAutoTune(uint32_t now) {
   else if(t.options.trackingCases() && !t.trackingVerified)beginAutoTuneTracking(now);
   else finishAutoTune(AutoTunePhase::Complete,"",now);
 }
+float Controller::autoTuneCoastReserve() const {
+  const auto &t=autoTune;
+  return std::max(2.f,std::max(t.originalSpeed.coastDegrees,
+      1.2f*std::max({t.stoppingDistance,t.measurements[0].coastDegrees,t.measurements[1].coastDegrees}))+
+      t.originalMotion.movementDegrees);
+}
+float Controller::autoTuneValidationReserve() const {
+  const auto &t=autoTune;
+  return std::max({2.f,t.originalSpeed.coastDegrees,1.2f*t.stoppingDistance})+
+      t.originalMotion.movementDegrees+std::max({t.measurements[0].highVelocity,t.measurements[1].highVelocity,t.peakVelocity})*
+      (.15f+float(t.originalMotion.velocityWindowMs)/2000)+(t.mode==RegulatorMode::Simple?2*t.proposedSpeed.coastDegrees:0);
+}
 bool Controller::validateAutoTuneProposal(uint32_t now) {
   auto &t=autoTune;const auto &m=t.proposedMotion;const auto &s=t.proposedSpeed;
   const auto &a=t.measurements[0],&b=t.measurements[1];
@@ -1010,15 +1063,23 @@ bool Controller::validateAutoTuneProposal(uint32_t now) {
   // Reserve the observed kick/transfer peak too. A destination planned only
   // from plateau speed can immediately trip the unchanged dynamic stroke guard.
   // Cascade stops by feedback; only Simple additionally uses a manual coast cutoff.
-  const float reserve=std::max({2.f,t.originalSpeed.coastDegrees,1.2f*t.stoppingDistance})+
-      t.originalMotion.movementDegrees+std::max({a.highVelocity,b.highVelocity,t.peakVelocity})*
-      (.15f+float(t.originalMotion.velocityWindowMs)/2000)+(t.mode==RegulatorMode::Simple?2*s.coastDegrees:0);
+  const float reserve=autoTuneValidationReserve();
   const float lower=t.lower+reserve,upper=t.upper-reserve;
-  if(lower>=upper) {finishAutoTune(AutoTunePhase::Failed,"insufficient_travel",now);return false;}
   const float current=axes[i].current;
-  t.validationOrigin=std::clamp(current,lower,upper);
+  const float minimumMove=t.mode==RegulatorMode::Cascade?2*m.positionTolerance+m.movementDegrees:0;
   t.validationError=0;
   t.validationPass=t.validationReversals=0;t.validationLastDirection=0;
+  // A shared central band is convenient for an out-and-back test, but it is
+  // not necessary: a stopped departure needs no reserve for motion away from
+  // that edge. Prepare the two directions independently if their destination
+  // reserves overlap. Never reduce the destination or live stopping guards.
+  const float required=std::max({5.f,3*m.movementDegrees,minimumMove});
+  t.validationDirectional=upper-lower<required || std::max(upper-current,current-lower)<required;
+  if(t.validationDirectional) {
+    t.validationDirection=t.upper-axes[i].current>=axes[i].current-t.lower?1:-1;
+    return beginAutoTuneValidation(now);
+  }
+  t.validationOrigin=std::clamp(current,lower,upper);
   const int direction=upper-current>=current-lower?1:-1;
   const float available=direction>0?upper-current:current-lower;
   if(available<std::max(5.f,3*m.movementDegrees)) {
@@ -1028,7 +1089,6 @@ bool Controller::validateAutoTuneProposal(uint32_t now) {
   // A strong startup pulse then dominates the whole move, so the measured
   // working-output coast is never exercised. Allow a few seconds of work-speed
   // travel, within the same guarded stroke; retain the original accuracy test.
-  const float minimumMove=t.mode==RegulatorMode::Cascade?2*m.positionTolerance+m.movementDegrees:0;
   const float distance=std::min(available,std::max({5.f,4*speed,6*s.coastDegrees,4*m.movementDegrees,minimumMove}));
   t.validationTarget=std::clamp(current+direction*distance,lower,upper);
   if(t.mode==RegulatorMode::Cascade && std::abs(t.validationTarget-t.validationOrigin)<minimumMove) {
@@ -1044,6 +1104,34 @@ bool Controller::validateAutoTuneProposal(uint32_t now) {
   autoTunePhase(AutoTunePhase::Validate,now);
   Target target{t.validationTarget,t.validationTarget,i==0,i==1};
   const auto result=start(target,now,false);t.internal=false;
+  return result==Result::Ok;
+}
+bool Controller::beginAutoTuneValidation(uint32_t now) {
+  auto &t=autoTune;const unsigned i=unsigned(t.axis);const auto &m=t.proposedMotion;
+  const float reserve=autoTuneValidationReserve();
+  const float required=std::max({5.f,3*m.movementDegrees,
+      t.mode==RegulatorMode::Cascade?2*m.positionTolerance+m.movementDegrees:0.f});
+  if(t.upper-t.lower-autoTuneCoastReserve()-reserve<required) {
+    finishAutoTune(AutoTunePhase::Failed,"insufficient_travel",now);return false;
+  }
+  const int direction=t.validationPass?-t.validationDirection:t.validationDirection;
+  const float edge=direction>0?t.upper-reserve:t.lower+reserve;
+  const float current=axes[i].current,available=direction*(edge-current);
+  if(available<required) {
+    if(t.phase==AutoTunePhase::Reposition) {
+      finishAutoTune(AutoTunePhase::Failed,"insufficient_travel",now);return false;
+    }
+    autoTuneCoast(AutoTunePhase::Validate,direction,0,true,now);return true;
+  }
+  const float speed=std::min(t.measurements[0].lowVelocity,t.measurements[1].lowVelocity);
+  const float distance=std::min(available,std::max({required,4*speed,6*t.proposedSpeed.coastDegrees,4*m.movementDegrees}));
+  t.validationOrigin=current;t.validationTarget=current+direction*distance;
+  t.direction=direction;t.validationReversals=0;t.validationLastDirection=0;
+  t.internal=true;stopNow(int(i),now);
+  speeds[i]=t.proposedSpeed;motionSettings[i]=autoTuneTrialMotion(m);
+  autoTunePhase(AutoTunePhase::Validate,now);
+  const auto result=start({t.validationTarget,t.validationTarget,i==0,i==1},now,false);t.internal=false;
+  if(result!=Result::Ok)finishAutoTune(AutoTunePhase::Failed,"validation_error",now);
   return result==Result::Ok;
 }
 void Controller::beginAutoTuneMinimum(uint32_t now) {
@@ -1119,12 +1207,14 @@ void Controller::beginAutoTuneTracking(uint32_t now) {
   auto &t=autoTune;const unsigned i=unsigned(t.axis);auto &a=axes[i];
   if(!t.trackingPeriodMs) {
     t.trackingBase=t.proposedMotion;
-    const float reserve=std::max({2.f,1.2f*t.stoppingDistance,t.originalSpeed.coastDegrees})+
-        t.originalMotion.movementDegrees+t.peakVelocity*(.15f+float(t.originalMotion.velocityWindowMs)/2000);
+    const float reserve=autoTuneValidationReserve();
     // All candidates see the same speeds. Bound six seconds of travel to the
     // available stroke; report the actual tested speeds instead of pretending
     // a short stroke validates the full cruise velocity.
     t.trackingFast=std::min(t.proposedMotion.velocity,.75f*(t.upper-t.lower-2*reserve)/6);
+    const float minimumTravel=std::max(2*t.proposedMotion.movementDegrees,4*(t.noiseHigh-t.noiseLow));
+    if(t.trackingFast*3<minimumTravel)
+      t.trackingFast=std::min(t.proposedMotion.velocity,.75f*(t.upper-t.lower-reserve-autoTuneCoastReserve())/6);
     t.trackingSlow=std::min(t.minimumSetpoint>0?t.minimumSetpoint:t.initialSetpoint,t.trackingFast/2);
     t.trackingCase=t.options.has(TuneSlow)?0:4;
     if(t.trackingFast<=0 || (t.options.has(TuneSlow) &&
@@ -1162,10 +1252,9 @@ void Controller::beginAutoTuneTracking(uint32_t now) {
   t.trackingPeriodMs=(t.trackingCase/2)%2?1500:200;
   t.trackingVelocity=t.trackingCase<4?t.trackingSlow:t.trackingFast;
   t.direction=t.trackingDirection*(t.trackingCase%2?-1:1);
-  const float reserve=std::max({2.f,1.2f*t.stoppingDistance,t.originalSpeed.coastDegrees})+
-      t.originalMotion.movementDegrees+t.peakVelocity*(.15f+float(t.originalMotion.velocityWindowMs)/2000);
+  const float reserve=autoTuneValidationReserve();
   const float destination=a.current+t.direction*t.trackingVelocity*6;
-  if(destination<t.lower+reserve || destination>t.upper-reserve) {
+  if((t.direction>0 && destination>t.upper-reserve) || (t.direction<0 && destination<t.lower+reserve)) {
     if(t.phase==AutoTunePhase::Reposition) {finishAutoTune(AutoTunePhase::Failed,"insufficient_travel",now);return;}
     // Reuse the existing guarded transfer, then start this same case at rest.
     autoTuneCoast(AutoTunePhase::Tracking,t.direction,0,true,now);return;
@@ -1257,7 +1346,10 @@ void Controller::tickAutoTune(uint32_t now) {
     finishAutoTune(AutoTunePhase::Failed,"feedback_or_configuration",now);return;
   }
   if(uint32_t(now-t.startedAt)>(t.trackingPeriodMs?480000u:120000u)) {finishAutoTune(AutoTunePhase::Failed,"timeout",now);return;}
-  if(std::abs(axes[1-i].current-t.otherPosition)>std::max(2.f,t.originalMotion.movementDegrees) || axes[1-i].direction) {
+  // Allow stationary sensor drift without borrowing the tuned axis's movement
+  // threshold. A powered second axis still aborts immediately at any offset.
+  const float otherTolerance=std::max(5.f,motionSettings[1-i].movementDegrees);
+  if(std::abs(axes[1-i].current-t.otherPosition)>otherTolerance || axes[1-i].direction) {
     finishAutoTune(AutoTunePhase::Failed,"other_axis_moved",now);return;
   }
   const float velocity=t.direction*a.measuredVelocity;
@@ -1300,7 +1392,11 @@ void Controller::tickAutoTune(uint32_t now) {
   }
   if(t.phase==AutoTunePhase::Tracking) {tickAutoTuneTracking(now,dt);return;}
   if(t.phase==AutoTunePhase::Quiet) {
-    if(f.at!=t.sampledAt){t.sampledAt=f.at;t.noiseLow=std::min(t.noiseLow,a.current);t.noiseHigh=std::max(t.noiseHigh,a.current);t.noiseVelocity=std::max(t.noiseVelocity,std::abs(a.measuredVelocity));}
+    if(f.at!=t.sampledAt){
+      t.sampledAt=f.at;t.noiseLow=std::min(t.noiseLow,a.current);t.noiseHigh=std::max(t.noiseHigh,a.current);
+      t.noiseVelocity=std::max(t.noiseVelocity,std::abs(a.measuredVelocity));
+      t.shortNoiseVelocity=std::max(t.shortNoiseVelocity,std::abs(f.velocityInWindow(std::min(80u,t.originalMotion.velocityWindowMs))));
+    }
     if(uint32_t(now-t.phaseAt)<600)return;
     t.threshold=std::max(.2f,3*t.noiseVelocity);
     if(t.noiseHigh-t.noiseLow>t.originalMotion.movementDegrees/2 || t.threshold>10) {finishAutoTune(AutoTunePhase::Failed,"feedback_noise",now);return;}
@@ -1510,7 +1606,13 @@ void Controller::tickAutoTune(uint32_t now) {
     if(std::abs(a.measuredVelocity)<=t.threshold && !a.direction && !a.tracking) {
       if(!t.settled){t.settled=true;t.settledAt=now;}
     } else t.settled=false;
-    if(uint32_t(now-t.phaseAt)>(t.phase==AutoTunePhase::Coast?5000u:60000u)) {finishAutoTune(AutoTunePhase::Failed,"settle_timeout",now);return;}
+    const unsigned deadline=t.phase==AutoTunePhase::Coast?
+        5000u+std::max(300u,t.originalMotion.settleMs)+t.originalMotion.velocityWindowMs:60000u;
+    if(uint32_t(now-t.phaseAt)>deadline) {
+      const char *reason=t.phase==AutoTunePhase::Coast?"coast_timeout":
+          t.phase==AutoTunePhase::Reposition?"reposition_timeout":"validation_timeout";
+      finishAutoTune(AutoTunePhase::Failed,reason,now);return;
+    }
     if(!t.settled || uint32_t(now-t.settledAt)<std::max(300u,t.originalMotion.settleMs))return;
     if(t.phase==AutoTunePhase::Validate) {
       const float error=a.current-t.validationTarget;
@@ -1523,6 +1625,7 @@ void Controller::tickAutoTune(uint32_t now) {
         // One successful approach does not validate the opposite direction or
         // a return after kick. Exercise both before offering the candidate.
         t.validationPass=1;t.validationReversals=0;t.validationLastDirection=0;
+        if(t.validationDirectional) {beginAutoTuneValidation(now);return;}
         t.validationTarget=t.validationOrigin;
         t.direction=t.validationTarget>=a.current?1:-1;
         autoTunePhase(AutoTunePhase::Validate,now);
@@ -1536,6 +1639,7 @@ void Controller::tickAutoTune(uint32_t now) {
     }
     if(t.phase==AutoTunePhase::Reposition) {
       if(t.nextPhase==AutoTunePhase::Tracking)beginAutoTuneTracking(now);
+      else if(t.nextPhase==AutoTunePhase::Validate)beginAutoTuneValidation(now);
       else if(t.nextPhase==AutoTunePhase::Minimum) {
         t.direction=t.nextDirection;beginAutoTuneMinimum(now);
       } else autoTuneProbe(t.nextPhase,t.nextDirection,t.nextLevel,now);
@@ -1548,23 +1652,35 @@ void Controller::tickAutoTune(uint32_t now) {
     if(!t.relocate && (t.nextPhase==AutoTunePhase::Start || t.nextPhase==AutoTunePhase::Validate))
       measurement.coastDegrees=stoppedDistance;
     if(t.relocate) {
-      // A transfer must stop inside the trial too. The old near-edge goal
-      // allowed only the saved coast, even after a much faster startup or
-      // adaptive transfer. Leave room for that observed speed and feedback lag.
-      const float reserve=std::max({2.f,1.5f*t.originalSpeed.coastDegrees,1.2f*std::max({t.stoppingDistance,t.measurements[0].coastDegrees,t.measurements[1].coastDegrees})})+
-          t.originalMotion.movementDegrees+t.peakVelocity*(.15f+float(t.originalMotion.velocityWindowMs)/2000)+
-          2*t.originalSpeed.coastDegrees;
-      if(2*reserve>=(t.upper-t.lower)*.75f) {
+      const float coastReserve=autoTuneCoastReserve();
+      if(2*coastReserve>=t.upper-t.lower) {
         if(t.nextPhase==AutoTunePhase::High && keepMeasuredHigh())return;
         finishAutoTune(AutoTunePhase::Failed,"insufficient_travel",now);return;
       }
+      float reserve=std::max({2.f,1.5f*t.originalSpeed.coastDegrees,1.2f*std::max({t.stoppingDistance,t.measurements[0].coastDegrees,t.measurements[1].coastDegrees})})+
+          t.originalMotion.movementDegrees+t.peakVelocity*(.15f+float(t.originalMotion.velocityWindowMs)/2000)+
+          2*t.originalSpeed.coastDegrees;
+      // If that return left too little room, reclaim the full permitted
+      // stroke. A historical startup peak can greatly exceed transfer speed;
+      // it must not reject the return before it has even started. The live
+      // guard above still stops at actual speed + feedback lag + measured coast.
+      if(t.nextPhase==AutoTunePhase::Validate || t.nextPhase==AutoTunePhase::Tracking ||
+          t.relocations>1 || 2*reserve>=(t.upper-t.lower)*.75f)reserve=coastReserve;
       t.internal=true;stopNow(int(i),now);
       auto m=t.originalMotion;m.mode=RegulatorMode::Simple;m.holdEnabled=false;m.outputLimitPercent=t.limit;
       m.kickEnabled=true;m.kickPercent=std::min(t.limit,t.searchLevel);
       m.kickMs=std::min({2800u,t.originalMotion.stallMs,t.originalMotion.kickEnabled?t.originalMotion.kickMs:2800u});
       motionSettings[i]=m;speeds[i]=t.originalSpeed;speeds[i].speedPercent=std::min(unsigned(t.limit),speeds[i].speedPercent);
       speeds[i].approachSpeedPercent=std::min(speeds[i].approachSpeedPercent,speeds[i].speedPercent);
-      const float goal=t.nextDirection>0?t.lower+reserve:t.upper-reserve;
+      float goal=t.nextDirection>0?t.lower+reserve:t.upper-reserve;
+      if(t.nextPhase==AutoTunePhase::Tracking) {
+        // Return far enough for this series, rather than traversing the whole
+        // stroke before every short case. Include approach/cutoff uncertainty
+        // so stopping just short of this transfer goal still leaves room.
+        const float slack=std::max({coastReserve,2*t.originalMotion.positionTolerance,3*t.originalMotion.movementDegrees});
+        goal=std::clamp(t.nextDirection>0?t.upper-autoTuneValidationReserve()-6*t.trackingVelocity-slack:
+            t.lower+autoTuneValidationReserve()+6*t.trackingVelocity+slack,t.lower+coastReserve,t.upper-coastReserve);
+      }
       autoTunePhase(AutoTunePhase::Reposition,now);
       const auto result=start({goal,goal,i==0,i==1},now,false);t.internal=false;
       if(result!=Result::Ok)finishAutoTune(AutoTunePhase::Failed,"start_rejected",now);

@@ -227,6 +227,24 @@ int main(int argc,char **argv) {
     assert(http.status==200 && http.body.find("\"tuneLambdaFactor\":2")!=std::string::npos);
     assert(tuning.call("POST","/api/motion/autotune","action=cancel").status==200);
     assert(!c.autoTune.active() && !c.moving());
+    // Replay an expired coast: its context must survive STOP and later motion,
+    // and both transports must project the same immutable failure snapshot.
+    auto &t=c.autoTune;t.phase=AutoTunePhase::Coast;t.phaseAt=fakeHardware.now-11000;
+    t.startedAt=fakeHardware.now;t.threshold=.2f;
+    fakeHardware.now+=20; // The preceding API calls already ticked at the old stamp.
+    c.tick(fakeHardware.now);
+    if(t.phase!=AutoTunePhase::Failed || std::string(t.reason)!="coast_timeout")
+      std::cerr<<"expired coast "<<Controller::autoTunePhaseName(t.phase)<<" reason "<<t.reason
+        <<" ticked "<<t.ticked<<" tickAt "<<t.tickAt<<" now "<<fakeHardware.now<<'\n';
+    assert(t.phase==AutoTunePhase::Failed && std::string(t.reason)=="coast_timeout");
+    c.axes[0].current=123;
+    const auto failureWire=tuning.call("GET","/api/motion/autotune","full=1");
+    const auto failureHttp=tuning.call("GET","/api/motion/autotune","",false);
+    assert(failureWire.status==200 && failureWire.body==failureHttp.body);
+    assert(failureWire.body.find("\"failure\":{\"phase\":\"coast\"")!=std::string::npos);
+    assert(failureWire.body.find("\"position\":90")!=std::string::npos);
+    assert(failureWire.body.find("\"velocityWindowMs\":200")!=std::string::npos);
+    assert(tuning.call("GET","/api/motion/autotune").body.find("failure")==std::string::npos);
   }
   {
     Fixture merged;

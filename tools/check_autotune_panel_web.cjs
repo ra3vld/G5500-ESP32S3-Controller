@@ -123,6 +123,16 @@ const motion={regulatorMode:'cascade',ready:true,kickEnabled:true,holdEnabled:tr
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.setViewportSize({width:320,height:2200});
   await page.locator('#azTuneResult').screenshot({path:path.join(out,'tracking-result-320.png')});
+  state.autotune={phase:'failed',active:false,axis:0,id:2,reason:'coast_timeout',failure:{phase:'coast',motionPhase:'idle',elapsedMs:5520,position:60.15,target:49.09,velocity:1.02,output:0,threshold:.2,stoppedVelocity:.2}};
+  state.axes[0].current=123;await page.evaluate(()=>upd(true));
+  await page.waitForFunction(()=>document.getElementById('azTuneResult').textContent.includes('Ожидание покоя'));
+  assert.match(await page.locator('#azTuneResult').textContent(),/положение 60.15°; выход 0.00%/);
+  assert.match(await page.locator('#azTuneStatus').textContent(),/шум датчика/);assert(await page.locator('#azTuneApply').isDisabled());
+  for(const width of [320,390,1100]){
+   await page.setViewportSize({width,height:1200});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+   assert(await page.locator('#azTuneResult').evaluate(e=>e.scrollWidth<=e.clientWidth));
+  }
+  await page.setViewportSize({width:320,height:1200});await page.locator('#azTuneResult').screenshot({path:path.join(out,'failure-320.png')});
   state.autotune={phase:'failed',active:false,axis:0,id:1,reason:'feedback_stale'};
   state.fault='az_feedback_stale';state.axes[0].motionFault='feedback_stale';await page.evaluate(()=>upd(true));
   await page.waitForFunction(()=>document.getElementById('azTuneVelocity').textContent==='—');

@@ -22,6 +22,15 @@ inline bool writeAutoTune(JsonWriter &j, const Controller &c, bool full=false) {
     j << ",\"trackingTrial\":" << std::min(3*cases,t.trackingCandidate*cases+t.trackingCase-first+1)
       << ",\"trackingTrials\":" << 3*cases;
   if(full) {
+    if(t.phase==AutoTunePhase::Failed && t.failure.phase!=AutoTunePhase::Idle) {
+      const auto &f=t.failure;
+      j << ",\"failure\":{\"phase\":" << jsonQuoted(Controller::autoTunePhaseName(f.phase))
+        << ",\"motionPhase\":" << jsonQuoted(motionPhaseName(f.motionPhase)) << ",\"elapsedMs\":" << f.elapsedMs
+        << ",\"position\":" << f.position << ",\"target\":" << f.target << ",\"velocity\":" << f.velocity
+        << ",\"output\":" << f.output << ",\"threshold\":" << f.threshold << ",\"stoppedVelocity\":" << f.stoppedVelocity
+        << ",\"direction\":" << f.direction << ",\"tracking\":" << (f.tracking?"true":"false")
+        << ",\"velocityWindowMs\":" << f.velocityWindowMs << '}';
+    }
     j << ",\"options\":{";
     bool comma=false;
     for(const auto &field:autoTuneRealFields) {
@@ -29,7 +38,7 @@ inline bool writeAutoTune(JsonWriter &j, const Controller &c, bool full=false) {
       comma=true;j << jsonQuoted(field.name) << ':' << t.options.*field.member;
     }
     for(const auto &field:autoTuneIntFields)j << ',' << jsonQuoted(field.name) << ':' << t.options.*field.member;
-    j << ",\"methodVersion\":4}"
+    j << ",\"methodVersion\":8}"
       << ",\"minimumCandidate\":" << t.minimumCandidate
       << ",\"minimumSetpoint\":" << t.minimumSetpoint
       << ",\"minimumVelocity\":" << t.minimumSpeed

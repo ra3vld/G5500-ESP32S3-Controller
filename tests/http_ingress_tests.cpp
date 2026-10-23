@@ -16,8 +16,14 @@ int main() {
     testSocket={};testSocket.input=input;testSocket.pending=true;
     fakeHeapFree=32768;fakeHeapBlock=16384;
   };
+  // A browser's unused preconnect must yield to a queued manual command.
+  connect("");web.handleClient();assert(testSocket.open);
+  testSocket.pending=true;web.handleClient();assert(!testSocket.open && fakeHardware.now==0);
+  testSocket.pending=false;
   connect(request.substr(0,10));
   web.handleClient();assert(testSocket.parsed==0 && fakeHardware.now==0);
+  testSocket.pending=true;web.handleClient();assert(testSocket.open); // Keep partial requests.
+  testSocket.pending=false;
   testSocket.input=request;
   web.handleClient();assert(testSocket.handled==1 && testSocket.heapBufferReads==0);
   connect("POST /api/wifi HTTP/1.1\r\nContent-Length: 8\r\n\r\nssid=");

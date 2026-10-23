@@ -142,6 +142,16 @@ inline constexpr AutoTuneIntField autoTuneIntFields[] = {
   {"tunePlateauMinMs", &AutoTuneOptions::plateauMinMs, 160, 1000},
   {"tunePlateauTimeoutMs", &AutoTuneOptions::plateauTimeoutMs, 1000, 10000}
 };
+struct AutoTuneFailure {
+  AutoTunePhase phase = AutoTunePhase::Idle;
+  MotionPhase motionPhase = MotionPhase::Idle;
+  uint32_t elapsedMs = 0;
+  float position = 0, target = 0, velocity = 0, output = 0;
+  float threshold = 0, stoppedVelocity = 0;
+  int direction = 0;
+  bool tracking = false;
+  unsigned velocityWindowMs = 0;
+};
 struct AutoTuneState {
   AutoTuneOptions options{};
   AutoTunePhase phase = AutoTunePhase::Idle;
@@ -152,12 +162,15 @@ struct AutoTuneState {
   unsigned relocations = 0;
   uint32_t id = 0, startedAt = 0, phaseAt = 0, tickAt = 0, sampledAt = 0, revision = 0, settledAt = 0;
   const char *reason = "";
+  AutoTuneFailure failure{};
   float origin = 0, otherPosition = 0, lower = 0, upper = 0, limit = 0, level = 0;
   float initialSetpoint = 0;
-  float phasePosition = 0, noiseLow = 0, noiseHigh = 0, noiseVelocity = 0, threshold = 0;
+  float phasePosition = 0, noiseLow = 0, noiseHigh = 0, noiseVelocity = 0, shortNoiseVelocity = 0, threshold = 0;
   float peakVelocity = 0, validationError = 0, validationTarget = 0;
   float validationOrigin = 0;
   unsigned validationPass = 0, validationReversals = 0;
+  bool validationDirectional = false;
+  int validationDirection = 1;
   // Candidate minimum is accepted only after independent starts in both
   // directions, then repeated at the selected level before Apply is enabled.
   float minimumCandidate = 0, minimumSetpoint = 0, minimumSpeed = 0, minimumOutput = 0;
@@ -352,6 +365,9 @@ private:
   void autoTuneCoast(AutoTunePhase next, int direction, float level, bool relocate, uint32_t now);
   bool proposeAutoTune(uint32_t now);
   bool validateAutoTuneProposal(uint32_t now);
+  bool beginAutoTuneValidation(uint32_t now);
+  float autoTuneCoastReserve() const;
+  float autoTuneValidationReserve() const;
   void advanceAutoTune(uint32_t now);
   void prepareAutoTuneMinimum(uint32_t now);
   float autoTuneMinimumUpper() const;

@@ -87,6 +87,12 @@ public:
         if (idlePersistent_) { idlePersistent_ = false; _statusChange = millis(); }
         requestUsed_ += size_t(count);
       }
+      // Browsers preconnect without sending a request. Let queued control
+      // requests past an empty socket instead of waiting the full read timeout.
+      // Once any bytes arrived, retain the bounded fragmented-request parser.
+      if (count < 0 && !requestUsed_ && !transferConnection_ && _server.hasClient()) {
+        releaseClient(); return;
+      }
       size_t requestSize = 0;
       const auto state = inspectRequest({requestBuffer_, requestUsed_}, requestCapacity_, &requestSize);
       if (state == RequestState::Invalid || state == RequestState::TooLarge) { reject(); return; }

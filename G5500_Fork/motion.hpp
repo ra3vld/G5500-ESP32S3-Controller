@@ -91,6 +91,7 @@ struct MotionFeedback {
   int coastDirection = 0;
   bool powered = false, coastTracking = false;
   void sample(float position, bool calibrated, uint32_t stamp, unsigned window);
+  float velocityInWindow(unsigned window) const;
   bool progressed(int direction, float degrees, unsigned window) const;
   float positionMean(unsigned window) const;
 };
