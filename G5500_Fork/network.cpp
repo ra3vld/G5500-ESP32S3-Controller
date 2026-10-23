@@ -16,6 +16,7 @@
 namespace forkrot {
 using namespace board;
 size_t Network::uartWrite(const uint8_t *data,size_t size) {
+  if(modbus_ && runtime_.modbus.pc)return 0;
   return rs485Reply_?rs485Reply_->write(data,size):Serial0.write(data,size);
 }
 void Network::serviceUartTx() {
@@ -34,7 +35,7 @@ void Network::serviceHeapDiagnostics() {
 #if FORK_NATIVE_USB
         if(port==DiagnosticStream::Port::NativeUsb)return diagnostics_.nativeWrite(reinterpret_cast<const uint8_t *>(data),size);
 #endif
-        if(runtime_.controller.hardware.pins.uartTx<0) return 0;
+        if(runtime_.controller.hardware.pins.uartTx<0 || (modbus_&&runtime_.modbus.pc)) return 0;
         const int available = Serial0.availableForWrite();
         if (available <= 0) return 0;
         const size_t count = size_t(available) < size ? size_t(available) : size;
@@ -267,6 +268,7 @@ void Network::handlePstRotatorSerial() {
     }
   }
 #endif
+  if(modbus_ && runtime_.modbus.pc){serviceModbusPc();return;}
   if ((runtime_.hud.config.uart && !runtime_.controller.hardware.hudRs485()) || runtime_.controller.hardware.pins.uartRx < 0 || runtime_.controller.hardware.pins.uartTx < 0)
     return;
   static forkrot::ApiLineBuffer receiver;
@@ -702,9 +704,45 @@ void Network::serviceLoggerUdp() {
     }
   }
 }
+void Network::serviceModbusPc() {
+  if(!modbus_||!runtime_.modbus.pc)return;
+  auto &m=*modbus_;mb::Frame frame;
+  for(unsigned i=0;i<2&&m.pc.read(frame);++i) {
+    if(!frame.data[0]||frame.data[0]>247||uint32_t(micros()-frame.at)>80000){++m.pcRejected;continue;}
+    ++m.pcReceived;
+    if(m.pcResponse.size){++m.pcRejected;continue;} // One outstanding PC request.
+    if(m.busReady&&runtime_.hud.isHud())m.link.pcRequest(frame,micros());
+    else if(frame.data[0]==runtime_.modbus.address) {
+      if(!runtime_.recovery)actions_.updatePosition();
+      m.pcResponse=m.link.registers().process(frame,millis());m.pcResponse.at=micros();hardware_.applyOutputs();
+    }
+  }
+  if(!m.pcResponse.size&&m.link.pcReply(m.pcResponse))m.pcResponse.at=micros();
+  if(m.pcResponse.size&&uint32_t(micros()-m.pcResponse.at)>80000){m.pcResponse.size=0;++m.pcTimeouts;}
+  if(m.pcResponse.size&&m.pc.send(m.pcResponse))m.pcResponse.size=0;
+  runtime_.modbusStatus.received=m.link.received+m.pcReceived;
+  runtime_.modbusStatus.rejected=m.link.rejectedFrames()+m.pcRejected+m.bus.rejected()+m.pc.rejected();
+  runtime_.modbusStatus.timeouts=m.link.timeouts+m.pcTimeouts;
+}
+void Network::serviceModbusBus() {
+  if(!modbus_||!modbus_->busReady)return;
+  auto &m=*modbus_;mb::Frame frame;
+  for(unsigned i=0;i<4&&m.bus.read(frame);++i) {
+    if(!runtime_.recovery)actions_.updatePosition();
+    m.link.receive(frame,micros(),millis(),[&](const mb::Frame &f){return m.bus.send(f);},
+      [&](uint8_t address,const uint8_t *p,size_t n,uint32_t at){runtime_.hud.receive({address,runtime_.hud.config.port,true},p,n,at);});
+    hardware_.applyOutputs();
+  }
+  m.link.service(micros(),millis(),m.bus.idle(),[&](const mb::Frame &f){return m.bus.send(f);});
+  runtime_.modbusStatus={m.link.received+m.pcReceived,m.link.rejectedFrames()+m.pcRejected+m.bus.rejected()+m.pc.rejected(),m.link.timeouts+m.pcTimeouts,m.link.passes(),m.link.recoveries(),m.link.owner(),m.link.fault()};
+}
 bool Network::beginSerial() {
   const auto &config = runtime_.controller.hardware;
-  if (config.pins.uartRx >= 0 && config.pins.uartTx >= 0) {
+  if(!runtime_.recovery && (runtime_.modbus.pc||runtime_.modbus.bus) && !modbus_)return false;
+  if(!runtime_.recovery && runtime_.modbus.wiring(config,runtime_.hud.config.uart))return false;
+  if(modbus_ && runtime_.modbus.pc) {
+    if(!modbus_->pc.begin(0,config.pins.uartRx,config.pins.uartTx,config.pins.uartDe,19200))return false;
+  } else if (config.pins.uartRx >= 0 && config.pins.uartTx >= 0) {
     if (config.rs485()) {
       if(heapFreeBytes()<sizeof(Rs485Reply)+MemoryGuard::CriticalFree ||
           heapMaxBlockBytes()<sizeof(Rs485Reply)+MemoryGuard::CriticalBlock) return false;
@@ -720,7 +758,11 @@ bool Network::beginSerial() {
     if (config.rs485() && (!Serial0.setPins(-1, -1, -1, config.pins.uartDe) ||
         !Serial0.setMode(UART_MODE_RS485_HALF_DUPLEX))) return false;
   }
-  if (runtime_.hud.config.uart && config.hudRs485()) {
+  if(modbus_ && runtime_.modbus.bus) {
+    if(!modbus_->bus.begin(1,config.pins.hudRx,config.pins.hudTx,config.pins.hudDe,115200) ||
+        !modbus_->link.begin(runtime_.modbus,runtime_.hud.isHud(),uint32_t(runtime_.hud.boot),micros()))return false;
+    modbus_->busReady=true;
+  } else if (runtime_.hud.config.uart && config.hudRs485()) {
     if (!hud485_) return false;
     auto &serial=hud485_->serial;
     digitalWrite(config.pins.hudDe, LOW);pinMode(config.pins.hudDe, OUTPUT);
@@ -746,13 +788,18 @@ bool Network::hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned 
 void Network::beginHud() {
   runtime_.hud.begin(ESP.getEfuseMac() & 0xffffffffffffULL, (uint64_t(esp_random()) << 32) | esp_random());
   runtime_.hud.setTransport(this);
-  if (runtime_.hud.config.uart && runtime_.controller.hardware.hudRs485()) {
+  if(!runtime_.recovery && (runtime_.modbus.pc||runtime_.modbus.bus)) {
+    modbus_.reset(new(std::nothrow) ModbusLink(runtime_));
+    if(modbus_)modbus_->link.registers().begin(uint32_t(runtime_.hud.boot));
+    else runtime_.hud.catalogError=true;
+  }
+  if (runtime_.hud.config.uart && runtime_.controller.hardware.hudRs485() && !runtime_.modbus.bus) {
     if (heapFreeBytes() >= sizeof(Rs485Link)+MemoryGuard::CriticalFree &&
         heapMaxBlockBytes() >= sizeof(Rs485Link)+MemoryGuard::CriticalBlock)
       hud485_.reset(new (std::nothrow) Rs485Link);
     if (hud485_) hud485_->link.begin(runtime_.hud.isHud(),runtime_.hud.boot,millis());
     else runtime_.hud.catalogError=true;
-  } else if (runtime_.hud.config.uart) {
+  } else if (runtime_.hud.config.uart && !runtime_.modbus.bus) {
     hudUart_.reset(new (std::nothrow) UartLink);
     if (!hudUart_)
       runtime_.hud.catalogError = true;
@@ -765,7 +812,7 @@ void Network::beginHud() {
 bool Network::sendHud(const HudEndpoint &e, const uint8_t *bytes, size_t size) {
   int error = 0;
   const bool sent =
-      e.uart ? runtime_.hud.config.uart && (hud485_ ? hud485_->link.enqueue(bytes,size,millis()) : hudUart_ && hudUart_->tx.enqueue(bytes, size))
+      e.uart ? runtime_.hud.config.uart && (modbus_ && runtime_.modbus.bus ? modbus_->link.enqueue(uint8_t(e.address),bytes,size,millis()) : hud485_ ? hud485_->link.enqueue(bytes,size,millis()) : hudUart_ && hudUart_->tx.enqueue(bytes, size))
              : hudUdp_.send(e.address, e.port, {reinterpret_cast<const char *>(bytes), size}, &error);
   if (sent) {
     ++runtime_.hud.sent;
@@ -802,6 +849,7 @@ void Network::resetHudInputs() {
   if (inputEpoch_ == runtime_.hud.selectionEpoch)
     return;
   inputEpoch_ = runtime_.hud.selectionEpoch;
+  if(modbus_ && modbus_->busReady)modbus_->link.cancel();
   bluetooth_.discardInput();
   int queued = 0;
   if (rotctldClient_ && ::ioctl(rotctldClient_.fd(), FIONREAD, &queued) < 0)
@@ -847,6 +895,7 @@ void Network::serviceHud() {
         [&](const uint8_t *p,size_t n) { return serial.write(p,n); },
         [] { return uart_wait_tx_done(UART_NUM_1,0)==ESP_OK; });
   }
+  serviceModbusBus();
   hud.service(millis());
   for (auto &reply : deferred_)
     if (reply.used) {

@@ -1,5 +1,6 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
+#include "modbus_config.hpp"
 #include "api.hpp"
 #include "hud.hpp"
 namespace forkrot {
@@ -7,6 +8,8 @@ namespace forkrot {
 // buffers and settings belong to their respective services, not this object.
 struct Runtime {
   Controller controller;
+  ModbusConfig modbus;
+  ModbusStatus modbusStatus;
   HardwareRecord hardwareRecord;
   RecoveryHistory recoveryHistory;
   MemoryGuard memoryGuard;

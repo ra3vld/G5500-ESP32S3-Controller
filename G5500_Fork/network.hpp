@@ -20,6 +20,8 @@
 #include "hud_uart_tx.hpp"
 #include "rs485_hud.hpp"
 #include "rs485_reply.hpp"
+#include "modbus_serial.hpp"
+#include "modbus_bus.hpp"
 #include <WiFiServer.h>
 namespace forkrot {
 class Network : public HudTransport {
@@ -77,6 +79,17 @@ public:
   const HttpDiagnostics &httpDiagnostics() const { return http_; }
 
 private:
+  struct ModbusLink {
+    mb::SerialPort pc,bus;
+    mb::Bus link;
+    mb::Frame pcResponse;
+    bool busReady=false;
+    uint32_t pcReceived=0,pcRejected=0,pcTimeouts=0;
+    explicit ModbusLink(Runtime &r):link(r.controller,r.hud){}
+  };
+  std::unique_ptr<ModbusLink> modbus_;
+  void serviceModbusPc();
+  void serviceModbusBus();
   size_t uartWrite(const uint8_t *,size_t);
   void serviceUartTx();
   std::unique_ptr<Rs485Reply> rs485Reply_;

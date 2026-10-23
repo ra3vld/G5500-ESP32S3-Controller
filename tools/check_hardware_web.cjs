@@ -10,13 +10,13 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    const fixture=JSON.parse(fs.readFileSync(path.join(root,`build/pin-map-${profile}.json`),'utf8'));
    const config={driveInterface:0,simulation:1,bluetoothEnabled:0,bluetoothMode:3,forceApSta:0,buttonGpio:fixture.buttonGpio,buttonActiveLow:1,buttonPullup:1,pwmInverted:0,pins:{...fixture.pins}};
    let state={token:123,generation:2,recovery:true,trial:false,ready:false,reason:'low_memory',failureCount:2,failureLimit:3,failureResetMs:1800000,remainingMs:120000,heapFree:3000,heapMaxBlock:512,backend:'NONE',sppSupported:!!fixture.classicEsp32,classicEsp32:!!fixture.classicEsp32,crowpanel:!!fixture.crowpanel,crowpanelLocalDrive:profile==='az',separateDrive:profile!=='az',btsDrive:true,hasConfirmed:true,configured:config},probeFails=false;
-   const requests=[],errors=[];
+   const requests=[],errors=[];const mbState={pc:0,bus:0,address:1,node:201,first:201,count:1,owner:0};
    const page=await browser.newPage({viewport:{width:mobile?360:1100,height:900},locale:'ru-RU'});
    page.on('pageerror',e=>errors.push(e.message));
    await page.route('http://hardware.test/**',async route=>{
     const req=route.request(),u=new URL(req.url());
     if(u.pathname==='/hardware'||u.pathname==='/recovery')return route.fulfill({contentType:'text/html',body:html});
-    if(req.method()==='GET')return route.fulfill({contentType:'application/json',body:JSON.stringify(u.pathname==='/api/hardware/pins'?fixture.metadata:state)});
+    if(req.method()==='GET')return route.fulfill({contentType:'application/json',body:JSON.stringify(u.pathname==='/api/hardware/pins'?fixture.metadata:u.pathname==='/api/hardware/modbus'?mbState:state)});
     const body=Object.fromEntries(new URLSearchParams(req.postData()));requests.push({path:u.pathname,body});
     assert.equal(body.token,'123');assert.equal(body.generation,'2');
     const failed=probeFails&&u.pathname==='/api/hardware/probe';
@@ -122,6 +122,18 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
    assert.deepEqual(errors,[]);
    state={...state,recovery:false,trial:false,reason:'none',hasConfirmed:true};await page.evaluate(()=>{dirty=false;document.getElementById('message').textContent='';});await page.evaluate(()=>refresh());
+   if(profile==='1'){
+    await page.locator('#modbus [name=pc]').selectOption('1');await page.locator('#modbus [name=bus]').selectOption('1');
+    await page.locator('#modbus [name=count]').fill('2');await page.locator('#modbus [name=node]').fill('202');
+    await page.locator('#modbus [name=address]').fill('201');const before=requests.length;
+    await page.locator('#modbus-save').click();assert.equal(requests.length,before);assert.match(await page.locator('#message').textContent(),/вне диапазона/);
+    await page.locator('#modbus [name=address]').fill('1');await page.evaluate(()=>refreshModbus());
+    assert.equal(await page.locator('#modbus [name=node]').inputValue(),'202');
+    await page.locator('#modbus-save').click();await page.waitForFunction(()=>document.getElementById('message').textContent.startsWith('Сохранено'));
+    assert.equal(requests.at(-1).path,'/api/hardware/modbus');assert.equal(requests.at(-1).body.node,'202');assert.equal(requests.at(-1).body.pc,'1');
+    assert(await page.locator('#modbus-save').isDisabled());await page.evaluate(()=>{busy=false;buttons();});
+    mbState.fault=true;await page.evaluate(()=>refreshModbus());assert.match(await page.locator('#modbus-status').textContent(),/параметры кольца/);
+   }
    if(process.env.HARDWARE_SCREENSHOT_DIR){fs.mkdirSync(process.env.HARDWARE_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:path.join(process.env.HARDWARE_SCREENSHOT_DIR,`hardware-${profile}-${mobile?'mobile':'desktop'}.png`),fullPage:true});}
    if(process.env.HARDWARE_DOC_SCREENSHOT&&profile==='1'&&!mobile)await page.screenshot({path:process.env.HARDWARE_DOC_SCREENSHOT,fullPage:true});
    await page.close();

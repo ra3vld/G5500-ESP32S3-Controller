@@ -15,11 +15,11 @@ struct HudConfig {
   uint64_t selected = 0;
 };
 struct HudEndpoint {
-  uint32_t address = 0; // Network byte order; zero with uart=true is the physical UART.
+  uint32_t address = 0; // Network byte order, or Modbus address with uart=true (zero is legacy UART).
   uint16_t port = 4534;
   bool uart = false;
   bool operator==(const HudEndpoint &o) const {
-    return uart == o.uart && (uart || (address == o.address && port == o.port));
+    return uart == o.uart && address == o.address && (uart || port == o.port);
   }
 };
 struct HudPreset {

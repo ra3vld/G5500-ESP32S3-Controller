@@ -66,6 +66,22 @@ bool decodeDrive(const DriveRecord &b,MotionSettings &m,SpeedSettings &s) {
   m=next;s=speed;return true;
 }
 }
+bool Storage::loadModbus(Runtime &runtime) {
+  runtime.modbus={};
+  if(!prefs_.begin("modbus",true)){prefs_.end();return true;}
+  const bool exists=prefs_.isKey("config1");ModbusBytes bytes{};
+  const bool ok=!exists || (prefs_.getBytesLength("config1")==bytes.size() &&
+      prefs_.getBytes("config1",bytes.data(),bytes.size())==bytes.size() && decodeModbus(bytes,runtime.modbus));
+  prefs_.end();return ok;
+}
+bool Storage::saveModbus(const ModbusConfig &config) {
+  if(config.validate())return false;
+  const auto bytes=encodeModbus(config);ModbusBytes readback{};
+  if(!prefs_.begin("modbus",false)){prefs_.end();return false;}
+  const bool ok=prefs_.putBytes("config1",bytes.data(),bytes.size())==bytes.size() &&
+      prefs_.getBytesLength("config1")==bytes.size() && prefs_.getBytes("config1",readback.data(),readback.size())==readback.size() && bytes==readback;
+  prefs_.end();return ok;
+}
 bool Storage::writeHardware(const HardwareRecord &record) {
   const auto bytes = encodeHardware(record);
   if (!prefs_.begin("hardware", false)) { prefs_.end(); return false; }

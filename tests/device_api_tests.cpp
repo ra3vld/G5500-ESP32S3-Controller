@@ -65,6 +65,26 @@ struct Fixture {
 };
 int main(int argc,char **argv) {
   {
+    Fixture mb;
+    assert(mb.storage.loadModbus(mb.runtime)&&mb.runtime.modbus==ModbusConfig{});
+    assert(mb.call("GET","/api/hardware/modbus").body.find("\"address\":1")!=std::string::npos);
+    assert(mb.call("POST","/api/hardware/modbus","token=11&generation=1&pc=1").body.find("modbus_pc_pins")!=std::string::npos);
+    auto wiring=mb.runtime.controller.hardware;wiring.pins.uartDe=8;wiring.pins.hudRx=9;wiring.pins.hudTx=10;wiring.pins.hudDe=11;
+    mb.runtime.controller.configureHardware(wiring);mb.runtime.hardwareRecord.candidate=wiring;mb.runtime.hardwareHudUart=true;
+    const std::string fields="token=11&generation=1&pc=1&bus=1&address=1&node=202&first=201&count=2";
+    CommandForm duplicate;assert(!duplicate.parse(fields+"&count=2"));
+    assert(mb.call("POST","/api/hardware/modbus","token=11&generation=1&count=5").status==400);
+    assert(mb.call("POST","/api/hardware/modbus","token=11&generation=1&address=201").status==400);
+    assert(mb.call("POST","/api/hardware/modbus","token=10&generation=1").status==409);
+    Preferences::failedBytesKey="config1";assert(mb.call("POST","/api/hardware/modbus",fields).status==503);Preferences::failedBytesKey.clear();
+    assert(mb.call("POST","/api/hardware/modbus",fields).status==200);
+    assert(mb.storage.loadModbus(mb.runtime)&&mb.runtime.modbus.pc==1&&mb.runtime.modbus.bus==1&&mb.runtime.modbus.node==202);
+    assert(mb.call("POST","/api/device","role=hud&wifi=existing&uart=0&port=4534").status==400);
+    auto bytes=encodeModbus(mb.runtime.modbus);ModbusConfig decoded;assert(decodeModbus(bytes,decoded)&&decoded==mb.runtime.modbus);
+    for(unsigned i=0;i<bytes.size();++i){auto bad=bytes;bad[i]^=1;assert(!decodeModbus(bad,decoded));}
+    Preferences::database["modbus"]["config1"]=Preferences::Bytes(15,0);assert(!mb.storage.loadModbus(mb.runtime));
+  }
+  {
     Fixture local;
     const char *fields="token=11&generation=1&simulation=1&localInputMode=2&pin.localAzAdc=36&pin.localElAdc=39&localAzMin=100&localAzCenter=1900&localAzMax=3800&localDeadzone=180&localHysteresis=40";
     assert(local.call("POST","/api/hardware",fields,false).status==200);

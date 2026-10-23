@@ -12,6 +12,8 @@ namespace forkrot {
 enum class WifiSaveResult { Ok, InvalidSsid, InvalidPassword, OpenFailed, WriteFailed, VerifyFailed };
 class Storage {
 public:
+  bool loadModbus(Runtime &runtime);
+  bool saveModbus(const ModbusConfig &config);
   void loadHardware(Runtime &runtime, bool forceRecovery = false);
   bool stageHardware(Runtime &runtime, const HardwareConfig &config);
   bool confirmHardware(Runtime &runtime);

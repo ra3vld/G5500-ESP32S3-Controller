@@ -23,9 +23,7 @@
 #include "application.hpp"
 #include "runtime_metrics.hpp"
 #include <new>
-#if FORK_CLASSIC_ESP32
 #include <esp_log.h>
-#endif
 namespace forkrot {
 using namespace board;
 namespace {
@@ -60,12 +58,21 @@ void Application::controllerSetup() {
   diagnostics_.readBootReason();
 
   storage_.loadHud(runtime_, false);
+  const bool modbusReadable=storage_.loadModbus(runtime_);
   const auto reset = esp_reset_reason();
   const bool unexpected = reset == ESP_RST_PANIC || reset == ESP_RST_INT_WDT ||
       reset == ESP_RST_TASK_WDT || reset == ESP_RST_WDT || reset == ESP_RST_BROWNOUT;
   storage_.loadHardware(runtime_, unexpected || (reset != ESP_RST_POWERON &&
       __atomic_load_n(&recoveryLatch, __ATOMIC_RELAXED) == RecoveryCookie));
   __atomic_store_n(&recoveryLatch, 0u, __ATOMIC_RELAXED);
+  if(!modbusReadable || (!runtime_.recovery &&
+      runtime_.modbus.wiring(runtime_.controller.hardware,runtime_.hud.config.uart))) {
+    storage_.enterRecovery(runtime_,RecoveryReason::Invalid);
+    storage_.loadHardware(runtime_,true);
+    // Invalid protocol storage stays safe even if recording recovery fails.
+    runtime_.recovery=true;runtime_.recoveryReason=RecoveryReason::Invalid;
+    runtime_.controller.configurationLocked=true;
+  }
   runtime_.hardwareToken = esp_random();
   if (!runtime_.hardwareToken) runtime_.hardwareToken = 1;
   if (runtime_.recovery) {
@@ -104,6 +111,7 @@ void Application::controllerSetup() {
   esp_log_level_set("*", ESP_LOG_NONE);
 #endif
   if (!network_.beginSerial() && !runtime_.recovery) { failConfiguration(RecoveryReason::Radio); return; }
+  if(runtime_.modbus.pc)esp_log_level_set("*",ESP_LOG_NONE);
   diagnostics_.beginNativeUsb();
   // Reserve the essential console before Wi-Fi can consume memory or fail.
   // Ordinary web builds allocate command sessions on first use instead.

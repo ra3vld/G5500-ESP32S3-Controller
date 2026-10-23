@@ -180,6 +180,34 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
   if(ota_.locked() && !stop && path!="/api/status" && path!="/api/diaglog" && path!="/api/diagnostics" && path.substr(0,8)!="/api/ota") { reply(503,"update_locked"); return; }
   if(runtime_.recovery && !hardwarePath && path!="/api/status" && path!="/api/network" && path!="/api/diagnostics" && path!="/api/diaglog" && path!="/api/resetreason" && path!="/api/resethistory" && path!="/api/wifi" && path!="/api/ap") { reply(409,"recovery_only"); return; }
   if(hardwarePath) {
+    if(path=="/api/hardware/modbus") {
+      const auto &c=runtime_.modbus;
+      if(method=="GET") {
+        const auto &s=runtime_.modbusStatus;
+        output << "{\"pc\":" << unsigned(c.pc) << ",\"bus\":" << unsigned(c.bus)
+          << ",\"address\":" << unsigned(c.address) << ",\"node\":" << unsigned(c.node)
+          << ",\"first\":" << unsigned(c.first) << ",\"count\":" << unsigned(c.count)
+          << ",\"enabled\":" << (!runtime_.recovery&&(c.pc||c.bus)?"true":"false") << ",\"owner\":" << unsigned(s.owner)
+          << ",\"received\":" << s.received << ",\"rejected\":" << s.rejected << ",\"timeouts\":" << s.timeouts
+          << ",\"passes\":" << s.passes << ",\"recoveries\":" << s.recoveries << ",\"fault\":" << (s.fault?"true":"false") << '}';return;
+      }
+      if(method!="POST"){reply(405,"method_not_allowed");return;}
+      ModbusConfig next=c;uint16_t seen=0;uint32_t token=0,generation=0;
+      constexpr const char *names[]={"token","generation","pc","bus","address","node","first","count"};
+      for(auto e:arguments){unsigned i=0;while(i<8 && e.first!=names[i])++i;
+        uint32_t v=0;if(i==8 || (seen&(1u<<i)) || !hardwareUnsigned(e.second,v) || (i>1&&v>255)){reply(400,"invalid_form");return;}
+        seen|=1u<<i;
+        switch(i){case 0:token=v;break;case 1:generation=v;break;case 2:next.pc=v;break;case 3:next.bus=v;break;
+          case 4:next.address=v;break;case 5:next.node=v;break;case 6:next.first=v;break;case 7:next.count=v;break;}
+      }
+      if((seen&3)!=3 || token!=runtime_.hardwareToken || generation!=runtime_.hardwareRecord.generation){reply(409,"stale_configuration");return;}
+      const auto &record=runtime_.hardwareRecord;
+      const auto &hardware=runtime_.recovery?record.candidate:runtime_.controller.hardware;
+      if(const auto error=next.wiring(hardware,runtime_.hardwareHudUart)){reply(400,error);return;}
+      if(!storage_.saveModbus(next)){reply(503,"storage_failed");return;}
+      hardware_.cancelJoystickCalibration();runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
+      runtime_.controller.configurationLocked=true;reply(200,"");restart_.request(millis());return;
+    }
     if(method=="GET" && path=="/api/hardware/pins") { writePinCapabilities(output,runtime_.hardwareHudUart); return; }
     if(method=="GET" && path=="/api/hardware") { writeHardwareStatus(output,command,web_.value("view")); return; }
     if(method!="POST") { reply(405,"method_not_allowed"); return; }
@@ -215,6 +243,7 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
         output << "{\"ok\":false,\"error\":" << jsonQuoted(error.error) << ",\"field\":" << jsonQuoted(error.field)
           << ",\"gpio\":" << error.pin << ",\"owner\":" << jsonQuoted(error.owner) << '}'; return;
       }
+      if(const auto error=runtime_.modbus.wiring(form.config,runtime_.hardwareHudUart)){reply(400,error);return;}
       stopForConfiguration();
       saved=storage_.stageHardware(runtime_,form.config);
     } else if(path=="/api/hardware/confirm") {
@@ -792,6 +821,7 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
     config.wifi = wifi == "host" ? HudWifi::Host : wifi == "client" ? HudWifi::Client : HudWifi::Existing;
     config.uart = uart == "1";
     config.port = uint16_t(port);
+    if(const auto error=runtime_.modbus.wiring(runtime_.controller.hardware,config.uart)){reply(400,error);return;}
     if (!storage_.saveHudConfig(config)) {
       web_.send(507, "application/json", "{\"ok\":false,\"result\":\"storage_full\"}");
       return;

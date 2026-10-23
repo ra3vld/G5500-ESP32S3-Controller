@@ -57,11 +57,12 @@ public:
     put(key, corruptStringKey == key ? String("verification mismatch") : std::move(value));
     return length;
   }
-  void putBytes(const char *key, const void *value, size_t length) {
+  size_t putBytes(const char *key, const void *value, size_t length) {
     if(beforeBytesWrite) beforeBytesWrite(key);
-    if(failedBytesKey==key)return;
+    if(failedBytesKey==key)return 0;
     const auto bytes = static_cast<const uint8_t *>(value);
     put(key, Bytes(bytes, bytes + length));
+    return length;
   }
 private:
   template <typename T> T get(const char *key, T fallback) {

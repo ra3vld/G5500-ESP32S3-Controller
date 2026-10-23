@@ -30,6 +30,7 @@
 ## Внешние API
 
 - [Общие правила и HTTP API](api.md).
+- [Modbus RTU: общая линия с маркером и карта регистров](modbus-rtu.md).
 - [WebSocket](live.md), [командный API UART/USB, UDP и TCP](command-api.md).
 - [Подбор методики автотюна и запись результатов](autotune-experiments.md).
 
