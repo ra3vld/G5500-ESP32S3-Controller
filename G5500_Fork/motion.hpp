@@ -110,6 +110,8 @@ struct MotionRuntime {
   bool kickRecovery = false;
   bool targetTimed = false;
   bool staticProgressValid = false;
+  bool staticKickInterrupted = false;
+  float staticKickFloor = 0;
   uint32_t staticProgressAt = 0;
   float staticProgressRemaining = 0;
   uint32_t kickConfirmAt = 0;

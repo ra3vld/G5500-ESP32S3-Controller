@@ -390,7 +390,12 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
   const bool moving = std::abs(axis.measuredVelocity) > m.stoppedVelocity;
   const float predictedCoast=staticTarget ? r.feedback.staticCoastDistance(axis.measuredVelocity) :
       std::abs(axis.measuredVelocity)*r.feedback.coastSeconds;
+  // Switching feedback can resemble velocity before the shaft breaks away.
+  // A stationary goal must not coast out of an unconfirmed start. Arrival
+  // inside tolerance and crossing the actual goal still cut power immediately.
   const bool coastConfirmed=!staticTarget || (moving &&
+      (!m.kickEnabled || r.kickDone ||
+       r.feedback.progressed(sign(axis.measuredVelocity),m.movementDegrees,m.velocityWindowMs)) &&
       r.feedback.progressed(sign(axis.measuredVelocity),m.movementDegrees/4,m.velocityWindowMs));
   const bool coastToTarget=coastConfirmed && distance*axis.measuredVelocity>0 && std::abs(distance)<=predictedCoast;
   // A one-shot positioning move may coast beyond its goal, but only active
@@ -398,7 +403,9 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
   // crossing, then wait for measured rest before reporting completion.
   if (cascade && axis.tracking && !axis.holdArmed && !passingTarget &&
       r.targetDirection && distance*r.targetDirection<=0) r.crossedTarget=true;
-  if (!staticTarget) r.staticProgressValid=false;
+  if (!staticTarget) {
+    r.staticProgressValid=false;r.staticKickInterrupted=false;r.staticKickFloor=0;
+  }
   else if(axis.calibrated && r.feedback.timed) {
     // Observe the entire stationary-goal attempt, including zero-output
     // braking and renewed kicks. Neither can grant a fresh stall interval.
@@ -412,6 +419,7 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
   }
   if (cascade && axis.tracking && (std::abs(distance)<=m.positionTolerance || coastToTarget || r.arriving || r.crossedTarget) && !passingTarget) {
     if (!r.arriving) {
+      r.staticKickInterrupted=staticTarget && axis.motionPhase==MotionPhase::Kick && !r.kickDone;
       r.arriving=true; r.profileValid=false; r.kickDone=false; r.releasing=false;
       r.positionPid.reset(); r.velocityPid.reset();
     }
@@ -420,6 +428,14 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
     else if (!r.settling) { r.settling=true; r.settledAt=now; }
     if (r.settling && uint32_t(now-r.settledAt) >= m.settleMs && std::abs(distance)>m.positionTolerance && !r.crossedTarget) {
       // Wait for the real coast to finish before judging the remaining error.
+      if(staticTarget && r.staticKickInterrupted) {
+        // A switching excursion can briefly enter the arrival band before
+        // breakaway. After an observed failed arrival, resume at a bounded
+        // next start level instead of repeating the same sub-threshold pulse.
+        const float step=std::max(1.f,(m.kickPercent-float(m.sustainingPercent))/std::clamp(m.kickMs/60,1u,8u));
+        r.staticKickFloor=std::min(m.kickPercent,std::max(r.staticKickFloor,r.kickPeak)+step);
+      }
+      r.staticKickInterrupted=false;
       r.arriving=r.settling=false;
     } else if (r.settling && uint32_t(now-r.settledAt) >= m.settleMs) {
       const bool hold = axis.holdArmed && m.holdEnabled;
@@ -481,6 +497,7 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
     }
     if (desired && desired != r.kickDirection) { axis.motionPhase=MotionPhase::Braking; r.releasing=false; r.ramp=axis.speedOutputPercent; r.rampRate=0; }
     else if (confirmedMove) {
+      r.staticKickFloor=0;
       r.releaseOutput=axis.speedOutputPercent;
       axis.motionPhase=MotionPhase::Run; r.releasing=true; r.releaseAt=now; r.kickDone=true;
       if(!r.kickRecovery || !passingTarget) {r.profileValid=false;r.positionPid.reset();}
@@ -592,6 +609,7 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
       r.kickRecovery=false;
       r.progressAt=now; r.progressPosition=axis.current; r.progressValid=true;
       r.kickBase=std::min(m.kickPercent,std::max(5.f,cascade?float(m.sustainingPercent):manualSpeed()));
+      if(staticTarget)r.kickBase=std::max(r.kickBase,r.staticKickFloor);
       if(m.kickMs<=40)r.kickBase=m.kickPercent; // One control tick cannot fit a staircase.
       r.kickPeak=axis.speedOutputPercent=std::min(r.kickBase,m.outputLimitPercent); return;
     }
