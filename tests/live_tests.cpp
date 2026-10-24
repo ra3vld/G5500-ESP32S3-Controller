@@ -48,6 +48,10 @@ int main() {
   assert(fingerprint==liveControlFingerprint(c,h));c.axes[0].target+=1;
   assert(fingerprint!=liveControlFingerprint(c,h));
   // Preserve sub-centidegree speed limits/setpoints in the live projection.
+  // This assertion concerns a local variable-speed drive, not the offline
+  // HUD mirror used by the capacity case above.
+  h.config.role=DeviceRole::Controller;h.begin(1,10);
+  auto hardware=c.hardware;hardware.simulation=true;c.configureHardware(hardware);
   c.motionSettings[0].mode=RegulatorMode::Cascade;c.motionSettings[0].velocity=.001f;
   JsonWriter tiny(data,sizeof data);assert(writeLiveState(tiny,c,h,3));
   assert(std::string(tiny.data()).find("\"speedSetpoint\":0.001")!=std::string::npos);

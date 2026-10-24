@@ -3,11 +3,15 @@
 #include "modbus_config.hpp"
 #include "api.hpp"
 #include "hud.hpp"
+#include "setup_state.hpp"
 namespace forkrot {
 // The single control model plus the last hardware/UI projection. Peripheral
 // buffers and settings belong to their respective services, not this object.
 struct Runtime {
   Controller controller;
+  SetupState setup;
+  bool setupStorageOk = true;
+  uint32_t setupLease = 0, setupRenewed = 0;
   ModbusConfig modbus;
   ModbusStatus modbusStatus;
   HardwareRecord hardwareRecord;

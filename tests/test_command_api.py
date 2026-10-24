@@ -165,7 +165,7 @@ class CommandApiTests(unittest.TestCase):
         self.assertEqual(axis['speedSetpoint'], 25)
         full = client.request('GET', '/api/motion/autotune', {'full': '1'})['body']
         self.assertEqual(full['options']['tuneLambdaFactor'], 1)
-        self.assertEqual(full['options']['methodVersion'], 11)
+        self.assertEqual(full['options']['methodVersion'], 14)
         self.assertEqual(full['options']['tuneStages'], 31)
         rejected = client.request('POST', '/api/motion/autotune', dict(
             action='start', axis='az', mode='simple', id=full['id'], travel=60,
@@ -202,7 +202,7 @@ class CommandApiTests(unittest.TestCase):
                 client = api.Client(link, timeout=1)
                 hardware = client.request('GET', '/api/hardware')['body']
                 caps = client.request('GET', '/api/hardware/pins')['body']
-                self.assertEqual(len(caps['roles']), 39)
+                self.assertEqual(len(caps['roles']), 43)
                 self.assertEqual(len(caps['gpios']), 49)
                 fields = dict(token=hardware['token'], generation=hardware['generation'])
                 fields['pin.azAdc'] = 36

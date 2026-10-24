@@ -97,6 +97,7 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
   writeTargetJson(json, controller.lastTarget);
   json << ",\"autotune\":";writeAutoTune(json,controller);
   json << ",\"moving\":" << (controller.moving() ? "true" : "false")
+       << ",\"setupRequired\":" << (controller.setupRequired ? "true" : "false")
        << ",\"configurationLocked\":" << (controller.configurationLocked ? "true" : "false")
        << ",\"presetActive\":" << (controller.presetActive ? "true" : "false")
        << ",\"presetSlot\":" << controller.presetSlot << ",\"speedEnabled\":"

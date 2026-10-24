@@ -60,8 +60,8 @@ int main() {
   assert(fakeHardware.events.front().operation=="preload" && fakeHardware.events.front().pin==0 && fakeHardware.events.front().value==HIGH);
   assert(fakeHardware.attachCalls==(DRIVE_INTERFACE==DRIVE_YAESU ? 1u : 2u));
   h.beginAdc();assert(fakeHardware.readsRaw==1);
-  fakeHardware.millivolts[6]=1500;assert(h.filteredMv(0)==1500 && fakeHardware.readsMv==25);
-  h.filteredMv(1);assert(fakeHardware.readsMv==25);
+  fakeHardware.millivolts[6]=1500;assert(h.filteredMv(0)==1500 && fakeHardware.readsMv==MotionAdcSamples);
+  h.filteredMv(1);assert(fakeHardware.readsMv==MotionAdcSamples);
   int raw=-1,mv=-1;h.adcDiagRead(PIN_EL_ADC,raw,mv);assert(raw==0 && mv==0);
   r.controller.setModel(Model::G5500);assert(r.controller.model==Model::G800DXA);
   assert(r.controller.jog(1,1,false,0)==Result::Invalid);

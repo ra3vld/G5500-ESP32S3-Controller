@@ -37,7 +37,7 @@ public:
   void selectionChanged() override { resetHudInputs(); }
   bool hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned report) const;
   bool apAlwaysOn() const {
-    return wifiSetupAp_ || runtime_.recovery || runtime_.hud.config.wifi == HudWifi::Host ||
+    return runtime_.setup.required || credentials_.network.choice==NetworkChoice::Ap || credentials_.network.choice==NetworkChoice::SharedHost || wifiSetupAp_ || runtime_.recovery || runtime_.hud.config.wifi == HudWifi::Host ||
            (runtime_.hud.config.wifi == HudWifi::Existing && (!FORK_CLASSIC_ESP32 || runtime_.controller.hardware.forceAp));
   }
 
@@ -100,6 +100,7 @@ private:
   size_t runCommandApi(uint64_t peer, std::string_view input, char *reply, size_t capacity);
   void rotctldSend(const String &s);
   void processRotctldCommand(std::string_view input);
+  bool configureStation();
   void restoreApOnlyAfterReconnectFail();
   void serviceApSubnet();
   int formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity);

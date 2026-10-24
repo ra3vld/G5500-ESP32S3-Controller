@@ -508,8 +508,15 @@ void Network::handleRotctldTcp() {
   }
 }
 
+bool Network::configureStation() {
+  const auto &c=credentials_.network.wifi;
+  const auto ip=[](uint32_t n){return IPAddress(uint8_t(n>>24),uint8_t(n>>16),uint8_t(n>>8),uint8_t(n));};
+  const bool ok=c.automatic?WiFi.config(ip(0),ip(0),ip(0)):WiFi.config(ip(c.address),ip(c.gateway),ip(c.mask),ip(c.dns1),ip(c.dns2));
+  if(!ok)diagnostics_.dbgPrintln("[WIFI] IP configuration failed; setup AP remains available");
+  return ok;
+}
 bool Network::startWifi() {
-  if (ETHERNET_SUPPORTED && !ethernet_.begin())
+  if (ETHERNET_SUPPORTED && !ethernet_.begin(credentials_.network.ethernet))
     diagnostics_.dbgPrintln("[ETH] PHY start failed; Wi-Fi remains available");
   WiFi.persistent(false);
   if (runtime_.recovery || (FORK_CLASSIC_ESP32 && runtime_.controller.hardware.backend() == BT_ESP32_SPP)) {
@@ -532,7 +539,7 @@ bool Network::startWifi() {
     diagnostics_.dbgPrintln(apAlwaysOn() ? "[WIFI] starting STA; AP remains available"
                                          : "[WIFI] starting STA; AP reserved for fallback");
     if (WiFi.mode(apAlwaysOn() ? WIFI_AP_STA : WIFI_STA)) {
-      WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
+      if(configureStation())WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
       const uint32_t started = millis();
       while (WiFi.status() != WL_CONNECTED && uint32_t(millis() - started) < WifiFallback::AttemptMs)
         delay(100);
@@ -642,7 +649,7 @@ void Network::serviceWifiReconnect() {
     if (!(WiFi.getMode() & WIFI_AP)) restoreApOnlyAfterReconnectFail();
     WiFi.disconnect(false, false);
     if (WiFi.mode(WIFI_AP_STA))
-      WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
+      if(configureStation())WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
     wifiFallback_.beginAttempt(millis());
     return;
   }
@@ -663,7 +670,7 @@ void Network::serviceWifiReconnect() {
   } else if (action == WifiAction::StartSta) {
     diagnostics_.dbgPrintln("[WIFI] STA reconnect attempt; AP remains during attempt");
     if (WiFi.mode(WIFI_AP_STA))
-      WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
+      if(configureStation())WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
   }
 }
 

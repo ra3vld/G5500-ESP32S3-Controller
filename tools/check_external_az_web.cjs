@@ -19,21 +19,21 @@ const tcp=text=>new Promise((resolve,reject)=>{const socket=net.createConnection
   const page=await browser.newPage({viewport:{width:1100,height:900}}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base+'/#settings');await page.waitForFunction(()=>window._forkState&&live.ready);
-  await page.locator('#rotorSettings details').evaluate(e=>e.open=true);
+  await page.locator('#programSettings details').evaluate(e=>e.open=true);
   assert.equal(await page.locator('#externalAzMode').inputValue(),'shortest');
   for(const mode of ['mechanical','shortest']){
    await page.locator('#externalAzMode').selectOption(mode);
    await delay(1200);
    assert.equal(await page.locator('#externalAzMode').inputValue(),mode,'Unsaved choice must survive polling');
    const request=page.waitForRequest(r=>r.url().endsWith('/api/settings')&&r.method()==='POST');
-   await page.locator('#forkSettings [type=submit]').click();
+   await page.locator('#programSettings [type=submit]').click();
    const body=new URLSearchParams((await request).postData());
    assert.equal(body.get('externalAzMode'),mode);
    assert([...body].length<=32,'Settings must fit the firmware form-argument budget');
    await page.waitForFunction(()=>!document.getElementById('forkSettings').dataset.dirty);
    assert.equal((await state()).externalAzMode,mode);
    await page.reload();await page.waitForFunction(()=>window._forkState&&live.ready);
-   await page.locator('#rotorSettings details').evaluate(e=>e.open=true);
+   await page.locator('#programSettings details').evaluate(e=>e.open=true);
    assert.equal(await page.locator('#externalAzMode').inputValue(),mode);
    for(let source=0;source<4;source++){
     await post('/api/move',{d:'S'});await post('/api/target',{az:350});await post('/api/sim/step',{ms:90000});await post('/api/move',{d:'S'});

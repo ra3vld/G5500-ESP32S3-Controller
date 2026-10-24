@@ -51,10 +51,13 @@ void WebInterface::setupWeb() {
   if(runtime_.recovery) {web_.begin();return;}
   static const char *headers[]={"Accept-Encoding"};web_.collectHeaders(headers,1);
   web_.on("/",HTTP_GET,[this] {web_.sendHeader("Cache-Control","no-store");sendHtml(WEB_PAGE,sizeof WEB_PAGE-1,WEB_PAGE_GZIP,sizeof WEB_PAGE_GZIP);});
+  web_.on("/setup",HTTP_GET,[this] {web_.sendHeader("Cache-Control","no-store");sendHtml(WEB_PAGE,sizeof WEB_PAGE-1,WEB_PAGE_GZIP,sizeof WEB_PAGE_GZIP);});
   web_.on("/diaglog",HTTP_GET,[this] {sendHtml(DIAG_PAGE,sizeof DIAG_PAGE-1,DIAG_PAGE_GZIP,sizeof DIAG_PAGE_GZIP);});
   web_.on("/resetdiag",HTTP_GET,[this] {sendHtml(RESET_DIAG_PAGE,sizeof RESET_DIAG_PAGE-1,RESET_DIAG_PAGE_GZIP,sizeof RESET_DIAG_PAGE_GZIP);});
   web_.on("/adc",HTTP_GET,[this] {sendHtml(ADC_TEST_PAGE,sizeof ADC_TEST_PAGE-1,ADC_TEST_PAGE_GZIP,sizeof ADC_TEST_PAGE_GZIP);});
   for(const char *path : {
+    "/api/setup",
+    "/api/motion/coast",
     "/api/adcdiag",
     "/api/ap",
     "/api/azcal",

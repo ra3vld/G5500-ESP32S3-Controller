@@ -19,12 +19,17 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/socket_writ
 ./build/socket_write_tests
 MOTION_SOURCES="G5500_Fork/motion.cpp build/motion/libruckig.a"
 CORE_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp"
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork $CORE_SOURCES tests/coast_measurement_tests.cpp -o build/coast_measurement_tests
+./build/coast_measurement_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/keyboard_hold_tests.cpp -o build/keyboard_hold_tests
 ./build/keyboard_hold_tests
 sh tools/test_local_controls.sh
 sh tools/test_position_sensors.sh
 sh tools/test_rs485.sh
 sh tools/test_modbus.sh
+
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DWEB_INTERFACE_ENABLED=0 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp tests/setup_noweb_tests.cpp -o build/setup_noweb_tests
+./build/setup_noweb_tests
 
 # WT32: PHY setup, cable/DHCP states and Ethernet reservations in every drive mode.
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=6 -I tests/ethernet_fakes -I tests/device_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp tests/ethernet_tests.cpp -o build/ethernet_tests
@@ -62,6 +67,7 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFI
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=6 -DBLUETOOTH_SUPPORT=0 -I tests/ethernet_fakes -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/device_api_tests.cpp -o build/device_api_wt32_tests
 ./build/device_api_wt32_tests
 python3 -m unittest discover -s tests -p test_command_api.py
+python3 -m unittest discover -s tests -p test_setup_transport.py
 python3 -m unittest discover -s tests -p test_autotune_experiment.py
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/motion_tests.cpp -o build/motion_tests
 ./build/motion_tests

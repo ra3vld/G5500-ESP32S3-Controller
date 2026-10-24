@@ -338,7 +338,7 @@ void Controller::motionFault(unsigned i, MotionError error, uint32_t now) {
   fault = std::string(i ? "el_" : "az_") + motionErrorName(error);
 }
 Result Controller::setControlFrequency(unsigned hz, uint32_t now) {
-  if(remote || configurationLocked)return Result::Unavailable;
+  if(remote || movementBlocked())return Result::Unavailable;
   if(!validMotionHz(hz))return Result::Invalid;
   if(autoTune.active())return Result::Busy;
   if(controlPeriodMs_==1000/hz)return Result::Ok;
@@ -855,7 +855,7 @@ const char *Controller::autoTunePhaseName(AutoTunePhase phase) {
   return names[unsigned(phase)];
 }
 Result Controller::centerForAutoTune(unsigned i, uint32_t now) {
-  if(remote || configurationLocked || i>1 || (i==1 && model!=Model::G5500) || !variableSpeed(i)) return Result::Unavailable;
+  if(remote || movementBlocked() || i>1 || (i==1 && model!=Model::G5500) || !variableSpeed(i)) return Result::Unavailable;
   if(autoTune.active()) return Result::Busy;
   if(!axes[i].calibrated) return Result::NotCalibrated;
   if(driveFault || !fault.empty() || !motionSettings[i].ready ||
@@ -885,7 +885,7 @@ Result Controller::startAutoTune(unsigned i, RegulatorMode mode, float travel, f
   auto selected=options;
   if(selected.has(TuneModel))selected.stages|=TuneKick;
   if(mode==RegulatorMode::Simple)selected.stages&=~(TuneSlow|TuneFast);
-  if (remote || configurationLocked || i>1 || (i==1 && model!=Model::G5500) || !variableSpeed(i)) return Result::Unavailable;
+  if (remote || movementBlocked() || i>1 || (i==1 && model!=Model::G5500) || !variableSpeed(i)) return Result::Unavailable;
   if (autoTune.active() || moving() || axes[0].tracking || axes[1].tracking || axes[0].holdArmed || axes[1].holdArmed ||
       mode != motionSettings[i].mode) return Result::Busy;
   const auto &m=motionSettings[i];const auto &f=motion_[i].feedback;
@@ -1009,7 +1009,7 @@ Result Controller::cancelAutoTune(uint32_t now) {
 }
 Result Controller::applyAutoTune(uint32_t id,uint32_t now) {
   auto &t=autoTune;
-  if(remote || configurationLocked || t.phase!=AutoTunePhase::Complete || !id || id!=t.id) return Result::Unavailable;
+  if(remote || movementBlocked() || t.phase!=AutoTunePhase::Complete || !id || id!=t.id) return Result::Unavailable;
   const unsigned i=unsigned(t.axis);
   if(moving() || axes[0].tracking || axes[1].tracking || axes[0].holdArmed || axes[1].holdArmed || driveFault ||
       !fault.empty() || axes[0].motionError!=MotionError::None || axes[1].motionError!=MotionError::None) return Result::Busy;

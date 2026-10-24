@@ -23,11 +23,12 @@ int main() {
   auto jog=[&](unsigned seq,float scale,unsigned at){return c.manualDrive(1,1,1,seq,1,scale,0,false,at);};
   assert(jog(1,.5f,0)==Result::Ok);c.tick(0);assert(c.axes[0].speedOutputPercent>0&&c.axes[0].speedOutputPercent<1);
   for(unsigned at=20;at<=800;at+=20)c.tick(at);
-  assert(close(c.axes[0].speedOutputPercent,40)&&c.axes[0].current>100);
+  assert(close(c.axes[0].speedOutputPercent,42)&&c.axes[0].current>100);
   assert(jog(2,.25f,800)==Result::Ok);
   float previous=c.axes[0].speedOutputPercent;
   for(unsigned at=820;at<=1400;at+=20){c.tick(at);assert(c.axes[0].speedOutputPercent<=previous+.002f);previous=c.axes[0].speedOutputPercent;}
-  assert(close(c.axes[0].speedOutputPercent,20));
+  // Manual input spans the 5% running floor through the selected work level.
+  assert(close(c.axes[0].speedOutputPercent,23));
   assert(jog(3,-1,1400)==Result::Ok);unsigned reverseAt=0;
   for(unsigned at=1420;at<=2200;at+=20){c.tick(at);if(c.axes[0].direction==-1){reverseAt=at;break;}}
   assert(reverseAt&&uint32_t(reverseAt-c.axes[0].offAt)>=300);

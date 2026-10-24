@@ -12,6 +12,10 @@ namespace forkrot {
 enum class WifiSaveResult { Ok, InvalidSsid, InvalidPassword, OpenFailed, WriteFailed, VerifyFailed };
 class Storage {
 public:
+  bool loadSetup(Runtime &runtime);
+  bool saveSetup(const SetupState &state);
+  bool loadNetwork(NetworkConfig &config);
+  bool saveNetwork(const NetworkConfig &config);
   bool loadModbus(Runtime &runtime);
   bool saveModbus(const ModbusConfig &config);
   void loadHardware(Runtime &runtime, bool forceRecovery = false);
@@ -27,7 +31,7 @@ public:
   bool saveCal(const Runtime &runtime, Calibration &calibration);
   WifiSaveResult saveWifi(const String &s, const String &p);
   bool wifiCredentialsReadOk() const { return wifiCredentialsReadOk_; }
-  void saveApPassword(const String &p);
+  bool saveApPassword(const String &p);
   void loadTouchCalibration(TouchCalibration &touchCalibration);
   void saveTouchCalibration(const TouchCalibration &touchCalibration);
   void loadForkSettings(Runtime &runtime);

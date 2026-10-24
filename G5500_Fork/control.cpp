@@ -22,6 +22,7 @@ Controller::Controller() { configureHardware(hardware); }
 void Controller::configureHardware(const HardwareConfig &config) {
   if (autoTune.active()) finishAutoTune(AutoTunePhase::Cancelled,"hardware_changed",lastSpeedUpdateAt_);
   autoTune.phase = AutoTunePhase::Idle;
+  coast={};
   prepareMotionPlanner();
   hardware = config;
   if (!hardware.simulation && !remote && hardware.pins.singleAxis()) { model = Model::G800DXA; axes[1] = {}; }
@@ -41,6 +42,8 @@ Controller::Controller(const Controller &other) : Controller() { *this = other; 
 Controller &Controller::operator=(const Controller &other) {
   hardware = other.hardware;
   configurationLocked = other.configurationLocked;
+  setupRequired = other.setupRequired; setupAccess = false;
+  coast=other.coast;
   remote = other.remote;
   for (unsigned i = 0; i < 2; ++i) {
     motionEpoch[i] = other.motionEpoch[i];
@@ -140,6 +143,7 @@ bool Controller::valid(Target candidate) const {
            (model == Model::G5500 || candidate.el == 0)));
 }
 Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
+  if (movementBlocked() && !autoTune.internal) return Result::Unavailable;
   if (autoTune.active() && !autoTune.internal) return Result::Busy;
   if (driveFault) return Result::Invalid;
   if (!valid(nextTarget)) {
@@ -221,7 +225,7 @@ Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
 }
 Result Controller::target(Target nextTarget, bool external, uint32_t now, bool followInManual) {
   if (autoTune.active() && !autoTune.internal) return Result::Busy;
-  if (configurationLocked) return Result::Unavailable;
+  if (movementBlocked()) return Result::Unavailable;
   if (remote) {
     ControlCommand c;
     c.op = ControlOp::Target;
@@ -257,7 +261,7 @@ Result Controller::target(Target nextTarget, bool external, uint32_t now, bool f
 }
 Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now) {
   if (autoTune.active() && !autoTune.internal && direction) return Result::Busy;
-  if (configurationLocked) return Result::Unavailable;
+  if (movementBlocked()) return Result::Unavailable;
   if (remote) {
     ControlCommand c;
     c.op = ControlOp::Jog;
@@ -357,7 +361,7 @@ bool Controller::stopOwnedJog(unsigned axis, uint32_t epoch, uint32_t now) {
 }
 Result Controller::execute(uint32_t now) {
   if (autoTune.active() && !autoTune.internal) return Result::Busy;
-  if (configurationLocked) return Result::Unavailable;
+  if (movementBlocked()) return Result::Unavailable;
   if (remote) {
     ControlCommand c;
     c.op = ControlOp::Execute;
@@ -398,7 +402,7 @@ Target Controller::displayedTarget() const {
   return t;
 }
 Result Controller::executeDisplayed(uint32_t now) {
-  if (configurationLocked) return Result::Unavailable;
+  if (movementBlocked()) return Result::Unavailable;
   // An acknowledgement consumes this gesture; it must never also start a goal.
   if (hasDriveError()) return resetMotion(-1, now);
   if (remote) {
@@ -434,7 +438,7 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
                                uint32_t serial, uint8_t mask, float az, float el, bool release,
                                uint32_t now, uint16_t inputLeaseMs, bool absoluteSpeed) {
   if (autoTune.active() && !autoTune.internal && !release) return Result::Busy;
-  if (configurationLocked) return Result::Unavailable;
+  if (movementBlocked()) return Result::Unavailable;
   if (!gesture || !serial || mask > 3 || (!release && model == Model::G800DXA && (mask & 2)) ||
       !std::isfinite(az) || !std::isfinite(el) || std::abs(az) > 1 || std::abs(el) > 1) {
     return Result::Invalid;
@@ -564,6 +568,7 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
   return Result::Ok;
 }
 Result Controller::setMode(Mode nextMode, uint32_t now) {
+  if(movementBlocked() && (nextMode!=Mode::Manual || remote))return Result::Unavailable;
   if (autoTune.active()) finishAutoTune(AutoTunePhase::Cancelled,"mode_changed",now);
   if (remote) {
     ControlCommand c;
@@ -681,7 +686,7 @@ Result Controller::savePreset(unsigned slot, const std::string &label, Target ne
 }
 Result Controller::preset(unsigned slot, uint32_t now) {
   if (autoTune.active() && !autoTune.internal) return Result::Busy;
-  if (configurationLocked) return Result::Unavailable;
+  if (movementBlocked()) return Result::Unavailable;
   if (remote) {
     ControlCommand c;
     c.op = ControlOp::Preset;
@@ -707,7 +712,7 @@ Result Controller::preset(unsigned slot, uint32_t now) {
 Result Controller::sequence(const Target *points, size_t count, uint32_t interval, uint32_t now,
                             bool followInManual) {
   if (autoTune.active() && !autoTune.internal) return Result::Busy;
-  if (configurationLocked) return Result::Unavailable;
+  if (movementBlocked()) return Result::Unavailable;
   if (remote) {
     if (!count || count > 16)
       return Result::Invalid;
@@ -850,7 +855,7 @@ float Controller::runtimeSpeed(unsigned i) const {
 }
 Result Controller::setRuntimeSpeed(unsigned i, float value, uint32_t now) {
   if (i > 1 || !std::isfinite(value)) return Result::Invalid;
-  if (configurationLocked || autoTune.active() || !runtimeSpeedAvailable(i)) return Result::Unavailable;
+  if (movementBlocked() || autoTune.active() || !runtimeSpeedAvailable(i)) return Result::Unavailable;
   const float limit = runtimeSpeedLimit(i), minimum = limit / 20.f;
   // Status JSON and browser arithmetic can round the lower endpoint by one ULP.
   if (value < minimum - limit * 1e-6f || value > limit) return Result::Invalid;
@@ -861,7 +866,65 @@ Result Controller::setRuntimeSpeed(unsigned i, float value, uint32_t now) {
   runtimeSpeeds.set(runtimeSpeedIndex(i), std::max(minimum,value), now);
   return Result::Ok;
 }
+Result Controller::startCoast(unsigned axis,int direction,float travel,uint32_t now) {
+  if(movementBlocked() || remote || axis>1 || (axis==1&&model!=Model::G5500) || variableSpeed(axis) || hardware.simulation)return Result::Unavailable;
+  if(coast.active() || autoTune.active() || moving() || axes[0].tracking || axes[1].tracking)return Result::Busy;
+  const auto &a=axes[axis];const auto &f=motionFeedback(axis);
+  if(!a.calibrated)return Result::NotCalibrated;
+  if(hasDriveError() || !f.timed || !f.valid || uint32_t(now-f.at)>motionSettings[axis].feedbackTimeoutMs)return Result::Unavailable;
+  const float reserve=std::max(5.f,speeds[axis].coastDegrees*2);
+  if((direction!=1&&direction!=-1) || !std::isfinite(travel) || travel<5 || travel>90 ||
+      a.current<range(axis).start+reserve || a.current>range(axis).end-reserve ||
+      !range(axis).contains(a.current+direction*(travel+reserve)))return Result::Invalid;
+  stopNow(-1,now);
+  const auto result=jog(axis,direction,false,now);if(result!=Result::Ok)return result;
+  if(coast.revision!=rangeRevision){coast.measured[0]=coast.measured[1]=0;}
+  coast.phase=CoastMeasurement::Running;coast.axis=axis;coast.direction=direction;coast.origin=a.current;coast.travel=travel;
+  coast.started=now;coast.revision=rangeRevision;coast.stopEpoch=stopEpoch;coast.settledAt=0;coast.reason="";
+  if(!++coast.id)++coast.id;
+  return Result::Ok;
+}
+void Controller::cancelCoast(uint32_t now) {
+  if(coast.active()){coast.phase=CoastMeasurement::Cancelled;coast.reason="cancelled";stopNow(-1,now);}
+}
+Result Controller::applyCoast(unsigned axis,uint32_t now) {
+  if(axis>1 || coast.phase!=CoastMeasurement::Complete || coast.measured[axis]!=3 || coast.revision!=rangeRevision || movementBlocked())return Result::Unavailable;
+  const float proposal=std::max(coast.degrees[axis][0],coast.degrees[axis][1]);
+  if(!std::isfinite(proposal) || proposal>std::min(90.f,range(axis).span()/10))return Result::Invalid;
+  stopNow(-1,now);speeds[axis].coastDegrees=proposal;return Result::Ok;
+}
+void Controller::tickCoast(uint32_t now) {
+  if(!coast.active())return;
+  auto fail=[&](const char *reason){coast.phase=CoastMeasurement::Failed;coast.reason=reason;stopNow(-1,now);};
+  const auto &a=axes[coast.axis];const auto &f=motionFeedback(coast.axis);const auto &m=motionSettings[coast.axis];
+  if(configurationLocked || driveFault || !fault.empty() || coast.revision!=rangeRevision || stopEpoch!=coast.stopEpoch || !a.calibrated ||
+      !f.valid || uint32_t(now-f.at)>m.feedbackTimeoutMs){fail("measurement_interrupted");return;}
+  if(uint32_t(now-coast.started)>30000){fail("measurement_timeout");return;}
+  if(a.current<=range(coast.axis).start+1 || a.current>=range(coast.axis).end-1){fail("range_margin");return;}
+  if(coast.phase==CoastMeasurement::Running) {
+    const float moved=(a.current-coast.origin)*coast.direction;
+    if(uint32_t(now-coast.started)>m.stallMs && moved<.2f){fail("no_movement");return;}
+    if(moved < -.5f){fail("wrong_direction");return;}
+    if(moved>=coast.travel) {
+      coast.cutPosition=a.current;coast.cutAt=now;stopNow(int(coast.axis),now);coast.stopEpoch=stopEpoch;
+      coast.phase=CoastMeasurement::Coasting;
+    }
+  } else {
+    if(std::abs(f.velocity)<=m.stoppedVelocity) {
+      if(!coast.settledAt)coast.settledAt=now;
+      if(uint32_t(now-coast.settledAt)>=m.settleMs) {
+        const unsigned d=coast.direction>0?1:0;
+        const float distance=(a.current-coast.cutPosition)*coast.direction;
+        if(distance<-.5f){fail("wrong_direction");return;}
+        coast.degrees[coast.axis][d]=std::max(0.f,distance);
+        coast.seconds[coast.axis][d]=float(coast.settledAt-coast.cutAt)/1000;
+        coast.measured[coast.axis]|=uint8_t(1u<<d);coast.phase=CoastMeasurement::Complete;
+      }
+    } else coast.settledAt=0;
+  }
+}
 void Controller::tick(uint32_t now) {
+  tickCoast(now);
   // HUD outputs are remote: the operation that locks configuration sends STOP once.
   if (configurationLocked) { if (!remote) stopNow(-1, now); return; }
   if (remote)

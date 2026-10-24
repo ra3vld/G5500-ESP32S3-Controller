@@ -8,6 +8,64 @@
 #include <cstring>
 #include <cmath>
 namespace forkrot {
+bool Storage::saveSetup(const SetupState &state) {
+  const auto bytes=encodeSetup(state);SetupBytes verify{};
+  if(!prefs_.begin("setup",false)){prefs_.end();return false;}
+  const bool ok=prefs_.putBytes("state1",bytes.data(),bytes.size())==bytes.size() && prefs_.getBytesLength("state1")==bytes.size() &&
+    prefs_.getBytes("state1",verify.data(),verify.size())==verify.size() && bytes==verify;
+  prefs_.end();return ok;
+}
+bool Storage::loadSetup(Runtime &r) {
+  SetupState state;bool found=false,ok=true;
+  if(prefs_.begin("setup",true)) {
+    found=prefs_.isKey("state1");
+    if(found){SetupBytes bytes{};ok=prefs_.getBytesLength("state1")==bytes.size() && prefs_.getBytes("state1",bytes.data(),bytes.size())==bytes.size() && decodeSetup(bytes,state);}
+  }
+  prefs_.end();
+  if(!ok){
+    // A damaged progress record must not strand an otherwise repairable board.
+    // Restart commissioning with outputs uninitialized; retain all real settings.
+    state.required=WEB_INTERFACE_ENABLED;state.step=state.required?SetupStep::Network:SetupStep::Done;state.generation=1;
+    r.setup=state;r.controller.setupRequired=state.required;return saveSetup(state);
+  }
+  if(!found) {
+    // Detect legacy use before loadHardware()/loadPrefs() create default records.
+    bool legacy=false;
+    const char *spaces[]={"hardware","g5500","forkcfg","hudcfg"};
+    const char *keys[]={"config1","ssid","model","cfg1"};
+    for(unsigned i=0;i<4;++i){if(prefs_.begin(spaces[i],true)) {
+      legacy=legacy||prefs_.isKey(keys[i]);
+      if(i==1)legacy=legacy||prefs_.isKey("appass")||prefs_.isKey("calfmt")||prefs_.isKey("calmode");
+      if(i==2)legacy=legacy||prefs_.isKey("rotorName");
+      if(i==3)legacy=legacy||prefs_.isKey("config");
+    }prefs_.end();}
+    state.required=WEB_INTERFACE_ENABLED && !legacy;state.step=state.required?SetupStep::Network:SetupStep::Done;
+    state.equipment=legacy;state.fresh=state.required;state.generation=1;
+    if(!saveSetup(state)){r.setup=state;return false;}
+  }
+  r.setup=state;
+#if !WEB_INTERFACE_ENABLED
+  // Preserve unfinished web progress on flash, but never gate a console-only
+  // image behind a browser workflow it cannot serve.
+  r.setup.required=false;r.setup.paused=false;r.setup.step=SetupStep::Done;
+#endif
+  r.controller.setupRequired=r.setup.required;return true;
+}
+bool Storage::saveNetwork(const NetworkConfig &config) {
+  if(config.wifi.validate()||config.ethernet.validate())return false;
+  const auto bytes=encodeNetwork(config);NetworkBytes verify{};
+  if(!prefs_.begin("netcfg",false)){prefs_.end();return false;}
+  const bool ok=prefs_.putBytes("ipv4v1",bytes.data(),bytes.size())==bytes.size() && prefs_.getBytesLength("ipv4v1")==bytes.size() &&
+    prefs_.getBytes("ipv4v1",verify.data(),verify.size())==verify.size() && bytes==verify;
+  prefs_.end();return ok;
+}
+bool Storage::loadNetwork(NetworkConfig &config) {
+  if(!prefs_.begin("netcfg",true)){prefs_.end();return true;}
+  const bool found=prefs_.isKey("ipv4v1");NetworkBytes bytes{};
+  const bool ok=!found || (prefs_.getBytesLength("ipv4v1")==bytes.size() && prefs_.getBytes("ipv4v1",bytes.data(),bytes.size())==bytes.size() && decodeNetwork(bytes,config));
+  prefs_.end();return ok;
+}
+
 using namespace board;
 namespace {
 using RuntimeSpeedRecord = std::array<uint8_t, RuntimeSpeeds::Count * sizeof(float) + 4>;
@@ -250,6 +308,11 @@ const char *Storage::calNamespace(const Runtime &runtime) {
 
 void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredentials &credentials, bool wifiOnly) {
   auto &calibrationState = calibration.state();
+  if(!loadNetwork(credentials.network)) {
+    runtime.controller.fault="network_storage_failed";runtime.controller.setupRequired=true;
+    runtime.setup.required=true;runtime.setup.paused=false;runtime.setup.step=SetupStep::Network;
+    if(!saveSetup(runtime.setup))runtime.setupStorageOk=false;
+  }
   wifiCredentialsReadOk_ = prefs_.begin("g5500", true);
   credentials.wifiSsid = wifiCredentialsReadOk_ ? prefs_.getString("ssid", "") : String("");
   credentials.wifiPass = wifiCredentialsReadOk_ ? prefs_.getString("pass", "") : String("");
@@ -546,10 +609,10 @@ WifiSaveResult Storage::saveWifi(const String &s, const String &p) {
   return verified ? WifiSaveResult::Ok : WifiSaveResult::VerifyFailed;
 }
 
-void Storage::saveApPassword(const String &p) {
-  prefs_.begin("g5500", false);
-  prefs_.putString("appass", p);
-  prefs_.end();
+bool Storage::saveApPassword(const String &p) {
+  if(!prefs_.begin("g5500", false)){prefs_.end();return false;}
+  const auto n=prefs_.putString("appass",p);const bool ok=n==p.length() && prefs_.isKey("appass") && prefs_.getString("appass")==p;
+  prefs_.end();return ok;
 }
 
 void Storage::loadTouchCalibration(TouchCalibration &touchCalibration) {

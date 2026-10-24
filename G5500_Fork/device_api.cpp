@@ -87,7 +87,7 @@ void DeviceApi::writeHardwareStatus(JsonWriter &j, bool compact, std::string_vie
     config(view=="confirmed"?r.good:view=="effective"?runtime_.controller.hardware:configured);
     j << '}';return;
   }
-  j << "{\"token\":" << runtime_.hardwareToken << ",\"generation\":" << r.generation
+  j << "{\"role\":" << jsonQuoted(runtime_.hud.isHud()?"hud":"controller") << ",\"token\":" << runtime_.hardwareToken << ",\"generation\":" << r.generation
     << ",\"hasConfirmed\":" << (r.hasConfirmed ? "true" : "false")
     << ",\"trial\":" << (runtime_.hardwareTrial ? "true" : "false")
     << ",\"recovery\":" << (runtime_.recovery ? "true" : "false")
@@ -171,6 +171,65 @@ void DeviceApi::writeConfiguration(JsonWriter &j) {
     << ",\"webEnabled\":" << (WEB_INTERFACE_ENABLED?"true":"false")
     << ",\"bluetoothSupported\":" << (BLUETOOTH_SUPPORT?"true":"false") << "}}";
 }
+bool DeviceApi::setupReady(SetupStep step) const {
+  const auto &c=runtime_.controller;
+  if(runtime_.recovery || runtime_.hardwareTrial || !runtime_.setupStorageOk)return false;
+  switch(step) {
+    case SetupStep::Network: {
+      switch(network_.credentials().network.choice) {
+        case NetworkChoice::Ap: case NetworkChoice::SharedHost:return (WiFi.getMode()&WIFI_AP) && uint32_t(WiFi.softAPIP());
+        case NetworkChoice::Ethernet: {
+          if(!ethernetConnected())return false;
+          const auto &ip=network_.credentials().network.ethernet;char expected[16];formatIpv4(ip.address,expected);
+          return ip.automatic || ethernetIP().toString()==expected;
+        }
+        default: {
+          if(WiFi.status()!=WL_CONNECTED || !uint32_t(WiFi.localIP()))return false;
+          const auto &ip=network_.credentials().network.wifi;char expected[16];formatIpv4(ip.address,expected);
+          return ip.automatic || WiFi.localIP().toString()==expected;
+        }
+      }
+    }
+    case SetupStep::Equipment:return runtime_.setup.equipment && runtime_.hardwareRecord.hasConfirmed && !c.configurationLocked;
+    case SetupStep::Calibration:return c.hardware.simulation || (c.axes[0].calibrated && (c.model==Model::G800DXA || c.axes[1].calibrated));
+    case SetupStep::Tuning:
+      if(c.autoTune.active() || c.coast.active() || c.hasDriveError())return false;
+      for(unsigned i=0;i<(c.model==Model::G5500?2u:1u);++i)
+        if(c.variableSpeed(i) ? (!c.motionSettings[i].ready || !c.motionSettings[i].valid()) :
+            (runtime_.setup.fresh && !c.hardware.simulation && !(runtime_.setup.checked&(1u<<(12+i)))))return false;
+      return true;
+    case SetupStep::Peers:return runtime_.hud.isHud() && runtime_.hud.active() && runtime_.hud.active()->saved && c.remote && c.available() && c.axes[0].calibrated &&
+      (c.model==Model::G800DXA || c.axes[1].calibrated) && !c.hasDriveError();
+    case SetupStep::Review:
+      return setupReady(SetupStep::Network) && setupReady(SetupStep::Equipment) &&
+        (runtime_.hud.isHud()?setupReady(SetupStep::Peers):c.hardware.simulation || (setupReady(SetupStep::Calibration)&&setupReady(SetupStep::Tuning))) && !c.moving() && !c.hasDriveError();
+    default:return true;
+  }
+}
+void DeviceApi::writeSetup(JsonWriter &j) const {
+  const auto &s=runtime_.setup;
+  j << "{\"version\":1,\"required\":" << (s.required?"true":"false") << ",\"paused\":" << (s.paused?"true":"false")
+    << ",\"step\":" << unsigned(s.step) << ",\"checked\":" << s.checked << ",\"generation\":" << s.generation
+    << ",\"equipment\":" << (s.equipment?"true":"false") << ",\"ready\":" << (setupReady(s.step)?"true":"false")
+    << ",\"role\":" << jsonQuoted(runtime_.hud.isHud()?"hud":"controller")
+    << ",\"simulation\":" << (runtime_.controller.hardware.simulation?"true":"false")
+    << ",\"token\":" << runtime_.setupLease << ",\"storageOk\":" << (runtime_.setupStorageOk?"true":"false") << '}';
+}
+void DeviceApi::serviceSetup(uint32_t now) {
+  if(!runtime_.setup.required || !runtime_.setupLease || uint32_t(now-runtime_.setupRenewed)<=1500)return;
+  runtime_.setupLease=0;
+  auto &c=runtime_.controller;c.cancelCoast(now);c.cancelAutoTune(now);c.stopNow(-1,now);hardware_.applyOutputs();
+}
+void DeviceApi::invalidateSetup(SetupStep step) {
+  if(!runtime_.setup.required)return;
+  auto next=runtime_.setup;
+  if(step==SetupStep::Role || step==SetupStep::Equipment)next.equipment=false;
+  if(unsigned(next.step)>unsigned(step))next.step=step;
+  next.checked&=uint16_t((1u<<unsigned(step))-1);++next.generation;
+  if(!storage_.saveSetup(next)){runtime_.setupStorageOk=false;runtime_.controller.stopNow(-1,millis());}
+  else runtime_.setup=next;
+}
+
 void DeviceApi::execute(std::string_view method, std::string_view path, FormView arguments,
                         JsonWriter &output, int &status, const char *&type, bool command) {
   ApiContext web_(arguments,output,status,type);
@@ -181,10 +240,20 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
   const bool hardwarePath=path=="/api/hardware" || path.substr(0,14)=="/api/hardware/";
   const bool stop=path=="/api/move" && (web_.value("d")=="S" || web_.value("d")=="A" || web_.value("d")=="E");
   if(ota_.locked() && !stop && path!="/api/status" && path!="/api/diaglog" && path!="/api/diagnostics" && path.substr(0,8)!="/api/ota") { reply(503,"update_locked"); return; }
-  if(runtime_.recovery && !hardwarePath && path!="/api/status" && path!="/api/network" && path!="/api/diagnostics" && path!="/api/diaglog" && path!="/api/resetreason" && path!="/api/resethistory" && path!="/api/wifi" && path!="/api/ap") { reply(409,"recovery_only"); return; }
+  if(runtime_.recovery && !stop && !hardwarePath && path!="/api/status" && path!="/api/network" && path!="/api/diagnostics" && path!="/api/diaglog" && path!="/api/resetreason" && path!="/api/resethistory" && path!="/api/wifi" && path!="/api/ap") { reply(409,"recovery_only"); return; }
+  serviceSetup(millis());
+  // A commissioning lease permits only explicit HTTP tests. Every other source
+  // still enters Controller with setupAccess=false, including WebSocket/HUD.
+  struct SetupAccess { Controller &c; ~SetupAccess(){c.setupAccess=false;} } setupAccess{runtime_.controller};
+  uint32_t lease=0;
+  if(!command && hardwareUnsigned(web_.value("setupToken"),lease) && lease && lease==runtime_.setupLease &&
+      runtime_.setup.required && runtime_.setupStorageOk && !runtime_.setup.paused && uint32_t(millis()-runtime_.setupRenewed)<=1500 &&
+      (runtime_.setup.step==SetupStep::Calibration || runtime_.setup.step==SetupStep::Tuning || runtime_.setup.step==SetupStep::Review ||
+       (runtime_.setup.step==SetupStep::Programs && path=="/api/mode" && web_.value("mode")=="manual")))
+    runtime_.controller.setupAccess=true;
   // Keep the general API's temporary buffers off recovery and hardware paths.
   if(hardwarePath)executeHardware(method,path,arguments,output,status,type,command);
-  else executeGeneral(method,path,arguments,output,status,type,command);
+  else executeGeneral(method,path,arguments,output,status,type,command,lease);
 }
 
 void DeviceApi::executeHardware(std::string_view method, std::string_view path, FormView arguments,
@@ -252,11 +321,14 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
         << ",\"gpio\":" << error.pin << ",\"owner\":" << jsonQuoted(error.owner) << '}'; return;
     }
     if(const auto error=runtime_.modbus.wiring(form.config,runtime_.hardwareHudUart)){reply(400,error);return;}
+    invalidateSetup(SetupStep::Equipment);
     stopForConfiguration();
     saved=storage_.stageHardware(runtime_,form.config);
   } else if(path=="/api/hardware/confirm") {
     if(runtime_.recovery || !runtime_.hardwareTrial || !runtime_.hardwareProbe || !runtime_.memoryGuard.ready(millis()) || heapFreeBytes()<MemoryGuard::HealthyFree || heapMaxBlockBytes()<MemoryGuard::HealthyBlock || runtimeMetrics.allocationFailures.load()!=runtime_.memoryGuard.failures) { reply(409,"not_ready"); return; }
     stopForConfiguration(); saved=storage_.confirmHardware(runtime_);
+    if(saved && runtime_.setup.required) {auto next=runtime_.setup;next.equipment=true;next.step=SetupStep::Equipment;++next.generation;
+      saved=storage_.saveSetup(next);if(saved)runtime_.setup=next;}
   } else if(path=="/api/hardware/rollback") {
     if(!runtime_.hardwareRecord.hasConfirmed) { reply(409,"no_confirmed_configuration"); return; }
     auto good=runtime_.hardwareRecord.good;
@@ -271,12 +343,111 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
 }
 
 void DeviceApi::executeGeneral(std::string_view method, std::string_view path, FormView arguments,
-                               JsonWriter &output, int &status, const char *&type, bool command) {
+                               JsonWriter &output, int &status, const char *&type, bool command, uint32_t lease) {
   ApiContext web_(arguments,output,status,type);
   auto reply=[&](int code,const char *reason) {
     status=code; type="application/json";
     output << "{\"ok\":" << (code==200?"true":"false") << ",\"error\":" << jsonQuoted(reason) << '}';
   };
+  if(path=="/api/setup") {
+    if(method=="GET"){writeSetup(output);return;}
+    if(method!="POST" || command){reply(405,"method_not_allowed");return;}
+    const auto action=web_.value("action");
+    if(action=="renew") {
+      if(!lease || lease!=runtime_.setupLease || runtime_.setup.paused){reply(409,"setup_lease_expired");return;}
+      runtime_.setupRenewed=millis();reply(200,"");return;
+    }
+    auto next=runtime_.setup;
+    if(action=="start" || action=="resume") {
+      runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
+      if(!next.required) {next.required=true;next.equipment=runtime_.hardwareRecord.hasConfirmed;next.checked=0;next.step=SetupStep::Network;}
+      next.paused=false;
+    } else if(action=="pause") {
+      next.paused=true;runtime_.setupLease=0;
+      runtime_.controller.cancelCoast(millis());runtime_.controller.cancelAutoTune(millis());runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
+    } else if(action=="back") {
+      if(!next.required){reply(409,"setup_inactive");return;}
+      SetupState cursor;cursor.step=SetupStep::Network;
+      while(cursor.next(runtime_.hud.isHud(),runtime_.controller.hardware.simulation)!=next.step && cursor.step!=SetupStep::Review && cursor.step!=SetupStep::Done)
+        cursor.step=cursor.next(runtime_.hud.isHud(),runtime_.controller.hardware.simulation);
+      next.step=next.step==SetupStep::Network?SetupStep::Network:cursor.step;
+      runtime_.controller.cancelCoast(millis());runtime_.controller.cancelAutoTune(millis());runtime_.controller.stopNow(-1,millis());
+    } else if(action=="advance" || action=="complete") {
+      uint32_t generation=0;
+      if(!hardwareUnsigned(web_.value("generation"),generation)||generation!=next.generation){reply(409,"stale_setup");return;}
+      if(!next.required || next.paused || !setupReady(next.step) || web_.value("checked")!="1"){reply(409,"setup_step_not_ready");return;}
+      if(action=="complete" && next.step!=SetupStep::Review){reply(409,"setup_step_not_ready");return;}
+      next.checked|=uint16_t(1u<<unsigned(next.step));
+      const bool finished=next.step==SetupStep::Review;
+      next.step=next.next(runtime_.hud.isHud(),runtime_.controller.hardware.simulation);
+      if(finished){next.required=false;next.paused=false;next.fresh=false;runtime_.setupLease=0;runtime_.controller.stopNow(-1,millis());}
+    } else {reply(400,"invalid_setup_action");return;}
+    runtime_.controller.cancelCoast(millis());runtime_.controller.cancelAutoTune(millis());runtime_.controller.stopNow(-1,millis());
+    hardware_.applyOutputs();
+    ++runtime_.hud.selectionEpoch;runtime_.protocol.resetSession();network_.selectionChanged();
+    ++next.generation;
+    if(!storage_.saveSetup(next)){runtime_.setupStorageOk=false;runtime_.controller.setupRequired=true;reply(503,"setup_storage_failed");return;}
+    runtime_.setupStorageOk=true;runtime_.setup=next;runtime_.controller.setupRequired=next.required;
+    if(action=="start"||action=="resume") {
+      runtime_.setupLease=(runtime_.hardwareToken^(next.generation*2654435761u))|1u;runtime_.setupRenewed=millis();
+    }
+    writeSetup(output);return;
+  }
+  if(path=="/api/network" && method=="POST") {
+    NetworkConfig next=network_.credentials().network;uint32_t choice=0;
+    if(web_.hasArg("choice")) {
+      if(!hardwareUnsigned(web_.value("choice"),choice)||choice>4 || (choice==4&&!ETHERNET_SUPPORTED)){reply(400,"invalid_network_choice");return;}
+      next.choice=NetworkChoice(choice);
+    }
+    const char *prefixes[]={"wifi","eth"};IpConfig *interfaces[]={&next.wifi,&next.ethernet};
+    for(unsigned i=0;i<2;++i) {
+      const std::string prefix=prefixes[i];auto &ip=*interfaces[i];
+      const auto mode=web_.value(prefix+"Mode");
+      if(!mode.empty()) {if(mode!="dhcp"&&mode!="static"){reply(400,"invalid_ip_mode");return;}ip.automatic=mode=="dhcp";}
+      const char *fields[]={"Address","Mask","Gateway","Dns1","Dns2"};uint32_t *values[]={&ip.address,&ip.mask,&ip.gateway,&ip.dns1,&ip.dns2};
+      for(unsigned f=0;f<5;++f)if(web_.hasArg(prefix+fields[f])) {
+        const auto value=web_.value(prefix+fields[f]);
+        if(value.empty()&&f>=2)*values[f]=0;
+        else if(!parseIpv4(value,*values[f])){reply(400,"invalid_ipv4");return;}
+      }
+      if(const auto error=ip.validate()){reply(400,error);return;}
+    }
+    auto hud=runtime_.hud.config;
+    hud.wifi=next.choice==NetworkChoice::Ap || next.choice==NetworkChoice::SharedHost?HudWifi::Host:
+        next.choice==NetworkChoice::SharedClient?HudWifi::Client:HudWifi::Existing;
+    runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
+    if(!storage_.saveNetwork(next)){reply(503,"network_storage_failed");return;}
+    if(!storage_.saveHudConfig(hud)){storage_.saveNetwork(network_.credentials().network);reply(503,"network_storage_failed");return;}
+    invalidateSetup(SetupStep::Network);
+    runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
+    network_.credentials().network=next;runtime_.hud.config.wifi=hud.wifi;
+    reply(200,"");restart_.request(millis());return;
+  }
+  if(path=="/api/motion/coast") {
+    auto &c=runtime_.controller;auto &m=c.coast;
+    if(method=="POST") {
+      unsigned axis=0,direction=1;uint32_t travel=10;
+      if(!integerArg(web_.arg("axis"),axis,1)){reply(400,"invalid_axis");return;}
+      const auto action=web_.value("action");Result result=Result::Invalid;
+      if(action=="cancel"){c.cancelCoast(millis());result=Result::Ok;}
+      else if(action=="start") {
+        if(!integerArg(web_.arg("direction"),direction,1)||!hardwareUnsigned(web_.value("travel"),travel)){reply(400,"invalid_measurement");return;}
+        result=c.startCoast(axis,direction?1:-1,float(travel),millis());
+      } else if(action=="apply") {
+        const auto old=c.speeds[axis];result=c.applyCoast(axis,millis());
+        if(result==Result::Ok && !storage_.saveForkSettings(runtime_)){c.speeds[axis]=old;reply(503,"motion_storage_failed");return;}
+        if(result==Result::Ok && runtime_.setup.required){auto next=runtime_.setup;next.checked|=uint16_t(1u<<(12+axis));++next.generation;
+          if(!storage_.saveSetup(next)){runtime_.setupStorageOk=false;reply(503,"setup_storage_failed");return;}runtime_.setup=next;}
+      }
+      hardware_.applyOutputs();
+      if(result!=Result::Ok){reply(409,Controller::resultName(result));return;}
+    } else if(method!="GET"){reply(405,"method_not_allowed");return;}
+    const char *phases[]={"idle","running","coasting","complete","failed","cancelled"};
+    output << "{\"phase\":" << jsonQuoted(phases[m.phase]) << ",\"axis\":" << m.axis << ",\"reason\":" << jsonQuoted(m.reason) << ",\"results\":[";
+    for(unsigned a=0;a<2;++a){if(a)output << ',';output << "{\"measured\":" << unsigned(m.measured[a]) << ",\"degrees\":[" << m.degrees[a][0] << ',' << m.degrees[a][1]
+      << "],\"seconds\":[" << m.seconds[a][0] << ',' << m.seconds[a][1] << "]}";}
+    output << "]}";return;
+  }
   if(path=="/api/ota" && method=="GET") {
     char data[768];const auto n=ota_.status(data,sizeof data);output << std::string_view(data,n);return;
   }
@@ -376,7 +547,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
   if(path=="/api/network" && method=="GET") {
     const bool connected=WiFi.status()==WL_CONNECTED;
     const String sta=WiFi.localIP().toString(),ap=WiFi.softAPIP().toString();
-    output << "{\"wifiMode\":" << unsigned(WiFi.getMode()) << ",\"connected\":" << (connected?"true":"false")
+    output << "{\"wifiMode\":" << unsigned(WiFi.getMode()) << ",\"wifiStatus\":" << int(WiFi.status()) << ",\"wifiConnecting\":" << (network_.wifiConnecting()?"true":"false") << ",\"connected\":" << (connected?"true":"false")
       << ",\"ssid\":" << jsonQuoted(network_.credentials().wifiSsid.c_str())
       << ",\"staIp\":" << jsonQuoted(sta.c_str()) << ",\"apIp\":" << jsonQuoted(ap.c_str())
       << ",\"apAlwaysOn\":" << (network_.apAlwaysOn()?"true":"false") << ",\"rssi\":";
@@ -386,6 +557,12 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       << ",\"ethLink\":" << (ethernetLinkUp()?"true":"false")
       << ",\"ethConnected\":" << (ethernetConnected()?"true":"false")
       << ",\"ethIp\":" << jsonQuoted(ethernetIP().toString().c_str());
+    const auto &nc=network_.credentials().network;
+    output << ",\"choice\":" << unsigned(nc.choice);
+    const char *names[]={"wifi","eth"};const IpConfig *ips[]={&nc.wifi,&nc.ethernet};
+    for(unsigned i=0;i<2;++i){const auto &ip=*ips[i];char a[16],m[16],g[16],d1[16],d2[16];formatIpv4(ip.address,a);formatIpv4(ip.mask,m);formatIpv4(ip.gateway,g);formatIpv4(ip.dns1,d1);formatIpv4(ip.dns2,d2);
+      output << ',' << jsonQuoted(names[i]) << ":{\"mode\":" << jsonQuoted(ip.automatic?"dhcp":"static") << ",\"address\":" << jsonQuoted(a)
+        << ",\"mask\":" << jsonQuoted(m) << ",\"gateway\":" << jsonQuoted(g) << ",\"dns1\":" << jsonQuoted(d1) << ",\"dns2\":" << jsonQuoted(d2) << '}';}
     output << ",\"n1mmPort\":" << runtime_.loggerSettings.n1mmPort << ",\"pstPort\":" << runtime_.loggerSettings.pstPort
       << ",\"hudPort\":" << runtime_.hud.config.port << ",\"commandPort\":" << runtime_.loggerSettings.commandPort << '}';return;
   }
@@ -452,6 +629,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       web_.send(400,"application/json","{\"error\":\"invalid_range\"}"); return;
     }
     const bool ok=actions_.configureAzRange(mode,start,span);
+    if(ok)invalidateSetup(SetupStep::Calibration);
     web_.send(ok?200:503,"application/json",ok?"{\"ok\":true}":"{\"error\":\"calibration_save_failed\"}");
 
     return;
@@ -487,6 +665,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       web_.send(400,"application/json","{\"error\":\"invalid_range\"}"); return;
     }
     const bool ok=actions_.configureElRange(mode,start,span);
+    if(ok)invalidateSetup(SetupStep::Calibration);
     web_.send(ok?200:503,"application/json",ok?"{\"ok\":true}":"{\"error\":\"calibration_save_failed\"}");
 
     return;
@@ -648,7 +827,8 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       web_.send(400, "text/plain", "AP password must be empty or 8..63 characters");
       return;
     }
-    storage_.saveApPassword(p);
+    runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
+    if(!storage_.saveApPassword(p)){web_.send(503,"text/plain","Не удалось сохранить пароль AP.");return;}
     web_.send(200, "text/plain", p.length() ? "AP password saved" : "AP set to open");
     restart_.request(millis());
 
@@ -854,6 +1034,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       web_.send(400, "application/json", "{\"ok\":false,\"result\":\"uart_disabled\"}");
       return;
     }
+    if(config.role != (role=="hud"?DeviceRole::Hud:DeviceRole::Controller))invalidateSetup(SetupStep::Role);
     config.role = role == "hud" ? DeviceRole::Hud : DeviceRole::Controller;
     config.wifi = wifi == "host" ? HudWifi::Host : wifi == "client" ? HudWifi::Client : HudWifi::Existing;
     config.uart = uart == "1";
@@ -1039,6 +1220,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
         // Apply the frequency-change STOP to GPIO before synchronous NVS writes.
         if(oldControlPeriod!=runtime_.controller.controlPeriodMs())hardware_.applyOutputs();
         if (oldModel != runtime_.controller.model) {
+          invalidateSetup(SetupStep::Model);
           // Old calibration was already saved on each calibration edit.
           actions_.loadPrefs();
           actions_.loadMotionSettings();

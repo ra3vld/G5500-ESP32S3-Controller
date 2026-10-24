@@ -12,6 +12,7 @@
 
 ## Настройка
 
+- [Мастер первоначальной настройки контроллера и HUD](setup/first-start.md).
 - [Выбор конфигурации, GPIO и настройки оборудования](setup/configuration.md).
 - [Wi-Fi и сетевые порты](setup/network.md).
 - [Диапазоны и калибровка AZ / EL](setup/az-range.md).

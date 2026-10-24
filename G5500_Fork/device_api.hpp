@@ -13,11 +13,15 @@ public:
         diagnostics_(diagnostics), network_(network), storage_(storage), ota_(ota), restart_(restart) {}
   void execute(std::string_view method, std::string_view path, FormView arguments,
                JsonWriter &output, int &status, const char *&type, bool command = false);
+  void serviceSetup(uint32_t now);
 private:
   void executeHardware(std::string_view method, std::string_view path, FormView arguments,
                        JsonWriter &output, int &status, const char *&type, bool command);
   void executeGeneral(std::string_view method, std::string_view path, FormView arguments,
-                      JsonWriter &output, int &status, const char *&type, bool command);
+                      JsonWriter &output, int &status, const char *&type, bool command, uint32_t lease);
+  bool setupReady(SetupStep step) const;
+  void writeSetup(JsonWriter &) const;
+  void invalidateSetup(SetupStep step);
   Response callApi(std::string_view path, FormView form);
   void writeHardwareStatus(JsonWriter &, bool compact = false, std::string_view view = {});
   void writeConfiguration(JsonWriter &);

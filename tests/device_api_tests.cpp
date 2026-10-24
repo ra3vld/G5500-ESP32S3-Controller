@@ -64,6 +64,83 @@ struct Fixture {
   }
 };
 int main(int argc,char **argv) {
+  {
+    Preferences::database.clear();Runtime fresh;Storage storage;
+    assert(storage.loadSetup(fresh));assert(fresh.setup.required && fresh.setup.step==SetupStep::Network);
+    storage.loadHardware(fresh);Hardware newMotor(fresh);fakeHardware={};newMotor.beginDirections();newMotor.beginAdc();newMotor.applyOutputs();
+    assert(fakeHardware.events.empty()&&fakeHardware.readsRaw==0&&fakeHardware.readsMv==0);
+    fresh.setup.step=SetupStep::Equipment;fresh.setup.paused=true;assert(storage.saveSetup(fresh.setup));
+    Runtime restored;assert(storage.loadSetup(restored));assert(restored.setup.required&&restored.setup.paused&&restored.setup.step==SetupStep::Equipment);
+    auto bytes=encodeSetup(fresh.setup);for(unsigned i=0;i<bytes.size();++i){auto bad=bytes;bad[i]^=1;SetupState state;assert(!decodeSetup(bad,state));}
+    Preferences::database["setup"]["state1"]=Preferences::Bytes(16,0);Preferences::failedBytesKey="state1";assert(!storage.loadSetup(restored));
+    Preferences::failedBytesKey.clear();assert(storage.loadSetup(restored)&&restored.setup.required&&!restored.setup.equipment&&restored.setup.step==SetupStep::Network);
+    Preferences::database.clear();Preferences::database["g5500"]["appass"]=String("old-password");
+    assert(storage.loadSetup(restored)&&!restored.setup.required);
+  }
+  {
+    Fixture setup;assert(setup.storage.loadSetup(setup.runtime)&&!setup.runtime.setup.required);
+    assert(setup.call("POST","/api/setup","action=start",true).status==405);
+    auto result=setup.call("POST","/api/setup","action=start",false);assert(result.status==200);
+    auto &r=setup.runtime;auto &c=r.controller;assert(c.setupRequired && r.setup.required && r.setupLease);
+    HudState blocked;blocked.capture(c,r.protocol,fakeHardware.now);assert(blocked.driveFault&&std::string(blocked.fault)=="setup_incomplete");
+    assert(c.jog(0,1,false,fakeHardware.now)==Result::Unavailable);
+    assert(c.target({100,0,true,false},false,fakeHardware.now)==Result::Unavailable);
+    assert(setup.call("POST","/api/setup","action=advance&generation=0&checked=1",false).status==409);
+    assert(setup.call("POST","/api/setup","action=advance&generation="+std::to_string(r.setup.generation)+"&checked=1",false).status==409);
+    WiFi.connectionStatus=WL_CONNECTED;
+    assert(setup.call("POST","/api/setup","action=advance&generation="+std::to_string(r.setup.generation)+"&checked=1",false).status==200);
+    assert(r.setup.step==SetupStep::Role);
+    r.setup.step=SetupStep::Review;
+    const auto token=std::to_string(r.setupLease);
+    assert(setup.call("POST","/api/move","d=R",false).status==503);
+    assert(setup.call("POST","/api/move","d=R&setupToken="+token,true).status==503);
+    assert(setup.call("POST","/api/move","d=R&setupToken="+token,false).status==200);
+    assert(!c.setupAccess && c.moving());
+    c.stopNow(-1,fakeHardware.now);r.setupStorageOk=false;
+    assert(setup.call("POST","/api/move","d=R&setupToken="+token,false).status==503);
+    r.setupStorageOk=true;r.recovery=true;
+    assert(setup.call("POST","/api/move","d=S",false).status==200);
+    assert(setup.call("POST","/api/move","d=R&setupToken="+token,false).status==409);
+    r.recovery=false;
+    struct Sink:CommandSink {unsigned modes=0;Result submit(const ControlCommand &command) override {if(command.op==ControlOp::Mode)++modes;return Result::Ok;}bool available()const override{return true;}uint32_t requestId()const override{return 1;}Result lastResult()const override{return Result::Ok;}} sink;
+    c.stopNow(-1,fakeHardware.now);c.remote=&sink;r.setup.step=SetupStep::Programs;
+    assert(setup.call("POST","/api/mode","mode=manual",false).status==503);
+    assert(setup.call("POST","/api/mode","mode=manual&setupToken="+token,false).status==200&&sink.modes==1);
+    assert(setup.call("POST","/api/mode","mode=auto&setupToken="+token,false).status==503);
+    c.remote=nullptr;r.setup.step=SetupStep::Review;
+    fakeHardware.now+=1501;setup.api.serviceSetup(fakeHardware.now);assert(!c.moving()&&!r.setupLease);
+    assert(setup.call("POST","/api/setup","action=renew&setupToken="+token,false).status==409);
+    assert(setup.call("POST","/api/move","d=S",false).status==200);
+    assert(setup.call("POST","/api/setup","action=pause",false).status==200&&r.setup.paused&&c.setupRequired);
+    Preferences::failedBytesKey="state1";assert(setup.call("POST","/api/setup","action=resume",false).status==503);
+    Preferences::failedBytesKey.clear();
+  }
+  {
+    Fixture role;assert(role.call("POST","/api/setup","action=start",false).status==200);
+    assert(role.runtime.setup.equipment);
+    role.runtime.setup.step=SetupStep::Programs;
+    assert(role.call("POST","/api/device","role=hud&wifi=existing&uart=0&port=4534",false).status==200);
+    assert(!role.runtime.setup.equipment && role.runtime.setup.step==SetupStep::Role);
+  }
+  {
+    Fixture net;NetworkConfig stored;
+    assert(net.runtime.controller.jog(0,1,false,fakeHardware.now)==Result::Ok);bool stoppedBeforeNetworkWrite=false;
+    Preferences::beforeBytesWrite=[&](const char *key){if(std::string(key)=="ipv4v1"){stoppedBeforeNetworkWrite=true;assert(!net.runtime.controller.moving());}};
+    assert(net.call("POST","/api/network","wifiMode=static&wifiAddress=192.168.8.10&wifiMask=255.255.255.0&wifiGateway=192.168.8.1&wifiDns1=192.168.8.1",false).status==200);
+    assert(stoppedBeforeNetworkWrite);Preferences::beforeBytesWrite={};
+    assert(net.storage.loadNetwork(stored)&&!stored.wifi.automatic&&stored.wifi.address==0xc0a8080a);
+    const auto body=net.call("GET","/api/network","",false).body;assert(body.find("192.168.8.10")!=body.npos);
+    assert(net.call("POST","/api/network","wifiGateway=192.168.9.1",false).status==400);
+    assert(net.call("POST","/api/network","wifiMask=255.0.255.0",false).status==400);
+    assert(net.call("POST","/api/network","wifiAddress=192.168.8.0",false).status==400);
+    assert(net.call("POST","/api/network","wifiAddress=192.168.8.256",false).status==400);
+    assert(net.call("POST","/api/network","wifiMode=dhcp",false).status==200);
+    assert(net.storage.loadNetwork(stored)&&stored.wifi.automatic);
+    auto bytes=encodeNetwork(stored);for(unsigned i=0;i<bytes.size();++i){auto bad=bytes;bad[i]^=1;NetworkConfig n;assert(!decodeNetwork(bad,n));}
+    Preferences::failedBytesKey="ipv4v1";assert(net.call("POST","/api/network","choice=1",false).status==503);
+    Preferences::failedBytesKey.clear();
+  }
+
 #if SELECTED_BOARD == BOARD_ESP32
   {
     Fixture sensors;

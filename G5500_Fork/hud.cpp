@@ -480,7 +480,7 @@ void HudState::capture(const Controller &c, const Protocol &p, uint32_t now) {
   targetKnown = c.targetKnown;
   presetSlot = c.presetSlot;
   speedEnabled = c.speedEnabled;
-  driveFault = c.driveFault;
+  driveFault = c.driveFault || c.setupRequired || c.configurationLocked;
   stopEpoch = c.stopEpoch;
   remaining = c.remaining(now);
   sequenceIndex = uint8_t(c.sequenceIndex());
@@ -488,7 +488,7 @@ void HudState::capture(const Controller &c, const Protocol &p, uint32_t now) {
   drive = c.hardware.simulation ? 3 : SELECTED_BOARD == BOARD_CROWPANEL_21 ? 4 : c.hardware.drive;
   board = SELECTED_BOARD;
   std::snprintf(name, sizeof name, "%s", p.rotorName.c_str());
-  std::snprintf(fault, sizeof fault, "%s", c.fault.c_str());
+  std::snprintf(fault, sizeof fault, "%s", c.setupRequired?"setup_incomplete":c.configurationLocked?"configuration_locked":c.fault.c_str());
   for (unsigned i = 0; i < 2; ++i) {
     axes[i] = c.axes[i];
     speeds[i] = c.speeds[i];
@@ -697,6 +697,7 @@ Result Hud::submitAt(const ControlCommand &c, uint32_t at) {
   return submit(c);
 }
 Result Hud::submit(const ControlCommand &c) {
+  if(controller_.movementBlocked() && c.op!=ControlOp::Stop && !(c.op==ControlOp::ManualDrive && c.release))return Result::Unavailable;
   lastRequest_ = nextSerial();
   auto *p = active();
   lastResult_ = Result::Unavailable;
@@ -1552,6 +1553,8 @@ void Hud::writeStatus(JsonWriter &j, bool live) const {
     j << "null";
   auto *p = active();
   j << ",\"hudLive\":" << (p && p->live && uint32_t(now-p->liveAt)<1000 ? "true" : "false");
+  if(p && !p->endpoint.uart) {const auto a=p->endpoint.address;char ip[16];std::snprintf(ip,sizeof ip,"%u.%u.%u.%u",unsigned(a&255),unsigned((a>>8)&255),unsigned((a>>16)&255),unsigned(a>>24));
+    j << ",\"hudHost\":" << jsonQuoted(ip);}
   j << ",\"hudName\":" << jsonQuoted(p ? p->label : "")
     << ",\"hudTransport\":" << jsonQuoted(p ? (p->endpoint.uart ? "uart" : "wifi") : "")
     << ",\"hudPeers\":" << count() << ",\"remoteDrive\":";

@@ -36,13 +36,22 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
     await page.locator('[name="pin.hudDe"]').selectOption('40');
     await page.locator('[name="pin.uartDe"]').selectOption('41');
     assert(!(await page.locator('#save').isDisabled()));
-    await page.locator('[name=bluetoothMode]').selectOption('1');
     await page.locator('[name=bluetoothEnabled]').selectOption('1');
+    await page.locator('[name=bluetoothMode]').selectOption('1');
     assert(await page.locator('#save').isDisabled());
     assert.match(await page.locator('#pin-validation').textContent(),/HC-05/);
     await page.locator('[name=bluetoothEnabled]').selectOption('0');
     for(const name of ['hudRx','hudTx','hudDe','uartDe'])await page.locator('[name="pin.'+name+'"]').selectOption('-1');
    }
+   assert(!await page.locator('#bts-settings').isVisible());
+   await page.locator('[name=simulation]').selectOption('0');
+   await page.locator('[name=driveInterface]').selectOption('2');
+   assert(await page.locator('#bts-settings').isVisible());
+   await page.locator('[name=pwmInverted]').selectOption('1');
+   await page.locator('[name=driveInterface]').selectOption('0');
+   assert(!await page.locator('#bts-settings').isVisible());
+   assert.equal(await page.locator('[name=pwmInverted]').inputValue(),'0');
+   await page.locator('[name=simulation]').selectOption('1');
    // Every board accepts an incomplete motor map in simulation, rejects it in physical mode.
    await page.locator('[name="pin.azAdc"]').selectOption('-1');
    await page.evaluate(()=>refresh());

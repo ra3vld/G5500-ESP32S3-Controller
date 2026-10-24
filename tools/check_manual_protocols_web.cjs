@@ -17,7 +17,7 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   const page=await browser.newPage({viewport:{width:1100,height:900}}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base+'/#settings');await page.waitForFunction(()=>window._forkState&&live.ready);
-  await page.locator('#rotorSettings details').evaluate(e=>e.open=true);
+  await page.locator('#programSettings details').evaluate(e=>e.open=true);
   const checkControls=async values=>{
    for(let i=0;i<4;i++)assert.equal(await page.locator('#'+keys[i]).inputValue(),String(values[i]));
   };
@@ -25,14 +25,14 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
    for(let i=0;i<4;i++)await page.locator('#'+keys[i]).selectOption(String(values[i]));
    await delay(650);await checkControls(values); // Polling must preserve unsaved selection.
    const request=page.waitForRequest(r=>r.url().endsWith('/api/settings')&&r.method()==='POST');
-   await page.locator('#forkSettings [type=submit]').click();
+   await page.locator('#programSettings [type=submit]').click();
    const body=new URLSearchParams((await request).postData());
    for(let i=0;i<4;i++)assert.equal(body.get(keys[i]),String(values[i]));
    assert([...body].length<=32,'Settings must fit the firmware form-argument budget');
    await page.waitForFunction(()=>!document.getElementById('forkSettings').dataset.dirty);
    const saved=await state();for(let i=0;i<4;i++)assert.equal(saved[keys[i]],values[i]);
    await page.reload();await page.waitForFunction(()=>window._forkState&&live.ready);
-   await page.locator('#rotorSettings details').evaluate(e=>e.open=true);await checkControls(values);
+   await page.locator('#programSettings details').evaluate(e=>e.open=true);await checkControls(values);
    for(let i=0;i<4;i++){
     await post('/api/move',{d:'S'});
     const target=90+i*50+cycle*15; // Distinct goals preserve the repeated-target filter.
@@ -50,7 +50,7 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   }
   // Re-create the requested mixed policy for the visual review.
   for(let i=0;i<4;i++)await page.locator('#'+keys[i]).selectOption(String(i===0||i===2));
-  await page.locator('#forkSettings [type=submit]').click();
+  await page.locator('#programSettings [type=submit]').click();
   await page.waitForFunction(()=>!document.getElementById('forkSettings').dataset.dirty);
   const notice=page.locator('#settingsFeedback');
   if(await notice.isVisible())await notice.getByRole('button',{name:'Закрыть уведомление'}).click();

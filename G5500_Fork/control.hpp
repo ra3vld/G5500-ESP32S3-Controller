@@ -5,6 +5,7 @@
 #include "az_range.hpp"
 #include "motion.hpp"
 #include "runtime_speeds.hpp"
+#include "coast_measurement.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -230,6 +231,8 @@ class Controller {
 public:
   HardwareConfig hardware;
   bool configurationLocked = false;
+  bool setupRequired = false, setupAccess = false;
+  bool movementBlocked() const { return configurationLocked || (setupRequired && !setupAccess && !autoTune.internal); }
   void configureHardware(const HardwareConfig &config);
   CommandSink *remote = nullptr; // Non-owning. A mirror must never run tick()/feedback().
   uint32_t motionEpoch[2] = {};
@@ -263,6 +266,11 @@ public:
   std::array<SpeedSettings, 2> speeds{};
   std::array<MotionSettings, 2> motionSettings{};
   AutoTuneState autoTune{};
+  CoastMeasurement coast;
+  Result startCoast(unsigned axis,int direction,float travel,uint32_t now);
+  void cancelCoast(uint32_t now);
+  Result applyCoast(unsigned axis,uint32_t now);
+  void tickCoast(uint32_t now);
   unsigned controlPeriodMs() const { return controlPeriodMs_; }
   Result setControlFrequency(unsigned hz, uint32_t now);
   Result centerForAutoTune(unsigned axis, uint32_t now);

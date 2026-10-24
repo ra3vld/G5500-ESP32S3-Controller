@@ -12,7 +12,7 @@ bool WebInterface::handleHardwareRequest(std::string_view request) {
   const auto method=request.substr(0,space),target=request.substr(space+1,end-space-1);
   const auto query=target.find('?');
   const auto path=target.substr(0,query);
-  if(method=="GET" && (path=="/hardware" || path=="/recovery" || (runtime_.recovery && path=="/"))) {
+  if(method=="GET" && (path=="/hardware" || path=="/recovery" || (runtime_.recovery && (path=="/" || path=="/setup")))) {
     if(!requestAcceptsGzip(request)) {
       static constexpr char error[]="{\"error\":\"gzip_required\"}";
       web_.sendFixed(406,"application/json",error,sizeof error-1);return true;

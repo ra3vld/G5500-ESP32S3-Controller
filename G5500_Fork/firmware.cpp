@@ -58,6 +58,8 @@ void Application::controllerSetup() {
   beginRuntimeMetrics(&recoveryLatch, RecoveryCookie);
   diagnostics_.readBootReason();
 
+  runtime_.setupStorageOk=storage_.loadSetup(runtime_);
+  runtime_.controller.setupRequired=runtime_.setup.required;
   storage_.loadHud(runtime_, false);
   const bool modbusReadable=storage_.loadModbus(runtime_);
   const auto reset = esp_reset_reason();
@@ -66,7 +68,7 @@ void Application::controllerSetup() {
   storage_.loadHardware(runtime_, unexpected || (reset != ESP_RST_POWERON &&
       __atomic_load_n(&recoveryLatch, __ATOMIC_RELAXED) == RecoveryCookie));
   __atomic_store_n(&recoveryLatch, 0u, __ATOMIC_RELAXED);
-  if(!modbusReadable || (!runtime_.recovery &&
+  if(!runtime_.setupStorageOk || !modbusReadable || (!runtime_.recovery &&
       runtime_.modbus.wiring(runtime_.controller.hardware,runtime_.hud.config.uart))) {
     storage_.enterRecovery(runtime_,RecoveryReason::Invalid);
     storage_.loadHardware(runtime_,true);
@@ -122,6 +124,10 @@ void Application::controllerSetup() {
   if (!runtime_.recovery) display_.initLocalDisplay();
   if (runtime_.recovery) storage_.loadPrefs(runtime_, calibration_, network_.credentials(), true);
   else { storage_.loadForkSettings(runtime_); loadPrefs(); }
+  if(runtime_.setup.fresh && runtime_.setup.generation==1 && !runtime_.setup.checked) {
+    runtime_.protocol.manualFollow={true,false,true,true};runtime_.controller.restoreMode(Mode::Manual);
+    if(!storage_.saveForkSettings(runtime_)){failConfiguration(RecoveryReason::Storage);return;}
+  }
   diagnostics_.dbgPrintln(String("[WIFI NVS] load=") +
                          (storage_.wifiCredentialsReadOk() ? "OK" : "namespace unavailable") +
                          ", saved SSID=" + (network_.credentials().wifiSsid.length() ? "present" : "empty"));
@@ -265,6 +271,7 @@ void Application::controllerLoop() {
     network_.serviceCommandReplies();network_.serviceHeapDiagnostics();
     web_server_.service();delay(5);return;
   }
+  device_api_.serviceSetup(millis());
   serviceConfigurationSafety();
   // Once an update starts, keep outputs stopped even after an upload error.
   // Only reboot can resume input processing, so buffered commands cannot replay.

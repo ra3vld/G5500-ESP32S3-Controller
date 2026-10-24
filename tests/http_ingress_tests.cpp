@@ -119,11 +119,16 @@ int main() {
   web.handleClient();assert(testSocket.handled==1 && !web.writeFailed());
   const auto bodyStart=testSocket.output.find("\r\n\r\n")+4;
   assert(testSocket.output.find("Content-Length: "+std::to_string(sizeof WEB_PAGE-1))!=std::string::npos);
+  // Bulk traffic waits for the control reserve; admitting a fixed-buffer
+  // request at low heap must not bypass that reserve.
+  fakeHardware.now+=20;web.handleClient();assert(testSocket.output.size()==bodyStart && !web.writeFailed());
+  fakeHeapFree=40000;fakeHeapBlock=16384;
   unsigned controlLoops=0;
   while(testSocket.output.size()<bodyStart+sizeof WEB_PAGE-1 && controlLoops<2000) {
     fakeHardware.now+=10;testSocket.sendQuota=256;
     const auto beforeLoop=fakeHardware.now;
     web.handleClient();++controlLoops;
+    if(fakeHardware.now!=beforeLoop || web.writeFailed())std::cerr<<"page failure now="<<fakeHardware.now<<" before="<<beforeLoop<<" elapsed="<<fakeHardware.now-beforePage<<" loops="<<controlLoops<<" bytes="<<testSocket.output.size()-bodyStart<<" total="<<sizeof WEB_PAGE-1<<" cause="<<web.diagnostics().writeCause<<"\n";
     assert(fakeHardware.now==beforeLoop && !web.writeFailed());
   }
   assert(fakeHardware.now-beforePage>250 && controlLoops>100);
@@ -133,7 +138,7 @@ int main() {
   // A small transport queue returns ENOMEM until ACKs release it. It must
   // delay transmission instead of resetting the connection at the first miss.
   connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
-  fakeHeapFree=16096;fakeHeapBlock=15348;testSocket.queueCapacity=1024;
+  fakeHeapFree=40000;fakeHeapBlock=16384;testSocket.queueCapacity=1024;
   const char *compressed=reinterpret_cast<const char *>(WEB_PAGE_GZIP);
   testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof WEB_PAGE_GZIP); };
   const auto failuresBefore=web.diagnostics().writeFailures;
@@ -155,7 +160,7 @@ int main() {
   // 3s initially, followed by a longer backoff. The former 2s deadline killed
   // this response; HTML must survive a 9s stall without blocking the loop.
   connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
-  fakeHeapFree=13892;fakeHeapBlock=11252;
+  fakeHeapFree=40000;fakeHeapBlock=16384;
   testSocket.handler=[&] { web.sendPage(200,"text/html; charset=utf-8",compressed,sizeof WEB_PAGE_GZIP); };
   const auto failuresBeforeStall=web.diagnostics().writeFailures;
   web.handleClient();
@@ -172,7 +177,7 @@ int main() {
   }
   testSocket.blockWrites=false;testSocket.sendQuota=size_t(-1);
   // Allow the larger settings page to drain after recovery; the loop remains bounded.
-  const auto recoveryDeadline=fakeHardware.now+2000;
+  const auto recoveryDeadline=fakeHardware.now+uint32_t((sizeof WEB_PAGE_GZIP+511)/512)*20+500;
   while(testSocket.open && fakeHardware.now<recoveryDeadline) { fakeHardware.now+=20;web.handleClient(); }
   assert(!testSocket.open && !testSocket.reset && web.diagnostics().writeFailures==failuresBeforeStall);
   assert(testSocket.output.substr(recoveryStart)==std::string(compressed,sizeof WEB_PAGE_GZIP));
@@ -344,16 +349,17 @@ int main() {
     const auto start=fakeHardware.now;web.handleClient();
     for(unsigned i=0;testSocket.open && i<1000;++i) {
       const auto bytes=testSocket.output.size();fakeHardware.now+=5;
+      if(heap<32768&&i==20)fakeHeapFree=65536;
       const auto now=fakeHardware.now;web.handleClient();
       assert(fakeHardware.now==now && testSocket.output.size()-bytes<=512);
     }
     assert(!testSocket.open && !testSocket.reset);return uint32_t(fakeHardware.now-start);
   };
   const auto slow=transferTime(16384),fast=transferTime(65536);
-  assert(fast*4==slow);
+  assert(slow>=fast+100);
   std::cout<<"PASS: recovery POST remains writable with free=3000/max=512 while normal settings require larger blocks\n";
-  std::cout<<"PASS: 10000 parser-free persistent status polls at free=3000/max=512; healthy page pacing 4x faster, one nonblocking 512-byte send per loop\n";
-  std::cout<<"PASS: complete 35KB page over slow socket with device heap 8172/1524, per-loop control progress, transfer deadlines and recovery\n";
+  std::cout<<"PASS: 10000 parser-free persistent status polls at free=3000/max=512; bulk waits below control reserve, one nonblocking 512-byte send per loop\n";
+  std::cout<<"PASS: complete current page over slow socket after low-heap admission, per-loop control progress, transfer deadlines and recovery\n";
   std::cout<<"PASS: gzip bytes through 1KB queue with repeated ENOMEM/ACKs, paced JSON, encoding negotiation and failure diagnostics\n";
   std::cout<<"PASS: HTTP fragments, complete POST body, low heap, timeouts, socket failures and 10000 requests without NetworkClient RX allocations\n";
   std::cout<<"PASS: 10000 status requests on one connection, HTTP/1.0/close/pipeline fallback, idle/peer-close cleanup and second-client fairness\n";
