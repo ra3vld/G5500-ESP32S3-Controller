@@ -6,7 +6,8 @@ import unittest
 import zlib
 
 from crowpanel_trace_core import Recording, TimelineRecord, demo_records
-from crowpanel_trace_viewer import (FRAME_BYTES, NativeRenderer, Replay, ROOT, png_frame, view_command)
+from crowpanel_trace_viewer import (FRAME_BYTES, INPUT_SIZE, NativeRenderer, Replay, ROOT,
+                                   input_command, png_frame, view_command)
 
 
 def state(seq, ms, current=0, **changes):
@@ -19,6 +20,13 @@ def state(seq, ms, current=0, **changes):
 
 def timeline(*records):
     return Recording([TimelineRecord(record["ms"], record, 0) for record in records])
+
+
+def input_record(seq, ms, kind, **values):
+    record = state(seq, ms)
+    record.update(type="input", input=dict(kind=kind, healthy=True, down=False))
+    record["input"].update(values)
+    return record
 
 
 class FakeRenderer:
@@ -34,8 +42,14 @@ class FakeRenderer:
     def pressed(self, ms, action):
         self.calls.append(("pressed", ms, action))
 
-    def frame(self, ms):
-        self.calls.append(("frame", ms))
+    def input(self, ms, record):
+        self.calls.append(("input", ms, record["input"]["kind"]))
+
+    def clear_inputs(self, ms):
+        self.calls.append(("clear_inputs", ms))
+
+    def frame(self, ms, show_inputs=False):
+        self.calls.append(("frame", ms, True) if show_inputs else ("frame", ms))
         return b"frame"
 
 
@@ -113,12 +127,43 @@ class ReplayTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 view_command(0, state(0, 0, **{key: value}))
 
+    def test_input_wire_and_malformed_events(self):
+        touch = input_record(1, 10, "touch", x=123, y=234)
+        touch["input"]["down"] = True
+        self.assertEqual(input_command(10, touch), b"TOUCH\t10\t1\t1\t123\t234\n")
+        self.assertEqual(input_command(20, input_record(2, 20, "knob", delta=-3)), b"KNOB\t20\t1\t0\t-3\n")
+        for key, value in (("x", -1), ("y", 480), ("healthy", 1), ("down", "true")):
+            damaged = copy.deepcopy(touch)
+            damaged["input"][key] = value
+            self.assertEqual(input_command(20, damaged), b"CLEAR_INPUTS\t20\n")
+        self.assertIsNone(input_command(0, {"input": {"kind": "future-input"}}))
+
+    def test_record_gaps_clear_held_input_and_stale_steps_are_ignored(self):
+        renderer = FakeRenderer()
+        down = input_record(1, 10, "knob", delta=1)
+        down["input"]["down"] = True
+        last = state(4, 30)
+        replay = Replay(timeline(state(0, 0), down, down, last), renderer)
+        replay.frame(40, show_inputs=True)
+        self.assertEqual([call for call in renderer.calls if call[0] == "input"], [("input", 10, "knob")])
+        self.assertIn(("clear_inputs", 30), renderer.calls)
+        self.assertEqual(renderer.calls[-1], ("frame", 40, True))
+
+    def test_annotated_png_dimensions(self):
+        png = png_frame(bytes(INPUT_SIZE * INPUT_SIZE * 3), INPUT_SIZE, INPUT_SIZE)
+        self.assertEqual(struct.unpack(">II", png[16:24]), (600, 600))
+
 
 RENDERER = ROOT / "build/crowpanel-trace/renderer"
 
 
 @unittest.skipUnless(RENDERER.is_file(), "Build tools/build_crowpanel_trace_renderer.sh first")
 class NativeTests(unittest.TestCase):
+    @staticmethod
+    def pixel(frame, x, y, size=INPUT_SIZE):
+        offset = (y * size + x) * 3
+        return frame[offset:offset + 3]
+
     def test_actual_ui_and_round_display_mask(self):
         with NativeRenderer(RENDERER) as renderer:
             renderer.update(0, state(0, 0, 45))
@@ -163,6 +208,103 @@ class NativeTests(unittest.TestCase):
             self.assertEqual(intermediate, direct)
             settled = replay.frame(400)
             self.assertNotEqual(intermediate, settled)
+
+    def test_touch_release_retains_coordinates_then_fades_without_altering_plain_screen(self):
+        with NativeRenderer(RENDERER) as renderer:
+            renderer.update(0, state(0, 0))
+            plain = renderer.frame(0)
+            initial = renderer.frame(0, show_inputs=True)
+            down = input_record(1, 10, "touch", x=200, y=220)
+            down["input"]["down"] = True
+            renderer.input(10, down)
+            tapped = renderer.frame(10, show_inputs=True)
+            self.assertEqual(len(tapped), 600 * 600 * 3)
+            self.assertNotEqual(self.pixel(initial, 260, 280), self.pixel(tapped, 260, 280))
+            renderer.input(20, input_record(2, 20, "touch", x=0, y=0))
+            released = renderer.frame(30, show_inputs=True)
+            self.assertNotEqual(self.pixel(initial, 260, 280), self.pixel(released, 260, 280))
+            self.assertEqual(self.pixel(initial, 60, 60), self.pixel(released, 60, 60))
+            self.assertEqual(renderer.frame(800, show_inputs=True), initial)
+            self.assertEqual(renderer.frame(800), plain)
+
+    def test_swipe_path_and_encoder_rotation_press_and_release(self):
+        with NativeRenderer(RENDERER) as renderer:
+            renderer.update(0, state(0, 0))
+            initial = renderer.frame(0, show_inputs=True)
+            for seq, (ms, x, y) in enumerate(((10, 150, 200), (20, 230, 250), (30, 300, 200)), 1):
+                event = input_record(seq, ms, "touch", x=x, y=y)
+                event["input"]["down"] = True
+                renderer.input(ms, event)
+            swiped = renderer.frame(35, show_inputs=True)
+            self.assertNotEqual(self.pixel(initial, 250, 285), self.pixel(swiped, 250, 285))
+            renderer.input(40, input_record(4, 40, "touch", x=0, y=0))
+            renderer.input(50, input_record(5, 50, "knob", delta=2))
+            rotated = renderer.frame(800, show_inputs=True)
+            self.assertNotEqual(self.pixel(initial, 300, 20), self.pixel(rotated, 300, 20))
+            renderer.input(810, input_record(6, 810, "knob", delta=-2))
+            self.assertEqual(renderer.frame(1300, show_inputs=True), initial)
+            pressed = input_record(7, 1310, "knob", delta=0)
+            pressed["input"]["down"] = True
+            renderer.input(1310, pressed)
+            pushed = renderer.frame(1410, show_inputs=True)
+            self.assertNotEqual(self.pixel(initial, 300, 30), self.pixel(pushed, 300, 30))
+            renderer.input(1420, input_record(8, 1420, "knob", delta=0))
+            self.assertEqual(renderer.frame(1550, show_inputs=True), initial)
+
+    def test_input_animation_seek_and_output_cadence_are_deterministic(self):
+        down = input_record(2, 27, "touch", x=160, y=240)
+        down["input"]["down"] = True
+        move = copy.deepcopy(down)
+        move.update(seq=3, ms=59)
+        move["input"].update(x=270, y=250)
+        recording = timeline(state(0, 0), input_record(1, 11, "knob", delta=1), down, move,
+                             input_record(4, 93, "touch", x=0, y=0),
+                             input_record(5, 117, "knob", delta=-2), state(6, 500))
+        with NativeRenderer(RENDERER) as renderer:
+            replay = Replay(recording, renderer)
+            replay.frame(34, show_inputs=True)
+            replay.frame(99, show_inputs=True)
+            intermediate = replay.frame(173, show_inputs=True)
+            replay.frame(0)
+            self.assertEqual(replay.frame(173, show_inputs=True), intermediate)
+
+    def test_input_samples_do_not_change_the_plain_lvgl_animation(self):
+        views = [state(0, 0, 0), state(2, 53, 90), state(4, 109, 180), state(6, 191, 270)]
+        events = [input_record(1, 11, "knob", delta=1),
+                  input_record(3, 59, "touch", down=True, x=270, y=250),
+                  input_record(5, 117, "touch", x=0, y=0)]
+        combined = sorted(views + events, key=lambda record: record["ms"])
+        with NativeRenderer(RENDERER) as renderer:
+            plain = Replay(timeline(*views), renderer).frame(207)
+            renderer.reset()
+            with_inputs = Replay(timeline(*combined), renderer).frame(207)
+            self.assertEqual(plain, with_inputs)
+
+    def test_loss_keeps_known_rotation_and_fades_observed_swipe_segments(self):
+        with NativeRenderer(RENDERER) as renderer:
+            renderer.update(0, state(0, 0))
+            renderer.input(10, input_record(1, 10, "knob", delta=2))
+            expected = renderer.frame(200, show_inputs=True)
+            renderer.reset()
+            renderer.update(0, state(0, 0))
+            renderer.input(10, input_record(1, 10, "knob", delta=2))
+            renderer.clear_inputs(20)
+            self.assertEqual(renderer.frame(200, show_inputs=True), expected)
+            renderer.reset()
+            renderer.update(0, state(0, 0))
+            initial = renderer.frame(0, show_inputs=True)
+            renderer.input(10, input_record(1, 10, "touch", down=True, x=150, y=200))
+            renderer.input(20, input_record(2, 20, "touch", down=True, x=230, y=250))
+            renderer.clear_inputs(30)
+            known = renderer.frame(100, show_inputs=True)
+            self.assertNotEqual(self.pixel(initial, 250, 285), self.pixel(known, 250, 285))
+            renderer.reset()
+            renderer.update(0, state(0, 0))
+            renderer.input(10, input_record(1, 10, "touch", down=True, x=150, y=200))
+            renderer.input(20, input_record(2, 20, "touch", down=True, x=230, y=250))
+            renderer.input(30, input_record(3, 30, "touch", x=0, y=0))
+            self.assertNotEqual(renderer.frame(100, show_inputs=True), known)
+            self.assertEqual(renderer.frame(800, show_inputs=True), initial)
 
 
 if __name__ == "__main__":

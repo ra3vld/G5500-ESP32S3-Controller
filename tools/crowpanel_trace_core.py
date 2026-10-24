@@ -345,3 +345,21 @@ def demo_records() -> Iterable[DecodedRecord]:
             v.update(current=210., target=210., secondaryCurrent=60., secondaryTarget=60., wifiConnected=False,
                      statusFault=True, status="Нет связи с приводом")
         yield record("view", ms, view=v, pressed=pressed)
+        # Recorded-input shapes for exploring presentation without hardware.
+        if ms in (400, 500, 600, 6000, 6100):
+            yield record("input", ms, input=dict(kind="knob", healthy=True, down=False,
+                                                 delta=1 if ms < 1000 else -1))
+        if ms in (11500, 11800):
+            yield record("input", ms, input=dict(kind="knob", healthy=True,
+                                                 down=ms == 11500, delta=0))
+        if ms in (1000, 1100, 1400, 1450):
+            down = ms in (1000, 1400)
+            yield record("input", ms, pressed=0, input=dict(kind="touch", healthy=True,
+                          down=down, x=(320 if ms == 1000 else 220) if down else 0,
+                          y=(400 if ms == 1000 else 330) if down else 0))
+        if 9000 <= ms < 11000:
+            yield record("input", ms, pressed=0, input=dict(kind="touch", healthy=True, down=True,
+                          x=round(144 + 206 * (ms - 9000) / 2000), y=228))
+        elif ms == 11000:
+            yield record("input", ms, pressed=0,
+                         input=dict(kind="touch", healthy=True, down=False, x=0, y=0))

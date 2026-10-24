@@ -1,8 +1,10 @@
 // Native replay backend. Render the firmware's actual LVGL objects and fonts.
 // Private stdin protocol: RESET; VIEW<TAB>time_ms<TAB>pressed<TAB>name=value...;
-// PRESSED<TAB>time_ms<TAB>action; FRAME<TAB>time_ms. Strings are UTF-8 bytes encoded as hex, all other values
-// are decimal. FRAME writes exactly 480*480*3 RGB bytes to stdout.
+// PRESSED<TAB>time_ms<TAB>action; TOUCH/KNOB carry raw input samples.
+// FRAME writes 480*480*3 RGB bytes; FRAME_INPUTS writes 600*600*3 with gestures
+// and a virtual encoder ring. Strings are UTF-8 bytes encoded as hex.
 #include "crowpanel_ui.hpp"
+#include "crowpanel_trace_inputs.hpp"
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -22,6 +24,7 @@ lv_display_t *display = nullptr;
 forkrot::CrowPanelUi ui;
 uint64_t cursor = 0;
 bool initialized = false;
+traceviz::Inputs inputs;
 
 void flush(lv_display_t *d, const lv_area_t *a, uint8_t *data) {
   auto *p = reinterpret_cast<uint16_t *>(data);
@@ -38,6 +41,7 @@ void reset() {
   ui = forkrot::CrowPanelUi{};
   pixels.fill(0);
   cursor = 0;
+  inputs.reset();
   lv_init();
   initialized = true;
   display = lv_display_create(size, size);
@@ -140,7 +144,7 @@ void pressed(const std::string &value) {
   ui.setPressed(static_cast<forkrot::crowpanel::TouchAction>(action));
 }
 
-void frame() {
+void frame(bool showInputs = false) {
   lv_refr_now(display);
   for (unsigned y = 0; y < size; ++y) for (unsigned x = 0; x < size; ++x) {
     auto c = pixels[y * size + x];
@@ -150,7 +154,10 @@ void frame() {
     out[1] = uint8_t(((c >> 5) & 63) * 255 / 63);
     out[2] = uint8_t((c & 31) * 255 / 31);
   }
-  if (std::fwrite(rgb.data(), 1, rgb.size(), stdout) != rgb.size() || std::fflush(stdout))
+  const auto *bytes = rgb.data();
+  size_t count = rgb.size();
+  if (showInputs) { const auto &annotated = inputs.render(bytes, cursor); bytes = annotated.data(); count = annotated.size(); }
+  if (std::fwrite(bytes, 1, count, stdout) != count || std::fflush(stdout))
     throw std::runtime_error("frame pipe closed");
 }
 std::vector<std::string> split(const std::string &line) {
@@ -173,6 +180,17 @@ int main() {
       const auto args = split(line);
       if (args[0] == "RESET" && args.size() == 1) reset();
       else if (args[0] == "FRAME" && args.size() == 2) { advance(natural(args[1])); frame(); }
+      else if (args[0] == "FRAME_INPUTS" && args.size() == 2) { advance(natural(args[1])); frame(true); }
+      else if (args[0] == "CLEAR_INPUTS" && args.size() == 2) { advance(natural(args[1])); inputs.clear(cursor); }
+      else if (args[0] == "TOUCH" && args.size() == 6) {
+        advance(natural(args[1]));
+        const auto x = natural(args[4]), y = natural(args[5]);
+        if (x >= 480 || y >= 480) throw std::runtime_error("touch coordinates out of range");
+        inputs.touch(cursor, boolean(args[2]), boolean(args[3]), unsigned(x), unsigned(y));
+      }
+      else if (args[0] == "KNOB" && args.size() == 5) {
+        advance(natural(args[1])); inputs.knob(cursor, boolean(args[2]), boolean(args[3]), integer(args[4]));
+      }
       else if (args[0] == "PRESSED" && args.size() == 3) { advance(natural(args[1])); pressed(args[2]); }
       else if (args[0] == "VIEW" && args.size() >= 3) {
         advance(natural(args[1]));

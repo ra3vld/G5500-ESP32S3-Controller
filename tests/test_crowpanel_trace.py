@@ -182,6 +182,10 @@ class TimelineTests(unittest.TestCase):
         self.assertEqual(recording.duration_ms, 15000)
         for key in ("speedScreen", "hudSelector", "elevation", "pending", "moving", "statusFault"):
             self.assertTrue(any(item.record["view"][key] for item in recording.views), key)
+        inputs = [row.record["input"] for row in values if row.record["type"] == "input"]
+        self.assertTrue(any(event["kind"] == "touch" and event["down"] for event in inputs))
+        self.assertTrue(any(event["kind"] == "knob" and event["delta"] for event in inputs))
+        self.assertTrue(any(event["kind"] == "knob" and event["down"] for event in inputs))
 
 
 class CliTests(unittest.TestCase):
