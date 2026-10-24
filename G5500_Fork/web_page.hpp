@@ -68,13 +68,13 @@ body.settings-view>.wrap{width:100%;min-height:0;flex:1;overflow-y:auto;margin:0
 body.settings-view .nav{position:static}
 #settingsPanel{display:grid;gap:12px;padding:4px 0 24px}
 .settings-section.card{margin:0;padding:0;border:1px solid #294153;border-radius:14px;background:#101c27;overflow:clip}
-.settings-details>summary{display:flex;align-items:center;gap:20px;padding:20px;list-style:none;cursor:pointer;user-select:none}
+.settings-details>summary{display:flex;align-items:center;gap:16px;padding:12px 16px;list-style:none;cursor:pointer;user-select:none}
 .settings-details>summary::-webkit-details-marker{display:none}
 .settings-details>summary::after{content:'';flex:none;width:9px;height:9px;border-right:2px solid #94aab9;border-bottom:2px solid #94aab9;transform:rotate(45deg);margin:0 4px 6px auto}
 .settings-details[open]>summary::after{transform:rotate(225deg);margin-bottom:-4px}
 .settings-details[open]>summary{border-bottom:1px solid #294153;background:#142330}
-.settings-details>summary h2{min-width:0;font-size:18px;line-height:1.35;margin:0;font-weight:600}
-.section-caption{display:block;margin-top:5px;color:#9aafbf;font-size:13px;line-height:1.45;font-weight:400}
+.settings-details>summary h2{min-width:0;font-size:17px;line-height:1.35;margin:0;font-weight:600}
+.section-caption{display:block;margin-top:3px;color:#9aafbf;font-size:12px;line-height:1.4;font-weight:400}
 .settings-content{padding:20px}
 #settingsPanel h3{font-size:16px;line-height:1.4;font-weight:600;margin:0 0 16px}
 #settingsPanel h4{font-size:14px;line-height:1.45;font-weight:600;margin:0 0 12px;color:#cad9e4}
@@ -142,14 +142,17 @@ body.settings-view .nav{position:static}
 #settingsPanel .device-peer-note{line-height:1.5}
 #settingsPanel .kv{margin-top:12px;font-size:13px;line-height:1.5}
 #settingsPanel .kv>div{padding:12px;background:#0c1822;border:1px solid #243b4c;border-radius:8px}
+#networkStatus .settings-content{padding:12px 16px}
+#networkStatus .kv{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:0}
+#networkStatus .kv>div{padding:7px 9px}
 #settingsPanel #bttransport:empty{display:none}
 #settingsPanel .mono{font-family:monospace;user-select:all;overflow-wrap:anywhere}
 #settingsPanel .period-options{display:flex;flex-wrap:wrap;gap:8px}
 #settingsPanel .period-options .btn{flex:1 1 90px;white-space:nowrap;overflow-wrap:normal}
 #settingsPanel canvas{margin-top:16px}
 body.settings-view>.action-feedback{position:static;transform:none;left:auto;bottom:auto;flex:none;align-self:center;width:calc(100% - 24px);margin:0 12px max(12px,env(safe-area-inset-bottom));max-width:956px;box-shadow:none;font-size:14px}
-@media(max-width:760px){#settingsPanel .range-editors,#settingsPanel .calibration-grid{grid-template-columns:minmax(0,1fr)}}
-@media(max-width:600px){.settings-details>summary{padding:16px;gap:16px}.settings-details>summary h2{font-size:17px}.settings-content{padding:16px}#settingsPanel .row,#settingsPanel .device-fields{grid-template-columns:minmax(0,1fr);gap:16px}#settingsPanel .settings-pane{padding:12px}#settingsPanel .form-actions>.btn{width:100%}#settingsPanel .form-actions{gap:10px}#settingsPanel .range-form .row{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel .profile-options{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel #azmc{grid-column:1/-1}#settingsPanel .device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){#settingsPanel .range-editors,#settingsPanel .calibration-grid{grid-template-columns:minmax(0,1fr)}#networkStatus .kv{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.settings-details>summary{padding:10px 14px;gap:12px}.settings-details>summary h2{font-size:16px}.settings-content{padding:16px}#networkStatus .settings-content{padding:10px 14px}#settingsPanel .row,#settingsPanel .device-fields{grid-template-columns:minmax(0,1fr);gap:16px}#settingsPanel .settings-pane{padding:12px}#settingsPanel .form-actions>.btn{width:100%}#settingsPanel .form-actions{gap:10px}#settingsPanel .range-form .row{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel .profile-options{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel #azmc{grid-column:1/-1}#settingsPanel .device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 .camera-image{display:block;width:100%;max-width:640px;aspect-ratio:4/3;object-fit:contain;margin:12px auto 0;border-radius:10px;background:#08121a}.camera-image[hidden]{display:none}
 /* Form controls have separate metrics; text-field rules never style checkboxes. */
@@ -372,11 +375,12 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <div class="field"><label for="hudReadyHigh">Уровень готовности AUX / BUSY</label><select id="hudReadyHigh" name="readyHigh" aria-describedby="hudReadyHigh-help"><option value="1">HIGH — передача разрешена</option><option value="0">LOW — передача разрешена</option></select><p id="hudReadyHigh-help" class="field-help">Необязательный вход «Радиомост · AUX / BUSY» назначается в настройках оборудования. Без входа передача разрешена постоянно.</p></div>
 </div><p class="hint">Параметры радиомоста относятся к обычному UART0. RS‑485 и Modbus используют свои режимы. Радиочастота и эфирная скорость задаются средствами самого модуля. Частота обновления относится к состоянию. Непрерывное ручное управление доступно от 9600 бод; контроллер останавливает его через 1 с без продления.</p></section>
 <div class="form-actions"><button class="btn good" type="submit">Сохранить и перезагрузить</button></div></form>
-</section></div></details></section><section class="card settings-section" id="networkSettings"><details class="settings-details" open><summary><h2>Сеть и подключение<span class="section-caption">Подключение к сети, точка доступа и Bluetooth</span></h2></summary><div class="settings-content"><h3>Текущее подключение</h3><div class="kv">
+</section></div></details></section><section class="card settings-section" id="networkStatus"><details class="settings-details" open><summary><h2>Статус сети<span class="section-caption">Адреса, Wi-Fi и Bluetooth</span></h2></summary><div class="settings-content"><div class="kv">
 <div id="ethernetStatus" hidden>Ethernet: <b id="ethip">-</b> <span id="ethstate"></span></div><div>IP клиента (STA): <b id="ip">-</b></div><div>IP точки доступа: <b id="apip">-</b></div><div>TCP rotctld: <b>4533</b></div><div>Режим: <b id="mode">-</b></div><div>Уровень Wi-Fi: <b id="rssi">-</b></div><div>Качество: <b id="sig">-</b></div>
 <div class="hide" id="btlinkrow">Bluetooth-соединение: <b id="btlinkstate" role="status">-</b></div>
 <div><span id="btlabel">Bluetooth</span>: <b id="btstate" role="status">-</b></div><div id="bttransport">-</div>
 <div class="hide" id="btmacrow">Bluetooth MAC: <b class="mono" id="btmac">-</b></div></div><div class="hint hide" id="bthelp">Этот MAC нужен в Look4Sat. Подключение видно и без передачи команд; сопряжение в Android само по себе не означает активное соединение.</div>
+</div></details></section><section class="card settings-section" id="networkSettings"><details class="settings-details"><summary><h2>Настройки сети<span class="section-caption">Подключение, IP-адреса и точка доступа</span></h2></summary><div class="settings-content">
 <section class="settings-group"><h3>Домашняя сеть Wi-Fi</h3><div class="row"><div class="field"><label for="ssid">Имя сети (SSID)</label><input autocomplete="off" aria-describedby="ssid-help" id="ssid"/><p class="field-help" id="ssid-help">Точное имя сети Wi-Fi, к которой подключится устройство после сохранения.</p></div><div class="field"><label for="pass">Пароль сети</label><input autocomplete="new-password" aria-describedby="pass-help" id="pass" type="password"/><p class="field-help" id="pass-help">Пароль выбранной сети Wi-Fi. Для открытой сети оставьте пустым. Сохранённый пароль не отображается в этом поле.</p></div></div>
 <div class="form-actions"><button class="btn good" id="wifiSaveButton" onclick="wifi()">Сохранить и подключиться</button><span class="hint">Полученный IP появится ниже. Точка доступа останется доступной до следующей перезагрузки.</span></div><div aria-live="polite" class="inline-message" id="wifiMessage" role="status"></div><a id="wifiClientLink" class="hint" hidden target="_blank" rel="noopener noreferrer"></a></section>
 <section class="settings-group"><h3>Точка доступа устройства</h3><div class="field"><label for="appass">Пароль точки доступа</label><input autocomplete="new-password" aria-describedby="appass-help" id="appass" maxlength="63" minlength="8" placeholder="Пустое поле — открытая сеть" type="password"/><p class="field-help" id="appass-help">Пароль собственной точки доступа устройства: 8–63 символа. Пустое поле отключает защиту паролем. Изменение применяется после перезагрузки.</p></div><p class="hint">От 8 до 63 символов. Оставьте поле пустым, чтобы открыть сеть без пароля.</p><div class="form-actions"><button class="btn good" id="apSaveButton" onclick="saveAp()">Сохранить точку доступа</button><span class="hint">Устройство перезагрузится.</span></div></section></div></details></section><section class="card settings-section" id="otaSettings"><details class="settings-details" ontoggle="if(this.open)loadOta()"><summary><h2>Обновление прошивки<span class="section-caption">OTA через браузер или Arduino IDE</span></h2></summary><div class="settings-content">
@@ -1620,7 +1624,7 @@ const hudTitle=document.querySelector('#hudPanel summary h2');hudTitle.firstChil
 document.querySelector('#motionSettings summary h2').firstChild.textContent='Регуляторы и остановка';
 const rotorTitle=document.querySelector('#rotorSettings summary h2');rotorTitle.firstChild.textContent='Поворотка и привод';
 setupRoot.append(programs,equipment,peers);
-const ordered=['networkSettings','hudPanel','rotorSettings','equipmentSettings','calibrationSettings','motionSettings','peersSettings','programSettings','presetSettings','otaSettings','signalSettings'];
+const ordered=['networkStatus','networkSettings','hudPanel','rotorSettings','equipmentSettings','calibrationSettings','motionSettings','peersSettings','programSettings','presetSettings','otaSettings','signalSettings'];
 for(const id of ordered)setupRoot.append(document.getElementById(id));
 document.addEventListener('input',event=>{if(event.target.form===sharedForm){sharedForm.dataset.dirty='1';if(wizard.active)renderSetup();}});
 // Put the field action on the same grid row as its input. Explanations occupy
@@ -1709,7 +1713,7 @@ function renderSetup(){
  document.getElementById('equipmentDisplay').textContent='Дисплей: '+(j.build?.display||'нет данных')+'. Тип выбирается при сборке; GPIO внешнего экрана задаются в оборудовании.';
  if(!wizard.active){testCard.hidden=true;return;}
  selectTab('settings',false);document.body.dataset.setupStep=String(state.step);
- const ids={0:['networkSettings'],1:['hudPanel'],2:['rotorSettings'],3:['equipmentSettings'],4:['equipmentSettings'],5:['calibrationSettings','setupTests'],6:['motionSettings','setupTests'],7:['programSettings'],8:['peersSettings'],9:['presetSettings','setupTests']};
+ const ids={0:['networkStatus','networkSettings'],1:['hudPanel'],2:['rotorSettings'],3:['equipmentSettings'],4:['equipmentSettings'],5:['calibrationSettings','setupTests'],6:['motionSettings','setupTests'],7:['programSettings'],8:['peersSettings'],9:['presetSettings','setupTests']};
  for(const id of ids[state.step]||[]){const card=document.getElementById(id);card.classList.add('setup-visible');const details=card.querySelector(':scope > details');if(details)details.open=true;}
  testCard.hidden=![5,6,9].includes(state.step);document.getElementById('setupTargetForm').hidden=state.step!==9;
  const sequence=state.role==='hud'?[0,1,3,4,8,7,9]:state.simulation?[0,1,2,3,4,7,9]:[0,1,2,3,4,5,6,7,9];

@@ -68,7 +68,7 @@ function geometry(){
     return json({ok:true,result:'ok'});
    });
    await page.goto('http://setup.test/setup');await page.waitForFunction(()=>wizard.active&&window._forkState).catch(async e=>{console.error(await page.evaluate(()=>({html:document.getElementById('setupMessage')?.textContent,body:document.body.innerText.slice(-800),state:window._forkState})));throw e;});
-   assert.deepEqual(await page.locator('#settingsPanel > .settings-section').evaluateAll(nodes=>nodes.map(n=>n.id)),['networkSettings','hudPanel','rotorSettings','equipmentSettings','calibrationSettings','motionSettings','peersSettings','programSettings','presetSettings','otaSettings','signalSettings','setupTests']);
+   assert.deepEqual(await page.locator('#settingsPanel > .settings-section').evaluateAll(nodes=>nodes.map(n=>n.id)),['networkStatus','networkSettings','hudPanel','rotorSettings','equipmentSettings','calibrationSettings','motionSettings','peersSettings','programSettings','presetSettings','otaSettings','signalSettings','setupTests']);
    assert.equal(await page.locator('#setupNext').isDisabled(),true);
    for(const step of sequence){
     state.step=step;

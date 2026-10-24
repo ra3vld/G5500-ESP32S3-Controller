@@ -50,7 +50,8 @@ status.rssi=-62;status.heapFree=65536;status.uptimeSeconds=90061;
   }
   assert.equal(await page.locator('#controlPanel').evaluate(e=>e.lastElementChild.id),'currentStatus');
   fs.mkdirSync(path.join(root,'artifacts/screenshots'),{recursive:true});
-  assert.equal(await page.locator('#networkSettings > details').getAttribute('open'),'');
+  assert(await page.locator('#networkStatus > details').evaluate(e=>e.open));
+  assert.equal(await page.locator('#networkSettings > details').evaluate(e=>e.open),false);
   for(const width of [1100,390,320]){
    await page.setViewportSize({width,height:844});
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`control overflow at ${width}`);
@@ -133,7 +134,9 @@ status.rssi=-62;status.heapFree=65536;status.uptimeSeconds=90061;
    }
   }
   await page.reload();await page.waitForFunction(()=>window._forkState?.staIp==='10.20.30.40');
-  assert(await page.locator('#networkSettings > details').evaluate(e=>e.open));
+  assert(await page.locator('#networkStatus > details').evaluate(e=>e.open));
+  assert.equal(await page.locator('#networkSettings > details').evaluate(e=>e.open),false);
+  await page.locator('#networkSettings > details > summary').click();
   assert.equal(await page.locator('#wifiClientLink').getAttribute('href'),'http://10.20.30.40/');
   await page.locator('#ssid').fill('');
   await save.click();
@@ -178,6 +181,7 @@ status.rssi=-62;status.heapFree=65536;status.uptimeSeconds=90061;
   const heartbeat=setInterval(()=>socket?.send(JSON.stringify({v:1,boot:1,type:'state',revision:++revision,state:{}})),100);
   try{
    await livePage.goto('http://controller.test/#settings');await livePage.waitForFunction(()=>live.ready);
+   await livePage.locator('#networkSettings > details > summary').click();
    await livePage.locator('#ssid').fill('New home');await livePage.locator('#pass').fill('test password');
    await livePage.locator('#wifiSaveButton').click();
    await livePage.waitForFunction(()=>wifiMessage.textContent.includes('Полученный IP появится'));
@@ -206,6 +210,6 @@ status.rssi=-62;status.heapFree=65536;status.uptimeSeconds=90061;
   assert.equal(await page.locator('#ethstate').innerText(),'Нет кабеля');
   assert.doesNotMatch(await page.locator('#statusWifi').innerText(),/ETH:/);
   assert.deepEqual(errors,[]);
-  console.log('PASS: first setup IP, simultaneous STA/AP addresses, default open network settings, mobile layouts, STA/AP/Ethernet status and DHCP/cable transitions, Wi-Fi POST, encoded credentials, failure/success, stalled save timeout, duplicate-save guard and single status request');
+  console.log('PASS: first setup IP, simultaneous STA/AP addresses, default open network status and collapsed settings, mobile layouts, STA/AP/Ethernet status and DHCP/cable transitions, Wi-Fi POST, encoded credentials, failure/success, stalled save timeout, duplicate-save guard and single status request');
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -13,13 +13,13 @@ const request=async(route,body)=>{const r=await fetch(base+route,{method:'POST',
   const page=await browser.newPage({viewport:{width:1100,height:950}}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base+'/#settings');await page.waitForFunction(()=>window._forkState&&live.ready);
-  const ids=['networkSettings','hudPanel','rotorSettings','equipmentSettings','calibrationSettings','motionSettings','peersSettings','programSettings','presetSettings','otaSettings','signalSettings'];
+  const ids=['networkStatus','networkSettings','hudPanel','rotorSettings','equipmentSettings','calibrationSettings','motionSettings','peersSettings','programSettings','presetSettings','otaSettings','signalSettings'];
   assert.deepEqual(await page.locator('#settingsPanel > .settings-section:not(#setupTests)').evaluateAll(nodes=>nodes.map(n=>n.id)),ids);
-  assert.equal(await page.locator('#settingsPanel details').count(),11,'Every section has one consistent disclosure level');
+  assert.equal(await page.locator('#settingsPanel details').count(),ids.length,'Every section has one consistent disclosure level');
   for(const id of ids.filter(id=>id!=='peersSettings')){
    const section=page.locator('#'+id),summary=section.locator(':scope > details > summary');
    assert.equal(await summary.locator('h2').count(),1);assert.equal(await summary.locator('.section-caption').count(),1);
-   assert.equal(await section.locator(':scope > details').evaluate(e=>e.open),id==='networkSettings','Only network settings open by default');
+   assert.equal(await section.locator(':scope > details').evaluate(e=>e.open),id==='networkStatus','Only network status opens by default');
    await section.locator(':scope > details').evaluate(e=>e.open=false);
    await summary.click();assert(await section.locator('.settings-content').isVisible());
    await summary.focus();await page.keyboard.press('Space');assert(!await section.locator('.settings-content').isVisible());
@@ -56,7 +56,7 @@ const request=async(route,body)=>{const r=await fetch(base+route,{method:'POST',
   };
   for(const width of [320,390,600,760,1100,1440]){
    await page.setViewportSize({width,height:950});
-   await page.locator('#settingsPanel details').evaluateAll(nodes=>nodes.forEach(n=>n.open=false));
+   await page.locator('#settingsPanel details').evaluateAll(nodes=>nodes.forEach(n=>n.open=n.parentElement.id==='networkStatus'));
    await page.locator('.wrap').evaluate(e=>e.scrollTop=0);await page.screenshot({path:path.join(out,`overview-${width}.png`)});
    await page.locator('#settingsPanel details').evaluateAll(nodes=>nodes.forEach(n=>n.open=true));
    await page.waitForFunction(()=>{const c=document.getElementById('rchart');return c.clientWidth>0&&c.width===Math.round(c.clientWidth*devicePixelRatio);});
