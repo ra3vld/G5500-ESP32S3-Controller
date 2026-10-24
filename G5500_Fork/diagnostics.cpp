@@ -101,7 +101,7 @@ void Diagnostics::dbgView(std::string_view text, bool newline) {
     for (char ch : text) line += ch;
     diagMirror(line, newline);
   }
-#if FORK_NATIVE_USB
+#if FORK_NATIVE_USB && !CROWPANEL_USB_TRACE
   if (!nativeCommandMode_ && HWCDCSerial) {
     HWCDCSerial.write(reinterpret_cast<const uint8_t *>(text.data()), text.size());
     if (newline) HWCDCSerial.println();
@@ -111,7 +111,7 @@ void Diagnostics::dbgView(std::string_view text, bool newline) {
 }
 void Diagnostics::dbgPrint(const String &s) {
   diagMirror(s, false);
-#if FORK_NATIVE_USB
+#if FORK_NATIVE_USB && !CROWPANEL_USB_TRACE
   if (!nativeCommandMode_ && HWCDCSerial) {
     HWCDCSerial.print(s);
   }
@@ -120,7 +120,7 @@ void Diagnostics::dbgPrint(const String &s) {
 
 void Diagnostics::dbgPrintln(const String &s) {
   diagMirror(s, true);
-#if FORK_NATIVE_USB
+#if FORK_NATIVE_USB && !CROWPANEL_USB_TRACE
   if (!nativeCommandMode_ && HWCDCSerial) {
     HWCDCSerial.println(s);
   }
@@ -316,6 +316,10 @@ bool Diagnostics::rssiHistoryJson(JsonWriter &j, const int8_t *buf, uint16_t siz
 void Diagnostics::beginNativeUsb() {
 #if FORK_NATIVE_USB
   HWCDCSerial.begin();
+#if CROWPANEL_USB_TRACE
+  // Both the mutex and TX-ring paths use this timeout. Never wait on a host.
+  HWCDCSerial.setTxTimeoutMs(0);
+#endif
 #endif
 }
 void Diagnostics::readBootReason() {
@@ -355,21 +359,21 @@ void Diagnostics::writeLog(JsonWriter &out) const {
 
 namespace forkrot {
 int Diagnostics::nativeAvailable() {
-#if FORK_NATIVE_USB
+#if FORK_NATIVE_USB && !CROWPANEL_USB_TRACE
   return HWCDCSerial.available();
 #else
   return 0;
 #endif
 }
 int Diagnostics::nativeRead() {
-#if FORK_NATIVE_USB
+#if FORK_NATIVE_USB && !CROWPANEL_USB_TRACE
   return HWCDCSerial.read();
 #else
   return -1;
 #endif
 }
 size_t Diagnostics::nativeWrite(const uint8_t *data, size_t size) {
-#if FORK_NATIVE_USB
+#if FORK_NATIVE_USB && !CROWPANEL_USB_TRACE
   const int available=HWCDCSerial.availableForWrite();
   return available>0?HWCDCSerial.write(data,std::min(size,size_t(available))):0;
 #else
@@ -377,3 +381,14 @@ size_t Diagnostics::nativeWrite(const uint8_t *data, size_t size) {
 #endif
 }
 }
+
+#if CROWPANEL_USB_TRACE
+namespace forkrot {
+bool Diagnostics::traceUsbConnected() { return bool(HWCDCSerial); }
+size_t Diagnostics::traceUsbWrite(const uint8_t *data, size_t size) {
+  if (!HWCDCSerial) return 0;
+  const int available = HWCDCSerial.availableForWrite();
+  return available > 0 ? HWCDCSerial.write(data, std::min(size, size_t(available))) : 0;
+}
+}
+#endif

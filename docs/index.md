@@ -40,6 +40,7 @@
 - [Кнопки и джойстик](control/local-controls.md).
 - [HUD: удалённый пульт](control/hud.md).
 - [Генератор и отправка команд с компьютера](control/control-generator.md).
+- [Запись экрана CrowPanel, проигрыватель и видео](control/crowpanel-recording.md).
 
 ## Внешние программы и интеграции
 

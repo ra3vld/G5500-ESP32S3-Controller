@@ -12,6 +12,10 @@ public:
   explicit Diagnostics(Storage &storage) : storage_(storage) {}
   bool wifiCredentialsReadOk() const { return storage_.wifiCredentialsReadOk(); }
   void beginNativeUsb();
+#if CROWPANEL_USB_TRACE
+  bool traceUsbConnected();
+  size_t traceUsbWrite(const uint8_t *data, size_t size);
+#endif
   void nativeCommandMode() { nativeCommandMode_ = true; }
   int nativeAvailable();
   int nativeRead();

@@ -130,6 +130,9 @@ private:
 #include "hud_input.hpp"
 #include "crowpanel_ui.hpp"
 #include "crowpanel_board.hpp"
+#if CROWPANEL_USB_TRACE
+#include "crowpanel_trace.hpp"
+#endif
 namespace forkrot {
 class DeviceActions; class Calibration; class Hardware; class Diagnostics; class Network; class Storage;
 class Display {
@@ -147,6 +150,10 @@ class Display {
   uint32_t touchSerial_ = 0, touchSelection_ = 0, touchNoticeAt_ = 0;
   bool touchNotice_ = false;
   CrowPanelUi ui_;
+#if CROWPANEL_USB_TRACE
+  CrowPanelTrace<> trace_;
+  void serviceTrace(uint32_t now);
+#endif
   esp_lcd_panel_handle_t panel_ = nullptr;
   lv_display_t *display_ = nullptr;
   uint32_t lastInput_ = 0, lastTouch_ = 0, lastUi_ = 0;

@@ -10,6 +10,11 @@
 #include "drive_fault_text.hpp"
 #include <algorithm>
 #include <cstring>
+#if CROWPANEL_USB_TRACE
+#include <esp_app_desc.h>
+#include <esp_system.h>
+#include <esp_random.h>
+#endif
 namespace forkrot {
 namespace {
 portMUX_TYPE vsyncMux = portMUX_INITIALIZER_UNLOCKED;
@@ -60,7 +65,25 @@ crowpanel::DisplayStats crowpanel::displayStats() {
   return {count, frames, waitMaxUs, syncTimeouts, displayFailed,
           restarts.count, restarts.frame_buffer_mask, restarts.errors, minGap, maxGap};
 }
+#if CROWPANEL_USB_TRACE
+void Display::serviceTrace(uint32_t now) {
+  trace_.displayFailure(displayFailed, now);
+  trace_.service(now, diagnostics_.traceUsbConnected(), [this](const char *data, size_t size) {
+    return diagnostics_.traceUsbWrite(reinterpret_cast<const uint8_t *>(data), size);
+  });
+}
+#endif
 void Display::initLocalDisplay() {
+#if CROWPANEL_USB_TRACE
+  const auto *app = esp_app_get_description();
+  char firmware[80], build[48], elf[65];
+  std::snprintf(firmware, sizeof firmware, "%s %s", app->project_name, app->version);
+  std::snprintf(build, sizeof build, "%s %s", app->date, app->time);
+  for (unsigned i = 0; i < 32; ++i)
+    std::snprintf(elf + 2 * i, sizeof elf - 2 * i, "%02x", unsigned(app->app_elf_sha256[i]));
+  trace_.begin((uint64_t(esp_random()) << 32) | esp_random(), firmware, build, elf);
+  serviceTrace(millis());
+#endif
   crowpanel::beginEncoder();
   panel_ = crowpanel::beginPanel();
   if (!panel_) { diagnostics_.dbgPrintln("[CrowPanel] LCD/PSRAM/PCF8574 initialization failed"); return; }
@@ -88,6 +111,9 @@ void Display::initLocalDisplay() {
   diagnosticPanel = panel_;
   ui_.create();
   ui_.update(CrowPanelView{});
+#if CROWPANEL_USB_TRACE
+  trace_.view(CrowPanelView{}, crowpanel::TouchAction::None, CrowPanelTraceState{}, millis());
+#endif
   lv_refr_now(display_);
   if (!displayFailed && board::PIN_BACKLIGHT >= 0) digitalWrite(board::PIN_BACKLIGHT, HIGH);
   diagnostics_.dbgPrintln(displayFailed ? "[CrowPanel] VSYNC timeout; display disabled" :
@@ -102,6 +128,9 @@ void Display::serviceKnob() {
   const bool healthy = crowpanel::readButton(down);
   inputHealthy_ = healthy;
   const int delta = crowpanel::encoderDelta();
+#if CROWPANEL_USB_TRACE
+  trace_.knob(healthy, down, delta, now);
+#endif
   if (speedScreen_) {
     knob_.cancelInput(); hudKnob_.cancelInput();
     if (!healthy || (down && !speedKnobDown_)) runtime_.controller.stopNow(-1, now);
@@ -123,6 +152,10 @@ void Display::serviceKnob() {
 }
 void Display::serviceTouch() {
   serviceKnob();
+#if CROWPANEL_USB_TRACE
+  // Pump even while the display is waiting for VSYNC or has failed.
+  serviceTrace(millis());
+#endif
   const uint32_t now = millis();
   if (uint32_t(now - lastTouch_) < 10) return;
 #if CROWPANEL_TOUCH_TRACE
@@ -157,6 +190,9 @@ void Display::serviceTouch() {
       if (event.gesture != tracedGesture) tracedCancelled = false;
       tracedGesture = event.gesture;
     }
+#endif
+#if CROWPANEL_USB_TRACE
+    trace_.touch(touchHealthy && inputHealthy_, touch, x, y, event, touchButtons_.pressed(), now);
 #endif
     const auto action = event.action;
     if (!touch) speedRequested_[0] = speedRequested_[1] = -1;
@@ -237,6 +273,9 @@ void Display::serviceTouch() {
   hardware_.controlRotator(); // Apply STOP from local input before returning.
 }
 void Display::updateLocalDisplay() {
+#if CROWPANEL_USB_TRACE
+  serviceTrace(millis());
+#endif
   if (!display_ || displayFailed) return;
   if (flushPending_) {
     uint32_t submitted = 0, presented = 0;
@@ -392,6 +431,21 @@ void Display::updateLocalDisplay() {
     view.bluetoothConnected = view.bluetoothEnabled && network_.bluetoothConnected();
     std::snprintf(view.heap, sizeof view.heap, "Heap: %lu КБ", static_cast<unsigned long>(heapFreeBytes() / 1024));
     ui_.update(view);
+#if CROWPANEL_USB_TRACE
+    CrowPanelTraceState state;
+    state.model = int(controller.model); state.mode = int(controller.mode);
+    state.simulation = controller.hardware.simulation; state.online = online;
+    state.displayFailed = displayFailed;
+    for (unsigned i = 0; i < 2; ++i) {
+      const auto &a = controller.axes[i]; auto &s = state.axes[i];
+      s.current = a.current; s.target = a.target;
+      s.calibrated = a.calibrated; s.targetKnown = a.targetKnown;
+      s.direction = a.direction; s.motionPhase = int(a.motionPhase); s.motionError = int(a.motionError);
+      s.outputPercent = a.speedOutputPercent;
+      s.measuredVelocity = a.measuredVelocity; s.requestedVelocity = a.requestedVelocity;
+    }
+    trace_.view(view, touchButtons_.pressed(), state, now);
+#endif
   }
   // All LVGL calls stay on the Arduino loop task; no locks or cross-task writes.
   lv_timer_handler();

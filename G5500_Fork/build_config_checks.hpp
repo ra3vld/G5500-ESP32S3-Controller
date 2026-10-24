@@ -91,6 +91,18 @@ static_assert(BOARD_PROFILE >= BOARD_AUTO && BOARD_PROFILE <= BOARD_WAVESHARE_S3
 #if CROWPANEL_LOCAL_DRIVE && defined(ARDUINO) && (!ARDUINO_USB_MODE || !ARDUINO_USB_CDC_ON_BOOT)
 #error "CrowPanel local AZ requires native USB diagnostics; UART0 owns motor pins"
 #endif
+#if CROWPANEL_USB_TRACE != 0 && CROWPANEL_USB_TRACE != 1
+#error "CROWPANEL_USB_TRACE must be 0 or 1"
+#endif
+#if CROWPANEL_USB_TRACE && (SELECTED_BOARD != BOARD_CROWPANEL_21 || DISPLAY_KIND != DISPLAY_CROWPANEL_21)
+#error "CrowPanel USB trace requires BOARD_CROWPANEL_21 and its display"
+#endif
+#if CROWPANEL_USB_TRACE && defined(ARDUINO) && (!ARDUINO_USB_MODE || !ARDUINO_USB_CDC_ON_BOOT)
+#error "CrowPanel USB trace requires native hardware USB CDC on boot"
+#endif
+#if CROWPANEL_USB_TRACE && CROWPANEL_TOUCH_TRACE
+#error "CrowPanel USB trace owns USB; disable the old CROWPANEL_TOUCH_TRACE text logger"
+#endif
 #if BTS7960_PWM_INVERTED != 0 && BTS7960_PWM_INVERTED != 1
 #error "BTS7960_PWM_INVERTED must be 0 or 1"
 #endif

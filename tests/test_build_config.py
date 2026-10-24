@@ -63,10 +63,22 @@ class BuildConfigTests(unittest.TestCase):
     def test_defaults(self):
         self.compile(dict(BOARD_PROFILE=0, SELECTED_BOARD=1, DISPLAY_KIND=0, TFT_DISPLAY_ENABLED=0,
                           BLUETOOTH_ENABLED=0, BLUETOOTH_BACKEND=0, BLUETOOTH_MODE=3,
-                          DRIVE_SIMULATION=0, DRIVE_INTERFACE=0,
+                          DRIVE_SIMULATION=0, DRIVE_INTERFACE=0, CROWPANEL_USB_TRACE=0,
                           ESP32_FORCE_AP_STA=0, **{'forkrot::board::WIFI_AP_ALWAYS_ON': 1},
                           BTS7960_PWM_INVERTED=0, USER_BUTTON_GPIO=0, USER_BUTTON_ACTIVE_LOW=1,
                           USER_BUTTON_PULLUP=1, AZ_STOP_TOLERANCE_DEG='5.0f', EL_STOP_TOLERANCE_DEG='5.0f'))
+
+    def test_crowpanel_usb_trace_profile(self):
+        flags = ['BOARD_PROFILE=5', 'DISPLAY_KIND=3', 'USER_BUTTON_GPIO=-1',
+                 'BLUETOOTH_ENABLED=0', 'CROWPANEL_USB_TRACE=1']
+        self.compile(dict(CROWPANEL_USB_TRACE=1), flags)
+        self.compile({}, flags + ['CROWPANEL_TOUCH_TRACE=1'], success=False)
+        self.compile({}, ['CROWPANEL_USB_TRACE=1'], success=False)
+        self.compile({}, ['CROWPANEL_USB_TRACE=2'], success=False)
+        config = configparser.ConfigParser(interpolation=None)
+        config.read(ROOT / 'platformio.ini')
+        self.assertEqual(config['env:crowpanel_21_trace']['extends'], 'env:crowpanel_21')
+        self.assertIn('-D CROWPANEL_USB_TRACE=1', config['env:crowpanel_21_trace']['build_flags'])
 
     def test_edited_settings_and_override_priority(self):
         edited = dict(BOARD_PROFILE=3, DISPLAY_KIND=2, BLUETOOTH_ENABLED=0, DRIVE_INTERFACE=2,

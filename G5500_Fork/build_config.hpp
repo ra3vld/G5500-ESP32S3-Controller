@@ -40,6 +40,11 @@
 #define CROWPANEL_LOCAL_DRIVE 0
 #endif
 
+// Расширенная телеметрия экрана и ввода по native USB; USB-команды отключены.
+#ifndef CROWPANEL_USB_TRACE
+#define CROWPANEL_USB_TRACE 0
+#endif
+
 // 2. ДИСПЛЕЙ, BLUETOOTH И WI-FI
 // DISPLAY_NONE    — без дисплея.
 // DISPLAY_ILI9341 — TFT ILI9341 + сенсор XPT2046.
