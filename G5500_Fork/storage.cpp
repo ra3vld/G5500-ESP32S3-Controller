@@ -999,6 +999,14 @@ struct HudDiskConfigV2 {
   uint8_t readyHigh = 1, reserved = 0;
   uint32_t crc = 0;
 };
+struct HudDiskConfigV3 {
+  HudDiskConfig base;
+  uint32_t baud = 115200;
+  uint16_t intervalMs = 100;
+  uint8_t readyHigh = 1, simulationEnabled = 0;
+  uint32_t crc = 0;
+};
+static_assert(sizeof(HudDiskConfigV2) == sizeof(HudDiskConfigV3));
 struct HudDiskPeer {
   uint32_t idLo = 0, idHi = 0, address = 0;
   uint16_t port = 4534;
@@ -1010,8 +1018,8 @@ static_assert(sizeof(HudDiskPeer) == 68);
 } // namespace
 bool Storage::saveHudConfig(const HudConfig &c) {
   if (!c.link.valid()) return false;
-  HudDiskConfigV2 d;
-  d.base.version = 2;
+  HudDiskConfigV3 d;
+  d.base.version = 3;
   d.base.role = uint8_t(c.role);
   d.base.wifi = uint8_t(c.wifi);
   d.base.uart = c.uart;
@@ -1020,6 +1028,7 @@ bool Storage::saveHudConfig(const HudConfig &c) {
   d.base.selectedHi = uint32_t(c.selected >> 32);
   d.baud = c.link.baud; d.intervalMs = c.link.intervalMs;
   d.readyHigh = c.link.readyHigh;
+  d.simulationEnabled = c.simulationEnabled;
   d.crc = hudCrc(reinterpret_cast<const uint8_t *>(&d), sizeof d - 4);
   if (!prefs_.begin("hudcfg", false)) {
     prefs_.end();
@@ -1027,7 +1036,7 @@ bool Storage::saveHudConfig(const HudConfig &c) {
   }
   prefs_.putBytes("config", &d, sizeof d);
   prefs_.end();
-  HudDiskConfigV2 check;
+  HudDiskConfigV3 check;
   const bool opened = prefs_.begin("hudcfg", true);
   const bool ok = opened && prefs_.getBytes("config", &check, sizeof check) == sizeof check &&
                   std::memcmp(&d, &check, sizeof d) == 0;
@@ -1035,7 +1044,9 @@ bool Storage::saveHudConfig(const HudConfig &c) {
   return ok;
 }
 bool Storage::saveHudPeers(const Hud &hud) {
-  const size_t count = hud.count();
+  size_t count = 0;
+  for (auto *p = hud.peers(); p; p = p->next.get())
+    if (p->saved && !p->simulated()) ++count;
   if (count > (SIZE_MAX - 8) / sizeof(HudDiskPeer))
     return false;
   const size_t size = 8 + count * sizeof(HudDiskPeer);
@@ -1047,7 +1058,7 @@ bool Storage::saveHudPeers(const Hud &hud) {
   std::memcpy(data.get(), &version, 4);
   size_t offset = 4;
   for (auto *p = hud.peers(); p; p = p->next.get())
-    if (p->saved) {
+    if (p->saved && !p->simulated()) {
       HudDiskPeer d;
       d.idLo = uint32_t(p->id);
       d.idHi = uint32_t(p->id >> 32);
@@ -1081,15 +1092,18 @@ void Storage::loadHud(Runtime &runtime, bool peers) {
   if (opened && prefs_.getBytesLength("config")) {
     HudDiskConfig d;
     HudLinkConfig link;
+    bool simulationEnabled = false;
     bool valid = false;
     if (prefs_.getBytesLength("config") == sizeof d) {
       valid = prefs_.getBytes("config", &d, sizeof d) == sizeof d && d.version == 1 &&
           hudCrc(reinterpret_cast<const uint8_t *>(&d), sizeof d - 4) == d.crc;
     } else if (prefs_.getBytesLength("config") == sizeof(HudDiskConfigV2)) {
-      HudDiskConfigV2 next;
-      valid = prefs_.getBytes("config", &next, sizeof next) == sizeof next && next.base.version == 2 &&
+      HudDiskConfigV3 next;
+      valid = prefs_.getBytes("config", &next, sizeof next) == sizeof next &&
+          (next.base.version == 2 || next.base.version == 3) &&
           hudCrc(reinterpret_cast<const uint8_t *>(&next), sizeof next - 4) == next.crc &&
-          next.readyHigh <= 1 && !next.reserved;
+          next.readyHigh <= 1 && next.simulationEnabled <= (next.base.version == 3 ? 1 : 0);
+      simulationEnabled = next.base.version == 3 && next.simulationEnabled;
       d = next.base; d.version = 1;
       link.baud=next.baud; link.intervalMs=next.intervalMs;
       link.readyHigh=next.readyHigh;
@@ -1098,6 +1112,8 @@ void Storage::loadHud(Runtime &runtime, bool peers) {
         d.version != 1 || d.role > 1 || d.wifi > 2 || d.uart > 1 || !d.port || d.port > 65535 ||
         d.reserved) {
       hud.config.role = DeviceRole::Hud;
+      hud.config.simulationEnabled = false;
+      if (hud.config.selected == HUD_SIMULATION_ID) hud.config.selected = 0;
       hud.catalogError = true;
     } else {
       hud.config.role = DeviceRole(d.role);
@@ -1106,6 +1122,8 @@ void Storage::loadHud(Runtime &runtime, bool peers) {
       hud.config.port = uint16_t(d.port);
       hud.config.selected = uint64_t(d.selectedLo) | (uint64_t(d.selectedHi) << 32);
       hud.config.link = link;
+      hud.config.simulationEnabled = simulationEnabled;
+      if (!simulationEnabled && hud.config.selected == HUD_SIMULATION_ID) hud.config.selected = 0;
     }
   }
   const size_t size = peers && opened && hud.isHud() ? prefs_.getBytesLength("peers") : 0;

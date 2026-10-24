@@ -55,7 +55,7 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 .device-section{margin-top:14px;border-top:1px solid var(--b);padding-top:14px}.device-section summary{line-height:1.4;padding:4px 0}.device-section[open] summary{margin-bottom:14px}
 .device-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.device-fields .field{min-width:0}.device-fields label{display:block;margin-bottom:7px;color:var(--m);font-size:14px;line-height:1.4}.device-fields input,.device-fields select{min-height:44px;max-width:100%}
 .device-panel .btn{min-height:44px;font-size:15px;padding:10px 16px;border-radius:10px;cursor:pointer;touch-action:manipulation;overflow-wrap:anywhere}.device-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}.device-panel form{margin:0}.device-panel .hint{margin:12px 0}.device-address{display:grid;gap:12px;padding:16px 0}.device-address>.btn{justify-self:start}
-.device-list{display:grid;gap:10px}.device-peer{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px}.device-peer>.btn:first-child{text-align:left}.device-peer-note{grid-column:1/-1;color:var(--m);font-size:13px}.device-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0;font-size:13px;color:var(--m)}.device-pagination>span{text-align:center;overflow-wrap:anywhere}
+.device-list{display:grid;gap:10px}.device-peer{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px}.device-peer.select-only{grid-template-columns:minmax(0,1fr)}.device-peer>.btn:first-child{text-align:left}.device-peer-note{grid-column:1/-1;color:var(--m);font-size:13px}.device-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0;font-size:13px;color:var(--m)}.device-pagination>span{text-align:center;overflow-wrap:anywhere}
 @media(max-width:600px){.device-fields{grid-template-columns:minmax(0,1fr);gap:14px}.device-actions>.btn,.device-address>.btn{width:100%}.device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}.device-peer>.btn:first-child{grid-column:1/-1}.device-pagination .btn{padding:10px 12px}}
 [hidden]{display:none!important}.nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--a);outline-offset:2px}
 .history-intro{margin:20px 0}.history-intro h2{font-size:24px;margin:0 0 8px}.history-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}.history-entry.card{margin:0;padding:18px 20px}.history-entry h3{font-size:16px;color:var(--a);margin:0 0 12px}.history-entry ul{margin:0;padding-left:20px;line-height:1.6;font-size:15px}.history-entry li+li{margin-top:8px}#historyPanel{padding-bottom:16px}
@@ -241,6 +241,10 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 </div>
 <div class="card"><div class="label">Предустановки</div><div id="presetButtons" class="preset-grid" style="margin-top:10px"></div>
 </div>
+<section class="card hide" id="hudSelector" aria-labelledby="hudSelectorLabel"><div class="label" id="hudSelectorLabel">Поворотки</div>
+<div class="device-list" id="hudPeers" style="margin-top:10px"></div>
+<div class="device-pagination"><button class="btn" id="hudPrev" onclick="hudPage(-1)">Назад</button><span id="hudPageInfo"></span><button class="btn" id="hudNext" onclick="hudPage(1)">Далее</button></div>
+</section>
 <section class="card" id="cameraCard" hidden aria-labelledby="cameraTitle"><h2 id="cameraTitle">Камера</h2><p id="cameraMessage" class="hint" role="status">Подключение к камере…</p><img id="cameraImage" class="camera-image" alt="Изображение с камеры" hidden width="640" height="480"/></section>
 <div class="card current-status" id="currentStatus" aria-label="Текущий статус устройства">
 <div><span>Сеть</span><b id="statusWifi">—</b></div>
@@ -351,9 +355,11 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <h3 id="hudHeading">Контроллер поворотки</h3>
 <div class="hint" id="hudLink" role="status"></div>
 <div class="hide" id="hudControls">
+<label class="check-field"><input id="hudSimulationEnabled" type="checkbox" onchange="saveHudSimulation(this)"/>Показывать имитацию в списке повороток</label>
+<p class="field-help">Встроенная имитация работает без другого контроллера. Настройка сохраняется сразу. При отключении выбранная имитация останавливается, выбор сбрасывается.</p>
 <p class="hint">Команды программ, подключённых к HUD, идут выбранной поворотке.</p>
-<div class="device-list" id="hudPeers"></div>
-<div class="device-pagination"><button class="btn" id="hudPrev" onclick="hudPage(-1)">Назад</button><span id="hudPageInfo"></span><button class="btn" id="hudNext" onclick="hudPage(1)">Далее</button></div>
+<div class="device-list" id="hudPeerSettings"></div>
+<div class="device-pagination"><button class="btn" id="hudSettingsPrev" onclick="hudPage(-1)">Назад</button><span id="hudSettingsPageInfo"></span><button class="btn" id="hudSettingsNext" onclick="hudPage(1)">Далее</button></div>
 <section class="settings-group"><h3>Добавить поворотку</h3>
 <div class="form-actions"><button class="btn" onclick="hudSearch()">Найти в сети</button><button class="btn" id="hudUartSearch" onclick="hudSearch(true)">Найти по UART</button></div>
 <form class="device-address" onsubmit="event.preventDefault();hudSearch(false,true)">
@@ -665,7 +671,7 @@ function updateConnection(){
   const hud=j.deviceRole==='hud',selected=j.hudSelected&&!/^0+$/.test(j.hudSelected);
   if(hud&&!selected){state='unselected';text='Поворотка не выбрана';hint='Выберите поворотку в настройках пульта.';}
   else if(hud&&!j.hudOnline){state='offline';text='Нет связи с повороткой';hint='Пульт на связи, но выбранная поворотка '+(j.hudName||j.hudSelected)+' недоступна.';}
-  else{state='online';text='Поворотка на связи';hint=hud?'Выбрана '+(j.hudName||j.hudSelected)+' · '+(j.hudTransport==='uart'?'UART':'Wi-Fi'):'Браузер получает состояние контроллера поворотки.';}
+  else{state='online';text='Поворотка на связи';hint=hud?'Выбрана '+(j.hudName||j.hudSelected)+' · '+(j.hudTransport==='simulation'?'Встроенная имитация':j.hudTransport==='uart'?'UART':'Wi-Fi'):'Браузер получает состояние контроллера поворотки.';}
  }else if(connection.httpOnline!==null){state='offline';text='Нет связи с устройством';hint='Браузер не получает актуальное состояние '+(j?.deviceRole==='hud'?'пульта.':'контроллера поворотки.');}
  const addresses=networkAddresses(j);
  if(addresses.length)text+=' · '+(reachable?'':'Последние адреса: ')+addresses.join(' · ');
@@ -1535,25 +1541,29 @@ let hudSelection;
 let hudOffset=0,hudDiscoveredOffset=0,hudTotal=0,hudDiscoveryTotal=0,hudPollBusy=false,hudLastPoll=0;
 async function hudPage(delta){hudOffset=Math.max(0,Math.min(Math.max(0,hudTotal-1),hudOffset+delta*8));await loadHudPeers()}
 async function hudDiscoveryPage(delta){hudDiscoveredOffset=Math.max(0,Math.min(Math.max(0,hudDiscoveryTotal-1),hudDiscoveredOffset+delta*8));await loadHudDiscovery()}
-function hudRow(peer,discovered){
- const row=document.createElement('div');row.className='device-peer';
+function hudRow(peer,discovered,manage=false){
+ const row=document.createElement('div');row.className='device-peer'+(!discovered&&!manage?' select-only':'');
  const select=document.createElement('button');select.className='btn'+(peer.selected?' good':'');
+ if(!discovered)select.setAttribute('aria-pressed',String(!!peer.selected));
  const age=peer.ageMs===null?'нет данных':Math.round(peer.ageMs/1000)+' с назад';
  const position=axis=>peer[axis+'Calibrated']===false?'NC':Number.isFinite(peer[axis])?Number(peer[axis]).toFixed(1)+'°':'—';
  select.textContent=peer.name+' · '+(peer.online?'AZ '+position('az')+(peer.hasEl===false?'':' / EL '+position('el'))+(peer.moving?' · вращение':''):'нет связи')+' · '+age;
  select.onclick=async()=>{await forkPost(discovered?'/api/hud/peers':'/api/hud/select',{id:peer.id});await loadHudPeers();if(discovered)await loadHudDiscovery()};row.append(select);
- if(!discovered){
+ if(manage&&!discovered&&peer.transport!=='simulation'){
   const rename=document.createElement('button');rename.className='btn';rename.textContent='Имя';rename.onclick=async()=>{const name=prompt('Имя поворотки',peer.name);if(name!==null){await forkPost('/api/hud/peers',{id:peer.id,name});await loadHudPeers()}};row.append(rename);
   const remove=document.createElement('button');remove.className='btn';remove.textContent='Удалить';remove.onclick=async()=>{await forkPost('/api/hud/peers',{id:peer.id,action:'remove'});await loadHudPeers()};row.append(remove);
- }else{const note=document.createElement('span');note.className='device-peer-note';note.textContent='Нажмите, чтобы сохранить';row.append(note)}
+ }else if(discovered||peer.transport==='simulation'){const note=document.createElement('span');note.className='device-peer-note';note.textContent=peer.transport==='simulation'?'Встроенная имитация':'Нажмите, чтобы сохранить';row.append(note)}
  return row;
 }
 async function loadHudPeers(){
  if(otaBusy||hudPollBusy)return;hudPollBusy=true;
  try{const data=await (await fetch('/api/hud/peers?offset='+hudOffset,{cache:'no-store'})).json();hudTotal=data.total;
  const box=document.getElementById('hudPeers');box.replaceChildren(...data.items.map(p=>hudRow(p,false)));
- document.getElementById('hudPageInfo').textContent=hudTotal?`${hudOffset+1}–${Math.min(hudOffset+8,hudTotal)} / ${hudTotal}`:'Добавьте поворотку';
- document.getElementById('hudPrev').disabled=hudOffset===0;document.getElementById('hudNext').disabled=hudOffset+8>=hudTotal;
+ document.getElementById('hudPeerSettings').replaceChildren(...data.items.map(p=>hudRow(p,false,true)));
+ for(const prefix of ['hud','hudSettings']){
+  document.getElementById(prefix+'PageInfo').textContent=hudTotal?`${hudOffset+1}–${Math.min(hudOffset+8,hudTotal)} / ${hudTotal}`:'Добавьте поворотку';
+  document.getElementById(prefix+'Prev').disabled=hudOffset===0;document.getElementById(prefix+'Next').disabled=hudOffset+8>=hudTotal;
+ }
  }catch(e){}finally{hudPollBusy=false;hudLastPoll=Date.now()}
 }
 async function loadHudDiscovery(){if(otaBusy)return;try{const data=await (await fetch('/api/hud/peers?discovered=1&offset='+hudDiscoveredOffset,{cache:'no-store'})).json();hudDiscoveryTotal=data.total;document.getElementById('hudDiscovered').replaceChildren(...data.items.map(p=>hudRow(p,true)));document.getElementById('hudDiscoveryInfo').textContent='Найдено: '+data.total}catch(e){}}
@@ -1563,15 +1573,18 @@ async function hudSearch(uart=false,manual=false){
 }
 function hudUartFields(){const box=document.getElementById('hudUartSettings'),enabled=document.getElementById('deviceUart').value==='1';box.hidden=!enabled;box.querySelectorAll('input,select').forEach(el=>el.disabled=!enabled);}
 async function saveHudDevice(e){e.preventDefault();const data=Object.fromEntries(new FormData(e.target));if(data.refreshHz!==undefined){data.intervalMs=String(Math.round(1000/Number(data.refreshHz)));delete data.refreshHz;}if(await forkPost('/api/device',data))delete e.target.dataset.dirty;}
+async function saveHudSimulation(input){const enabled=input.checked;input.disabled=true;try{if(!await forkPost('/api/device',{simulationEnabled:enabled?'1':'0'}))input.checked=!enabled;await loadHudPeers();}finally{input.disabled=false;}}
 function updateHud(j){
  const hud=j.deviceRole==='hud';
  document.getElementById('peersSettings')?.classList.toggle('hide',!hud);document.getElementById('rotorSettings').classList.toggle('hide',hud);
- const selected=document.getElementById('selectedRotor');selected.classList.toggle('hide',!hud);selected.textContent=hud?(j.hudName||'Выберите поворотку в настройках')+' · '+(j.hudOnline?'На связи':'Нет связи'):'';
+ document.getElementById('hudSelector').classList.toggle('hide',!hud);
+ const selected=document.getElementById('selectedRotor');selected.classList.toggle('hide',!hud);selected.textContent=hud?(j.hudName||'Выберите поворотку ниже')+' · '+(j.hudOnline?'На связи':'Нет связи'):'';
  if(hud&&hudSelection!==undefined&&hudSelection!==j.hudSelectionEpoch){document.getElementById('taz').value='';document.getElementById('tel').value='';fillPreset();}
  hudSelection=j.hudSelectionEpoch;
  document.getElementById('hudControls').classList.toggle('hide',!hud);
+ const simulation=document.getElementById('hudSimulationEnabled');if(!simulation.disabled)simulation.checked=!!j.hudSimulationEnabled;
  document.getElementById('hudHeading').textContent=hud?'HUD · '+(j.hudName||'Выберите поворотку')+(j.remoteDrive?' · '+j.model+' / '+j.remoteDrive:''):'Контроллер поворотки';
- document.getElementById('hudLink').textContent=hud?(j.hudOnline?'Связь: '+j.hudTransport+' · '+j.hudAgeMs+' мс':'Нет связи с выбранной повороткой'):'';
+ document.getElementById('hudLink').textContent=hud?(j.hudOnline?(j.hudTransport==='simulation'?'Встроенная имитация':'Связь: '+j.hudTransport+' · '+j.hudAgeMs+' мс'):'Нет связи с выбранной повороткой'):'';
  if(j.hudCatalogError)document.getElementById('hudLink').textContent+=' · Ошибка памяти или сохранённых настроек';
  document.getElementById('hudUartSearch').disabled=!j.hudUart;
  const f=document.getElementById('hudConfig');if(!f.dataset.dirty&&!f.contains(document.activeElement)){f.elements.role.value=j.deviceRole||'controller';f.elements.wifi.value=['existing','host','client'][j.hudWifi||0];f.elements.uart.value=j.hudUart?'1':'0';f.elements.port.value=j.hudPort||4534;f.elements.baud.value=String(j.hudBaud||115200);f.elements.refreshHz.value=Number((1000/(j.hudIntervalMs||100)).toFixed(1));f.elements.readyHigh.value=String(j.hudReadyHigh??1);hudUartFields();}
@@ -1607,7 +1620,7 @@ function settingsCard(id,title,caption){
 const setupRoot=document.getElementById('settingsPanel');
 const programs=settingsCard('programSettings','Внешние программы','Порты, имя N1MM и выполнение команд');
 const equipment=settingsCard('equipmentSettings','Оборудование','Привод, датчики, Bluetooth, дисплей, входы и GPIO');
-const peers=settingsCard('peersSettings','Поворотки','Поиск и выбор контроллера для HUD');
+const peers=settingsCard('peersSettings','Поворотки','Добавление и названия контроллеров для HUD');
 const programBody=programs.querySelector('.settings-content'),equipmentBody=equipment.querySelector('.settings-content');
 const sharedForm=document.getElementById('forkSettings');
 function moveShared(node,parent){for(const input of node.querySelectorAll('input,select,textarea,button'))input.setAttribute('form','forkSettings');parent.append(node);}

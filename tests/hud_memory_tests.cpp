@@ -60,6 +60,7 @@ int main() {
   client.setTransport(&b);
   server.begin(1, 100);
   client.config.role = DeviceRole::Hud;
+  client.config.simulationEnabled = true;
   client.begin(2, 200);
   motor.feedback(30, 40, true, true);
   for (auto &p : motor.presets)
@@ -77,7 +78,8 @@ int main() {
   tick(100);
   assert(client.available());
   deny = true;
-  assert(!client.add(3, {3, 4534, false}, "No memory") && client.catalogError && client.count() == 1);
+  assert(!client.add(3, {3, 4534, false}, "No memory") && client.catalogError && client.count() == 2);
+  assert(!client.select(HUD_SIMULATION_ID) && client.config.selected == 1 && client.available());
   for (unsigned i = 0; i < 10000; ++i) {
     const uint32_t now = 200 + i * 100;
     assert(mirror.target({float(60 + i % 100), 0, true, false}, false, now) == Result::Deferred);
@@ -92,9 +94,11 @@ int main() {
   Protocol emptyProtocol(empty);
   Hud failed(empty, emptyProtocol);
   failed.config.role = DeviceRole::Hud;
+  failed.config.simulationEnabled = true; failed.config.selected = HUD_SIMULATION_ID;
   failed.begin(3, 300);
   assert(failed.catalogError && !failed.available());
   assert(empty.jog(0, 1, false, 0) == Result::Unavailable);
+  assert(failed.setSimulationEnabled(false) && !failed.config.simulationEnabled && !failed.config.selected);
   deny = false;
   std::cout << "PASS: 10000 HUD poll/command/STOP cycles with long labels and allocations forbidden; "
                "catalogue/client OOM is explicit\n";

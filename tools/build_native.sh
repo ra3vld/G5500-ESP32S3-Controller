@@ -192,6 +192,8 @@ done
 
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/hud_tests.cpp -o build/hud_tests
 ./build/hud_tests
+${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/hud_simulation_tests.cpp -o build/hud_simulation_tests
+./build/hud_simulation_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/hud_position_json_tests.cpp -o build/hud_position_json_tests
 ./build/hud_position_json_tests
 for drive in 0 1 2; do

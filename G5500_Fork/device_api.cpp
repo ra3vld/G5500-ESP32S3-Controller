@@ -1020,6 +1020,26 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     return;
   }
   if(path=="/api/device" && method=="POST") {
+    if (web_.hasArg("simulationEnabled")) {
+      for (auto entry : arguments)
+        if (entry.first != "simulationEnabled" && entry.first != "setupToken") { reply(400,"invalid"); return; }
+      auto &hud = runtime_.hud;
+      const auto value = web_.arg("simulationEnabled");
+      if (!hud.isHud()) { reply(409,"hud_only"); return; }
+      if (value != "0" && value != "1") { reply(400,"invalid"); return; }
+      const bool enabled = value == "1", previous = hud.config.simulationEnabled;
+      if (enabled && !hud.setSimulationEnabled(true)) { reply(507,"storage_full"); return; }
+      auto next = hud.config;
+      next.simulationEnabled = enabled;
+      if (!enabled && next.selected == HUD_SIMULATION_ID) next.selected = 0;
+      if (!storage_.saveHudConfig(next)) {
+        if (enabled && !previous) hud.setSimulationEnabled(false);
+        reply(507,"storage_full"); return;
+      }
+      if (!enabled) hud.setSimulationEnabled(false);
+      actions_.invalidateDisplay();
+      reply(200,"ok"); return;
+    }
     auto config = runtime_.hud.config;
     const String role = web_.arg("role"), wifi = web_.arg("wifi"), uart = web_.arg("uart");
     unsigned port = 0;
@@ -1130,6 +1150,10 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     auto *p = hud.peer(id);
     if (!p) {
       web_.send(404, "application/json", "{\"ok\":false,\"result\":\"discover_first\"}");
+      return;
+    }
+    if (p->simulated()) {
+      web_.send(400, "application/json", "{\"ok\":false,\"result\":\"invalid_peer\"}");
       return;
     }
     const bool oldSaved = p->saved;

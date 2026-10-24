@@ -8,10 +8,13 @@
 namespace forkrot {
 enum class DeviceRole : uint8_t { Controller, Hud };
 enum class HudWifi : uint8_t { Existing, Host, Client };
+// Reserved multicast address: cannot be a controller's ESP32 MAC address.
+inline constexpr uint64_t HUD_SIMULATION_ID = 0xfffffffffffeULL;
 struct HudConfig {
   DeviceRole role = DeviceRole::Controller;
   HudWifi wifi = HudWifi::Existing;
   bool uart = false;
+  bool simulationEnabled = false;
   uint16_t port = 4534;
   uint64_t selected = 0;
   HudLinkConfig link;
@@ -75,6 +78,7 @@ struct HudPeer {
   uint32_t capabilitySerial = 0, capabilityAt = 0;
   bool received = false, saved = false;
   std::unique_ptr<HudPeer> next;
+  bool simulated() const { return id == HUD_SIMULATION_ID; }
   bool fresh(uint32_t now, uint32_t age = 0) const {
     return received && uint32_t(now - receivedAt) < (age ? age : freshnessMs ? freshnessMs : live ? 1000u : 2000u);
   }
@@ -141,6 +145,7 @@ public:
   HudPeer *add(uint64_t node, HudEndpoint, const char *label, bool saved = true);
   bool remove(uint64_t);
   bool select(uint64_t);
+  bool setSimulationEnabled(bool);
   size_t count(bool saved = true) const;
   bool writePeers(JsonWriter &, size_t offset, size_t limit, bool discovered = false) const;
   void writeStatus(JsonWriter &, bool live = false) const;
@@ -152,6 +157,14 @@ private:
   Protocol &protocol_;
   HudTransport *transport_ = nullptr;
   std::unique_ptr<HudPeer> peers_;
+  struct Simulation {
+    Controller controller;
+    Protocol protocol{controller};
+    Simulation();
+  };
+  std::unique_ptr<Simulation> simulation_;
+  void updateSimulation();
+  void expireLeases(Controller &);
   struct Job {
     ControlCommand command;
     HudEndpoint endpoint;
@@ -227,6 +240,7 @@ private:
   void releaseManual();
   void publishLive();
   void sendRenew(unsigned axis);
-  Result execute(const ControlCommand &, uint64_t source, uint64_t session, uint32_t seq);
+  Result execute(const ControlCommand &, uint64_t source, uint64_t session, uint32_t seq,
+                 Controller *local = nullptr);
 };
 } // namespace forkrot

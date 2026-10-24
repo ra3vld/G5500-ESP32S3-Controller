@@ -141,6 +141,10 @@ int main(){
       calProfiles[oldIndex] = calibration.state();
       if(path=="/api/motion") {
         char data[4096];JsonWriter j(data,sizeof data);writeMotionConfiguration(j,c);response.body=j.data();
+      } else if (path == "/api/device" && form.count("simulationEnabled")) {
+        const auto value = form["simulationEnabled"];
+        const bool ok = (value == "0" || value == "1") && hud.setSimulationEnabled(value == "1");
+        response = {ok ? 200 : 400, ok ? "{\"ok\":true,\"result\":\"ok\"}" : "{\"ok\":false,\"result\":\"invalid\"}"};
       } else if (path == "/api/hud/peers" && !form.count("id")) {
         char data[4096];
         JsonWriter j(data, sizeof data);
@@ -161,6 +165,8 @@ int main(){
         auto *peer = hud.peer(id);
         if (!peer)
           response.status = 404;
+        else if (peer->simulated())
+          response.status = 400;
         else if (form["action"] == "remove")
           hud.remove(id);
         else {

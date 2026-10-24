@@ -23,6 +23,7 @@ int main() {
   const auto originalPresets = Preferences::database["fork800"];
   HudConfig config;
   config.role = DeviceRole::Hud;
+  config.simulationEnabled = true;
   config.uart = true;
   config.selected = 123;
   config.link.baud=9600; config.link.intervalMs=1000;
@@ -32,7 +33,7 @@ int main() {
   storage.loadHud(hud);
   assert(hud.hud.isHud() && hud.controller.remote && hud.hud.config.uart && hud.hud.config.selected == 123);
   assert(hud.hud.config.link.baud==9600 && hud.hud.config.link.intervalMs==1000);
-  assert(!hud.hud.config.link.readyHigh);
+  assert(!hud.hud.config.link.readyHigh && hud.hud.config.simulationEnabled);
   storage.loadForkSettings(hud);assert(hud.protocol.rotorName=="Original");
   hud.hud.begin(10, 20);
   // Exact low-level guard: no direction, PWM or ADC API is reached on HUD boot or later.
@@ -91,6 +92,47 @@ int main() {
     assert(p && p->id == 100 + i);
     p = p->next.get();
   }
+  // Only real peers occupy NVS records; a saved virtual selection is recreated on boot.
+  assert(hud.hud.select(HUD_SIMULATION_ID));
+  assert(storage.saveHudConfig(hud.hud.config) && storage.saveHudPeers(hud.hud));
+  MotionTestRuntime simulated;
+  storage.loadHud(simulated);
+  assert(simulated.hud.count() == 80 && simulated.hud.config.selected == HUD_SIMULATION_ID);
+  simulated.hud.begin(10, 21);
+  assert(simulated.hud.count() == 81 && simulated.hud.available());
+  assert(simulated.controller.axes[0].current == 0 && simulated.controller.axes[1].current == 0);
+  fakeHardware = FakeHardware{};
+  Hardware virtualHardware(simulated);
+  virtualHardware.beginDirections(); virtualHardware.beginAdc(); virtualHardware.applyOutputs();
+  assert(simulated.controller.target({90, 45, true, true}, false, 100) == Result::Deferred);
+  for (unsigned now = 100; now <= 2100; now += 20) {
+    simulated.hud.service(now); virtualHardware.controlRotator();
+  }
+  assert(simulated.controller.axes[0].current > 0 && simulated.controller.axes[1].current > 0);
+  assert(!fakeHardware.readsRaw && !fakeHardware.readsMv && fakeHardware.events.empty());
+  assert(Preferences::database["fork800"] == originalPresets);
+  {
+    auto saved = std::get<Preferences::Bytes>(Preferences::database["hudcfg"]["config"]);
+    auto legacy = saved;
+    assert(legacy.size() == 36);
+    legacy[0] = 2; legacy[31] = 0;
+    auto crc = hudCrc(legacy.data(), legacy.size()-4);
+    std::memcpy(legacy.data()+legacy.size()-4, &crc, 4);
+    Preferences::database["hudcfg"]["config"] = legacy;
+    MotionTestRuntime v2; storage.loadHud(v2);
+    assert(v2.hud.isHud() && !v2.hud.catalogError && !v2.hud.config.simulationEnabled);
+    assert(!v2.hud.config.selected && v2.hud.config.link.baud == 9600);
+    auto invalid = saved; invalid[31] = 2;
+    crc = hudCrc(invalid.data(), invalid.size()-4);
+    std::memcpy(invalid.data()+invalid.size()-4, &crc, 4);
+    Preferences::database["hudcfg"]["config"] = invalid;
+    MotionTestRuntime badFlag;
+    badFlag.hud.config.simulationEnabled = true; badFlag.hud.config.selected = HUD_SIMULATION_ID;
+    storage.loadHud(badFlag);
+    assert(badFlag.hud.catalogError && !badFlag.hud.config.simulationEnabled);
+    assert(!badFlag.hud.config.selected);
+    Preferences::database["hudcfg"]["config"] = saved;
+  }
   Preferences::failedBytesKey = "config";
   auto changed = config;
   changed.selected = 999;
@@ -112,12 +154,12 @@ int main() {
   const auto *oldBytes=reinterpret_cast<const uint8_t *>(oldConfig);
   Preferences::database["hudcfg"]["config"]=Preferences::Bytes(oldBytes,oldBytes+sizeof oldConfig);
   MotionTestRuntime migrated; storage.loadHud(migrated);
-  assert(migrated.hud.isHud() && migrated.hud.config.uart && migrated.hud.config.selected==123);
+  assert(migrated.hud.isHud() && migrated.hud.config.uart && migrated.hud.config.selected==123 && !migrated.hud.config.simulationEnabled);
   assert(!migrated.hud.catalogError && migrated.hud.config.link.baud==115200 && migrated.hud.config.link.intervalMs==100);
   Preferences::database.clear();
   MotionTestRuntime defaults;
   storage.loadHud(defaults);
-  assert(!defaults.hud.isHud() && !defaults.controller.remote);
+  assert(!defaults.hud.isHud() && !defaults.controller.remote && !defaults.hud.config.simulationEnabled);
   std::cout << "HUD adapters: no GPIO/PWM/ADC, calibration/preset preservation, 80-entry NVS roundtrip and "
                "corrupt-role fail-closed PASS\n";
 }

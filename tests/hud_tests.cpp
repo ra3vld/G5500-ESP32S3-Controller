@@ -32,6 +32,7 @@ struct Node : HudTransport {
   void selectionChanged() override { ++selectionChanges; }
   Node(Bus &b, uint64_t id, uint32_t address, bool remote = false) : bus(b), endpoint{address, 4534, false} {
     hud.config.role = remote ? DeviceRole::Hud : DeviceRole::Controller;
+    hud.config.simulationEnabled = remote;
     hud.begin(id, id + 1000);
     hud.setTransport(this);
     if (!remote)
@@ -279,14 +280,14 @@ int main() {
   c.hud.service(bus.now);
   assert(c.hud.discover({0xffffffffu, 4534, false}));
   bus.pump();
-  assert(c.hud.count() == 0 && c.hud.count(false) == 2 && !c.hud.select(1));
+  assert(c.hud.count() == 1 && c.hud.count(false) == 2 && !c.hud.select(1));
   // No catalogue count constant: pagination and fair bounded polling beyond small fixed arrays.
   for (unsigned i = 0; i < 80; ++i)
     assert(c.hud.add(100 + i, {0x1000007fu + i, 4534, false}, "Stored"));
   char json[4096];
   JsonWriter j(json, sizeof json);
   assert(c.hud.writePeers(j, 72, 8));
-  assert(std::string(j.data()).find("\"total\":80") != std::string::npos);
+  assert(std::string(j.data()).find("\"total\":81") != std::string::npos);
   c.hud.select(100);
   bus.queries = 0;
   for (uint32_t at = 8000; at < 9000; at += 5)
@@ -305,6 +306,8 @@ int main() {
   knob.sample(true, false, 0, 10241);
   knob.sample(true, false, 0, 10280);
   knob.open();
+  assert(knob.menu);
+  knob.choose(2);
   assert(a.hud.config.selected == 2);
   a.hud.add(3, {0x0300007f, 4534, false}, "Third");
   knob.sample(true, true, 0, 10300);
@@ -456,9 +459,9 @@ int main() {
     assert(!panel.hud.available());
     assert(panel.hud.discover({0xffffffffu, 4534, false}));
     dhcp.pump();
-    assert(panel.hud.available() && panel.hud.count() == 1 && panel.hud.active()->endpoint.address == 20);
+    assert(panel.hud.available() && panel.hud.count() == 2 && panel.hud.active()->endpoint.address == 20);
   }
-  // A single-entry long press never stops a target; a short release can pause and resume.
+  // Holding the knob never changes the peer or stops a target; a short release can pause and resume.
   {
     Bus gestures;
     Node motor(gestures, 1, 1), panel(gestures, 2, 2, true);
@@ -684,9 +687,9 @@ int main() {
     assert(panel.hud.result(ignored).result == Result::Ignored && motor.controller.presetActive);
   }
   // Removing records, including the selected head, preserves the rest of the catalogue.
-  assert(c.hud.remove(100)&&c.hud.config.selected==0&&c.hud.count()==79);
+  assert(c.hud.remove(100)&&c.hud.config.selected==0&&c.hud.count()==80);
   for(unsigned id=101;id<180;++id)assert(c.hud.remove(id));
-  assert(c.hud.count()==0);
+  assert(c.hud.count()==1 && c.hud.peer(HUD_SIMULATION_ID));
   std::cout << "HUD: multi-peer arbitration, ACKs, identity, dedup/order/expiry, selection, leases, UART, "
                "discovery, 80 peers and bounded polling PASS\n";
 }

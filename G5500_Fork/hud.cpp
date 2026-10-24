@@ -538,6 +538,62 @@ void HudState::apply(Controller &c, Protocol &p, uint32_t now) const {
     c.presets[i].target = presets[i].target;
   }
 }
+Hud::Simulation::Simulation() {
+  auto config = controller.hardware;
+  config.simulation = true;
+  config.drive = DRIVE_YAESU;
+  controller.configureHardware(config);
+  controller.model = Model::G5500;
+  controller.speedEnabled = true;
+  for (auto &motion : controller.motionSettings) motion.ready = true;
+  protocol.rotorName = "Имитация";
+}
+void Hud::updateSimulation() {
+  auto *p = peer(HUD_SIMULATION_ID);
+  if (!p) return;
+  if (simulation_) p->state.capture(simulation_->controller, simulation_->protocol, now);
+  p->receivedAt = p->remoteTick = now;
+  if (simulation_ && config.selected == p->id)
+    p->state.apply(controller_, protocol_, now);
+}
+bool Hud::setSimulationEnabled(bool enabled) {
+  if (!isHud() || (enabled && !client_)) return false;
+  if (enabled && !peer(HUD_SIMULATION_ID)) {
+    auto p = std::unique_ptr<HudPeer>(new (std::nothrow) HudPeer);
+    if (!p) { catalogError = true; return false; }
+    p->id = HUD_SIMULATION_ID;
+    p->boot = boot;
+    p->saved = p->received = p->manual = true;
+    p->wireVersion = 5;
+    p->state.drive = 3;
+    for (auto &axis : p->state.axes) axis.calibrated = true;
+    std::snprintf(p->label, sizeof p->label, "Имитация");
+    auto *tail = &peers_;
+    while (*tail) tail = &(*tail)->next;
+    *tail = std::move(p);
+  }
+  if (!enabled) {
+    if (config.selected == HUD_SIMULATION_ID && !select(0)) {
+      config.selected = 0; ++selectionEpoch;
+      protocol_.resetSession(); invalidateMirror();
+    }
+    if (client_) {
+      for (auto &j : client_->jobs)
+        if (j.used && j.peer == HUD_SIMULATION_ID) finish(j, Result::Cancelled);
+      for (auto &held : client_->held)
+        if (held.peer == HUD_SIMULATION_ID) held.active = false;
+    }
+    if (simulation_) simulation_->controller.stopNow(-1, now);
+    simulation_.reset();
+    for (auto &lease : leases_) lease = {};
+    auto *link = &peers_;
+    while (*link && !(*link)->simulated()) link = &(*link)->next;
+    if (*link) { auto removed = std::move(*link); *link = std::move(removed->next); }
+  }
+  config.simulationEnabled = enabled;
+  updateSimulation();
+  return true;
+}
 void Hud::begin(uint64_t node, uint64_t session) {
   id = node;
   boot = session ? session : 1;
@@ -549,6 +605,8 @@ void Hud::begin(uint64_t node, uint64_t session) {
     if (!client_)
       catalogError = true;
     invalidateMirror();
+    if (client_) setSimulationEnabled(config.simulationEnabled);
+    if (config.selected == HUD_SIMULATION_ID) select(config.selected);
   } else
     client_.reset();
 }
@@ -571,7 +629,7 @@ size_t Hud::count(bool saved) const {
   return n;
 }
 HudPeer *Hud::add(uint64_t node, HudEndpoint endpoint, const char *label, bool saved) {
-  if (!node || node == id || !label || std::strlen(label) > 48 ||
+  if (!node || node == id || node == HUD_SIMULATION_ID || !label || std::strlen(label) > 48 ||
       (!endpoint.uart && (!endpoint.address || !endpoint.port)))
     return nullptr;
   for (const unsigned char *c = reinterpret_cast<const unsigned char *>(label); *c; ++c)
@@ -597,6 +655,7 @@ HudPeer *Hud::add(uint64_t node, HudEndpoint endpoint, const char *label, bool s
   return p;
 }
 bool Hud::remove(uint64_t node) {
+  if (node == HUD_SIMULATION_ID) return false;
   auto *link = &peers_;
   while (*link) {
     if ((*link)->id == node) {
@@ -627,7 +686,8 @@ void Hud::invalidateMirror() {
 }
 bool Hud::available() const {
   const auto *p = active();
-  return isHud() && client_ && p && p->saved && p->fresh(now);
+  return isHud() && client_ && p && p->saved && p->fresh(now) &&
+         (!p->simulated() || (config.simulationEnabled && simulation_));
 }
 uint32_t Hud::freshnessAge() const {
   const auto *p = active();
@@ -638,6 +698,13 @@ bool Hud::select(uint64_t node) {
     return false;
   if (node && (!peer(node) || !peer(node)->saved))
     return false;
+  if (node == HUD_SIMULATION_ID && !config.simulationEnabled) return false;
+  if (node == HUD_SIMULATION_ID && !simulation_) {
+    simulation_.reset(new (std::nothrow) Simulation);
+    if (!simulation_) { catalogError = true; return false; }
+    simulation_->controller.tick(now);
+    updateSimulation();
+  }
   if (node == config.selected)
     return true;
   // Cancel commands that have not been sent; sent transactions retain their destination.
@@ -657,7 +724,10 @@ bool Hud::select(uint64_t node) {
   if (held) {
     ControlCommand c;
     c.op = ControlOp::ReleaseJog;
-    submit(c);
+    if (config.selected == HUD_SIMULATION_ID && simulation_)
+      execute(c, id, boot, nextSerial(), &simulation_->controller);
+    else
+      submit(c);
   }
   releaseManual();
   config.selected = node;
@@ -829,6 +899,18 @@ void Hud::finish(Job &j, Result r) {
   j.used = false;
 }
 bool Hud::sendManual(Job &j) {
+  if (j.peer == HUD_SIMULATION_ID) {
+    if (!simulation_) return false;
+    auto &c = simulation_->controller;
+    c.tick(now);
+    j.id = nextSerial();
+    j.sent = now;
+    const auto result = c.manualDrive(id, boot, j.manualGesture, j.id, j.command.axesMask,
+        j.command.manual[0], j.command.manual[1], j.command.release, now, 100, j.command.absoluteSpeed);
+    if (j.command.release) j.used = false;
+    updateSimulation();
+    return result == Result::Ok;
+  }
   Writer w{tx_, sizeof tx_};
   if (!j.command.release) {
     auto *p = peer(j.peer);
@@ -922,6 +1004,15 @@ bool Hud::sendState(const HudEndpoint &e, uint64_t targetId, uint32_t seq, bool 
   return transport_ && n && transport_->sendHud(e, tx_, n);
 }
 bool Hud::sendJob(Job &j) {
+  if (j.peer == HUD_SIMULATION_ID) {
+    if (!simulation_) return false;
+    j.sent = now;
+    ++j.attempts;
+    const auto result = execute(j.command, id, boot, j.id, &simulation_->controller);
+    updateSimulation();
+    finish(j, result);
+    return true;
+  }
   if (!j.attempts && paced(j.endpoint)) {
     if (const auto *p=peer(j.peer)) j.ticket=p->remoteTick+uint32_t(now-p->receivedAt);
   }
@@ -937,6 +1028,12 @@ bool Hud::sendJob(Job &j) {
 }
 void Hud::sendRenew(unsigned axis) {
   auto &h = client_->held[axis];
+  if (h.peer == HUD_SIMULATION_ID) {
+    auto &l = leases_[axis];
+    if (l.active && l.command == h.command) l.renewed = now;
+    h.sent = now;
+    return;
+  }
   auto *p = peer(h.peer);
   if (!p || !p->fresh(now) || p->boot != h.boot) {
     h.active = false;
@@ -949,69 +1046,69 @@ void Hud::sendRenew(unsigned axis) {
   if (transport_ && n && transport_->sendHud(h.endpoint, tx_, n))
     h.sent = now;
 }
-Result Hud::execute(const ControlCommand &c, uint64_t source, uint64_t session, uint32_t seq) {
+Result Hud::execute(const ControlCommand &c, uint64_t source, uint64_t session, uint32_t seq,
+                    Controller *local) {
+  auto &controller = local ? *local : controller_;
   Result r = Result::Invalid;
   switch (c.op) {
   case ControlOp::Target:
-    r = controller_.target(c.target, c.external, now, c.followInManual);
+    r = controller.target(c.target, c.external, now, c.followInManual);
     break;
   case ControlOp::Jog:
-    r = controller_.jog(unsigned(c.axis), c.direction, c.external, now);
+    r = controller.jog(unsigned(c.axis), c.direction, c.external, now);
     if (r == Result::Ok && c.direction)
-      leases_[c.axis] = {source, session, seq, controller_.motionEpoch[c.axis], now, true};
+      leases_[c.axis] = {source, session, seq, controller.motionEpoch[c.axis], now, true};
     break;
   case ControlOp::Stop:
-    controller_.stopNow(c.axis, now);
+    controller.stopNow(c.axis, now);
     r = Result::Ok;
     break;
   case ControlOp::ReleaseJog:
     for (unsigned i = 0; i < 2; ++i) {
       auto &l = leases_[i];
       if ((c.axis < 0 || unsigned(c.axis) == i) && l.active && l.source == source && l.boot == session &&
-          l.epoch == controller_.motionEpoch[i]) {
-        controller_.stopOwnedJog(i, l.epoch, now);
+          l.epoch == controller.motionEpoch[i]) {
+        controller.stopOwnedJog(i, l.epoch, now);
         l.active = false;
       }
     }
     r = Result::Ok;
     break;
   case ControlOp::ToggleMode:
-    controller_.stopNow(-1, now);
-    r = controller_.setMode(controller_.mode == Mode::Manual ? Mode::Auto : Mode::Manual, now);
-    settingsDirty = true;
+    controller.stopNow(-1, now);
+    r = controller.setMode(controller.mode == Mode::Manual ? Mode::Auto : Mode::Manual, now);
+    if (!local) settingsDirty = true;
     break;
   case ControlOp::ExecuteDisplayed:
-    r = controller_.executeDisplayed(now);
+    r = controller.executeDisplayed(now);
     break;
   case ControlOp::ResetMotion:
-    r = controller_.resetMotion(c.axis, now);
+    r = controller.resetMotion(c.axis, now);
     break;
   case ControlOp::RuntimeSpeed:
-    r = controller_.setRuntimeSpeed(unsigned(c.axis), c.speed, now);
+    r = controller.setRuntimeSpeed(unsigned(c.axis), c.speed, now);
     break;
   case ControlOp::ManualDrive:
     break; // Uses its own coalesced, leased stream.
   case ControlOp::Execute:
-    r = controller_.execute(now);
+    r = controller.execute(now);
     break;
   case ControlOp::Mode:
-    r = controller_.setMode(c.mode, now);
-    if (r == Result::Ok)
-      settingsDirty = true;
+    r = controller.setMode(c.mode, now);
+    if (r == Result::Ok && !local) settingsDirty = true;
     break;
   case ControlOp::Preset:
-    r = controller_.preset(c.slot, now);
+    r = controller.preset(c.slot, now);
     break;
   case ControlOp::SavePreset:
-    r = controller_.savePreset(c.slot, c.label, c.target);
-    if (r == Result::Ok)
-      presetsDirty = true;
+    r = controller.savePreset(c.slot, c.label, c.target);
+    if (r == Result::Ok && !local) presetsDirty = true;
     break;
   case ControlOp::Sequence:
-    r = controller_.sequence(c.points.data(), c.count, c.interval, now, c.followInManual);
+    r = controller.sequence(c.points.data(), c.count, c.interval, now, c.followInManual);
     break;
   }
-  controller_.tick(now);
+  controller.tick(now);
   return r;
 }
 void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32_t at) {
@@ -1027,7 +1124,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
   }
   Reader r{data, size - 4};
   Header h;
-  if (!header(r, h) || h.source == id || (h.target && h.target != id)) {
+  if (!header(r, h) || h.source == id || h.source == HUD_SIMULATION_ID || (h.target && h.target != id)) {
     ++rejected;
     return;
   }
@@ -1401,27 +1498,35 @@ void Hud::publishLive() {
     }
   }
 }
+void Hud::expireLeases(Controller &controller) {
+  for (unsigned i = 0; i < 2; ++i) {
+    auto &l = leases_[i];
+    if (!l.active)
+      continue;
+    if (l.epoch != controller.motionEpoch[i])
+      l.active = false;
+    else if (uint32_t(now - l.renewed) >= LeaseMs) {
+      controller.stopOwnedJog(i, l.epoch, now);
+      l.active = false;
+    }
+  }
+}
 void Hud::service(uint32_t at) {
   now = at;
   if (!isHud()) {
     publishLive();
-    for (unsigned i = 0; i < 2; ++i) {
-      auto &l = leases_[i];
-      if (!l.active)
-        continue;
-      if (l.epoch != controller_.motionEpoch[i])
-        l.active = false;
-      else if (uint32_t(now - l.renewed) >= LeaseMs) {
-        controller_.stopOwnedJog(i, l.epoch, now);
-        l.active = false;
-      }
-    }
+    expireLeases(controller_);
     return;
   }
   if (!client_) {
     invalidateMirror();
     return;
   }
+  if (simulation_) {
+    simulation_->controller.tick(now);
+    expireLeases(simulation_->controller);
+  }
+  updateSimulation();
   if (!available()) {
     releaseManual();
     invalidateMirror();
@@ -1472,13 +1577,13 @@ void Hud::service(uint32_t at) {
   for (unsigned i = 0; i < 2; ++i)
     if (client_->held[i].active && uint32_t(now - client_->held[i].sent) >= 250)
       sendRenew(i);
-  if (auto *activePeer = active(); activePeer && !paced(activePeer->endpoint) && activePeer->fresh(now) &&
+  if (auto *activePeer = active(); activePeer && !activePeer->simulated() && !paced(activePeer->endpoint) && activePeer->fresh(now) &&
       uint32_t(now - activePeer->subscribeSent) >= 250) subscribe(*activePeer);
   // At most 20 state requests/s, active 10Hz and fair round-robin for every other saved peer.
   if (uint32_t(now - lastPoll_) < 50)
     return;
   auto *p = active();
-  if (p && p->saved && uint32_t(now - selectedPoll_) >= (paced(p->endpoint)?config.link.intervalMs:p->live && uint32_t(now - p->liveAt) < 1000 ? 1000u : 100u)) {
+  if (p && p->saved && !p->simulated() && uint32_t(now - selectedPoll_) >= (paced(p->endpoint)?config.link.intervalMs:p->live && uint32_t(now - p->liveAt) < 1000 ? 1000u : 100u)) {
     sendQuery(p->endpoint, p->id);
     p->lastPoll = selectedPoll_ = lastPoll_ = now;
     return;
@@ -1487,7 +1592,7 @@ void Hud::service(uint32_t at) {
   auto *cursor = start && start->next ? start->next.get() : peers_.get();
   const auto *first = cursor;
   while (cursor) {
-    if (cursor->saved && cursor->id != config.selected && uint32_t(now - cursor->lastPoll) >= (paced(cursor->endpoint)?std::max<unsigned>(1000,config.link.intervalMs):1000u)) {
+    if (cursor->saved && !cursor->simulated() && cursor->id != config.selected && uint32_t(now - cursor->lastPoll) >= (paced(cursor->endpoint)?std::max<unsigned>(1000,config.link.intervalMs):1000u)) {
       sendQuery(cursor->endpoint, cursor->id);
       cursor->lastPoll = lastPoll_ = now;
       pollCursor_ = cursor->id;
@@ -1514,7 +1619,7 @@ bool Hud::writePeers(JsonWriter &j, size_t offset, size_t limit, bool discovered
     idText(node, p->id);
     const uint32_t address = p->endpoint.address;
     j << "{\"id\":" << jsonQuoted(node) << ",\"name\":" << jsonQuoted(p->label)
-      << ",\"transport\":" << jsonQuoted(p->endpoint.uart ? "uart" : "wifi") << ",\"address\":\""
+      << ",\"transport\":" << jsonQuoted(p->simulated() ? "simulation" : p->endpoint.uart ? "uart" : "wifi") << ",\"address\":\""
       << (address & 255) << '.' << ((address >> 8) & 255) << '.' << ((address >> 16) & 255) << '.'
       << ((address >> 24) & 255) << "\",\"port\":" << p->endpoint.port
       << ",\"selected\":" << (p->id == config.selected ? "true" : "false") << ",\"online\":"
@@ -1552,6 +1657,7 @@ void Hud::writeStatus(JsonWriter &j, bool live) const {
     << ",\"hudUart\":" << (config.uart ? "true" : "false") << ",\"hudWifi\":" << unsigned(config.wifi)
     << ",\"hudBaud\":" << config.link.baud << ",\"hudIntervalMs\":" << config.link.intervalMs
     << ",\"hudReadyHigh\":" << unsigned(config.link.readyHigh)
+    << ",\"hudSimulationEnabled\":" << (config.simulationEnabled ? "true" : "false")
     << ",\"hudSelected\":" << jsonQuoted(selected) << ",\"hudSelectionEpoch\":" << selectionEpoch
     << ",\"hudOnline\":" << (available() ? "true" : "false") << ",\"hudAgeMs\":";
   if (freshnessAge() != UINT32_MAX)
@@ -1560,10 +1666,10 @@ void Hud::writeStatus(JsonWriter &j, bool live) const {
     j << "null";
   auto *p = active();
   j << ",\"hudLive\":" << (p && p->live && uint32_t(now-p->liveAt)<1000 ? "true" : "false");
-  if(p && !p->endpoint.uart) {const auto a=p->endpoint.address;char ip[16];std::snprintf(ip,sizeof ip,"%u.%u.%u.%u",unsigned(a&255),unsigned((a>>8)&255),unsigned((a>>16)&255),unsigned(a>>24));
+  if(p && !p->simulated() && !p->endpoint.uart) {const auto a=p->endpoint.address;char ip[16];std::snprintf(ip,sizeof ip,"%u.%u.%u.%u",unsigned(a&255),unsigned((a>>8)&255),unsigned((a>>16)&255),unsigned(a>>24));
     j << ",\"hudHost\":" << jsonQuoted(ip);}
   j << ",\"hudName\":" << jsonQuoted(p ? p->label : "")
-    << ",\"hudTransport\":" << jsonQuoted(p ? (p->endpoint.uart ? "uart" : "wifi") : "")
+    << ",\"hudTransport\":" << jsonQuoted(p ? (p->simulated() ? "simulation" : p->endpoint.uart ? "uart" : "wifi") : "")
     << ",\"hudPeers\":" << count() << ",\"remoteDrive\":";
   if (p && p->received)
     j << jsonQuoted(p->state.drive == 0   ? "YAESU"
