@@ -1,0 +1,2 @@
+(sym_lib_table (version 7)
+ (lib (name "Mast") (type "KiCad") (uri "${KIPRJMOD}/ESP32-S3-ETH-CAM-MAST.kicad_sym") (options "") (descr "Mast controller module connections")))

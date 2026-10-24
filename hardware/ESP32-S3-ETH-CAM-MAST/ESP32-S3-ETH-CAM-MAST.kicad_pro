@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "filename": "ESP32-S3-ETH-CAM-MAST.kicad_pro",
+    "version": 1
+  },
+  "schematic": {
+    "page_layout_descr_file": "${KIPRJMOD}/ESP32-S3-ETH-CAM-MAST.kicad_wks"
+  },
+  "sheets": [
+    [
+      "bca0664a-8608-5c0e-8a10-d8cc0f83f9fb",
+      ""
+    ]
+  ],
+  "text_variables": {}
+}
