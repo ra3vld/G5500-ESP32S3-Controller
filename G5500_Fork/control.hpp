@@ -397,6 +397,7 @@ private:
   size_t sequenceIndex_ = 0;
   Result start(Target t, uint32_t now, bool retryStall = true);
   void output(unsigned axis, int dir, uint32_t now);
+  unsigned reverseDeadTimeMs(unsigned axis) const;
   void expire(uint32_t now);
 };
 bool number(std::string_view s, float &out);

@@ -182,88 +182,101 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
   const bool stop=path=="/api/move" && (web_.value("d")=="S" || web_.value("d")=="A" || web_.value("d")=="E");
   if(ota_.locked() && !stop && path!="/api/status" && path!="/api/diaglog" && path!="/api/diagnostics" && path.substr(0,8)!="/api/ota") { reply(503,"update_locked"); return; }
   if(runtime_.recovery && !hardwarePath && path!="/api/status" && path!="/api/network" && path!="/api/diagnostics" && path!="/api/diaglog" && path!="/api/resetreason" && path!="/api/resethistory" && path!="/api/wifi" && path!="/api/ap") { reply(409,"recovery_only"); return; }
-  if(hardwarePath) {
-    if(path=="/api/hardware/modbus") {
-      const auto &c=runtime_.modbus;
-      if(method=="GET") {
-        const auto &s=runtime_.modbusStatus;
-        output << "{\"pc\":" << unsigned(c.pc) << ",\"bus\":" << unsigned(c.bus)
-          << ",\"address\":" << unsigned(c.address) << ",\"node\":" << unsigned(c.node)
-          << ",\"first\":" << unsigned(c.first) << ",\"count\":" << unsigned(c.count)
-          << ",\"enabled\":" << (!runtime_.recovery&&(c.pc||c.bus)?"true":"false") << ",\"owner\":" << unsigned(s.owner)
-          << ",\"received\":" << s.received << ",\"rejected\":" << s.rejected << ",\"timeouts\":" << s.timeouts
-          << ",\"passes\":" << s.passes << ",\"recoveries\":" << s.recoveries << ",\"fault\":" << (s.fault?"true":"false") << '}';return;
-      }
-      if(method!="POST"){reply(405,"method_not_allowed");return;}
-      ModbusConfig next=c;uint16_t seen=0;uint32_t token=0,generation=0;
-      constexpr const char *names[]={"token","generation","pc","bus","address","node","first","count"};
-      for(auto e:arguments){unsigned i=0;while(i<8 && e.first!=names[i])++i;
-        uint32_t v=0;if(i==8 || (seen&(1u<<i)) || !hardwareUnsigned(e.second,v) || (i>1&&v>255)){reply(400,"invalid_form");return;}
-        seen|=1u<<i;
-        switch(i){case 0:token=v;break;case 1:generation=v;break;case 2:next.pc=v;break;case 3:next.bus=v;break;
-          case 4:next.address=v;break;case 5:next.node=v;break;case 6:next.first=v;break;case 7:next.count=v;break;}
-      }
-      if((seen&3)!=3 || token!=runtime_.hardwareToken || generation!=runtime_.hardwareRecord.generation){reply(409,"stale_configuration");return;}
-      const auto &record=runtime_.hardwareRecord;
-      const auto &hardware=runtime_.recovery?record.candidate:runtime_.controller.hardware;
-      if(const auto error=next.wiring(hardware,runtime_.hardwareHudUart)){reply(400,error);return;}
-      if(!storage_.saveModbus(next)){reply(503,"storage_failed");return;}
-      hardware_.cancelJoystickCalibration();runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
-      runtime_.controller.configurationLocked=true;reply(200,"");restart_.request(millis());return;
+  // Keep the general API's temporary buffers off recovery and hardware paths.
+  if(hardwarePath)executeHardware(method,path,arguments,output,status,type,command);
+  else executeGeneral(method,path,arguments,output,status,type,command);
+}
+
+void DeviceApi::executeHardware(std::string_view method, std::string_view path, FormView arguments,
+                                JsonWriter &output, int &status, const char *&type, bool command) {
+  ApiContext web_(arguments,output,status,type);
+  auto reply=[&](int code,const char *reason) {
+    status=code; type="application/json";
+    output << "{\"ok\":" << (code==200?"true":"false") << ",\"error\":" << jsonQuoted(reason) << '}';
+  };
+  if(path=="/api/hardware/modbus") {
+    const auto &c=runtime_.modbus;
+    if(method=="GET") {
+      const auto &s=runtime_.modbusStatus;
+      output << "{\"pc\":" << unsigned(c.pc) << ",\"bus\":" << unsigned(c.bus)
+        << ",\"address\":" << unsigned(c.address) << ",\"node\":" << unsigned(c.node)
+        << ",\"first\":" << unsigned(c.first) << ",\"count\":" << unsigned(c.count)
+        << ",\"enabled\":" << (!runtime_.recovery&&(c.pc||c.bus)?"true":"false") << ",\"owner\":" << unsigned(s.owner)
+        << ",\"received\":" << s.received << ",\"rejected\":" << s.rejected << ",\"timeouts\":" << s.timeouts
+        << ",\"passes\":" << s.passes << ",\"recoveries\":" << s.recoveries << ",\"fault\":" << (s.fault?"true":"false") << '}';return;
     }
-    if(method=="GET" && path=="/api/hardware/pins") { writePinCapabilities(output,runtime_.hardwareHudUart); return; }
-    if(method=="GET" && path=="/api/hardware") { writeHardwareStatus(output,command,web_.value("view")); return; }
-    if(method!="POST") { reply(405,"method_not_allowed"); return; }
-    char encoded[1537]; JsonWriter fields(encoded,sizeof encoded);
-    for(auto entry:arguments) {
-      if(entry.first.find_first_of("&=")!=entry.first.npos || entry.second.find_first_of("&=")!=entry.second.npos) { reply(400,"invalid_form"); return; }
-      if(fields.size())fields << '&';
-      fields << entry.first << '=' << entry.second;
+    if(method!="POST"){reply(405,"method_not_allowed");return;}
+    ModbusConfig next=c;uint16_t seen=0;uint32_t token=0,generation=0;
+    constexpr const char *names[]={"token","generation","pc","bus","address","node","first","count"};
+    for(auto e:arguments){unsigned i=0;while(i<8 && e.first!=names[i])++i;
+      uint32_t v=0;if(i==8 || (seen&(1u<<i)) || !hardwareUnsigned(e.second,v) || (i>1&&v>255)){reply(400,"invalid_form");return;}
+      seen|=1u<<i;
+      switch(i){case 0:token=v;break;case 1:generation=v;break;case 2:next.pc=v;break;case 3:next.bus=v;break;
+        case 4:next.address=v;break;case 5:next.node=v;break;case 6:next.first=v;break;case 7:next.count=v;break;}
     }
-    HardwareForm form;
-    const auto &r=runtime_.hardwareRecord;
-    const auto &base=r.phase==ConfigPhase::Testing || r.phase==ConfigPhase::Pending || runtime_.recovery?r.candidate:r.good;
-    if(!fields.good() || !parseHardwareForm({encoded,fields.size()},form,path=="/api/hardware",base)) { reply(400,"invalid_form"); return; }
-    if(form.token!=runtime_.hardwareToken || form.generation!=runtime_.hardwareRecord.generation) { reply(409,"stale_configuration"); return; }
-    if(path=="/api/hardware/joystick/start" || path=="/api/hardware/joystick/poll" || path=="/api/hardware/joystick/cancel") {
-      if(path=="/api/hardware/joystick/cancel") { hardware_.cancelJoystickCalibration(); reply(200,""); return; }
-      const bool ok=path=="/api/hardware/joystick/start"?hardware_.startJoystickCalibration():hardware_.pollJoystickCalibration();
-      if(!ok) { reply(409,"joystick_calibration_inactive"); return; }
-      output << "{\"ok\":true,\"raw\":[" << hardware_.joystickRaw(0) << ',' << hardware_.joystickRaw(1) << "]}"; return;
-    }
-    bool saved=false;
-    if(path=="/api/hardware/probe") {
-      const bool ok=!runtime_.recovery && runtime_.hardwareTrial && runtime_.memoryGuard.ready(millis()) && storage_.probeHardwareStorage(runtime_);
-      runtime_.hardwareProbe=ok; reply(ok?200:409,ok?"":"not_ready"); return;
-    }
-    auto stopForConfiguration=[&] {
-      hardware_.cancelJoystickCalibration();
-      runtime_.controller.stopNow(-1,millis()); hardware_.applyOutputs(); runtime_.controller.configurationLocked=true;
-    };
-    if(path=="/api/hardware") {
-      if(const auto error=board::validateHardwareDetailed(form.config,runtime_.hardwareHudUart)) {
-        status=400;
-        output << "{\"ok\":false,\"error\":" << jsonQuoted(error.error) << ",\"field\":" << jsonQuoted(error.field)
-          << ",\"gpio\":" << error.pin << ",\"owner\":" << jsonQuoted(error.owner) << '}'; return;
-      }
-      if(const auto error=runtime_.modbus.wiring(form.config,runtime_.hardwareHudUart)){reply(400,error);return;}
-      stopForConfiguration();
-      saved=storage_.stageHardware(runtime_,form.config);
-    } else if(path=="/api/hardware/confirm") {
-      if(runtime_.recovery || !runtime_.hardwareTrial || !runtime_.hardwareProbe || !runtime_.memoryGuard.ready(millis()) || heapFreeBytes()<MemoryGuard::HealthyFree || heapMaxBlockBytes()<MemoryGuard::HealthyBlock || runtimeMetrics.allocationFailures.load()!=runtime_.memoryGuard.failures) { reply(409,"not_ready"); return; }
-      stopForConfiguration(); saved=storage_.confirmHardware(runtime_);
-    } else if(path=="/api/hardware/rollback") {
-      if(!runtime_.hardwareRecord.hasConfirmed) { reply(409,"no_confirmed_configuration"); return; }
-      auto good=runtime_.hardwareRecord.good;
-      if(!BLUETOOTH_SUPPORT)good.bluetooth=false;
-      stopForConfiguration(); saved=storage_.stageHardware(runtime_,good);
-    } else if(path=="/api/hardware/recovery") {
-      stopForConfiguration(); saved=storage_.enterRecovery(runtime_,RecoveryReason::Requested);
-    }
-    else { reply(404,"not_found"); return; }
-    if(!saved) { reply(503,"storage_failed"); return; }
-    reply(200,""); restart_.request(millis()); return;
+    if((seen&3)!=3 || token!=runtime_.hardwareToken || generation!=runtime_.hardwareRecord.generation){reply(409,"stale_configuration");return;}
+    const auto &record=runtime_.hardwareRecord;
+    const auto &hardware=runtime_.recovery?record.candidate:runtime_.controller.hardware;
+    if(const auto error=next.wiring(hardware,runtime_.hardwareHudUart)){reply(400,error);return;}
+    if(!storage_.saveModbus(next)){reply(503,"storage_failed");return;}
+    hardware_.cancelJoystickCalibration();runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
+    runtime_.controller.configurationLocked=true;reply(200,"");restart_.request(millis());return;
   }
+  if(method=="GET" && path=="/api/hardware/pins") { writePinCapabilities(output,runtime_.hardwareHudUart); return; }
+  if(method=="GET" && path=="/api/hardware") { writeHardwareStatus(output,command,web_.value("view")); return; }
+  if(method!="POST") { reply(405,"method_not_allowed"); return; }
+  HardwareForm form;
+  const auto &r=runtime_.hardwareRecord;
+  const auto &base=r.phase==ConfigPhase::Testing || r.phase==ConfigPhase::Pending || runtime_.recovery?r.candidate:r.good;
+  if(!parseHardwareArguments(arguments,form,path=="/api/hardware",base)) { reply(400,"invalid_form"); return; }
+  if(form.token!=runtime_.hardwareToken || form.generation!=runtime_.hardwareRecord.generation) { reply(409,"stale_configuration"); return; }
+  if(path=="/api/hardware/joystick/start" || path=="/api/hardware/joystick/poll" || path=="/api/hardware/joystick/cancel") {
+    if(path=="/api/hardware/joystick/cancel") { hardware_.cancelJoystickCalibration(); reply(200,""); return; }
+    const bool ok=path=="/api/hardware/joystick/start"?hardware_.startJoystickCalibration():hardware_.pollJoystickCalibration();
+    if(!ok) { reply(409,"joystick_calibration_inactive"); return; }
+    output << "{\"ok\":true,\"raw\":[" << hardware_.joystickRaw(0) << ',' << hardware_.joystickRaw(1) << "]}"; return;
+  }
+  bool saved=false;
+  if(path=="/api/hardware/probe") {
+    const bool ok=!runtime_.recovery && runtime_.hardwareTrial && runtime_.memoryGuard.ready(millis()) && storage_.probeHardwareStorage(runtime_);
+    runtime_.hardwareProbe=ok; reply(ok?200:409,ok?"":"not_ready"); return;
+  }
+  auto stopForConfiguration=[&] {
+    hardware_.cancelJoystickCalibration();
+    runtime_.controller.stopNow(-1,millis()); hardware_.applyOutputs(); runtime_.controller.configurationLocked=true;
+  };
+  if(path=="/api/hardware") {
+    if(const auto error=board::validateHardwareDetailed(form.config,runtime_.hardwareHudUart)) {
+      status=400;
+      output << "{\"ok\":false,\"error\":" << jsonQuoted(error.error) << ",\"field\":" << jsonQuoted(error.field)
+        << ",\"gpio\":" << error.pin << ",\"owner\":" << jsonQuoted(error.owner) << '}'; return;
+    }
+    if(const auto error=runtime_.modbus.wiring(form.config,runtime_.hardwareHudUart)){reply(400,error);return;}
+    stopForConfiguration();
+    saved=storage_.stageHardware(runtime_,form.config);
+  } else if(path=="/api/hardware/confirm") {
+    if(runtime_.recovery || !runtime_.hardwareTrial || !runtime_.hardwareProbe || !runtime_.memoryGuard.ready(millis()) || heapFreeBytes()<MemoryGuard::HealthyFree || heapMaxBlockBytes()<MemoryGuard::HealthyBlock || runtimeMetrics.allocationFailures.load()!=runtime_.memoryGuard.failures) { reply(409,"not_ready"); return; }
+    stopForConfiguration(); saved=storage_.confirmHardware(runtime_);
+  } else if(path=="/api/hardware/rollback") {
+    if(!runtime_.hardwareRecord.hasConfirmed) { reply(409,"no_confirmed_configuration"); return; }
+    auto good=runtime_.hardwareRecord.good;
+    if(!BLUETOOTH_SUPPORT)good.bluetooth=false;
+    stopForConfiguration(); saved=storage_.stageHardware(runtime_,good);
+  } else if(path=="/api/hardware/recovery") {
+    stopForConfiguration(); saved=storage_.enterRecovery(runtime_,RecoveryReason::Requested);
+  }
+  else { reply(404,"not_found"); return; }
+  if(!saved) { reply(503,"storage_failed"); return; }
+  reply(200,""); restart_.request(millis()); return;
+}
+
+void DeviceApi::executeGeneral(std::string_view method, std::string_view path, FormView arguments,
+                               JsonWriter &output, int &status, const char *&type, bool command) {
+  ApiContext web_(arguments,output,status,type);
+  auto reply=[&](int code,const char *reason) {
+    status=code; type="application/json";
+    output << "{\"ok\":" << (code==200?"true":"false") << ",\"error\":" << jsonQuoted(reason) << '}';
+  };
   if(path=="/api/ota" && method=="GET") {
     char data[768];const auto n=ota_.status(data,sizeof data);output << std::string_view(data,n);return;
   }

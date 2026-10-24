@@ -222,7 +222,7 @@ void Application::controllerSetup() {
       ", CS="+pins.tftCs+", DC="+pins.tftDc+", RST="+pins.tftRst);
   diagnostics_.dbgPrintln(String("XPT2046: CS=")+pins.touchCs+", IRQ="+pins.touchIrq+"; shared SPI bus");
 #endif
-  diagnostics_.dbgPrintln("Fork control: calibrated target movement, 300ms reverse dead-time");
+  diagnostics_.dbgPrintln("Fork control: calibrated target movement, configurable servo reverse pause");
   diagnostics_.dbgPrintln("Web main cards: current / target shown inline for AZ and EL");
 #if TFT_DISPLAY_ENABLED
   diagnostics_.dbgPrintln("TFT: ILI9341 320x240 dashboard + XPT2046 touch calibration UI");

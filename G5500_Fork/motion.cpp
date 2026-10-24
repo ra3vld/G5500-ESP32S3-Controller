@@ -16,7 +16,7 @@ const char *motionErrorName(MotionError e) {
   return unsigned(e) < std::size(names) ? names[unsigned(e)] : "planner_error";
 }
 bool MotionSettings::valid() const {
-  if (mode > RegulatorMode::Cascade || holdResumeDegrees < positionTolerance ||
+  if (mode > RegulatorMode::Cascade ||
       (kickEnabled && kickPercent > outputLimitPercent) ||
       (mode==RegulatorMode::Cascade && sustainingPercent > outputLimitPercent) ||
       feedbackTimeoutMs < velocityWindowMs) return false;
@@ -70,6 +70,16 @@ bool profileStep(bool positionControl, float &p, float &v, float &a, float targe
   return std::isfinite(p) && std::isfinite(v) && std::isfinite(a);
 }
 int sign(float n) { return (n > 0) - (n < 0); }
+bool feedbackQuiet(const MotionFeedback &f,unsigned window,float degrees) {
+  if(!f.valid || f.count<2)return false;
+  float low=f.samples[(f.next+f.samples.size()-1)%f.samples.size()].position,high=low;
+  unsigned oldest=0;
+  for(unsigned n=0;n<f.count;++n) {
+    const auto &s=f.samples[n];const unsigned age=uint32_t(f.at-s.at);
+    if(age<=window) {low=std::min(low,s.position);high=std::max(high,s.position);oldest=std::max(oldest,age);}
+  }
+  return oldest>=window/2 && high-low<=degrees;
+}
 bool autoTuneStartupExpired(const AutoTuneState &t, uint32_t elapsed, float displacement,
                             float velocity, uint32_t riseMs=0) {
   const auto &m=t.originalMotion;
@@ -89,26 +99,32 @@ bool prepareMotionPlanner() {
   return bool(scratch);
 }
 MotionRecord encodeMotionSettings(const MotionSettings &s) {
-  MotionRecord b{}; b[0] = 'M'; b[1] = 'O'; b[2] = s.sustainingPercent ? 2 : 1; b[3] = uint8_t(s.mode);
+  MotionRecord b{}; b[0] = 'M'; b[1] = 'O'; b[2] = 3; b[3] = uint8_t(s.mode);
   b[4] = uint8_t(s.ready) | uint8_t(s.kickEnabled) << 1 | uint8_t(s.holdEnabled) << 2;
   b[5] = uint8_t(s.sustainingPercent);
+  b[6] = uint8_t(s.holdReverseMs); b[7] = uint8_t(s.holdReverseMs>>8);
   size_t at = 8;
   auto put = [&](uint32_t n) { for (unsigned i=0; i<4; ++i) b[at++] = uint8_t(n >> (8*i)); };
   for (const auto &f : motionRealFields) { uint32_t n; const float value = s.*f.member; std::memcpy(&n, &value, 4); put(n); }
-  for (const auto &f : motionIntFields) if(f.member!=&MotionSettings::sustainingPercent) put(s.*f.member);
+  for (const auto &f : motionIntFields) if(f.member!=&MotionSettings::sustainingPercent && f.member!=&MotionSettings::holdReverseMs) put(s.*f.member);
   put(checksum(b.data(), b.size()-4));
   return b;
 }
 bool decodeMotionSettings(const MotionRecord &b, MotionSettings &s) {
-  if (b[0] != 'M' || b[1] != 'O' || (b[2] != 1 && b[2] != 2) || b[3] > 1 || b[4] > 7 ||
-      (b[2]==1 && b[5]) || b[6] || b[7]) return false;
+  if (b[0] != 'M' || b[1] != 'O' || (b[2] < 1 || b[2] > 3) || b[3] > 1 || b[4] > 7 ||
+      (b[2]==1 && b[5]) || (b[2]<3 && (b[6] || b[7]))) return false;
   MotionSettings next; next.mode = RegulatorMode(b[3]); next.ready = b[4]&1; next.kickEnabled = b[4]&2; next.holdEnabled = b[4]&4;
-  next.sustainingPercent=b[2]==2 ? b[5] : 0;
+  next.sustainingPercent=b[2]>=2 ? b[5] : 0;
+  if(b[2]>=3)next.holdReverseMs=unsigned(b[6])|(unsigned(b[7])<<8);
   size_t at = 8;
   auto get = [&]() { uint32_t n=0; for (unsigned i=0; i<4; ++i) n |= uint32_t(b[at++]) << (8*i); return n; };
   for (const auto &f : motionRealFields) { const uint32_t n = get(); std::memcpy(&(next.*f.member), &n, 4); }
-  for (const auto &f : motionIntFields) if(f.member!=&MotionSettings::sustainingPercent) next.*f.member = get();
+  for (const auto &f : motionIntFields) if(f.member!=&MotionSettings::sustainingPercent && f.member!=&MotionSettings::holdReverseMs) next.*f.member = get();
   if (get() != checksum(b.data(), b.size()-4) || !next.valid()) return false;
+  // Older cascade records tied holding to the much wider arrival tolerance.
+  // Migrate once; version 3 preserves an explicitly chosen holding threshold.
+  if (b[2]<3 && next.mode==RegulatorMode::Cascade)
+    next.holdResumeDegrees=std::min(next.holdResumeDegrees,1.f);
   // Old records may contain the removed user commissioning checkbox.
   next.ready = true; s = next; return true;
 }
@@ -243,7 +259,16 @@ void Controller::feedbackAt(unsigned i, float position, bool calibrated, uint32_
       f.coastDirection=sign(previousVelocity);f.coastAt=stamp;f.coastTracking=true;
     }
     if(powered)f.coastTracking=false;
-    else if(f.coastTracking && uint32_t(stamp-f.coastAt)>=80 && std::abs(f.velocity)<=cfg.stoppedVelocity) {
+    else if(f.coastTracking && axes[i].holdArmed && cfg.holdEnabled &&
+            uint32_t(stamp-f.coastAt)>=std::max(80u,cfg.velocityWindowMs)) {
+      const float velocity=f.coastDirection*f.velocity;
+      const float travel=f.coastDirection*(position-f.coastPosition);
+      // Holding can reverse before rest. Fit the observed exponential coast
+      // from distance / velocity lost instead of waiting for its endpoint.
+      if(velocity>cfg.stoppedVelocity && velocity<.5f*f.coastVelocity && travel>cfg.movementDegrees/2)
+        f.coastSeconds=std::clamp(travel/(f.coastVelocity-velocity),.02f,2.f);
+    }
+    if(!powered && f.coastTracking && uint32_t(stamp-f.coastAt)>=80 && std::abs(f.velocity)<=cfg.stoppedVelocity) {
       const float travel=f.coastDirection*(position-f.coastPosition);
       if(travel>cfg.movementDegrees/2 && f.coastVelocity>.001f) {
         const float seconds=std::clamp(travel/f.coastVelocity,.02f,2.f);
@@ -377,6 +402,8 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
   const unsigned streamTimeout=std::clamp(6*r.targetIntervalMs,1800u,4500u);
   const unsigned streamElapsed=uint32_t(now-r.targetChangedAt);
   const bool passingTarget=axis.tracking && r.streamingTarget && (axis.direction || r.targetVelocity!=0) && streamElapsed<streamTimeout;
+  const bool activeHold=cascade && axis.holdArmed && m.holdEnabled && !passingTarget;
+  const float arrivalTolerance=activeHold ? std::min(m.positionTolerance,m.holdResumeDegrees/2) : m.positionTolerance;
   const float streamFade=streamElapsed<=r.targetIntervalMs ? 1.f :
       (streamElapsed<streamTimeout ? float(streamTimeout-streamElapsed)/std::max(1u,streamTimeout-r.targetIntervalMs) : 0.f);
   const float streamAdvance=std::clamp(r.targetVelocity*std::min(streamElapsed,r.targetIntervalMs)/1000,
@@ -417,7 +444,11 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
       motionFault(i,MotionError::Stalled,now);return;
     }
   }
-  if (cascade && axis.tracking && (std::abs(distance)<=m.positionTolerance || coastToTarget || r.arriving || r.crossedTarget) && !passingTarget) {
+  // Holding must react to a renewed error even while the previous coast is
+  // still moving. Settlement confirms completion; it never gates correction.
+  if (activeHold && r.arriving && std::abs(distance)>m.holdResumeDegrees)
+    r.arriving=r.settling=false;
+  if (cascade && axis.tracking && (std::abs(distance)<=arrivalTolerance || coastToTarget || r.arriving || r.crossedTarget) && !passingTarget) {
     if (!r.arriving) {
       r.staticKickInterrupted=staticTarget && axis.motionPhase==MotionPhase::Kick && !r.kickDone;
       r.arriving=true; r.profileValid=false; r.kickDone=false; r.releasing=false;
@@ -426,7 +457,8 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
     const bool stopped=!moving;
     if (!stopped) r.settling=false;
     else if (!r.settling) { r.settling=true; r.settledAt=now; }
-    if (r.settling && uint32_t(now-r.settledAt) >= m.settleMs && std::abs(distance)>m.positionTolerance && !r.crossedTarget) {
+    const float resumeTolerance=activeHold ? m.holdResumeDegrees : m.positionTolerance;
+    if (r.settling && uint32_t(now-r.settledAt) >= m.settleMs && std::abs(distance)>resumeTolerance && !r.crossedTarget) {
       // Wait for the real coast to finish before judging the remaining error.
       if(staticTarget && r.staticKickInterrupted) {
         // A switching excursion can briefly enter the arrival band before
@@ -586,13 +618,14 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
     // Never power away from a position target while waiting for a virtual
     // S-profile to decelerate. That can drive an overshoot for seconds and
     // turn holding into a large limit cycle. Coast first; the interlock below
-    // still requires measured rest and 300 ms before the opposite direction.
+    // retains the selected direction dead time. Only one-shot/jog waits for
+    // measured rest too; holding may correct a moving shaft after that pause.
     axis.speedOutputPercent=0; output(i,0,now); r.profileValid=false; r.kickDone=false; r.releasing=false;
     axis.requestedVelocity=axis.profileAcceleration=0;
     r.positionPid.reset(); r.velocityPid.reset(); return;
   }
   if (!axis.direction && axis.previous && axis.previous != desired &&
-      (uint32_t(now-axis.offAt) < 300 || (r.feedback.timed && moving))) {
+      (uint32_t(now-axis.offAt) < reverseDeadTimeMs(i) || (!activeHold && r.feedback.timed && moving))) {
     axis.motionPhase=MotionPhase::Braking; axis.speedOutputPercent=0; return;
   }
   if (desired && !axis.direction) {
@@ -600,7 +633,7 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
     // A velocity estimate alone can be ADC noise on a stationary shaft. Only
     // confirmed directed displacement permits skipping breakaway on a start.
     const bool confirmedMoving=moving && r.feedback.progressed(desired,m.movementDegrees,m.velocityWindowMs);
-    if (m.kickEnabled && !streamBrake && !confirmedMoving && axis.calibrated && !r.kickDone) {
+    if (m.kickEnabled && !streamBrake && !confirmedMoving && !(activeHold && moving) && axis.calibrated && !r.kickDone) {
       axis.motionPhase=MotionPhase::Kick; r.kickAt=now;
       r.kickPosition=cascade && axis.tracking && m.sustainingPercent && (!axis.holdArmed || r.streamingTarget) && (!autoTune.active() || autoTune.phase==AutoTunePhase::Tracking)
           ? r.feedback.positionMean(std::clamp(m.velocityWindowMs/2,40u,80u)) : axis.current;
@@ -797,13 +830,18 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
       else if(autoTune.active() && autoTune.axis==int(i) && autoTune.phase==AutoTunePhase::Tracking)
         finishAutoTuneTrackingTrial(false,now,"no_progress");
       else motionFault(i,MotionError::Stalled,now);
-    } else if(!tuning && cascade && passingTarget && m.kickEnabled && r.kickDone && !r.releasing &&
-        desired*distance>m.movementDegrees && uint32_t(now-r.progressAt)>=
-            uint32_t(std::clamp(2000*m.movementDegrees/std::max(.1f,std::abs(r.commandVelocity)),500.f,float(m.stallMs)))) {
+    } else if(!tuning && cascade && m.kickEnabled && !r.releasing &&
+        desired*distance>(activeHold?m.holdResumeDegrees:m.movementDegrees) &&
+        ((passingTarget && r.kickDone && uint32_t(now-r.progressAt)>=
+            uint32_t(std::clamp(2000*m.movementDegrees/std::max(.1f,std::abs(r.commandVelocity)),500.f,float(m.stallMs)))) ||
+         (activeHold && !moving && uint32_t(now-r.progressAt)>=std::max(80u,m.velocityWindowMs) &&
+          feedbackQuiet(r.feedback,m.velocityWindowMs,std::min(.1f,m.movementDegrees/4))))) {
       // Static friction can return in the middle of a slow stream. Do not
       // let PI wind up for seconds and retain that starting torque after the
       // shaft breaks free. Reuse the observed, energy-bounded start while
       // retaining the continuous velocity/acceleration boundary state.
+      // Holding first brakes a rolling shaft without kick. If it then sticks,
+      // observed lack of progress requests breakaway without waiting for I.
       axis.motionPhase=MotionPhase::Kick;r.kickRecovery=true;r.kickConfirming=false;
       r.kickAt=now;r.kickPosition=progressPosition;r.kickDirection=desired;
       r.kickBase=std::min(m.kickPercent,std::max(float(m.sustainingPercent),axis.speedOutputPercent));
@@ -1047,7 +1085,6 @@ bool Controller::proposeAutoTune(uint32_t now) {
     // A faster working point must not silently loosen the requested accuracy.
     // The feedback controller must slow on approach and validate that accuracy.
     m.positionTolerance=std::max(m.positionTolerance,m.movementDegrees);
-    m.holdResumeDegrees=std::max(m.holdResumeDegrees,1.5f*m.positionTolerance);
     m.acceleration=std::min(m.acceleration,m.velocity/lambda);
     m.deceleration=std::min(m.deceleration,m.velocity/lambda);
     m.jerk=std::min(m.jerk,m.acceleration/lambda);

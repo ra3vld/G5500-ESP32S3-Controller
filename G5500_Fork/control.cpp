@@ -770,8 +770,14 @@ bool Controller::moving() const {
   }
   return false;
 }
+unsigned Controller::reverseDeadTimeMs(unsigned i) const {
+  const auto &m=motionSettings[i];
+  return m.mode==RegulatorMode::Cascade && m.holdEnabled && axes[i].holdArmed
+      ? m.holdReverseMs : kReverseDeadTimeMs;
+}
 void Controller::output(unsigned axisIndex, int direction, uint32_t now) {
   auto &axis = axes[axisIndex];
+  const unsigned deadTime=reverseDeadTimeMs(axisIndex);
   if (axis.direction != 0 && axis.direction != direction) {
     axis.previous = axis.direction;
     axis.direction = 0;
@@ -779,7 +785,7 @@ void Controller::output(unsigned axisIndex, int direction, uint32_t now) {
   }
   if (direction != 0 && axis.direction == 0) {
     if (axis.previous && axis.previous != direction &&
-        uint32_t(now - axis.offAt) < kReverseDeadTimeMs) {
+        uint32_t(now - axis.offAt) < deadTime) {
       return;
     }
     axis.direction = direction;
@@ -788,7 +794,7 @@ void Controller::output(unsigned axisIndex, int direction, uint32_t now) {
       axis.hasRun = true;
     }
   }
-  if (direction == 0 && uint32_t(now - axis.offAt) >= kReverseDeadTimeMs) {
+  if (direction == 0 && uint32_t(now - axis.offAt) >= deadTime) {
     axis.hasRun = false;
   }
 }

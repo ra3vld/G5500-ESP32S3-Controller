@@ -4,6 +4,7 @@
 #include "hardware_form.hpp"
 #include <cassert>
 #include <iostream>
+#include <vector>
 using namespace forkrot;
 static void recoveryPolicy() {
   Storage s;Preferences::database.clear();Preferences::failedBytesKey.clear();
@@ -192,5 +193,29 @@ int main() {
   assert(form.config.pins.azAdc==1 && form.config.drive==candidate.drive);
   assert(!parseHardwareForm("token=1&generation=1",form,true));
   assert(!parseHardwareForm("token=1&generation=1&pin.azAdc=1&pin.azAdc=2",form,true));
+  std::vector<FormArgument> arguments;
+  std::string_view remaining=body;
+  for(;;) {
+    const auto end=remaining.find('&'),equal=remaining.find('=');
+    arguments.emplace_back(remaining.substr(0,equal),remaining.substr(equal+1,end==remaining.npos?end:end-equal-1));
+    if(end==remaining.npos)break;
+    remaining.remove_prefix(end+1);
+  }
+  HardwareForm decodedForm,raw;
+  assert(parseHardwareArguments(arguments,decodedForm,true,candidate));
+  assert(parseHardwareForm(body,raw,true,candidate));
+  assert(decodedForm.config==raw.config && decodedForm.token==raw.token && decodedForm.generation==raw.generation);
+  arguments.emplace_back("token","123");
+  assert(!parseHardwareArguments(arguments,decodedForm,true,candidate));
+  assert(decodedForm.config==raw.config); // failed input never partly replaces the result
+  arguments={{"token","1"},{"generation","2"}};
+  assert(parseHardwareArguments(arguments,decodedForm,false));
+  assert(!parseHardwareArguments(arguments,decodedForm,true));
+  arguments[1].second="2&simulation=1";
+  assert(!parseHardwareArguments(arguments,decodedForm,false));
+  arguments[1].second="2=1";
+  assert(!parseHardwareArguments(arguments,decodedForm,false));
+  arguments={{"token","0"},{"generation","2"}};
+  assert(!parseHardwareArguments(arguments,decodedForm,false));
   std::cout<<"PASS: runtime driver selection, startup lock, verified NVS, trial rollback, recovery, memory guard and strict forms\n";
 }

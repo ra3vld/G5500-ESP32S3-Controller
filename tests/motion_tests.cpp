@@ -27,7 +27,8 @@ struct Plant {
 static void records() {
   MotionSettings m; CHECK(m.valid()); const auto b=encodeMotionSettings(m); MotionSettings next; CHECK(decodeMotionSettings(b,next)); CHECK(next==m);
   for(unsigned i=0;i<b.size();++i) { auto bad=b;bad[i]^=0x80;CHECK(!decodeMotionSettings(bad,next)); }
-  m.kickPercent=101;CHECK(!m.valid()); m.kickPercent=50;m.holdResumeDegrees=.1f;CHECK(!m.valid());
+  m.kickPercent=101;CHECK(!m.valid()); m.kickPercent=50;m.holdResumeDegrees=.1f;CHECK(m.valid());
+  m.holdResumeDegrees=0;CHECK(!m.valid());
   Controller c; c.hardware.drive=DRIVE_BTS7960;c.hardware.simulation=false;c.feedback(10,30,true,true);
   CHECK(c.target({20,0,true,false},false,0)==Result::Ok);
   CHECK(c.motionSettings[0].movementDegrees==5&&c.speeds[0].speedPercent==50);
@@ -229,6 +230,7 @@ static void stoppedReversal() {
   for(unsigned axis:{0u,1u}) for(int direction:{-1,1}) for(uint32_t epoch:{0u,0xfffffe00u}) {
     auto c=ready(true,90);c.feedbackAt(0,90,true,epoch);c.feedbackAt(1,90,true,epoch);
     auto &m=c.motionSettings[axis];m.kickEnabled=false;m.velocity=30;
+    m.holdReverseMs=0; // A disabled servo pause must not disable ordinary reversal protection.
     m.acceleration=m.deceleration=10;m.jerk=8;m.stoppedVelocity=.1f;
     CHECK(c.jog(axis,direction,false,epoch)==Result::Ok);c.tick(epoch);
     // Build a nonzero measured/reference speed, then request a reverse target.
@@ -329,10 +331,33 @@ static void sustainingAndArrival() {
   for(unsigned i=0;i<legacy.size();++i)legacy[i]=uint8_t(16*digit(hex[2*i])+digit(hex[2*i+1]));
   MotionSettings expected;expected.mode=RegulatorMode::Cascade;expected.kickEnabled=true;expected.velocity=2.5f;expected.velocityKi=1.23f;
   MotionSettings restored;CHECK(decodeMotionSettings(legacy,restored));CHECK(restored==expected);CHECK(restored.sustainingPercent==0);
-  CHECK(encodeMotionSettings(expected)==legacy);
+  CHECK(encodeMotionSettings(expected)[2]==3);
   expected.sustainingPercent=16;const auto extended=encodeMotionSettings(expected);
-  CHECK(extended.size()==legacy.size() && extended[2]==2);
+  CHECK(extended.size()==legacy.size() && extended[2]==3);
   CHECK(decodeMotionSettings(extended,restored) && restored==expected);
+  const auto legacyVersion=[](MotionRecord record,unsigned version) {
+    record[2]=uint8_t(version);
+    record[6]=record[7]=0;
+    uint32_t hash=2166136261u;
+    for(unsigned n=0;n<record.size()-4;++n)hash=(hash^record[n])*16777619u;
+    for(unsigned n=0;n<4;++n)record[record.size()-4+n]=uint8_t(hash>>(8*n));
+    return record;
+  };
+  for(unsigned version:{1u,2u}) {
+    auto old=expected;old.positionTolerance=4;old.holdResumeDegrees=7.53f;
+    if(version==1)old.sustainingPercent=0;
+    CHECK(decodeMotionSettings(legacyVersion(encodeMotionSettings(old),version),restored));
+    old.holdResumeDegrees=1;CHECK(restored==old);
+    old.positionTolerance=.1f;old.holdResumeDegrees=.3f;
+    CHECK(decodeMotionSettings(legacyVersion(encodeMotionSettings(old),version),restored) && restored==old);
+  }
+  auto explicitThreshold=expected;explicitThreshold.holdResumeDegrees=7.53f;
+  CHECK(decodeMotionSettings(encodeMotionSettings(explicitThreshold),restored) && restored==explicitThreshold);
+  for(unsigned pause:{0u,1u,300u,2000u}) {
+    explicitThreshold.holdReverseMs=pause;
+    CHECK(decodeMotionSettings(encodeMotionSettings(explicitThreshold),restored) && restored==explicitThreshold);
+  }
+  explicitThreshold.holdReverseMs=2001;CHECK(!explicitThreshold.valid());
   expected.outputLimitPercent=15;CHECK(!expected.valid());
   expected.mode=RegulatorMode::Simple;expected.kickEnabled=false;CHECK(expected.valid());
   for(unsigned axis:{0u,1u}) for(int direction:{-1,1}) {
@@ -364,12 +389,12 @@ static void sustainingAndArrival() {
 }
 
 static void fastHoldingRegression() {
-  for(unsigned axis:{0u,1u})for(float tau:{.08f,.16f,.24f}) {
+  for(unsigned axis:{0u,1u})for(float tau:{.08f,.16f,.24f})for(float threshold:{1.f,7.52f}) {
     auto c=ready(true,90);auto &m=c.motionSettings[axis];
     m.holdEnabled=m.kickEnabled=true;m.outputLimitPercent=90;m.kickPercent=58.3f;
     m.movementDegrees=1.22f;m.velocity=29.4f;m.acceleration=m.deceleration=17.37f;m.jerk=8;
     m.positionKp=.5f;m.positionKi=m.positionKd=0;m.velocityKp=.1f;m.velocityKi=1.05f;m.velocityKd=0;
-    m.feedforward=1.06f;m.positionTolerance=5.02f;m.holdResumeDegrees=7.52f;m.stoppedVelocity=8.47f;
+    m.feedforward=1.06f;m.positionTolerance=5.02f;m.holdResumeDegrees=threshold;m.stoppedVelocity=8.47f;
     m.sustainingPercent=20;m.kickMs=873;m.kickReleaseMs=20;m.velocityWindowMs=80;
     float position=90,velocity=0,maxError=0;PositionFilter filter;bool disturbed=false,heldAgain=false;
     c.feedbackAt(axis,90,true,0);CHECK(c.target({90,90,axis==0,axis==1},false,0)==Result::Ok);
@@ -384,7 +409,7 @@ static void fastHoldingRegression() {
       CHECK(c.axes[axis].motionError==MotionError::None);
       if(disturbed){maxError=std::max(maxError,std::abs(position-90));if(at>2000&&c.axes[axis].motionPhase==MotionPhase::Holding)heldAgain=true;}
     }
-    std::cout<<"fast hold axis="<<axis<<" tau="<<tau<<" maxError="<<maxError<<" final="<<position<<'\n';
+    std::cout<<"fast hold axis="<<axis<<" tau="<<tau<<" threshold="<<threshold<<" maxError="<<maxError<<" final="<<position<<'\n';
     CHECK(maxError<30);CHECK(heldAgain);CHECK(std::abs(position-90)<=m.holdResumeDegrees);
     c.stopNow(-1,15020);CHECK(!c.moving()&&!c.axes[axis].holdArmed);
   }

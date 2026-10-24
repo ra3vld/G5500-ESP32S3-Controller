@@ -14,6 +14,10 @@ public:
   void execute(std::string_view method, std::string_view path, FormView arguments,
                JsonWriter &output, int &status, const char *&type, bool command = false);
 private:
+  void executeHardware(std::string_view method, std::string_view path, FormView arguments,
+                       JsonWriter &output, int &status, const char *&type, bool command);
+  void executeGeneral(std::string_view method, std::string_view path, FormView arguments,
+                      JsonWriter &output, int &status, const char *&type, bool command);
   Response callApi(std::string_view path, FormView form);
   void writeHardwareStatus(JsonWriter &, bool compact = false, std::string_view view = {});
   void writeConfiguration(JsonWriter &);

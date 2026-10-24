@@ -65,6 +65,8 @@ python3 -m unittest discover -s tests -p test_command_api.py
 python3 -m unittest discover -s tests -p test_autotune_experiment.py
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/motion_tests.cpp -o build/motion_tests
 ./build/motion_tests
+${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/servo_hold_tests.cpp -o build/servo_hold_tests
+./build/servo_hold_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/stream_motion_tests.cpp -o build/stream_motion_tests
 ./build/stream_motion_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/static_target_tests.cpp -o build/static_target_tests

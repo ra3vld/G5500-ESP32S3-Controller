@@ -25,6 +25,7 @@ struct MotionSettings {
   float positionTolerance = .5f, holdResumeDegrees = 1, stoppedVelocity = .1f;
   unsigned kickMs = 500, kickReleaseMs = 100, velocityWindowMs = 200;
   unsigned derivativeFilterMs = 100, feedbackTimeoutMs = 500, settleMs = 300, stallMs = 3000;
+  unsigned holdReverseMs = 300;
   unsigned sustainingPercent = 0;
   bool valid() const;
   bool operator==(const MotionSettings &) const;
@@ -59,11 +60,12 @@ inline constexpr MotionIntField motionIntFields[] = {
   {"DerivativeFilterMs", &MotionSettings::derivativeFilterMs, 20, 2000},
   {"FeedbackTimeoutMs", &MotionSettings::feedbackTimeoutMs, 100, 5000},
   {"SettleMs", &MotionSettings::settleMs, 20, 5000},
+  {"HoldReverseMs", &MotionSettings::holdReverseMs, 0, 2000},
   {"StallMs", &MotionSettings::stallMs, 500, 30000}
 };
-// SustainingPercent fits in a reserved header byte. Keep the legacy record
-// length and field offsets, including inside the combined drive NVS value.
-inline constexpr size_t MotionRecordSize = 12 + 4 * (std::size(motionRealFields) + std::size(motionIntFields) - 1);
+// Version 3 stores SustainingPercent and HoldReverseMs in the reserved header
+// bytes. Preserve the legacy length and field offsets, including the drive NVS.
+inline constexpr size_t MotionRecordSize = 12 + 4 * (std::size(motionRealFields) + std::size(motionIntFields) - 2);
 using MotionRecord = std::array<uint8_t, MotionRecordSize>;
 MotionRecord encodeMotionSettings(const MotionSettings &);
 bool decodeMotionSettings(const MotionRecord &, MotionSettings &);

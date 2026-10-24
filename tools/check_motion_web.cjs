@@ -38,9 +38,12 @@ async function state(){return(await fetch(base+'/api/status')).json()}
   assert.equal(await page.locator('#azMotionVelocity').isVisible(),true);
   assert.equal(await page.locator('#azMotionSustainingPercent').isVisible(),true);
   await page.locator('#azMotionVelocity').fill('1.25');await page.locator('[name=azMotionHoldEnabled]').check();
+  await page.locator('#azMotionPositionTolerance').fill('4');await page.locator('#azMotionHoldResumeDegrees').fill('1');
+  await page.locator('#azMotionHoldReverseMs').fill('0');
   await page.locator('#azMotionForm button[type=submit]').click();
   await page.waitForFunction(()=>window._forkState?.axes?.[0]?.regulatorMode==='cascade');
   config=await(await fetch(base+'/api/motion')).json();assert.equal(config.axes[0].Velocity,1.25);assert.equal(config.axes[0].holdEnabled,true);
+  assert.equal(config.axes[0].HoldResumeDegrees,1);assert.equal(config.axes[0].HoldReverseMs,0);
   assert.equal((await state()).moving,false,'saving must not start movement');
   assert.equal(await page.locator('#coastDegrees').isVisible(),false);
   assert.equal(await page.locator('#elMotionForm').isVisible(),false);
