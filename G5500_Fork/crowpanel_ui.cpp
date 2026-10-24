@@ -19,6 +19,12 @@ constexpr lv_point_precise_t arrowLeft[] = {{25, 7}, {12, 18}, {25, 29}};
 constexpr lv_point_precise_t arrowRight[] = {{11, 7}, {24, 18}, {11, 29}};
 constexpr lv_point_precise_t arrowDown[] = {{7, 11}, {18, 24}, {29, 11}};
 constexpr lv_point_precise_t arrowUp[] = {{7, 25}, {18, 12}, {29, 25}};
+constexpr lv_point_precise_t movingLeft[] = {{25, 7}, {12, 18}, {25, 29}, {12, 18}, {30, 18}};
+constexpr lv_point_precise_t movingRight[] = {{11, 7}, {24, 18}, {11, 29}, {24, 18}, {6, 18}};
+constexpr lv_point_precise_t movingUp[] = {{7, 25}, {18, 12}, {29, 25}, {18, 12}, {18, 30}};
+constexpr lv_point_precise_t movingDown[] = {{7, 11}, {18, 24}, {29, 11}, {18, 24}, {18, 6}};
+constexpr const lv_point_precise_t *idleArrows[] = {arrowLeft, arrowRight, arrowUp, arrowDown};
+constexpr const lv_point_precise_t *movingArrows[] = {movingLeft, movingRight, movingUp, movingDown};
 lv_obj_t *label(int y, int width, const lv_font_t *font, uint32_t color) {
   auto *object = lv_label_create(lv_screen_active());
   lv_obj_set_width(object, width);
@@ -224,12 +230,11 @@ void CrowPanelUi::create() {
   lv_obj_set_align(angle_, LV_ALIGN_TOP_LEFT);
   lv_obj_set_align(secondaryAngle_, LV_ALIGN_TOP_LEFT);
   lv_obj_set_align(secondaryTarget_, LV_ALIGN_TOP_LEFT);
-  const lv_point_precise_t *points[] = {arrowLeft, arrowRight, arrowUp, arrowDown};
   for (unsigned i = 0; i < 4; ++i) {
     arrows_[i] = lv_line_create(screen);
     lv_obj_remove_style_all(arrows_[i]);
     lv_obj_set_size(arrows_[i], 36, 36);
-    lv_line_set_points(arrows_[i], points[i], 3);
+    lv_line_set_points(arrows_[i], idleArrows[i], 3);
     lv_obj_set_style_line_width(arrows_[i], 4, 0);
     lv_obj_set_style_line_rounded(arrows_[i], true, 0);
     lv_obj_set_style_line_color(arrows_[i], lv_color_hex(0x64717e), 0);
@@ -467,6 +472,9 @@ void CrowPanelUi::update(const CrowPanelView &v) {
     const int az = v.azDirection ? v.azDirection : (!v.elevation ? v.direction : 0);
     const int el = v.elDirection ? v.elDirection : (v.elevation ? v.direction : 0);
     const bool moving = i == 0 ? az < 0 : i == 1 ? az > 0 : i == 2 ? el > 0 : el < 0;
+    const auto *points = moving ? movingArrows[i] : idleArrows[i];
+    if (lv_line_get_points(arrows_[i]) != points)
+      lv_line_set_points(arrows_[i], points, moving ? 5 : 3);
     const auto tint = lv_color_hex(moving ? text : 0x64717e);
     if (lv_color_to_u32(lv_obj_get_style_line_color(arrows_[i], LV_PART_MAIN)) !=
         lv_color_to_u32(tint)) {
