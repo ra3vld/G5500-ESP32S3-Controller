@@ -111,7 +111,7 @@ int main(int argc,char **argv) {
   record.good.pins.uartDe=0;record.candidate.pins.hudRx=4;record.candidate.pins.hudTx=5;record.candidate.pins.hudDe=6;
   record.good.pins.led=-1; record.candidate.pins.led=0; record.candidate.buttonGpio=-1;
   const auto bytes=encodeHardware(record); HardwareRecord decoded;
-  assert(bytes[2]==5 && decodeHardware(bytes,decoded));
+  assert(bytes[2]==6 && decodeHardware(bytes,decoded));
   assert(decoded.good==record.good && decoded.candidate==record.candidate);
   auto broken=bytes; broken[36]^=1; assert(!decodeHardware(broken,decoded));
   const auto v2=encodeHardwareRecord<98>(record);
@@ -121,6 +121,11 @@ int main(int argc,char **argv) {
   record.good.pins.localAzAdc=SELECTED_BOARD==BOARD_ESP32?36:4;
   auto v3=encodeHardware(record);
   assert(decodeHardware(v3,decoded) && decoded.good==record.good);
+  const auto oldSensors=encodeHardwareRecord<194>(record);
+  assert(oldSensors[2]==5 && decodeHardware(oldSensors,decoded));
+  assert(decoded.good==record.good && decoded.good.pins.hudReady==-1);
+  auto radio=record.good; radio.pins.uartDe=-1; radio.pins.hudReady=radio.pins.uartTx;
+  assert(std::string(board::validateHardware(radio))=="gpio_conflict");
   const auto oldUart=encodeHardwareRecord<162>(record);
   assert(oldUart[2]==4 && decodeHardware(oldUart,decoded));
   assert(decoded.good.sensors==SensorSettings({0,6,0,0,6,0}));

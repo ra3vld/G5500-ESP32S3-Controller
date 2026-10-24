@@ -792,7 +792,10 @@ bool Network::beginSerial() {
       pinMode(config.pins.uartDe, OUTPUT);
       Serial0.setTxBufferSize(2048);
     }
-    Serial0.begin(runtime_.hud.config.uart && !config.hudRs485() ? 115200 : 9600, SERIAL_8N1, config.pins.uartRx, config.pins.uartTx);
+    if (runtime_.hud.config.uart && !config.hudRs485()) {
+      if (config.pins.hudReady>=0) pinMode(config.pins.hudReady,INPUT);
+    }
+    Serial0.begin(runtime_.hud.config.uart && !config.hudRs485() ? runtime_.hud.config.link.baud : 9600, SERIAL_8N1, config.pins.uartRx, config.pins.uartTx);
     if (config.rs485() && (!Serial0.setPins(-1, -1, -1, config.pins.uartDe) ||
         !Serial0.setMode(UART_MODE_RS485_HALF_DUPLEX))) return false;
   }
@@ -839,6 +842,7 @@ void Network::beginHud() {
     else runtime_.hud.catalogError=true;
   } else if (runtime_.hud.config.uart && !runtime_.modbus.bus) {
     hudUart_.reset(new (std::nothrow) UartLink);
+    if (hudUart_) hudUart_->tx.setPaced(runtime_.hud.config.link.paced());
     if (!hudUart_)
       runtime_.hud.catalogError = true;
   }
@@ -919,8 +923,11 @@ void Network::serviceHud() {
         hud.receive({0, hud.config.port, true}, hudRx_, n, millis());
     }
     const int available = Serial0.availableForWrite();
-    hudUart_->tx.drain(available > 0 ? size_t(available) : 0,
-                      [](const uint8_t *data, size_t n) { return Serial0.write(data, n); });
+    const auto &pins=runtime_.controller.hardware.pins;
+    hudUart_->gate.service(millis(),hud.config.link,pins.hudReady>=0,
+        pins.hudReady<0 || bool(digitalRead(pins.hudReady))==hud.config.link.readyHigh,
+        available>0?size_t(available):0,hudUart_->tx,
+        [](const uint8_t *data,size_t n) { return Serial0.write(data,n); });
   }
   if (hud.config.uart && hud485_) {
     auto &serial=hud485_->serial;

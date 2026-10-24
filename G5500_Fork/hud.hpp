@@ -2,6 +2,7 @@
 #pragma once
 #include "protocol.hpp"
 #include "json_writer.hpp"
+#include "hud_link_config.hpp"
 #include <memory>
 #include <cstring>
 namespace forkrot {
@@ -13,6 +14,7 @@ struct HudConfig {
   bool uart = false;
   uint16_t port = 4534;
   uint64_t selected = 0;
+  HudLinkConfig link;
 };
 struct HudEndpoint {
   uint32_t address = 0; // Network byte order, or Modbus address with uart=true (zero is legacy UART).
@@ -67,13 +69,14 @@ struct HudPeer {
   uint32_t querySerial[12]{}, queryAt[12]{};
   uint32_t subscribeSerial[4]{}, subscribeAt[4]{}, subscribeSent = 0;
   uint32_t liveAt = 0, liveRevision = 0;
+  uint32_t freshnessMs = 0;
   bool live = false;
   bool manual = false;
   uint32_t capabilitySerial = 0, capabilityAt = 0;
   bool received = false, saved = false;
   std::unique_ptr<HudPeer> next;
   bool fresh(uint32_t now, uint32_t age = 0) const {
-    return received && uint32_t(now - receivedAt) < (age ? age : live ? 1000u : 2000u);
+    return received && uint32_t(now - receivedAt) < (age ? age : freshnessMs ? freshnessMs : live ? 1000u : 2000u);
   }
 };
 struct HudReply {
@@ -125,7 +128,7 @@ public:
   Result submitAt(const ControlCommand &, uint32_t at) override;
   bool manualAvailable() const override {
     const auto *p = active();
-    return available() && p && p->manual;
+    return available() && p && p->manual && (!paced(p->endpoint) || manualIntervalMs(p->endpoint)<=250);
   }
   HudReply result(uint32_t request) const;
   void service(uint32_t at);
@@ -207,6 +210,13 @@ private:
   HudEndpoint scanEndpoint_;
   uint8_t tx_[HUD_FRAME_MAX]{};
   uint32_t nextSerial();
+  bool paced(const HudEndpoint &e) const { return e.uart && config.link.paced(); }
+  uint32_t responseMs(const HudEndpoint &e) const { return paced(e)?config.link.responseMs():1000; }
+  uint32_t ticketMs(const HudEndpoint &e) const { return paced(e)?responseMs(e)*2:2000; }
+  uint32_t manualIntervalMs(const HudEndpoint &e) const {
+    const uint32_t serialMs=paced(e)?(1600000u+config.link.baud-1)/config.link.baud:50;
+    return serialMs>50?serialMs:50;
+  }
   void finish(Job &, Result);
   bool sendJob(Job &);
   bool sendQuery(const HudEndpoint &, uint64_t target, bool discovery = false);

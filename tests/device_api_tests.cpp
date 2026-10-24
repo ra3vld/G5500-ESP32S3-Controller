@@ -481,6 +481,19 @@ int main(int argc,char **argv) {
     const auto enabled=relay.call("POST","/api/device","role=hud&wifi=existing&uart=1&port=4534");
     assert(enabled.status==200); // Dedicated RS-485 works with UART0 disabled.
   }
+  {
+    Fixture bridge;
+    const std::string base="role=hud&wifi=existing&uart=1&port=4534";
+    for (const auto &bad : {"&baud=12345","&baud=0","&intervalMs=99","&intervalMs=10001","&readyHigh=2"})
+      assert(bridge.call("POST","/api/device",base+bad).status==400);
+    assert(bridge.call("POST","/api/device",base+"&baud=9600&intervalMs=2000&readyHigh=0").status==200);
+    Runtime restored;bridge.storage.loadHud(restored);
+    const auto &link=restored.hud.config.link;
+    assert(link.baud==9600 && link.intervalMs==2000 && !link.readyHigh);
+    bridge.runtime.hud.config=restored.hud.config;
+    const auto body=bridge.call("GET","/api/device").body;
+    assert(body.find("\"hudBaud\":9600")!=body.npos && body.find("\"hudIntervalMs\":2000")!=body.npos);
+  }
   Fixture f;auto &r=f.runtime;
   assert(f.call("GET","/api/status").body.size()<=COMMAND_PAGE_MAX);
   const auto axis=f.call("GET","/api/status","view=axis&axis=az");

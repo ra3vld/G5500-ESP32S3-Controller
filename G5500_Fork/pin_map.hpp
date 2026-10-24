@@ -16,7 +16,7 @@ inline constexpr int PIN_LOCAL_EL_ADC_GPIO = LOCAL_EL_ADC_GPIO;
 }
 
 enum class PinKind : uint8_t { Input, Output, Adc };
-enum class PinGroup : uint8_t { Drive, Hud485, Uart, Hc05, Indicator, Tft, Lcd, Buttons, Joystick, SensorAz, SensorEl };
+enum class PinGroup : uint8_t { Drive, Hud485, Uart, Hc05, Indicator, Tft, Lcd, Buttons, Joystick, SensorAz, SensorEl, HudRadio };
 #define FORK_PIN_MAP(X) \
  X(azAdc, PIN_AZ_ADC, Adc, Drive, false) \
  X(elAdc, PIN_EL_ADC, Adc, Drive, false) \
@@ -60,7 +60,8 @@ enum class PinGroup : uint8_t { Drive, Hud485, Uart, Hc05, Indicator, Tft, Lcd, 
  X(azSensorSda, PIN_UART_DE, Output, SensorAz, false) \
  X(azSensorScl, PIN_UART_DE, Output, SensorAz, false) \
  X(elSensorSda, PIN_UART_DE, Output, SensorEl, false) \
- X(elSensorScl, PIN_UART_DE, Output, SensorEl, false)
+ X(elSensorScl, PIN_UART_DE, Output, SensorEl, false) \
+ X(hudReady, PIN_UART_DE, Input, HudRadio, true)
 struct PinMap {
 #define FORK_PIN_MEMBER(name, initial, kind, group, optional) int8_t name = board::initial < 0 ? -1 : board::initial;
   FORK_PIN_MAP(FORK_PIN_MEMBER)
@@ -78,7 +79,7 @@ struct PinDefinition {
   PinGroup group;
   bool optional;
 };
-inline constexpr std::array<PinDefinition,43> pinDefinitions{{
+inline constexpr std::array<PinDefinition,44> pinDefinitions{{
 #define FORK_PIN_DEFINITION(name, initial, kind, group, optional) {#name,"pin." #name,&PinMap::name,PinKind::kind,PinGroup::group,optional},
   FORK_PIN_MAP(FORK_PIN_DEFINITION)
 #undef FORK_PIN_DEFINITION
@@ -96,6 +97,7 @@ inline const char *pinGroupName(PinGroup group) {
   switch(group) {
   case PinGroup::Drive:return "drive"; case PinGroup::Uart:return "uart";
   case PinGroup::Hud485:return "hud485";
+  case PinGroup::HudRadio:return "hudRadio";
   case PinGroup::SensorAz:return "sensorAz"; case PinGroup::SensorEl:return "sensorEl";
   case PinGroup::Hc05:return "hc05"; case PinGroup::Indicator:return "indicator";
   case PinGroup::Buttons:return "buttons"; case PinGroup::Joystick:return "joystick";

@@ -321,6 +321,7 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
         << ",\"gpio\":" << error.pin << ",\"owner\":" << jsonQuoted(error.owner) << '}'; return;
     }
     if(const auto error=runtime_.modbus.wiring(form.config,runtime_.hardwareHudUart)){reply(400,error);return;}
+    if(runtime_.hud.config.link.paced() && form.config.hudRs485()) {reply(400,"radio_requires_uart");return;}
     invalidateSetup(SetupStep::Equipment);
     stopForConfiguration();
     saved=storage_.stageHardware(runtime_,form.config);
@@ -1039,6 +1040,20 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     config.wifi = wifi == "host" ? HudWifi::Host : wifi == "client" ? HudWifi::Client : HudWifi::Existing;
     config.uart = uart == "1";
     config.port = uint16_t(port);
+    struct LinkField { const char *name; unsigned maximum; };
+    unsigned linkValues[] = {config.link.baud,config.link.intervalMs,unsigned(config.link.readyHigh)};
+    const LinkField linkFields[] = {{"baud",115200},{"intervalMs",10000},{"readyHigh",1}};
+    for (unsigned i=0;i<3;++i) {
+      if (web_.hasArg(linkFields[i].name) && !integerArg(web_.arg(linkFields[i].name),linkValues[i],linkFields[i].maximum)) {
+        reply(400,"invalid_uart_settings"); return;
+      }
+    }
+    config.link.baud=linkValues[0]; config.link.intervalMs=uint16_t(linkValues[1]);
+    config.link.readyHigh=linkValues[2];
+    if (!config.link.valid()) { reply(400,"invalid_uart_settings"); return; }
+    if (config.link.paced() && (runtime_.controller.hardware.hudRs485() || runtime_.modbus.bus)) {
+      reply(400,"radio_requires_uart"); return;
+    }
     if(const auto error=runtime_.modbus.wiring(runtime_.controller.hardware,config.uart)){reply(400,error);return;}
     if (!storage_.saveHudConfig(config)) {
       web_.send(507, "application/json", "{\"ok\":false,\"result\":\"storage_full\"}");

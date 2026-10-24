@@ -25,10 +25,14 @@ int main() {
   config.role = DeviceRole::Hud;
   config.uart = true;
   config.selected = 123;
+  config.link.baud=9600; config.link.intervalMs=1000;
+  config.link.readyHigh=false;
   assert(storage.saveHudConfig(config));
   MotionTestRuntime hud;
   storage.loadHud(hud);
   assert(hud.hud.isHud() && hud.controller.remote && hud.hud.config.uart && hud.hud.config.selected == 123);
+  assert(hud.hud.config.link.baud==9600 && hud.hud.config.link.intervalMs==1000);
+  assert(!hud.hud.config.link.readyHigh);
   storage.loadForkSettings(hud);assert(hud.protocol.rotorName=="Original");
   hud.hud.begin(10, 20);
   // Exact low-level guard: no direction, PWM or ADC API is reached on HUD boot or later.
@@ -101,6 +105,15 @@ int main() {
   MotionTestRuntime corrupt;
   storage.loadHud(corrupt);
   assert(corrupt.hud.isHud() && corrupt.hud.catalogError && corrupt.controller.remote);
+  Preferences::database.clear();
+  // Existing version-1 records retain role, selection and the cable defaults.
+  uint32_t oldConfig[6]={1,0x00010001,4534,123,0,0};
+  oldConfig[5]=hudCrc(reinterpret_cast<const uint8_t *>(oldConfig),sizeof oldConfig-4);
+  const auto *oldBytes=reinterpret_cast<const uint8_t *>(oldConfig);
+  Preferences::database["hudcfg"]["config"]=Preferences::Bytes(oldBytes,oldBytes+sizeof oldConfig);
+  MotionTestRuntime migrated; storage.loadHud(migrated);
+  assert(migrated.hud.isHud() && migrated.hud.config.uart && migrated.hud.config.selected==123);
+  assert(!migrated.hud.catalogError && migrated.hud.config.link.baud==115200 && migrated.hud.config.link.intervalMs==100);
   Preferences::database.clear();
   MotionTestRuntime defaults;
   storage.loadHud(defaults);

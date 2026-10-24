@@ -7,7 +7,7 @@
 #include <new>
 namespace forkrot {
 namespace {
-constexpr uint32_t TicketMs = 2000, LeaseMs = 1000;
+constexpr uint32_t LeaseMs = 1000;
 enum class Kind : uint8_t {
   Discover = 1,
   Query,
@@ -704,9 +704,10 @@ Result Hud::submit(const ControlCommand &c) {
   if (!available() || !p)
     return lastResult_;
   if (c.op == ControlOp::RuntimeSpeed && p->wireVersion < 5) return lastResult_;
+  if (c.op == ControlOp::Jog && paced(p->endpoint) && !manualAvailable()) return lastResult_;
   if(c.op==ControlOp::Target && !controller_.valid(c.target)) return lastResult_=Result::Invalid;
   if (c.op == ControlOp::ManualDrive) {
-    if (!p->manual || (c.absoluteSpeed && p->wireVersion < 5)) {
+    if (!manualAvailable() || (c.absoluteSpeed && p->wireVersion < 5)) {
       return lastResult_ = Result::Unavailable;
     }
     const bool web=c.inputLeaseMs>100;
@@ -862,7 +863,7 @@ bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
   const uint32_t serial = nextSerial();
   Writer w{tx_, sizeof tx_};
   auto *selected = peer(targetId);
-  const bool extended = !discovery && selected && selected->manual && selected->fresh(now);
+  const bool extended = !discovery && selected && (selected->manual || paced(e)) && selected->received && selected->fresh(now);
   const uint8_t version = selected && selected->received ? selected->wireVersion :
       selected ? (selected->probeVersion = selected->probeVersion == 1 ? 5 : selected->probeVersion - 1) : 5;
   header(w, {discovery  ? Kind::Discover
@@ -874,7 +875,7 @@ bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
     return false;
   if (discovery) {
     scanSerial_ = serial;
-    for (uint8_t oldVersion : {uint8_t(4),uint8_t(3),uint8_t(2),uint8_t(1)}) {
+    if (!paced(e)) for (uint8_t oldVersion : {uint8_t(4),uint8_t(3),uint8_t(2),uint8_t(1)}) {
       Writer legacy{tx_,sizeof tx_}; header(legacy,{Kind::Discover,id,targetId,boot,0,serial,0,oldVersion});
       const auto bytes=legacy.finish();
       if(bytes) transport_->sendHud(e,tx_,bytes);
@@ -883,7 +884,7 @@ bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
   else if (auto *p = peer(targetId)) {
     // Keep the working version first after packet loss. Probe one alternative
     // as well so a reboot into older/newer firmware can still renegotiate.
-    if (p->received && !p->fresh(now)) {
+    if (p->received && !p->fresh(now) && !paced(e)) {
       p->probeVersion = p->probeVersion == 1 ? 5 : p->probeVersion - 1;
       if (p->probeVersion != version) {
         Writer probe{tx_,sizeof tx_};
@@ -921,6 +922,9 @@ bool Hud::sendState(const HudEndpoint &e, uint64_t targetId, uint32_t seq, bool 
   return transport_ && n && transport_->sendHud(e, tx_, n);
 }
 bool Hud::sendJob(Job &j) {
+  if (!j.attempts && paced(j.endpoint)) {
+    if (const auto *p=peer(j.peer)) j.ticket=p->remoteTick+uint32_t(now-p->receivedAt);
+  }
   Writer w{tx_, sizeof tx_};
   header(w, {j.live ? Kind::LiveCommand : Kind::Command, id, j.peer, boot, j.boot, j.id, j.ticket, j.wireVersion, j.rangeRevision});
   command(w, j.command);
@@ -1067,7 +1071,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     uint32_t requestedAt = now;
     bool requested = false;
     const bool discovery =
-        h.kind == Kind::State && scanning_ && h.serial == scanSerial_ && uint32_t(now - scanAt_) < 1000 &&
+        h.kind == Kind::State && scanning_ && h.serial == scanSerial_ && uint32_t(now - scanAt_) < responseMs(e) &&
         e.uart == scanEndpoint_.uart &&
         (e.uart || (e.port == scanEndpoint_.port &&
                     (scanEndpoint_.address == 0xffffffffu || e.address == scanEndpoint_.address)));
@@ -1077,14 +1081,14 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     }
     if ((h.kind == Kind::State || h.kind == Kind::ExtendedState) && p) {
       for (unsigned i = 0; i < 12; ++i) {
-        if (h.serial == p->querySerial[i] && uint32_t(now - p->queryAt[i]) < 1000) {
+        if (h.serial == p->querySerial[i] && uint32_t(now - p->queryAt[i]) < responseMs(e)) {
           requested = true;
           requestedAt = p->queryAt[i];
         }
       }
     }
     if (h.kind == Kind::ExtendedState && p && h.serial == p->capabilitySerial &&
-        uint32_t(now - p->capabilityAt) < 1000) {
+        uint32_t(now - p->capabilityAt) < responseMs(e)) {
       requested = true;
       requestedAt = p->capabilityAt;
     }
@@ -1104,7 +1108,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       }
       if (p->live && int32_t(revision - p->liveRevision) < 0) return;
     }
-    if (!requested || uint32_t(now - requestedAt) >= 1000) {
+    if (!requested || uint32_t(now - requestedAt) >= responseMs(e)) {
       return; // Delayed unsolicited state cannot make an offline drive appear fresh.
     }
     if (!p) {
@@ -1120,6 +1124,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       else
         return;
     }
+    p->freshnessMs = paced(e)?responseMs(e)+uint32_t(config.link.intervalMs)*3:0;
     // Capability is stable for a boot even if a newer state overtook this reply.
     if (extended && (!p->boot || p->boot == h.boot)) {
       p->manual = true;
@@ -1209,7 +1214,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       sendState(e, h.source, h.serial, false, Result::Ok, h.boot, false, h.version);
     return;
   }
-  if (h.target != id || h.targetBoot != boot || uint32_t(now - h.ticket) >= TicketMs) {
+  if (h.target != id || h.targetBoot != boot || uint32_t(now - h.ticket) >= ticketMs(e)) {
     ++rejected;
     return;
   }
@@ -1234,7 +1239,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
         stale = int32_t(h.serial - d.seq) <= 0;
         break;
       }
-      if ((!d.used || uint32_t(now - d.ticket) >= TicketMs) && (&d != &dedup_[0] || release)) {
+      if ((!d.used || uint32_t(now - d.ticket) >= ticketMs({0,config.port,true})) && (&d != &dedup_[0] || release)) {
         barrier = &d;
       }
     }
@@ -1304,7 +1309,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
   const uint8_t channel = c.op == ControlOp::RuntimeSpeed ? uint8_t(c.axis + 1) : 0;
   Dedup *free = nullptr;
   for (auto &d : dedup_) {
-    if (d.used && uint32_t(now - d.ticket) >= TicketMs)
+    if (d.used && uint32_t(now - d.ticket) >= ticketMs({0,config.port,true}))
       d.used = false;
     if (!d.used) {
       if (!free && (&d != &dedup_[0] || c.op == ControlOp::Stop || c.op == ControlOp::ReleaseJog))
@@ -1422,7 +1427,7 @@ void Hud::service(uint32_t at) {
     invalidateMirror();
   }
   if (auto *p = active();
-      p && !p->manual && p->fresh(now) && uint32_t(now - p->capabilityAt) >= 500) {
+      p && !paced(p->endpoint) && !p->manual && p->fresh(now) && uint32_t(now - p->capabilityAt) >= 500) {
     Writer w{tx_, sizeof tx_};
     const auto seq = nextSerial();
     header(w, {Kind::ExtendedQuery, id, p->id, boot, p->boot, seq, p->remoteTick, p->wireVersion, p->state.rangeRevision});
@@ -1452,28 +1457,28 @@ void Hud::service(uint32_t at) {
     }
     if (uint32_t(now - manual.started) >= 1000 && manual.command.release) {
       manual.used = false;
-    } else if (uint32_t(now - manual.sent) >= (manual.command.release ? 100u : 50u)) {
+    } else if (uint32_t(now - manual.sent) >= (manual.command.release ? 100u : manualIntervalMs(manual.endpoint))) {
       sendManual(manual);
     }
   }
   for (auto &j : client_->jobs)
     if (j.used) {
-      if (uint32_t(now - j.started) >= 1000) {
+      if (uint32_t(now - j.started) >= (paced(j.endpoint)?responseMs(j.endpoint)*3:1000u)) {
         ++timeouts;
         finish(j, Result::Timeout);
-      } else if (!j.attempts || (j.attempts < 3 && uint32_t(now - j.sent) >= 150))
+      } else if (!j.attempts || (j.attempts < 3 && uint32_t(now - j.sent) >= (paced(j.endpoint)?responseMs(j.endpoint):150u)))
         sendJob(j);
     }
   for (unsigned i = 0; i < 2; ++i)
     if (client_->held[i].active && uint32_t(now - client_->held[i].sent) >= 250)
       sendRenew(i);
-  if (auto *activePeer = active(); activePeer && activePeer->fresh(now) &&
+  if (auto *activePeer = active(); activePeer && !paced(activePeer->endpoint) && activePeer->fresh(now) &&
       uint32_t(now - activePeer->subscribeSent) >= 250) subscribe(*activePeer);
   // At most 20 state requests/s, active 10Hz and fair round-robin for every other saved peer.
   if (uint32_t(now - lastPoll_) < 50)
     return;
   auto *p = active();
-  if (p && p->saved && uint32_t(now - selectedPoll_) >= (p->live && uint32_t(now - p->liveAt) < 1000 ? 1000u : 100u)) {
+  if (p && p->saved && uint32_t(now - selectedPoll_) >= (paced(p->endpoint)?config.link.intervalMs:p->live && uint32_t(now - p->liveAt) < 1000 ? 1000u : 100u)) {
     sendQuery(p->endpoint, p->id);
     p->lastPoll = selectedPoll_ = lastPoll_ = now;
     return;
@@ -1482,7 +1487,7 @@ void Hud::service(uint32_t at) {
   auto *cursor = start && start->next ? start->next.get() : peers_.get();
   const auto *first = cursor;
   while (cursor) {
-    if (cursor->saved && cursor->id != config.selected && uint32_t(now - cursor->lastPoll) >= 1000) {
+    if (cursor->saved && cursor->id != config.selected && uint32_t(now - cursor->lastPoll) >= (paced(cursor->endpoint)?std::max<unsigned>(1000,config.link.intervalMs):1000u)) {
       sendQuery(cursor->endpoint, cursor->id);
       cursor->lastPoll = lastPoll_ = now;
       pollCursor_ = cursor->id;
@@ -1545,6 +1550,8 @@ void Hud::writeStatus(JsonWriter &j, bool live) const {
   j << ",\"deviceRole\":" << jsonQuoted(isHud() ? "hud" : "controller")
     << ",\"deviceId\":" << jsonQuoted(node) << ",\"hudPort\":" << config.port
     << ",\"hudUart\":" << (config.uart ? "true" : "false") << ",\"hudWifi\":" << unsigned(config.wifi)
+    << ",\"hudBaud\":" << config.link.baud << ",\"hudIntervalMs\":" << config.link.intervalMs
+    << ",\"hudReadyHigh\":" << unsigned(config.link.readyHigh)
     << ",\"hudSelected\":" << jsonQuoted(selected) << ",\"hudSelectionEpoch\":" << selectionEpoch
     << ",\"hudOnline\":" << (available() ? "true" : "false") << ",\"hudAgeMs\":";
   if (freshnessAge() != UINT32_MAX)

@@ -208,6 +208,7 @@ inline bool pinActive(const HardwareConfig &c,const PinDefinition &d) {
   case PinGroup::SensorEl:return !c.simulation && !c.pins.singleAxis() && c.sensorType(1)!=0;
   case PinGroup::Hc05:return c.backend()==BT_HC05;
   case PinGroup::Indicator:return true;
+  case PinGroup::HudRadio:return true;
   case PinGroup::Tft:return DISPLAY_KIND==DISPLAY_ILI9341;
   case PinGroup::Lcd:return DISPLAY_KIND==DISPLAY_LCD1602;
   }
@@ -245,6 +246,8 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
   if(anyHud485 && !c.hudRs485()) return {"incomplete_hud485","pin.hudRx"};
   if(c.hudRs485() && c.backend()==BT_HC05) return {"uart1_conflict","pin.hudRx","hc05"};
   if(hudUart && c.rs485() && !c.hudRs485()) return {"hud485_required","pin.hudRx"};
+  if (c.pins.hudReady>=0 && (c.rs485() || c.hudRs485()))
+    return {"radio_requires_uart","pin.hudReady"};
   if(c.local[0]>2 || c.local[1]>1 || c.local[2]>1) return {"invalid_local_input","localInputMode"};
   if(c.local[0]==LOCAL_INPUT_BUTTONS &&
       ((c.pins.localAzNegative<0)!=(c.pins.localAzPositive<0) ||

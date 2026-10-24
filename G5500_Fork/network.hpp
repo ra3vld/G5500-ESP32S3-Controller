@@ -18,6 +18,7 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include "hud_uart_tx.hpp"
+#include "hud_uart_gate.hpp"
 #include "rs485_hud.hpp"
 #include "rs485_reply.hpp"
 #include "modbus_serial.hpp"
@@ -115,6 +116,7 @@ private:
   struct UartLink {
     HudUartDecoder decoder;
     HudUartTx tx;
+    HudUartGate gate;
   };
   std::unique_ptr<UartLink> hudUart_;
   struct Rs485Link { HardwareSerial serial{1}; Rs485Hud link; };

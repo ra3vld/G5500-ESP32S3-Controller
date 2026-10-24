@@ -188,7 +188,7 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln("Copyright (c) UA1CFM");
   diagnostics_.dbgPrintln(runtime_.controller.hardware.pins.uartRx < 0 ? "UART: disabled" : runtime_.controller.hardware.rs485() && (!runtime_.hud.config.uart || runtime_.controller.hardware.hudRs485())
                               ? "UART0: GS-232 over RS-485, 9600 8N1" : runtime_.hud.config.uart && !runtime_.controller.hardware.hudRs485()
-                              ? "UART0: HUD/1, 115200 8N1; GS-232 disabled on these pins"
+                              ? "UART0: HUD/1, configured baud, 8N1; GS-232 disabled on these pins"
                               : "UART0 USB: PSTROTATOR GS-232, 9600 baud (COM number assigned by Windows)");
 #if FORK_NATIVE_USB
   diagnostics_.dbgPrintln("Native USB " FORK_USB_NAME

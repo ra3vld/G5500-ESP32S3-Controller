@@ -179,6 +179,9 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
     } else if(prefs_.getBytesLength("config1")==UartHardwareBytes{}.size()) {
       UartHardwareBytes legacy{};
       valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
+    } else if(prefs_.getBytesLength("config1")==SensorHardwareBytes{}.size()) {
+      SensorHardwareBytes legacy{};
+      valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
     } else valid = prefs_.getBytesLength("config1") == bytes.size() &&
         prefs_.getBytes("config1", bytes.data(), bytes.size()) == bytes.size() && decodeHardware(bytes, record);
   }
@@ -193,6 +196,7 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
   // configuration. Validate its physical fields with the unavailable radio off.
   auto invalidStored = [&](HardwareConfig config) {
     if (!BLUETOOTH_SUPPORT) config.bluetooth = false;
+    if (runtime.hud.config.link.paced() && config.hudRs485()) return "radio_requires_uart";
     return validateHardware(config, runtime.hud.config.uart);
   };
   const bool candidateBoot = record.phase == ConfigPhase::Pending || record.phase == ConfigPhase::Testing;
@@ -988,6 +992,13 @@ struct HudDiskConfig {
   uint32_t selectedLo = 0, selectedHi = 0;
   uint32_t crc = 0;
 };
+struct HudDiskConfigV2 {
+  HudDiskConfig base;
+  uint32_t baud = 115200;
+  uint16_t intervalMs = 100;
+  uint8_t readyHigh = 1, reserved = 0;
+  uint32_t crc = 0;
+};
 struct HudDiskPeer {
   uint32_t idLo = 0, idHi = 0, address = 0;
   uint16_t port = 4534;
@@ -998,13 +1009,17 @@ struct HudDiskPeer {
 static_assert(sizeof(HudDiskPeer) == 68);
 } // namespace
 bool Storage::saveHudConfig(const HudConfig &c) {
-  HudDiskConfig d;
-  d.role = uint8_t(c.role);
-  d.wifi = uint8_t(c.wifi);
-  d.uart = c.uart;
-  d.port = c.port;
-  d.selectedLo = uint32_t(c.selected);
-  d.selectedHi = uint32_t(c.selected >> 32);
+  if (!c.link.valid()) return false;
+  HudDiskConfigV2 d;
+  d.base.version = 2;
+  d.base.role = uint8_t(c.role);
+  d.base.wifi = uint8_t(c.wifi);
+  d.base.uart = c.uart;
+  d.base.port = c.port;
+  d.base.selectedLo = uint32_t(c.selected);
+  d.base.selectedHi = uint32_t(c.selected >> 32);
+  d.baud = c.link.baud; d.intervalMs = c.link.intervalMs;
+  d.readyHigh = c.link.readyHigh;
   d.crc = hudCrc(reinterpret_cast<const uint8_t *>(&d), sizeof d - 4);
   if (!prefs_.begin("hudcfg", false)) {
     prefs_.end();
@@ -1012,7 +1027,7 @@ bool Storage::saveHudConfig(const HudConfig &c) {
   }
   prefs_.putBytes("config", &d, sizeof d);
   prefs_.end();
-  HudDiskConfig check;
+  HudDiskConfigV2 check;
   const bool opened = prefs_.begin("hudcfg", true);
   const bool ok = opened && prefs_.getBytes("config", &check, sizeof check) == sizeof check &&
                   std::memcmp(&d, &check, sizeof d) == 0;
@@ -1065,9 +1080,23 @@ void Storage::loadHud(Runtime &runtime, bool peers) {
   const bool opened = prefs_.begin("hudcfg", true);
   if (opened && prefs_.getBytesLength("config")) {
     HudDiskConfig d;
-    if (prefs_.getBytesLength("config") != sizeof d || prefs_.getBytes("config", &d, sizeof d) != sizeof d ||
+    HudLinkConfig link;
+    bool valid = false;
+    if (prefs_.getBytesLength("config") == sizeof d) {
+      valid = prefs_.getBytes("config", &d, sizeof d) == sizeof d && d.version == 1 &&
+          hudCrc(reinterpret_cast<const uint8_t *>(&d), sizeof d - 4) == d.crc;
+    } else if (prefs_.getBytesLength("config") == sizeof(HudDiskConfigV2)) {
+      HudDiskConfigV2 next;
+      valid = prefs_.getBytes("config", &next, sizeof next) == sizeof next && next.base.version == 2 &&
+          hudCrc(reinterpret_cast<const uint8_t *>(&next), sizeof next - 4) == next.crc &&
+          next.readyHigh <= 1 && !next.reserved;
+      d = next.base; d.version = 1;
+      link.baud=next.baud; link.intervalMs=next.intervalMs;
+      link.readyHigh=next.readyHigh;
+    }
+    if (!valid || !link.valid() ||
         d.version != 1 || d.role > 1 || d.wifi > 2 || d.uart > 1 || !d.port || d.port > 65535 ||
-        hudCrc(reinterpret_cast<const uint8_t *>(&d), sizeof d - 4) != d.crc) {
+        d.reserved) {
       hud.config.role = DeviceRole::Hud;
       hud.catalogError = true;
     } else {
@@ -1076,6 +1105,7 @@ void Storage::loadHud(Runtime &runtime, bool peers) {
       hud.config.uart = d.uart;
       hud.config.port = uint16_t(d.port);
       hud.config.selected = uint64_t(d.selectedLo) | (uint64_t(d.selectedHi) << 32);
+      hud.config.link = link;
     }
   }
   const size_t size = peers && opened && hud.isHud() ? prefs_.getBytesLength("peers") : 0;
