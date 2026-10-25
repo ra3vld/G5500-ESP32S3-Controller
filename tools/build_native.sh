@@ -1,7 +1,12 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
+if [ "${1:-}" = "--quick" ]; then
+  shift
+  exec python3 tools/check_native.py "$@"
+fi
 mkdir -p build
+python3 -m unittest discover -s tests -p test_check_native.py
 python3 tools/generate_web_assets.py --check
 python3 tools/generate_tft_image.py --check
 python3 -m unittest discover -s tests -p test_tft_image.py
@@ -12,6 +17,7 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DRGB_INDICATOR_TEST -I tests/r
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/ota_fakes -I G5500_Fork G5500_Fork/ota.cpp tests/ota_tests.cpp -o build/ota_tests
 ./build/ota_tests
 sh tools/build_ruckig_native.sh
+sh tools/test_st7796.sh
 sh tools/test_motion_rates.sh
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork/src/ruckig tests/ruckig_workspace_tests.cpp build/motion/libruckig.a -o build/ruckig_workspace_tests
 ./build/ruckig_workspace_tests
@@ -24,12 +30,11 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_F
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/keyboard_hold_tests.cpp -o build/keyboard_hold_tests
 ./build/keyboard_hold_tests
 sh tools/test_local_controls.sh
-sh tools/test_esp32c3.sh
-sh tools/test_round_panel.sh
-sh tools/test_st7796.sh
 sh tools/test_position_sensors.sh
 sh tools/test_rs485.sh
 sh tools/test_modbus.sh
+sh tools/test_round_panel.sh
+sh tools/test_esp32c3.sh
 
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DWEB_INTERFACE_ENABLED=0 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp tests/setup_noweb_tests.cpp -o build/setup_noweb_tests
 ./build/setup_noweb_tests
@@ -140,7 +145,10 @@ for flags in '-DBOARD_PROFILE=4 -DBLUETOOTH_ENABLED=1' '-DBOARD_PROFILE=4 -DBLUE
 done
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -DTFT_DISPLAY_ENABLED=0 -I G5500_Fork -c G5500_Fork/display.cpp -o build/display_disabled.o
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -DTFT_DISPLAY_ENABLED=0 -I G5500_Fork -c tests/display_disabled_compile.cpp -o build/display_disabled_compile.o
-sh tools/test_panel.sh
+for drive in 0 1 2; do
+  ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -DDRIVE_INTERFACE=$drive -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/drive_tests.cpp -o build/drive_tests_$drive
+  ./build/drive_tests_$drive
+done
 # The optocoupler wiring reverses only RPWM/LPWM, never ENABLE.
 for profile in 1 3; do
   ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -DDRIVE_INTERFACE=2 -DBTS7960_PWM_INVERTED=1 -DBOARD_PROFILE=$profile -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/drive_tests.cpp -o build/drive_tests_inverted_$profile
@@ -193,7 +201,10 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_F
 ./build/hud_simulation_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/hud_position_json_tests.cpp -o build/hud_position_json_tests
 ./build/hud_position_json_tests
-sh tools/test_panel.sh
+for drive in 0 1 2; do
+  ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -DDRIVE_INTERFACE=$drive -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/hud_adapter_tests.cpp -o build/hud_adapter_tests_$drive
+  ./build/hud_adapter_tests_$drive
+done
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/hud_memory_tests.cpp -o build/hud_memory_tests
 ./build/hud_memory_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 $CROW_FLAGS -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/hud_adapter_tests.cpp -o build/hud_crowpanel_tests
