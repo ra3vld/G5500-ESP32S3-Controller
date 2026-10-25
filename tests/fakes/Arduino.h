@@ -32,6 +32,9 @@ public:
   }
   const char *c_str() const { return value_.c_str(); }
   size_t length() const { return value_.size(); }
+  bool reserve(size_t size) { value_.reserve(size); return true; }
+  char operator[](size_t index) const { return value_[index]; }
+  String substring(size_t first, size_t last) const { return value_.substr(first, last - first); }
   bool startsWith(const char *prefix) const { return value_.find(prefix)==0; }
   long toInt() const { return std::strtol(value_.c_str(),nullptr,10); }
   void toUpperCase() { for(auto &c:value_)c=std::toupper(static_cast<unsigned char>(c)); }

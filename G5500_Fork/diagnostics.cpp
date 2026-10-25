@@ -162,6 +162,8 @@ String Diagnostics::resetReasonToText(esp_reset_reason_t r) {
     return "BROWNOUT";
   case ESP_RST_SDIO:
     return "SDIO";
+  case ESP_RST_USB:
+    return "USB";
   default:
     return "UNKNOWN";
   }
@@ -316,10 +318,10 @@ bool Diagnostics::rssiHistoryJson(JsonWriter &j, const int8_t *buf, uint16_t siz
 void Diagnostics::beginNativeUsb() {
 #if FORK_NATIVE_USB
   HWCDCSerial.begin();
-#if CROWPANEL_USB_TRACE
-  // Both the mutex and TX-ring paths use this timeout. Never wait on a host.
+  // A USB host can stay connected after flashing without consuming output.
+  // Never let its full TX buffer delay setup, Wi-Fi retries or the main loop.
+  // The complete diagnostic log is retained in RAM even after a short write.
   HWCDCSerial.setTxTimeoutMs(0);
-#endif
 #endif
 }
 void Diagnostics::readBootReason() {

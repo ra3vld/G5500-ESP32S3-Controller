@@ -141,6 +141,13 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I tests/h
 ./build/http_ingress_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -I tests/wifi_fakes -I G5500_Fork tests/wifi_memory_tests.cpp -o build/wifi_memory_tests
 ./build/wifi_memory_tests
+
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections -DBOARD_PROFILE=8 -DDISPLAY_KIND=4 -DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=1 -I tests/diagnostics_fakes -I tests/device_fakes -I tests/fakes -I G5500_Fork G5500_Fork/diagnostics.cpp tests/usb_diagnostics_tests.cpp -o build/usb_diagnostics_tests
+./build/usb_diagnostics_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections -DBOARD_PROFILE=1 -DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=1 -I tests/diagnostics_fakes -I tests/device_fakes -I tests/fakes -I G5500_Fork G5500_Fork/diagnostics.cpp tests/usb_diagnostics_tests.cpp -o build/usb_diagnostics_s3_tests
+./build/usb_diagnostics_s3_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections -DBOARD_PROFILE=2 -DARDUINO_USB_MODE=0 -DARDUINO_USB_CDC_ON_BOOT=1 -I tests/diagnostics_fakes -I tests/device_fakes -I tests/fakes -I G5500_Fork G5500_Fork/diagnostics.cpp tests/usb_diagnostics_tests.cpp -o build/usb_diagnostics_s2_tests
+./build/usb_diagnostics_s2_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -pthread -I G5500_Fork G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp tests/datagram_socket_tests.cpp -Wl,--wrap=malloc -o build/datagram_socket_tests
 ./build/datagram_socket_tests
 for board in 1 4; do
