@@ -114,10 +114,10 @@ public:
     TouchEvent e;
     if(role_==Role::Target && (captured_.actionEpoch!=layout.actionEpoch ||
         !captured_.confirmAllowed || !layout.confirmAllowed)) cancelled_=true;
-    // STOP is immediate even during input recovery or a captured gesture.
-    if (down && layout.stop.contains(x,y) && role_!=Role::Stop) {
+    // A new STOP press is immediate even during input recovery. An existing
+    // contact keeps its gesture when the button appears or moves underneath it.
+    if (down && !down_ && layout.stop.contains(x,y)) {
       e.action=TouchAction::Stop;
-      if(role_==Role::Swipe || role_==Role::Arrow) { e.manual=true;e.release=true;e.gesture=gesture_;e.mask=mask_; }
       role_=Role::Stop;down_=true;blocked_=true;tap_=false;
       return e;
     }

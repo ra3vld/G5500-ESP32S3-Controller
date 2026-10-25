@@ -738,9 +738,10 @@ function resolveLiveReply(channel,message){
  if(message.boot!==channel.boot)return;
  if(message.cancelledFrom&&message.cancelledThrough){for(const [id,p] of channel.pending)if(id>=message.cancelledFrom&&id<=message.cancelledThrough){clearTimeout(p.timer);channel.pending.delete(id);p.resolve({status:409,json:async()=>message.result})}return;}
  const pending=channel.pending.get(message.id);if(!pending)return;
- if(message.result.result==='deferred'){document.getElementById('forkMessage').textContent='Ожидаем подтверждение поворотки…';return;}
+ const deferred=message.result.result==='deferred';
+ if(deferred&&!pending.acceptDeferred){document.getElementById('forkMessage').textContent='Ожидаем подтверждение поворотки…';return;}
  clearTimeout(pending.timer);channel.pending.delete(message.id);
- pending.resolve({status:message.result.ok?200:409,json:async()=>message.result});
+ pending.resolve({status:deferred?202:message.result.ok?200:409,json:async()=>message.result});
 }
 function connectControlLive(port){
  const c=controlLive;
@@ -778,14 +779,14 @@ function disconnectLive(socket,port){
  live.retry=setTimeout(()=>{live.retry=null;connectLive(port)},1000);
  socket.close();upd(true);
 }
-function sendLive(path,body,timeoutMs=liveTimeoutMs,channel=live){
+function sendLive(path,body,timeoutMs=liveTimeoutMs,channel=live,acceptDeferred=false){
  if(!channel.ready||channel.socket?.readyState!==WebSocket.OPEN)return Promise.reject(new Error('offline'));
  const stop=path==='/api/move'&&['S','A','E'].includes(body.d);
  if(channel.pending.size>=(stop?9:8)||channel.socket.bufferedAmount>(stop?4096:2048))return Promise.resolve({status:503,json:async()=>({ok:false,result:'busy'})});
  const id=++channel.next,packet=new URLSearchParams({...body,v:1,cid:id,boot:channel.boot,selection:body.selection??window._forkState?.hudSelectionEpoch??0,path}).toString();
  return new Promise((resolve,reject)=>{
   const timer=setTimeout(()=>{channel.pending.delete(id);resolve({status:504,json:async()=>({ok:false,result:'timeout'})})},timeoutMs);
-  channel.pending.set(id,{resolve,reject,timer});
+  channel.pending.set(id,{resolve,reject,timer,acceptDeferred});
   try{channel.socket.send(packet)}catch(e){clearTimeout(timer);channel.pending.delete(id);reject(e)}
  });
 }
@@ -1226,7 +1227,8 @@ async function transmitKeyboard(packet){
  // block them. Both paths share a deadline below the controller's 1 s lease.
  const deadline=performance.now()+900;
  if(controlLive.ready&&controlLive.boot===live.boot&&controlLive.selection===packet.selection){
-  try{return await keyboardReply(await sendLive('/api/move',packet,900,controlLive));}
+  // HUD admission renews the input lease; it has no one-shot completion ACK.
+  try{return await keyboardReply(await sendLive('/api/move',packet,900,controlLive,true));}
   catch(e){
    if(e.message==='context changed'||e.message==='restarted')return {ok:false,reason:'cancelled'};
    if(packet.d==='H'){

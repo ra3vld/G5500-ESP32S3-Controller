@@ -40,8 +40,8 @@ int main() {
   l.enabled=true;assert(!sample(true,25,115).manual);
   sample(false);assert(sample(true,25,115).manual);
   l.stop=l.stopArea;e=sample(true,120,180);
-  assert(e.action==TouchAction::Stop && e.manual && e.release);
-  assert(sample(false).action==TouchAction::None);
+  assert(e.action==TouchAction::None && e.manual && !e.release && e.az==-1);
+  assert(sample(false).release);
   assert(sample(true,120,180).action==TouchAction::Stop);
   sample(false);l.enabled=false;input.cancel();
   assert(sample(true,120,180).action==TouchAction::Stop);
@@ -55,6 +55,27 @@ int main() {
   sample(true,100,110);e=sample(true,150,60);
   assert(e.manual && e.absoluteSpeed && e.az==1 && e.el==1 && e.mask==3);
   e=sample(false);assert(e.manual && e.release && e.mask==3);
+
+  // A moving STOP button cannot steal an established downward swipe, including
+  // one that started on a target. Lifting and pressing STOP still stops at once.
+  for(bool targetStart:{false,true}) {
+    l=layout();
+    const int startY=targetStart?150:110;
+    sample(true,120,startY);e=sample(true,120,startY+10);
+    assert(e.manual && e.absoluteSpeed && !e.release && e.el<0);
+    const auto captured=e.gesture;
+    l.stop={80,uint16_t(startY),80,28};
+    e=sample(true,120,startY+10);
+    assert(e.action==TouchAction::None && e.manual && !e.release && e.gesture==captured);
+    l.stop=l.stopArea;
+    for(int y:{170,180,190,230,180,80}) {
+      e=sample(true,120,y);
+      assert(e.action==TouchAction::None && e.manual && !e.release && e.gesture==captured);
+      assert(y>startY?e.el<0:e.el>0);
+    }
+    e=sample(false);assert(e.manual && e.release && e.mask==2);
+    assert(sample(true,120,180).action==TouchAction::Stop);sample(false);
+  }
 
   PanelCommandContext shown;shown.target={120,40,true,true};shown.pending=true;
   auto current=shown;assert(current==shown);

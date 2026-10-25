@@ -399,7 +399,49 @@ int main(){
  assert(bufferMetric("liveStateBuffers")==1); // transient older frames are released
  for(int fd=1000;fd<1004;++fd)httpd_sess_trigger_close(&fakeServer,fd);
  assert(bufferMetric("liveStateBuffers")==0&&bufferMetric("liveBufferBytes")==idleBytes);
+ // HUD manual input is a renewable stream, not a job with a completion record.
+ // Its deferred admission must not be followed by a synthetic unavailable reply.
+ runtime.hud.config.role=DeviceRole::Hud;runtime.hud.begin(1,10);
+ assert(runtime.hud.setSimulationEnabled(true)&&runtime.hud.select(HUD_SIMULATION_ID));
+ runtime.hud.service(64000);c.tick(64000);
+ assert(connect(1000)==ESP_OK&&command(1000,"v=1&control=1")==ESP_OK);
+ publishAt(64000);
+ unsigned manualSerial=0;
+ const auto hudManual=[&](const char *direction,unsigned now) {
+   const auto sequence=++manualSerial;
+   const auto request="v=1&boot=a&selection="+std::to_string(runtime.hud.selectionEpoch)+
+       "&cid="+std::to_string(sequence)+"&path=/api/move&d="+direction+
+       "&client=789&session=345&gesture=5&serial="+std::to_string(sequence)+
+       "&mask=3&az="+(std::string(direction)=="H"?"1":"0")+"&el=0";
+   fakeServer.sent.clear();assert(command(1000,request)==ESP_OK);
+   server.commands(now);runtime.hud.service(now);c.tick(now);publishAt(now);
+   unsigned replies=0;
+   for(const auto &message:fakeServer.sent)if(message.second.find("\"type\":\"result\"")!=std::string::npos) {
+     ++replies;assert(message.second.find("\"result\":\"deferred\"")!=std::string::npos);
+   }
+   assert(replies==1);
+ };
+ for(unsigned now=64200;now<=66200;now+=200) {hudManual("H",now);assert(c.moving());}
+ hudManual("S",66400);assert(!c.moving());
+ // Ordinary HUD jobs still wait for, and deliver, their execution result.
+ fakeServer.sent.clear();
+ assert(command(1000,"v=1&boot=a&selection="+std::to_string(runtime.hud.selectionEpoch)+
+     "&cid="+std::to_string(++manualSerial)+"&path=/api/mode&mode=auto")==ESP_OK);
+ server.commands(66420);publishAt(66420);
+ unsigned modeReplies=0;
+ for(const auto &message:fakeServer.sent)if(message.second.find("\"type\":\"result\"")!=std::string::npos) {
+   ++modeReplies;assert(message.second.find("\"result\":\"deferred\"")!=std::string::npos);
+ }
+ assert(modeReplies==1);
+ runtime.hud.service(66420);c.tick(66420);server.commands(66440);publishAt(66440);
+ modeReplies=0;
+ for(const auto &message:fakeServer.sent)if(message.second.find("\"type\":\"result\"")!=std::string::npos) {
+   ++modeReplies;if(modeReplies==2)assert(message.second.find("\"ok\":true")!=std::string::npos);
+ }
+ assert(modeReplies==2);
+ httpd_sess_trigger_close(&fakeServer,1000);
  fakeEspTimeUs=-1;
+ std::cout<<"PASS: HUD manual renewals and release receive one deferred admission without false completion errors\n";
  std::cout<<"PASS: shared immutable state, four pinned revisions, independent fast peer, bounded pool, idle trim and last-client release\n";
  std::cout<<"PASS: TCP ACK pacing coalesces snapshots, preserves peers/STOP/PONG and partial frames, expires stalled peers and resets on reconnect\n";
  std::cout<<"PASS: separate compact manual stream, lease renewal/STOP ACKs across 1.5s telemetry backpressure, context changes and partial upgrade\n";

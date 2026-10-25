@@ -284,7 +284,10 @@ void LiveServer::commands(uint32_t now) {
       const auto response=executeLive(request,runtime_.controller,runtime_.protocol,runtime_.loggerSettings,runtime_.hud,now);
       Guard lock(mutex_);if(client.fd!=fd||client.generation!=generation)continue;
       reply(client,request.id,response.body.c_str());
-      if(response.status==202){bool saved=false;for(auto &p:client.buffers->pending)if(!p.cid){p={request.id,runtime_.hud.requestId()};saved=true;break;}if(!saved)client.closing=true;}
+      // Leased input has an admission reply and keeps renewing. Hud::result()
+      // tracks one-shot jobs, not this coalesced manual stream.
+      const bool manualStream=request.path=="/api/move"&&!request.get("gesture").empty();
+      if(response.status==202&&!manualStream){bool saved=false;for(auto &p:client.buffers->pending)if(!p.cid){p={request.id,runtime_.hud.requestId()};saved=true;break;}if(!saved)client.closing=true;}
     }
   }
   for(auto &client:*clients_) {

@@ -14,7 +14,7 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   const state={...sample,liveControlChannel:true,deviceRole:'controller',model:'G5500',configurationLocked:false,moving:true,
    build:{...sample.build,drive:'BTS7960'},autotune:{phase:'idle',active:false},
    axes:sample.axes.map((a,i)=>({...a,speedEnabled:true,speedAdjustable:true,regulatorMode:i?'cascade':'simple',speedSetpoint:i?24.5:50,speedLimit:i?37.26:90,measuredVelocity:i?-12.75:8.25,calibrated:true,direction:1,tracking:true,motionReady:true,motionPhase:'run'}))};
-  let blockStatus=false,releaseStatus=null,statusRequests=0,holdAckDelay=0,release=null,blockNext=false,active=0,maxActive=0;const moves=[],moveBodies=[];let dropStops=false,dropHolds=false,delayHold=false,releaseHold=null,enforceSerial=false,lastManualSerial=0;
+  let blockStatus=false,releaseStatus=null,statusRequests=0,holdAckDelay=0,release=null,blockNext=false,active=0,maxActive=0;const moves=[],moveBodies=[];let dropStops=false,dropHolds=false,delayHold=false,releaseHold=null,enforceSerial=false,lastManualSerial=0,httpManualDeferred=false;
   await page.route('http://speed.test/**',async route=>{
    const request=route.request(),url=new URL(request.url());
    if(url.pathname==='/api/move'){
@@ -23,6 +23,7 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
     if(body.d==='H'&&delayHold){delayHold=false;await new Promise(resolve=>releaseHold=resolve);}
     if((body.d==='H'&&dropHolds)||(body.d!=='H'&&dropStops))return route.abort();
     if(enforceSerial){if(Number(body.serial)<=lastManualSerial)return route.fulfill({status:409,json:{ok:false,result:'cancelled'}});lastManualSerial=Number(body.serial);}
+    if(httpManualDeferred)return route.fulfill({status:202,json:{ok:false,result:'deferred',requestId:Number(body.serial)}});
    }
    if(request.method()==='POST'){
     const form=Object.fromEntries(new URLSearchParams(request.postData()));posts.push({path:url.pathname,form});
@@ -230,6 +231,23 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   assert.equal(await page.evaluate(()=>live.ready&&live.pending.size===1),true,'brief TCP stall must preserve socket and pending ACK');
   assert.equal(await page.evaluate(async()=>{const r=await window.slowLiveReply;return r.status;}),200);
   liveAckDelay=0;livePackets.length=0;resetMoves();
+  // A HUD accepts leased input with "deferred". It must keep renewing without
+  // waiting for a one-shot completion that this manual stream never produces.
+  controlResult='deferred';
+  await page.keyboard.down('ArrowRight');await page.waitForTimeout(1400);
+  assert.equal(await page.evaluate(()=>keyboardHeld()),true,'HUD admission must not block keyboard renewals');
+  assert(moves.filter(d=>d==='H').length>=6,'HUD keyboard HOLD must repeat throughout the gesture');
+  await page.keyboard.up('ArrowRight');await page.waitForTimeout(100);
+  assert.equal(moves.filter(d=>d==='S').length,1,'accepted HUD release must not wait for a final result');
+  resetMoves();
+  const hudPointer=(type)=>page.locator('.movebtn[data-dir="D"]').dispatchEvent(type,{pointerId:19,pointerType:'touch',button:0});
+  await hudPointer('pointerdown');await page.waitForTimeout(1400);
+  assert.equal(await page.evaluate(()=>keyboardHeld()),true,'HUD admission must not block pointer renewals');
+  assert(moveBodies.filter(b=>b.d==='H'&&b.el==='-1').length>=6);
+  await hudPointer('pointerup');await page.waitForTimeout(100);
+  assert.equal(moves.filter(d=>d==='S').length,1);
+  assert.equal(await page.evaluate(()=>controlLive.pending.size),0);
+  controlResult='ok';resetMoves();
   dropControl=true;await page.keyboard.down('ArrowRight');await page.waitForTimeout(50);
   await page.keyboard.up('ArrowRight');control.close();await page.waitForTimeout(250);
   assert.equal(moves.filter(d=>d==='H').length,1,'released HOLD must not be replayed through HTTP after control disconnect');
@@ -279,6 +297,16 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   await page.waitForTimeout(350);dropHolds=false;assert.equal(await page.evaluate(()=>keyboardHeld()),false);assert.equal(moves.at(-1),'S');
   await pointer('R','pointerup',13);total=moves.length;await page.waitForTimeout(250);assert.equal(moves.length,total);
   assert(!await page.locator('#forkMessage').textContent().then(t=>t.includes('Проверьте связь и состояние устройства перед повтором')));
+  httpManualDeferred=true;resetMoves();
+  await page.keyboard.down('ArrowLeft');await page.waitForTimeout(1400);
+  assert.equal(await page.evaluate(()=>keyboardHeld()),true,'HUD HTTP admission must keep renewing keyboard input');
+  assert(moves.filter(d=>d==='H').length>=6);
+  await page.keyboard.up('ArrowLeft');await page.waitForTimeout(100);assert.equal(moves.filter(d=>d==='S').length,1);
+  resetMoves();await pointer('D','pointerdown',20);await page.waitForTimeout(1400);
+  assert.equal(await page.evaluate(()=>keyboardHeld()),true,'HUD HTTP admission must keep renewing pointer input');
+  assert(moves.filter(d=>d==='H').length>=6);
+  await pointer('D','pointerup',20);await page.waitForTimeout(100);assert.equal(moves.filter(d=>d==='S').length,1);
+  httpManualDeferred=false;
   resetMoves();
   state.model='G800DXA';await page.evaluate(()=>upd(true));await page.waitForFunction(()=>window._forkState.model==='G800DXA');
   await page.keyboard.press('ArrowUp');await page.keyboard.press('Control+ArrowLeft');await page.waitForTimeout(50);assert.deepEqual(moves,[],'hidden axes/modifiers must not move');
