@@ -200,6 +200,18 @@ int main(int argc,char **argv) {
     Preferences::failedBytesKey.clear();
   }
   {
+    Fixture hardwareForm;
+    const auto full=hardwareForm.call("GET","/api/hardware","",false);
+    const auto form=hardwareForm.call("GET","/api/hardware","view=form",false);
+    assert(full.status==200 && form.status==200 && form.body.size()<full.body.size());
+    for(const char *key:{"token","generation","role","configured","remainingMs","failureCount","heapFree","backend","sppSupported","separateDrive"})
+      assert(form.body.find(std::string("\"")+key+"\":")!=std::string::npos);
+    for(const char *key:{"effective","confirmed"}) {
+      assert(full.body.find(std::string("\"")+key+"\":")!=std::string::npos);
+      assert(form.body.find(std::string("\"")+key+"\":")==std::string::npos);
+    }
+  }
+  {
     Fixture tuningStep;auto &r=tuningStep.runtime;auto &c=r.controller;
     auto config=c.hardware;config.simulation=false;config.drive=DRIVE_BTS7960;c.configureHardware(config);c.feedback(90,45,true,true);
     for(unsigned i=0;i<2;++i){auto m=c.motionSettings[i];m.mode=RegulatorMode::Cascade;m.ready=true;assert(c.configureMotion(i,m,fakeHardware.now));}

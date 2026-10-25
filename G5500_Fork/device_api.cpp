@@ -107,8 +107,11 @@ void DeviceApi::writeHardwareStatus(JsonWriter &j, bool compact, std::string_vie
     << ",\"separateDrive\":" << (CROWPANEL_LOCAL_DRIVE?"false":"true")
     << ",\"btsDrive\":true,\"independentDrive\":true"
     << ",\"configured\":"; config(configured);
-  j << ",\"effective\":"; config(runtime_.controller.hardware);
-  j << ",\"confirmed\":"; config(r.good); j << '}';
+  if(view!="form") {
+    j << ",\"effective\":"; config(runtime_.controller.hardware);
+    j << ",\"confirmed\":"; config(r.good);
+  }
+  j << '}';
 
 }
 Response DeviceApi::callApi(std::string_view path, FormView form) {

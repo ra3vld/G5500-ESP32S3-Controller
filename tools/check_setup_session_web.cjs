@@ -19,6 +19,7 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
    const task=queue.then(()=>new Promise((resolve,reject)=>{pending.push({resolve,reject});proc.stdin.write(`${10001+Date.now()-started}\t${method}\t${route}\t${body}\n`);}));
    queue=task.catch(()=>{});return task;
   };
+  const hardwarePolling=process.env.SETUP_SESSION_SCENARIO==='hardware-polling',pendingPolls={},maxPolls={};let delayed=true;
   const page=await browser.newPage({viewport:{width,height:1000},locale:'ru-RU'});page.on('pageerror',e=>errors.push(e.message));
   try{
    await page.route('http://setup-session.test/**',async route=>{
@@ -29,12 +30,35 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     if(url.pathname==='/api/settings'&&req.method()==='POST'&&saveDelay){const delay=saveDelay;saveDelay=0;await wait(delay);}
     if(url.pathname==='/api/setup'&&form.get('action')==='arm'&&armDelay){const delay=armDelay;armDelay=0;await wait(delay);}
     if(url.pathname==='/api/setup'&&form.get('action')==='renew'&&renewDelay)await wait(renewDelay);
-    const result=await rpc(req.method(),url.pathname,body);trace.push({path:url.pathname,...result,response:result.body,body:Object.fromEntries(form)});
-    await route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});
+    const slow=hardwarePolling&&req.method()==='GET'&&req.frame().parentFrame()&&['/api/hardware','/api/hardware/modbus','/api/hardware/pins'].includes(url.pathname),key=url.pathname;
+    if(slow){pendingPolls[key]=(pendingPolls[key]||0)+1;maxPolls[key]=Math.max(maxPolls[key]||0,pendingPolls[key]);}
+    try{
+     if(slow&&delayed)await wait(3200);
+     const result=await rpc(req.method(),url.pathname,body);trace.push({path:url.pathname,query:url.search,...result,response:result.body,body:Object.fromEntries(form)});
+     await route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});
+    }finally{if(slow)--pendingPolls[key];}
    });
    await page.goto('http://setup-session.test/setup');
    await page.waitForFunction(()=>wizard.active&&wizard.state?.token&&wizard.state.step===1);
    const session=await page.evaluate(()=>wizard.state.token);
+   if(hardwarePolling){
+    await rpc('POST','/__fixture/tuning');await rpc('POST','/__fixture/step','3');await page.evaluate(async()=>{await upd(true);await pollSetup();});
+    const frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
+    await frame.waitForFunction(()=>!!state&&!!metadata);await wait(4500);
+    assert.equal(maxPolls['/api/hardware'],1,'Hardware polling must coalesce slow requests');
+    assert.equal(maxPolls['/api/hardware/modbus'],1,'Modbus polling must coalesce slow requests');
+    assert.equal(maxPolls['/api/hardware/pins'],1,'GPIO metadata must load once while hardware polling waits');
+    const field=frame.locator('[name=forceApSta]');await field.selectOption('1');
+    delayed=false;await frame.evaluate(()=>Promise.all([refresh(),refresh(),refreshModbus(),refreshModbus()]));
+    assert.equal(await field.inputValue(),'1','Background reads must preserve the draft');
+    const reads=trace.filter(r=>r.path==='/api/hardware'&&r.query==='?view=form');assert(reads.length>0);
+    assert(reads.every(r=>r.response.configured&&!('effective'in r.response)&&!('confirmed'in r.response)));
+    await frame.evaluate(()=>{pollError=msg.textContent='Не удалось получить состояние: временный обрыв';});
+    await frame.evaluate(()=>refresh());assert.equal(await frame.locator('#message').textContent(),'');
+    assert.deepEqual(errors,[]);
+    if(process.env.ARTIFACT_DIR){await frame.locator('#effective').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`hardware-polling-${width}.png`)});fs.writeFileSync(path.join(process.env.ARTIFACT_DIR,`hardware-polling-${width}.json`),JSON.stringify({maxPolls,trace},null,2));}
+    console.log(`PASS: ${width}px, embedded hardware: 3.2s responses, single pending poll per endpoint, form-only payload, preserved draft and recovered error`);continue;
+   }
    if(process.env.SETUP_SESSION_SCENARIO==='tuning'){
     await rpc('POST','/__fixture/tuning');await page.evaluate(()=>pollSetup());
     await page.waitForFunction(()=>wizard.state?.step===6&&!wizard.polling);await page.evaluate(async()=>{await upd(true);await loadMotionSettings();});
