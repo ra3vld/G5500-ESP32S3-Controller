@@ -28,6 +28,7 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    assert.match(await page.locator('#failures').textContent(),/Сбои: 2 \/ 3/);
    assert.match(await page.locator('#failures').textContent(),/30 минут/);
    assert(await page.locator('#confirm').isDisabled());
+   assert(await page.locator('#confirm').isHidden());
    assert.equal(await page.locator('fieldset').filter({has:page.locator('legend', {hasText:'Привод'})}).locator('select:visible').count(),1);
    assert.equal(await page.locator('[name=driveMode]').inputValue(),'simulation');
    assert(await page.locator('#position-sensors').isHidden());
@@ -166,6 +167,11 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    probeFails=false;await page.evaluate(()=>refresh());
    await page.waitForFunction(()=>!document.getElementById('confirm').disabled);
    assert(!(await page.locator('#confirm').isDisabled()));
+   assert(await page.locator('#confirm').isVisible());
+   assert(await page.locator('#confirm').evaluate(el=>el.closest('#hardware-status')!==null));
+   await page.evaluate(()=>window.scrollTo(0,0));
+   assert(await page.locator('#confirm').evaluate(el=>el.getBoundingClientRect().bottom<=innerHeight),'Trial confirmation is visible without scrolling through GPIO settings');
+   if(process.env.HARDWARE_SCREENSHOT_DIR){fs.mkdirSync(process.env.HARDWARE_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:path.join(process.env.HARDWARE_SCREENSHOT_DIR,`trial-confirm-${profile}-${mobile?'mobile':'desktop'}.png`)});}
    await page.locator('#confirm').click();
    await page.waitForFunction(()=>document.getElementById('message').textContent.startsWith('Сохранено'));
    assert.equal(requests.at(-1).path,'/api/hardware/confirm');

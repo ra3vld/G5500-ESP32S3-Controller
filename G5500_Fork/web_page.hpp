@@ -52,6 +52,7 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 @media(max-width:700px){.grid{grid-template-columns:1fr}.big{font-size:46px}.targetbig{font-size:30px}.sep{font-size:26px}}
 .manual-drive{display:grid;grid-template-columns:minmax(0,1fr);gap:12px 18px;align-items:center}.manual-drive.has-speeds{grid-template-columns:minmax(0,6.2fr) minmax(0,1fr)}.manual-speeds{display:grid;gap:10px;min-width:0}.manual-speed label{display:grid;gap:2px;font-size:13px}.manual-speed output{font-variant-numeric:tabular-nums;white-space:nowrap}.manual-speed input{width:100%;min-height:44px;padding:0;accent-color:var(--a);touch-action:pan-y}#manualSpeedHelp{grid-column:1/-1;margin:0}.manual-drive:not(.has-speeds) #manualSpeedHelp{display:none}@media(max-width:600px){.manual-drive.has-speeds{grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px}.manual-drive.has-speeds .controls{gap:6px}.manual-drive.has-speeds .controls .btn{font-size:14px}}
 .hint{color:var(--m);font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.hardware-notice{padding:14px 16px;border:2px solid #e5bd67;border-radius:12px;background:#302719;color:#ffe4ac;line-height:1.5;overflow-wrap:anywhere}.hardware-notice p{margin:8px 0}.hardware-notice a{display:inline-flex;align-items:center;min-height:44px;color:#b9e5ff;max-width:100%;text-underline-offset:3px}
 .device-panel h2{font-size:20px;line-height:1.35;margin:0;overflow-wrap:anywhere}.device-panel #hudLink:empty{display:none}.device-panel #hudLink:not(:empty){margin-top:8px}
 .device-section{margin-top:14px;border-top:1px solid var(--b);padding-top:14px}.device-section summary{line-height:1.4;padding:4px 0}.device-section[open] summary{margin-bottom:14px}
 .device-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.device-fields .field{min-width:0}.device-fields label{display:block;margin-bottom:7px;color:var(--m);font-size:14px;line-height:1.4}.device-fields input,.device-fields select{min-height:44px;max-width:100%}
@@ -209,6 +210,7 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <a href="/resetdiag">RESET DIAG</a>
 <a href="/diaglog">DIAG CONSOLE</a>
 </nav>
+<div class="hardware-notice hide" id="hardwareTrialNotice" role="status"><strong>Управление заблокировано на время применения оборудования.</strong><p>После выхода из восстановления или изменения оборудования откройте его настройки. Во время пробного запуска нажмите «Подтвердить и перезапустить» вверху страницы.</p><a href="/hardware">Открыть подтверждение оборудования →</a></div>
 <div id="forkMessage" role="status" aria-live="polite"></div>
 <main id="controlPanel" role="tabpanel" aria-labelledby="controlTab">
 <div id="selectedRotor" class="hint hide" role="status"></div>
@@ -275,7 +277,6 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <div class="field"><label for="gs232ManualFollow">GS-232 · UART, Bluetooth, TCP</label><select aria-describedby="gs232ManualFollow-help" id="gs232ManualFollow" name="gs232ManualFollow"><option value="false">С подтверждением</option><option value="true">Автоследование</option></select><p class="field-help" id="gs232ManualFollow-help">В ручном режиме цели GS-232 ожидают подтверждения либо выполняются сразу при выборе автоследования. Настройка действует только на этот протокол.</p></div>
 <div class="field"><label for="rotctldManualFollow">rotctld / Hamlib</label><select aria-describedby="rotctldManualFollow-help" id="rotctldManualFollow" name="rotctldManualFollow"><option value="false">С подтверждением</option><option value="true">Автоследование</option></select><p class="field-help" id="rotctldManualFollow-help">В ручном режиме цели rotctld ожидают подтверждения либо выполняются сразу при выборе автоследования. Настройка действует на команды положения Hamlib по всем доступным подключениям.</p></div>
 </div><p class="hint">Автоследование сразу выполняет новые числовые цели выбранного протокола, сохраняя ручной режим. «С подтверждением» оставляет цель для запуска кнопкой. В автоматическом режиме цели всех протоколов выполняются сразу. Направления и STOP выполняются сразу в обоих режимах; при активной предустановке внешние команды движения отклоняются.</p></div>
-<p class="hint hide" id="hardwareTrialNotice">Движение заблокировано до подтверждения оборудования. <a href="/hardware">Открыть настройки оборудования</a></p>
 <div class="hint" id="buildInfo"></div>
 <div class="settings-group" id="hardwareSettings"><h3>Оборудование</h3><p class="hint">Привод, имитация, Bluetooth, точка доступа и кнопка настраиваются с проверкой после перезапуска.</p><a class="btn" href="/hardware">Настроить оборудование</a> <a href="/recovery">Восстановление доступа</a></div>
 <div class="hide" id="encoderSettings"><label class="check-field"><input checked="" id="encoderInverted" aria-describedby="encoderInverted-help" name="encoderInverted" type="checkbox"/> Инверсия энкодера</label><p class="field-help" id="encoderInverted-help">Меняет направление изменения цели при вращении энкодера. На направление вращения двигателя не влияет.</p></div>
@@ -1165,7 +1166,7 @@ function updateFork(j){
  const btBackend=j.build?.bluetoothBackend||(j.build?.bluetooth===false?'NONE':'HC05');
  const btName=btBackend==='ESP32_SPP'?'Встроенный Bluetooth SPP':btBackend==='HC05'?'HC-05':'Bluetooth отключён';
  const nativeBt=btBackend==='ESP32_SPP';
- document.getElementById('hardwareTrialNotice').classList.toggle('hide',!j.configurationLocked);
+ document.getElementById('hardwareTrialNotice').classList.toggle('hide',!j.configurationLocked||!!j.setupRequired);
  setText(document.getElementById('buildInfo'),j.build?`${j.build.board} · ${j.build.drive} · ${j.build.display} · ${btName}`:'');
  setText(document.getElementById('btlabel'),nativeBt?'Канал SPP':btName);
  setText(document.getElementById('bttransport'),btBackend==='ESP32_SPP'?'G5500-Rotator · SPP / виртуальный COM':btBackend==='HC05'?'HC-05 UART: 9600 baud':'');

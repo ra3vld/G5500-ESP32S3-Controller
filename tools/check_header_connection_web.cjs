@@ -30,10 +30,33 @@ const out=process.env.ARTIFACT_DIR||path.resolve(__dirname,'../local-notes/heade
   assert.equal(await page.locator('header #rotatorConnection[role=status]').count(),1);
   assert(!(await page.locator('header').innerText()).includes('оригинал'));
   assert.equal(await page.locator('footer').count(),1);
-  assert((await page.locator('footer').innerText()).includes('G5500 Fork 0.1.0 · оригинал © UA1CFM'));
+  assert.match(await page.locator('footer').innerText(),/G5500 Fork \d/);
+  assert((await page.locator('footer').innerText()).includes('UA1CFM'));
   const links=await page.locator('footer a').evaluateAll(nodes=>nodes.map(n=>({href:n.href,rel:n.rel,target:n.target})));
   assert.deepEqual(links.map(l=>l.href),['https://github.com/ra3vld/G5500-ESP32S3-Controller','https://github.com/ua1cfm/G5500-ESP32S3-Controller']);
   assert(links.every(l=>l.target==='_blank'&&l.rel.includes('noopener')));
+  state={...state,configurationLocked:true,setupRequired:false};await refresh();
+  for(const width of [390,1100]){
+   await page.setViewportSize({width,height:950});
+   await page.evaluate(()=>selectTab('control'));
+   const notice=page.locator('#hardwareTrialNotice');
+   assert(await notice.isVisible());
+   assert.match(await notice.textContent(),/Подтвердить и перезапустить/);
+   assert.equal(await notice.locator('a').getAttribute('href'),'/hardware');
+   await page.evaluate(()=>document.querySelector('.wrap').scrollTop=0);
+   assert(await notice.evaluate(el=>el.getBoundingClientRect().bottom<=innerHeight));
+   assert(await page.evaluate(()=>hardwareTrialNotice.getBoundingClientRect().bottom<=controlPanel.getBoundingClientRect().top));
+   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+   await page.screenshot({path:path.join(out,`hardware-confirmation-${width}.png`)});
+   await page.evaluate(()=>selectTab('settings'));assert(await notice.isVisible());
+  }
+  state={...state,setupRequired:true};await refresh();
+  await page.waitForFunction(()=>window._forkState?.setupRequired===true&&document.getElementById('hardwareTrialNotice').classList.contains('hide'));
+  assert(await page.locator('#hardwareTrialNotice').isHidden());
+  state={...state,configurationLocked:false,setupRequired:false};await refresh();
+  await page.waitForFunction(()=>window._forkState?.configurationLocked===false&&window._forkState?.setupRequired===false&&document.getElementById('hardwareTrialNotice').classList.contains('hide'));
+  assert(await page.locator('#hardwareTrialNotice').isHidden());
+  await page.evaluate(()=>selectTab('control'));
   for(const failure of ['offline','error','invalid']){
    mode=failure;await refresh();await expect('Нет связи с устройством','offline');
    mode='ok';await refresh();await expect('Поворотка на связи','online');
