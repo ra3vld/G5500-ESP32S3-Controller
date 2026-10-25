@@ -148,12 +148,11 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"bluetoothBackend\":" << jsonQuoted(controller.hardware.backendName()) << ",\"drive\":"
        << jsonQuoted(controller.remote                      ? "HUD"
                      : controller.hardware.simulation                     ? "SIMULATED"
-                     : controller.hardware.pins.azAdc<0 || controller.hardware.pins.azNegative<0 ||
-                       controller.hardware.pins.azPositive<0 || controller.hardware.pins.azSpeedEnable<0 ? "NONE"
+                     : !controller.hardware.hasDirections(0) && !controller.hardware.hasDirections(1) ? "NONE"
                      : controller.hardware.drive == DRIVE_YAESU       ? "YAESU"
                      : controller.hardware.drive == DRIVE_BTS7960     ? "BTS7960"
                                                             : "SEPARATE_PWM")
-       << ",\"singleAxis\":" << (controller.hardware.pins.singleAxis() && !controller.remote && !controller.hardware.simulation ? "true" : "false")
+       << ",\"singleAxis\":" << (controller.hardware.pins.singleAxis() && (!FORK_C3 || controller.hardware.localAxisConfigured(0)) && !controller.remote && !controller.hardware.simulation ? "true" : "false")
        << ",\"userButtonGpio\":" << int(controller.hardware.buttonGpio)
        << ",\"userButtonActiveLow\":" << (controller.hardware.buttonLow ? "true" : "false")
        << ",\"userButtonPullup\":" << (controller.hardware.buttonPullup ? "true" : "false")
@@ -319,7 +318,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       auto m = get(form, "model");
       valid = (m == "G5500" || m == "G800DXA") && valid;
       model = m == "G800DXA" ? Model::G800DXA : Model::G5500;
-      if (!controller.remote && !controller.hardware.simulation && controller.hardware.pins.singleAxis() && model != Model::G800DXA) valid = false;
+      if (!controller.remote && !controller.hardware.simulation && controller.hardware.pins.singleAxis() && (!FORK_C3 || controller.hardware.localAxisConfigured(0)) && model != Model::G800DXA) valid = false;
     }
     if (has(form, "rotorName")) {
       name = get(form, "rotorName");

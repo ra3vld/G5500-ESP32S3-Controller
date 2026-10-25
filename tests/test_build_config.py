@@ -68,6 +68,28 @@ class BuildConfigTests(unittest.TestCase):
                           BTS7960_PWM_INVERTED=0, USER_BUTTON_GPIO=0, USER_BUTTON_ACTIVE_LOW=1,
                           USER_BUTTON_PULLUP=1, AZ_STOP_TOLERANCE_DEG='5.0f', EL_STOP_TOLERANCE_DEG='5.0f'))
 
+    def test_headless_c3_profile(self):
+        expected=dict(SELECTED_BOARD=9,FORK_C3=1,FORK_S3=0,FORK_CLASSIC_ESP32=0,
+                      DISPLAY_KIND=0,USER_BUTTON_GPIO=9,DRIVE_SIMULATION=0,
+                      **{'forkrot::board::PIN_LEFT':-1,'forkrot::board::PIN_AZ_ADC':-1})
+        self.compile(expected,['CONFIG_IDF_TARGET_ESP32C3=1'])
+        self.compile(expected,['BOARD_PROFILE=9'])
+        result=subprocess.run([sys.executable,str(self.root/'tools/build_platformio.py'),
+                               '--env','esp32c3_4mb','--dry-run'],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        config=configparser.ConfigParser(interpolation=None)
+        config.read(self.root/'build/platformio-config/esp32c3_4mb.ini')
+        selected=config['env:selected']
+        self.assertIn('-DBOARD_PROFILE=BOARD_ESP32_C3',selected['build_flags'])
+        self.assertIn('-DDISPLAY_KIND=0',selected['build_flags'])
+        self.assertEqual(selected['lib_deps'].strip(),'')
+        result=subprocess.run([sys.executable,str(self.root/'tools/prepare_sketch.py'),
+                               '--target','esp32-c3'],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        sketch=self.root/'build/arduino-esp32-c3/G5500_Fork'
+        self.assertEqual((sketch/'partitions.csv').read_bytes(),(self.source/'partitions_esp32.csv').read_bytes())
+        self.assertTrue((sketch/'board_esp32c3.hpp').is_file())
+
     def test_crowpanel_usb_trace_profile(self):
         flags = ['BOARD_PROFILE=5', 'DISPLAY_KIND=3', 'USER_BUTTON_GPIO=-1',
                  'BLUETOOTH_ENABLED=0', 'CROWPANEL_USB_TRACE=1']

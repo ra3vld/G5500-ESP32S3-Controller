@@ -34,7 +34,7 @@ public:
   bool writeHistoryJson(JsonWriter &j, RssiPeriod period);
   void diagClear();
   String diagSnapshot();
-#if FORK_CLASSIC_ESP32
+#if FORK_CLASSIC_ESP32 || FORK_C3
   size_t copyLog(char *out, size_t capacity) const { return diagLog_.copyTo(out, capacity); }
 #endif
   void dbgView(std::string_view text, bool newline = false);
@@ -59,7 +59,7 @@ private:
   RssiHistory rssi_;
   esp_reset_reason_t bootResetReason = ESP_RST_UNKNOWN;
   String bootResetReasonText = "UNKNOWN";
-#if FORK_CLASSIC_ESP32
+#if FORK_CLASSIC_ESP32 || FORK_C3
   ByteLog<2048> diagLog_;
 #else
   static constexpr uint16_t DIAG_MAX_LINES = 160;

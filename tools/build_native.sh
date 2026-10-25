@@ -24,6 +24,7 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_F
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/keyboard_hold_tests.cpp -o build/keyboard_hold_tests
 ./build/keyboard_hold_tests
 sh tools/test_local_controls.sh
+sh tools/test_esp32c3.sh
 sh tools/test_position_sensors.sh
 sh tools/test_rs485.sh
 sh tools/test_modbus.sh

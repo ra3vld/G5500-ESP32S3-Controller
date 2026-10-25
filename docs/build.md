@@ -21,6 +21,8 @@
 
 NONE не требует экранных библиотек. LCD требует только LiquidCrystal; TFT не требует LiquidCrystal. Для Bluetooth дополнительные библиотеки не нужны: на ESP32 доступны встроенный SPP и внешний HC-05, на S2/S3 — HC-05. Выберите транспорт после сборки в веб-настройках оборудования; Bluetooth по умолчанию выключен.
 
+Для [ESP32-C3 без дисплея](boards/esp32-c3.md) используйте `pio run -e esp32c3_4mb` или `./tools/build_arduino.sh esp32-c3`. Профиль рассчитан на Flash 4 МиБ, включает веб-интерфейс и native USB, использует один раздел приложения 3 МиБ без OTA. GPIO привода назначаются при первой настройке; библиотеки дисплея не нужны.
+
 CrowPanel 2.1 (DHE03921D): `pio run -e crowpanel_21` или `./tools/build_arduino.sh crowpanel`. Для переделанной платы с локальным AZ используйте `pio run -e crowpanel_21_az` по [инструкции подключения](boards/crowpanel-az.md). Обычный `crowpanel_21` — профиль экрана/энкодера/сети без привода; конфигурация, библиотека LVGL и ограничения описаны в [crowpanel-21.md](boards/crowpanel-21.md).
 
 ## Arduino IDE 2.x

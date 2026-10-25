@@ -191,9 +191,10 @@ bool DeviceApi::setupReady(SetupStep step) const {
       }
     }
     case SetupStep::Equipment:return runtime_.setup.equipment && runtime_.hardwareRecord.hasConfirmed && !c.configurationLocked;
-    case SetupStep::Calibration:return c.hardware.simulation || (c.axes[0].calibrated && (c.model==Model::G800DXA || c.axes[1].calibrated));
+    case SetupStep::Calibration:return c.hardware.simulation || c.hardware.manualWithoutFeedback() || (c.axes[0].calibrated && (c.model==Model::G800DXA || c.axes[1].calibrated));
     case SetupStep::Tuning:
       if(c.autoTune.active() || c.coast.active() || c.hasDriveError())return false;
+      if(c.hardware.manualWithoutFeedback())return true;
       for(unsigned i=0;i<(c.model==Model::G5500?2u:1u);++i)
         if(c.variableSpeed(i) ? (!c.motionSettings[i].ready || !c.motionSettings[i].valid()) :
             (runtime_.setup.fresh && !c.hardware.simulation && !(runtime_.setup.checked&(1u<<(12+i)))))return false;
@@ -213,6 +214,7 @@ void DeviceApi::writeSetup(JsonWriter &j) const {
     << ",\"equipment\":" << (s.equipment?"true":"false") << ",\"ready\":" << (setupReady(s.step)?"true":"false")
     << ",\"role\":" << jsonQuoted(runtime_.hud.isHud()?"hud":"controller")
     << ",\"simulation\":" << (runtime_.controller.hardware.simulation?"true":"false")
+    << ",\"manualOnly\":" << (runtime_.controller.hardware.manualWithoutFeedback()?"true":"false")
     << ",\"token\":" << runtime_.setupLease << ",\"storageOk\":" << (runtime_.setupStorageOk?"true":"false") << '}';
 }
 void DeviceApi::serviceSetup(uint32_t now) {
@@ -377,8 +379,8 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     } else if(action=="back") {
       if(!next.required){reply(409,"setup_inactive");return;}
       SetupState cursor;cursor.step=SetupStep::Network;
-      while(cursor.next(runtime_.hud.isHud(),runtime_.controller.hardware.simulation)!=next.step && cursor.step!=SetupStep::Review && cursor.step!=SetupStep::Done)
-        cursor.step=cursor.next(runtime_.hud.isHud(),runtime_.controller.hardware.simulation);
+      while(cursor.next(runtime_.hud.isHud(),runtime_.controller.hardware.simulation || runtime_.controller.hardware.manualWithoutFeedback())!=next.step && cursor.step!=SetupStep::Review && cursor.step!=SetupStep::Done)
+        cursor.step=cursor.next(runtime_.hud.isHud(),runtime_.controller.hardware.simulation || runtime_.controller.hardware.manualWithoutFeedback());
       next.step=next.step==SetupStep::Network?SetupStep::Network:cursor.step;
       runtime_.controller.cancelCoast(millis());runtime_.controller.cancelAutoTune(millis());runtime_.controller.stopNow(-1,millis());
     } else if(action=="advance" || action=="complete") {
@@ -388,7 +390,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       if(action=="complete" && next.step!=SetupStep::Review){reply(409,"setup_step_not_ready");return;}
       next.checked|=uint16_t(1u<<unsigned(next.step));
       const bool finished=next.step==SetupStep::Review;
-      next.step=next.next(runtime_.hud.isHud(),runtime_.controller.hardware.simulation);
+      next.step=next.next(runtime_.hud.isHud(),runtime_.controller.hardware.simulation || runtime_.controller.hardware.manualWithoutFeedback());
       if(finished){next.required=false;next.paused=false;next.fresh=false;runtime_.setupLease=0;runtime_.controller.stopNow(-1,millis());}
     } else {reply(400,"invalid_setup_action");return;}
     runtime_.controller.cancelCoast(millis());runtime_.controller.cancelAutoTune(millis());runtime_.controller.stopNow(-1,millis());

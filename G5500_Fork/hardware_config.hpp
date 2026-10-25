@@ -31,6 +31,17 @@ struct HardwareConfig {
   int8_t buttonGpio = USER_BUTTON_GPIO;
   bool buttonLow = USER_BUTTON_ACTIVE_LOW, buttonPullup = USER_BUTTON_PULLUP;
   bool pwmInverted = BTS7960_PWM_INVERTED;
+  bool localAxisConfigured(unsigned axis) const {
+    return axis ? pins.elAdc>=0 || pins.elNegative>=0 || pins.elPositive>=0 || pins.elSpeedEnable>=0 || sensorType(1)
+                : pins.azAdc>=0 || pins.azNegative>=0 || pins.azPositive>=0 || pins.azSpeedEnable>=0 || sensorType(0);
+  }
+  bool hasDirections(unsigned axis) const {
+    return axis ? pins.elNegative>=0 && pins.elPositive>=0 : pins.azNegative>=0 && pins.azPositive>=0;
+  }
+  bool manualWithoutFeedback() const {
+    return !simulation && drive==DRIVE_YAESU && hasDirections(0) && pins.azSpeedEnable<0 &&
+        pins.azAdc<0 && !sensorType(0) && (pins.singleAxis() || (hasDirections(1) && pins.elAdc<0 && !sensorType(1)));
+  }
   bool hudRs485() const { return pins.hudRx >= 0 && pins.hudTx >= 0 && pins.hudDe >= 0; }
   bool rs485() const { return pins.uartDe >= 0; }
   uint8_t backend() const {

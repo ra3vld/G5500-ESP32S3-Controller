@@ -16,7 +16,7 @@ static auto &HWCDCSerial = Serial;
 
 namespace forkrot {
 void Diagnostics::diagStoreLine(String line) {
-#if FORK_CLASSIC_ESP32
+#if FORK_CLASSIC_ESP32 || FORK_C3
   diagLog_.append({line.c_str(), line.length()}, true);
 #else
   line.replace("\r", "");
@@ -32,7 +32,7 @@ void Diagnostics::diagStoreLine(String line) {
 }
 
 void Diagnostics::diagMirror(const String &s, bool newline) {
-#if FORK_CLASSIC_ESP32
+#if FORK_CLASSIC_ESP32 || FORK_C3
   diagLog_.append({s.c_str(), s.length()}, newline);
 #else
   for (size_t i = 0; i < s.length(); i++) {
@@ -59,7 +59,7 @@ void Diagnostics::diagMirror(const String &s, bool newline) {
 }
 
 void Diagnostics::diagClear() {
-#if FORK_CLASSIC_ESP32
+#if FORK_CLASSIC_ESP32 || FORK_C3
   diagLog_.clear();
 #else
   for (uint16_t i = 0; i < DIAG_MAX_LINES; i++) {
@@ -73,7 +73,7 @@ void Diagnostics::diagClear() {
 
 String Diagnostics::diagSnapshot() {
   String out;
-#if FORK_CLASSIC_ESP32
+#if FORK_CLASSIC_ESP32 || FORK_C3
   if (!out.reserve(diagLog_.size())) return "[DIAG] not enough memory for snapshot\n";
   diagLog_.copyTo(out);
 #else
@@ -92,7 +92,7 @@ String Diagnostics::diagSnapshot() {
 }
 
 void Diagnostics::dbgView(std::string_view text, bool newline) {
-#if FORK_CLASSIC_ESP32
+#if FORK_CLASSIC_ESP32 || FORK_C3
   diagLog_.append(text, newline);
 #else
   // Other boards retain their existing 160-line log behavior.
@@ -346,7 +346,7 @@ bool Diagnostics::writeHistoryJson(JsonWriter &j, RssiPeriod period) {
 
 namespace forkrot {
 void Diagnostics::writeLog(JsonWriter &out) const {
-#if FORK_CLASSIC_ESP32
+#if FORK_CLASSIC_ESP32 || FORK_C3
   struct Sink { JsonWriter &writer; void operator+=(char c) { writer << c; } } sink{out};
   diagLog_.copyTo(sink);
 #else

@@ -302,6 +302,7 @@ void Hardware::applyOutputs() {
           digitalWrite(speed[i], LOW);
     }
     for (unsigned i=0; i<(c.pins.singleAxis()?1u:2u); ++i) {
+      if(!c.hasDirections(i)) continue;
       const auto &axis = runtime_.controller.axes[i];
       const int d = ready ? axis.direction : 0;
       const uint32_t duty = d ? uint32_t(lroundf(axis.speedOutputPercent*1023.f/100.f)) : 0;
@@ -337,6 +338,7 @@ void Hardware::beginDirections() {
   if(board::validateHardware(c)) {
     runtime_.controller.driveFault=true; runtime_.controller.fault="pin_configuration_invalid"; return;
   }
+  if(!c.localAxisConfigured(0) && !c.localAxisConfigured(1)) return;
 #if CROWPANEL_LOCAL_DRIVE
   directionsStarted_=true;
   if(!crowpanelDrive_.begin(c)) crowpanelFault();

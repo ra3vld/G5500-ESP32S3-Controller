@@ -25,7 +25,7 @@ void Controller::configureHardware(const HardwareConfig &config) {
   coast={};
   prepareMotionPlanner();
   hardware = config;
-  if (!hardware.simulation && !remote && hardware.pins.singleAxis()) { model = Model::G800DXA; axes[1] = {}; }
+  if (!hardware.simulation && !remote && hardware.pins.singleAxis() && (!FORK_C3 || hardware.localAxisConfigured(0))) { model = Model::G800DXA; axes[1] = {}; }
   speeds = {};
   motionSettings = {};
   motion_ = {};
@@ -153,6 +153,8 @@ Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
       (nextTarget.hasEl && model == Model::G5500 && !axes[1].calibrated)) {
     return Result::NotCalibrated;
   }
+  if(!hardware.simulation && ((nextTarget.hasAz && !hardware.hasDirections(0)) ||
+      (nextTarget.hasEl && model==Model::G5500 && !hardware.hasDirections(1)))) return Result::Unavailable;
   for (unsigned i=0; i<2; ++i) if ((i ? nextTarget.hasEl && model == Model::G5500 : nextTarget.hasAz) &&
       ( (axes[i].motionError != MotionError::None && !(retryStall && axes[i].motionError == MotionError::Stalled)) ||
         (variableSpeed(i) && !motionSettings[i].ready))) return Result::Unavailable;
@@ -278,6 +280,7 @@ Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now
     stop(axis);
     return Result::Ok;
   }
+  if(!hardware.simulation && !hardware.hasDirections(axis)) return Result::Unavailable;
   if (external && presetActive) {
     return Result::Ignored;
   }
@@ -534,6 +537,7 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
   }
   const float values[] = {az, el};
   for(unsigned i=0;i<2;++i) if((mask&(1u<<i)) && values[i]!=0 && !(s->blocked&(1u<<i))) {
+    if(!hardware.simulation && !hardware.hasDirections(i)) { closeManual(*s,now);return Result::Unavailable; }
     const bool retryStall = !(s->claimed & (1u<<i)) && s->epoch[i] == motionEpoch[i];
     if((axes[i].motionError!=MotionError::None && !(retryStall && axes[i].motionError==MotionError::Stalled)) ||
        (variableSpeed(i) && !motionSettings[i].ready)) { closeManual(*s,now);return Result::Unavailable; }
@@ -600,7 +604,7 @@ void Controller::restoreMode(Mode savedMode) {
 void Controller::setModel(Model nextModel) {
   if (remote)
     return;
-  if (!hardware.simulation && hardware.pins.singleAxis() && nextModel != Model::G800DXA) return;
+  if (!hardware.simulation && hardware.pins.singleAxis() && (!FORK_C3 || hardware.localAxisConfigured(0)) && nextModel != Model::G800DXA) return;
   stop();
   model = nextModel;
   if (model == Model::G800DXA) {
@@ -813,7 +817,7 @@ bool Controller::variableSpeed(unsigned i) const {
   if (remote)
     return i < 2 && remoteVariable[i];
   if (hardware.simulation) return i == 0 || (i == 1 && model == Model::G5500);
-  if (hardware.drive == DRIVE_YAESU) return i == 0 && model == Model::G800DXA && speedEnabled;
+  if (hardware.drive == DRIVE_YAESU) return i == 0 && model == Model::G800DXA && speedEnabled && hardware.pins.azSpeedEnable>=0;
   return i == 0 || model == Model::G5500;
 }
 bool Controller::runtimeSpeedAvailable(unsigned i) const {

@@ -108,4 +108,17 @@ for flags in [
     *[['BOARD_PROFILE=6',f'USER_BUTTON_GPIO={pin}'] for pin in (0,16,18,19,21,22,23,25,26,27,34,13)],
     ['BOARD_PROFILE=6','LOCAL_INPUT_MODE=2','LOCAL_AZ_ADC_GPIO=25'],
 ]: compile_case(flags,False)
+compile_case(['CONFIG_IDF_TARGET_ESP32C3=1'],True)
+headless=['BOARD_PROFILE=9','DISPLAY_KIND=0']
+for drive,bt,simulation in itertools.product(range(3),range(2),range(2)):
+    compile_case(headless+[f'DRIVE_INTERFACE={drive}',f'BLUETOOTH_ENABLED={bt}',
+                          f'DRIVE_SIMULATION={simulation}','CONFIG_IDF_TARGET_ESP32C3=1'],True)
+for pin in range(9):
+    compile_case(headless+[f'USER_BUTTON_GPIO={pin}'],True)
+for flags in [
+    *[['BOARD_PROFILE=9',f'DISPLAY_KIND={display}'] for display in range(1,5)],
+    *[headless+[f'CONFIG_IDF_TARGET_{chip}=1'] for chip in ('ESP32','ESP32S2','ESP32S3')],
+    headless+['BLUETOOTH_ENABLED=1','BLUETOOTH_MODE=BT_ESP32_SPP'],
+    *[headless+[f'USER_BUTTON_GPIO={pin}'] for pin in range(11,20)],
+]: compile_case(flags,False)
 print(f'PASS: {checks} board/display/BT/drive/local-input ownership and negative compile checks')

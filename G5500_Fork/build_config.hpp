@@ -24,6 +24,7 @@
 // BOARD_WT32_ETH01 — Wireless-Tag WT32-ETH01, LAN8720 Ethernet, без дисплея.
 // BOARD_WAVESHARE_S3_ETH — Waveshare ESP32-S3-ETH, W5500 + DVP-камера.
 // BOARD_CROWPANEL_21 — Elecrow DHE03921D, круглый ST7701 480x480.
+// BOARD_ESP32_C3 — ESP32-C3 с Flash 4 МБ, без дисплея.
 #ifndef BOARD_PROFILE
 #define BOARD_PROFILE BOARD_AUTO
 #endif
