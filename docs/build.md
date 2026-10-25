@@ -88,13 +88,11 @@ pio run -e esp32s3_n16r8_tft -j4
 pio run -e esp32s2_mini_lcd -j4
 pio run -e esp32s2_4mb_headless -j4
 pio run -e esp32_4mb_noweb -j4
-pio run -e esp32s3_n16r8_buttons -j4
-pio run -e esp32s3_n16r8_joystick -j4
 ```
 
 При изменении DISPLAY_KIND в заголовке используйте `build_platformio.py`, который добавит только выбранные зависимости. Прямое `pio run` использует `lib_deps` выбранного окружения.
 
-Профили `_buttons` и `_joystick` задают начальные настройки для [локальных кнопок или аналогового джойстика](control/local-controls.md) с указанной в инструкции распиновкой ESP32-S3; дисплей по умолчанию отключён.
+Для [локальных кнопок или аналогового джойстика](control/local-controls.md) используйте обычный профиль своей платы, например `esp32s3_n16r8`. После прошивки выберите входы управления и назначьте GPIO в **Настройки → Оборудование**.
 
 Для [WT32-ETH01 с Ethernet](boards/wt32-eth01.md) используйте `pio run -e wt32_eth01` либо `./tools/build_arduino.sh wt32-eth01`. Профиль имеет свою распиновку, работает без дисплея и требует внешнего USB–UART для записи. Вариант `wt32_eth01_noweb` поддерживает ArduinoOTA через командный API.
 
