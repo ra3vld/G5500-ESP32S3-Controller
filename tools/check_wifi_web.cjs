@@ -57,8 +57,7 @@ status.rssi=-62;status.heapFree=65536;status.uptimeSeconds=90061;
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`control overflow at ${width}`);
    await page.screenshot({path:path.join(root,`artifacts/screenshots/control-tab-${width}.png`),fullPage:true});
   }
-  await page.getByRole('tab',{name:'Управление',exact:true}).focus();
-  await page.keyboard.press('ArrowRight');
+  await page.getByRole('tab',{name:'Настройки',exact:true}).click();
   assert.equal(await page.getByRole('tab',{name:'Настройки',exact:true}).getAttribute('aria-selected'),'true');
   assert.equal(await page.locator('#controlPanel').isVisible(),false);
   assert.equal(await page.locator('.nav a:visible').count(),4,'diagnostics and setup remain available in Settings');

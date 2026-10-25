@@ -58,6 +58,7 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
    ws.onClose(()=>clearInterval(ticker));
   });
   await page.goto('http://speed.test/');await page.locator('#azManualSpeed').waitFor({state:'visible'});
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'movementButtons','Control opens with manual movement focused');
   assert.equal(await page.locator('#azManualSpeedValue').textContent(),'50%');
   assert.equal(await page.locator('#elManualSpeedValue').textContent(),'24.5 °/с');
   assert.equal(await page.locator('#azManualSpeedActual').textContent(),'8.3 °/с');
@@ -105,6 +106,16 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   state.axes[0].speedAdjustable=false;await page.evaluate(()=>upd(true));await page.waitForFunction(()=>document.getElementById('manualSpeeds').classList.contains('hide'));assert(!await page.locator('#manualSpeeds').isVisible());
   state.axes[0].speedAdjustable=true;state.deviceRole='hud';await page.evaluate(()=>upd(true));await page.waitForFunction(()=>window._forkState.deviceRole==='hud');assert(!await page.locator('#manualSpeeds').isVisible());
   state.deviceRole='controller';state.model='G5500';await page.evaluate(()=>upd(true));await page.waitForFunction(()=>!document.getElementById('manualSpeeds').classList.contains('hide'));
+  state.axes[1].speedEnabled=false;await page.evaluate(()=>upd(true));
+  await page.waitForFunction(()=>document.getElementById('elManualSpeedControl').classList.contains('hide'));
+  assert(await page.locator('#azManualSpeedControl').isVisible());assert(!await page.locator('#elManualSpeedControl').isVisible(),'Fixed-speed EL stays hidden even with a stale adjustable flag');
+  state.axes[0].speedEnabled=false;await page.evaluate(()=>upd(true));await page.waitForFunction(()=>document.getElementById('manualSpeeds').classList.contains('hide'));assert(!await page.locator('#manualSpeeds').isVisible());
+  assert.equal(await page.locator('.manual-drive').evaluate(e=>e.classList.contains('has-speeds')),false,'No empty slider column for fixed-speed drives');
+  state.axes.forEach(a=>a.speedEnabled=true);state.build.drive='NONE';await page.evaluate(()=>upd(true));await page.waitForFunction(()=>window._forkState.build.drive==='NONE');assert(!await page.locator('#manualSpeeds').isVisible(),'An unconfigured device has no speed controls');
+  state.build.drive='BTS7960';state.axes[0].speedLimit=0;await page.evaluate(()=>upd(true));
+  await page.waitForFunction(()=>!document.getElementById('elManualSpeedControl').classList.contains('hide'));
+  assert(!await page.locator('#azManualSpeedControl').isVisible());assert(await page.locator('#elManualSpeedControl').isVisible());
+  state.axes[0].speedLimit=90;await page.evaluate(()=>upd(true));await page.waitForFunction(()=>!document.getElementById('azManualSpeedControl').classList.contains('hide'));
   for(const width of [1100,390,320]){
    await page.setViewportSize({width,height:1000});await page.locator('#manualSpeeds').scrollIntoViewIfNeeded();
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow at ${width}`);
@@ -127,10 +138,25 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
   assert.equal(posts.filter(p=>p.path==='/api/target').length,count,'Enter must validate ranges');
   await page.locator('#taz').fill('');await page.locator('#tel').fill('');await page.locator('#tel').press('Enter');
   assert.equal(posts.filter(p=>p.path==='/api/target').length,count,'Empty Enter must not send a target');
-  // Keyboard uses a sequenced lease, never an unbounded L/R/U/D command.
-  await page.locator('#taz').press('ArrowUp');assert.deepEqual(moves,[]);
-  const unfocus=()=>page.evaluate(()=>document.activeElement?.blur());await unfocus();
+  // All arrows on Control use a sequenced movement lease, including focused editors.
   const resetMoves=()=>{moves.length=0;moveBodies.length=0;};
+  await page.locator('#taz').fill('90');await page.locator('#tel').fill('45');
+  for(const [selector,key] of [['#taz','ArrowUp'],['#tel','ArrowLeft'],['#azManualSpeed','ArrowRight'],['#elManualSpeed','ArrowDown'],['#followMode','ArrowUp'],['#controlTab','ArrowRight'],['#executeTarget','ArrowLeft']]){
+   await page.locator(selector).focus();const before=await page.locator(selector).evaluate(e=>e.value),speedPosts=posts.filter(p=>p.path==='/api/speed').length;
+   resetMoves();await page.keyboard.press(key);await page.waitForTimeout(80);
+   assert.deepEqual(moves,['H','S'],'Arrow controls movement from '+selector);
+   assert.equal(await page.locator(selector).evaluate(e=>e.value),before,'Arrow preserves field/slider value');
+   assert.equal(posts.filter(p=>p.path==='/api/speed').length,speedPosts,'Arrow does not change speed');
+   assert.equal(await page.evaluate(()=>document.activeElement.id),'movementButtons');
+   assert(await page.locator('#controlPanel').isVisible(),'Arrow must preserve the Control tab');
+  }
+  await page.locator('#settingsTab').click();assert(await page.locator('#settingsPanel').isVisible());
+  await page.locator('#settingsTab').focus();await page.keyboard.press('ArrowRight');assert(await page.locator('#historyPanel').isVisible(),'Other tabs keep keyboard navigation');
+  await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowLeft');
+  assert(await page.locator('#controlPanel').isVisible());assert.equal(await page.evaluate(()=>document.activeElement.id),'movementButtons');
+  await page.locator('#settingsTab').click();await page.locator('#controlTab').click();
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'movementButtons','Returning by click restores movement focus');
+  const unfocus=()=>page.evaluate(()=>document.activeElement?.blur());await unfocus();
   for(const [key,az,el] of [['ArrowLeft','-1','0'],['ArrowRight','1','0'],['ArrowUp','0','1'],['ArrowDown','0','-1']]){
    resetMoves();await page.keyboard.down(key);await page.keyboard.down(key);await page.keyboard.up(key);
    await page.waitForTimeout(80);assert.deepEqual(moves,['H','S'],key+' must open and close one gesture');
@@ -305,6 +331,6 @@ const sample=JSON.parse(process.env.SIM_STATE?fs.readFileSync(process.env.SIM_ST
     assert(await page.locator('#movementButtons').evaluate(e=>[...e.querySelectorAll('.btn:not(.blank)')].every(n=>{const box=n.getBoundingClientRect(),r=document.createRange();r.selectNodeContents(n);return [...r.getClientRects()].every(b=>b.left>=box.left&&b.right<=box.right+1&&b.top>=box.top&&b.bottom<=box.bottom+1);})),`button text must stay inside at ${width}, pending=${pending}`);
    }
   }
-  assert.deepEqual(errors,[]);console.log('PASS: pending goal/explicit execution/STOP priority, rounded setpoint and actual speed, compact live sliders, Enter, leased keyboard/pointer guards, 1100/390/320px');
+  assert.deepEqual(errors,[]);console.log('PASS: per-device/per-axis slider visibility, Control focus and arrows from all inputs/tabs, pending goal/STOP priority, live speed controls, Enter, leased keyboard/pointer guards, 1100/390/320px');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

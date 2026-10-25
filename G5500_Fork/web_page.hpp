@@ -29,6 +29,7 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 .bar{height:16px;border-radius:8px;background:#071018;overflow:hidden;margin-top:12px}.fill{height:100%;background:linear-gradient(90deg,#24d18d,#33b8ff)}
 .controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.btn{border:0;border-radius:14px;min-height:48px;background:#235b78;color:white;font-size:19px;font-weight:700;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none;-webkit-tap-highlight-color:transparent}.btn *{pointer-events:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.movebtn{cursor:pointer}
 .stop{background:var(--s);font-size:23px;min-height:60px}.good{background:#167a5c}.warn{background:#81541d}.blank{visibility:hidden}
+#movementButtons:focus-visible{outline:2px solid var(--a);outline-offset:4px;border-radius:6px}
 #executeTarget{min-height:60px;white-space:pre-line;font-size:clamp(16px,4vw,23px)}
 .aiming-header:has(.pending-target){grid-template-columns:auto minmax(0,1fr)}.aiming-header:has(.pending-target) .drive-status{justify-self:end;grid-column:2;grid-row:1}.aiming-header #waitingTarget.pending-target{grid-column:1/-1;grid-row:2;white-space:normal;overflow:visible;font-size:24px;line-height:1.35;font-weight:700;color:#f2c94c;padding:10px 12px;border:1px solid #a58a35;border-radius:10px;background:#302b18}
 .controls:has(#executeTarget.pending-target){grid-template-columns:minmax(0,1fr) minmax(0,1.5fr) minmax(0,1fr)}#executeTarget.pending-target{background:#f2c94c;color:#151b20;overflow-wrap:anywhere}.manual-speed-reading{display:flex;flex-wrap:wrap;column-gap:4px}.manual-speed-reading>span{color:var(--m)}
@@ -217,7 +218,7 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <div class="aiming-details"><button id="resetDriveError" class="btn hide" type="button" onclick="resetMotion('all')">Сбросить ошибку</button><span class="status"><span id="caldot" class="dot"></span><span id="caltxt">Calibration</span></span></div>
 <h3>Ручное вращение</h3>
 <div class="manual-drive">
-<div id="movementButtons" class="controls" style="margin-top:10px">
+<div id="movementButtons" class="controls" role="group" aria-label="Ручное вращение стрелками клавиатуры" tabindex="0" style="margin-top:10px">
 <button class="btn blank">-</button><button class="btn movebtn" data-dir="U"><span>▲ UP</span></button><button class="btn blank">-</button>
 <button class="btn movebtn" data-dir="L"><span>◀ LEFT</span></button><button id="executeTarget" class="btn good" onclick="targetAction()" disabled>Повернуть</button><button class="btn movebtn" data-dir="R"><span>RIGHT ▶</span></button>
 <button class="btn blank">-</button><button class="btn movebtn" data-dir="D"><span>▼ DOWN</span></button><button class="btn blank">-</button>
@@ -554,6 +555,9 @@ function updateCamera(state){
  refreshCamera();
 }
 document.addEventListener('visibilitychange',refreshCamera);
+function focusMovementButtons(){
+ if(!document.hidden&&!document.getElementById('controlPanel').hidden)document.getElementById('movementButtons').focus({preventScroll:true});
+}
 function selectTab(name,updateHash=true){
  if(!pageTabs.includes(name))name='control';
  if(name!=='control')releaseKeyboardAxes();
@@ -569,6 +573,7 @@ function selectTab(name,updateHash=true){
  refreshCamera();
  if(opening)loadRssi();
  if(updateHash)(settings?document.querySelector('.wrap'):window).scrollTo({top:0,behavior:'instant'});
+ if(name==='control')focusMovementButtons();
 }
 
 let otaState=null,otaBusy=false,otaCancelled=false,otaTimer;
@@ -1108,7 +1113,7 @@ function renderManualSpeeds(j){
  let visible=false;
  for(const [i,axis] of ['az','el'].entries()){
   const a=j?.axes?.[i],input=document.getElementById(axis+'ManualSpeed'),control=document.getElementById(axis+'ManualSpeedControl'),p=manualSpeedRequests[axis];
-  const available=j?.deviceRole!=='hud'&&!!a?.speedAdjustable&&(i===0||j.model!=='G800DXA'),cascade=a?.regulatorMode==='cascade';
+  const available=j?.deviceRole==='controller'&&['YAESU','SEPARATE_PWM','BTS7960','SIMULATED'].includes(j.build?.drive)&&a?.speedEnabled===true&&a.speedAdjustable===true&&(i===0||j.model==='G5500')&&Number.isFinite(a.speedLimit)&&a.speedLimit>0&&Number.isFinite(a.speedSetpoint);
   control.classList.toggle('hide',!available);visible|=available;
   const context=[j?.deviceRole,j?.model,j?.hudSelectionEpoch,a?.regulatorMode,available,j?.autotune?.active,j?.configurationLocked].join(':');
   if(p.context!==context){p.context=context;p.pending=null;clearTimeout(p.timer);p.timer=null;++p.epoch;}
@@ -1188,7 +1193,7 @@ async function go(){
   document.getElementById('forkMessage').textContent=g800?'Введите угол AZ':'Введите угол AZ или EL';
   document.getElementById('taz').focus();return;
  }
- await forkPost('/api/target',body);
+ if(await forkPost('/api/target',body))focusMovementButtons();
 }
 for(const id of ['taz','tel'])document.getElementById(id).addEventListener('keydown',event=>{
  if(event.key!=='Enter'||event.isComposing)return;
@@ -1280,25 +1285,27 @@ function startManualAxis(axis,input){
 }
 document.addEventListener('keydown',event=>{
  const direction=arrowDirections[event.key];
- if(!direction||event.defaultPrevented)return;
- if(event.repeat){if(Object.values(keyboardAxes).some(held=>held?.key===event.key))event.preventDefault();return;}
+ if(!direction||document.hidden||document.getElementById('controlPanel').hidden)return;
  if(event.altKey||event.ctrlKey||event.metaKey||event.shiftKey||event.isComposing)return;
- const target=event.target;
- if(target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="tab"]')||document.getElementById('controlPanel').hidden)return;
+ event.preventDefault();event.stopPropagation();focusMovementButtons();
+ if(event.repeat)return;
  const button=document.querySelector('.movebtn[data-dir="'+direction+'"]'),j=window._forkState;
  if(!j||j.configurationLocked||j.autotune?.active||!button||button.disabled||!button.getClientRects().length)return;
- event.preventDefault();const axis=direction==='L'||direction==='R'?'az':'el';
+ const axis=direction==='L'||direction==='R'?'az':'el';
  if(keyboardAxes[axis]?.key===event.key)return; // Some platforms omit repeat=true.
  startManualAxis(axis,{key:event.key,direction});
-});
+},true);
 window.addEventListener('keyup',event=>{
  if(!arrowDirections[event.key])return;
  for(const axis of ['az','el'])if(keyboardAxes[axis]?.key===event.key){event.preventDefault();releaseKeyboardAxis(axis);}
 },true);
 window.addEventListener('blur',releaseKeyboardAxes);
+window.addEventListener('focus',focusMovementButtons);
 window.addEventListener('pagehide',releaseKeyboardAxes);
-document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseKeyboardAxes();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseKeyboardAxes();else focusMovementButtons();});
 document.addEventListener('focusin',event=>{if(event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])'))releaseKeyboardAxes();});
+document.addEventListener('click',event=>{if(!event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])'))focusMovementButtons();});
+document.getElementById('controlPanel').addEventListener('change',focusMovementButtons);
 async function cal(p){await calibrationAction('/api/cal?p='+p,'Точка '+p.slice(0,2).toUpperCase()+' '+p.slice(2)+'° запомнена')}
 async function cal2(p){await calibrationAction('/api/cal2?p='+p,(p[0]==='f'?'Конец':'Начало')+' диапазона '+(p.endsWith('2')?'EL':'AZ')+' запомнено')}
 async function setCalMode(m){await calibrationAction('/api/calmode?m='+m,m==='multi'?'Выбрана многоточечная калибровка':'Выбрана двухточечная калибровка')}
@@ -1511,7 +1518,7 @@ document.querySelectorAll('[role=tab]').forEach(tab=>tab.addEventListener('keydo
  if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
  event.preventDefault();const index=pageTabs.indexOf(tab.id.slice(0,-3));
  const next=event.key==='Home'?pageTabs[0]:event.key==='End'?pageTabs[pageTabs.length-1]:pageTabs[(index+(event.key==='ArrowRight'?1:-1)+pageTabs.length)%pageTabs.length];
- selectTab(next);document.getElementById(next+'Tab').focus();
+ selectTab(next);if(next!=='control')document.getElementById(next+'Tab').focus();
 }));
 selectTab(location.hash.slice(1),false);
 setInterval(loadRssi,30000);
