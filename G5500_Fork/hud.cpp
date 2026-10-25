@@ -1638,6 +1638,7 @@ bool Hud::writePeers(JsonWriter &j, size_t offset, size_t limit, bool discovered
     idText(node, p->id);
     const uint32_t address = p->endpoint.address;
     j << "{\"id\":" << jsonQuoted(node) << ",\"name\":" << jsonQuoted(p->label)
+      << ",\"background\":" << unsigned(p->background)
       << ",\"transport\":" << jsonQuoted(p->simulated() ? "simulation" : p->endpoint.uart ? "uart" : "wifi") << ",\"address\":\""
       << (address & 255) << '.' << ((address >> 8) & 255) << '.' << ((address >> 16) & 255) << '.'
       << ((address >> 24) & 255) << "\",\"port\":" << p->endpoint.port

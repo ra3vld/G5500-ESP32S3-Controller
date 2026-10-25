@@ -223,15 +223,16 @@ void Display::updateLocalDisplay() {
     view.settingsAvailable=DISPLAY_KIND==DISPLAY_ILI9341;
     view.enabled=!controller.movementBlocked() && (!runtime_.hud.isHud() || runtime_.hud.available());
     if (runtime_.controller.hardware.simulation) {
-    std::snprintf(view.status, sizeof view.status, "%s", controller.moving() ? "Имитация · вращение" : "Имитация · остановлен");
+    std::snprintf(view.status, sizeof view.status, "%s", controller.moving() ? "Имитация · вращение" : "Имитация");
     } else if (DISPLAY_KIND!=DISPLAY_CROWPANEL_21 || CROWPANEL_LOCAL_DRIVE || runtime_.hud.isHud()) {
-      std::snprintf(view.status, sizeof view.status, "%s", controller.moving() ? "Вращение" : "Остановлен");
+      std::snprintf(view.status, sizeof view.status, "%s", controller.moving() ? "Вращение" : "");
     }
     if (!inputHealthy_ || !touchHealthy_) std::snprintf(view.status, sizeof view.status, "Ошибка ввода");
     const unsigned axis = runtime_.hud.isHud() ? hudKnob_.axis() : knob_.axis();
     view.hud = runtime_.hud.isHud();
     if (view.hud) {
       const auto *p = runtime_.hud.active();
+      view.hudBackground = p ? p->background : 0;
       std::snprintf(view.hudName, sizeof view.hudName, "%s", p ? p->label : "Выберите поворотку");
       if (p && p->endpoint.uart)
         std::snprintf(view.hudAddress, sizeof view.hudAddress, "hud:UART");
@@ -241,7 +242,7 @@ void Display::updateLocalDisplay() {
                       peerAddress[0], peerAddress[1], peerAddress[2], peerAddress[3]);
       }
       std::snprintf(view.status, sizeof view.status, "%s",
-                    runtime_.hud.available() ? (controller.moving() ? "Вращение" : "Остановлен")
+                    runtime_.hud.available() ? (controller.moving() ? "Вращение" : "")
                                              : "Нет связи с повороткой");
       if(hudKnob_.busyNotice(now))std::snprintf(view.status,sizeof view.status,"Очередь команд занята");
       if(!inputHealthy_ || !touchHealthy_)std::snprintf(view.status,sizeof view.status,"Ошибка ввода");
@@ -351,6 +352,8 @@ void Display::updateLocalDisplay() {
     view.wifiAp = ap;
     view.wifiRssi = connected ? int(WiFi.RSSI()) : -127;
     network_.formatAddresses(view.ip, sizeof view.ip, "  ");
+    if(auto *sta=std::strstr(view.ip,"STA: "))
+      std::memmove(sta,sta+5,std::strlen(sta+5)+1);
     view.bluetoothEnabled = runtime_.controller.hardware.bluetooth;
     view.bluetoothConnected = view.bluetoothEnabled && network_.bluetoothConnected();
     std::snprintf(view.heap, sizeof view.heap, "Heap: %lu КБ", static_cast<unsigned long>(heapFreeBytes() / 1024));

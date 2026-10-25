@@ -163,15 +163,22 @@ int main(){
       } else if (path == "/api/hud/peers") {
         const uint64_t id = std::stoull(form["id"], nullptr, 16);
         auto *peer = hud.peer(id);
+        const auto background = form.find("background");
+        const bool validBackground = background == form.end() ||
+            (background->second.size() == 1 && background->second[0] >= '0' &&
+             background->second[0] <= '9' && validHudBackground(unsigned(background->second[0] - '0')));
         if (!peer)
           response.status = 404;
-        else if (peer->simulated())
+        else if (peer->simulated() || !validBackground)
           response.status = 400;
         else if (form["action"] == "remove")
           hud.remove(id);
         else {
-          hud.add(id, peer->endpoint, form["name"].empty() ? peer->state.name : form["name"].c_str(), true);
-          if (!hud.config.selected)
+          const bool wasSaved = peer->saved;
+          const std::string name = form["name"].empty() ? (peer->saved ? peer->label : peer->state.name) : form["name"];
+          hud.add(id, peer->endpoint, name.c_str(), true);
+          if (background != form.end()) peer->background = uint8_t(background->second[0] - '0');
+          if (!wasSaved && !hud.config.selected)
             hud.select(id);
         }
         response.body = response.status == 200 ? "{\"ok\":true,\"result\":\"ok\"}" : "{\"ok\":false}";

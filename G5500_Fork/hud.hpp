@@ -3,6 +3,7 @@
 #include "protocol.hpp"
 #include "json_writer.hpp"
 #include "hud_link_config.hpp"
+#include "hud_background.hpp"
 #include <memory>
 #include <cstring>
 namespace forkrot {
@@ -68,6 +69,7 @@ struct HudPeer {
   HudEndpoint endpoint;
   char label[49]{};
   HudState state;
+  uint8_t background = 0;
   uint32_t receivedAt = 0, remoteTick = 0, lastPoll = 0, stateSerial = 0;
   uint32_t querySerial[12]{}, queryAt[12]{};
   uint32_t subscribeSerial[4]{}, subscribeAt[4]{}, subscribeSent = 0;

@@ -30,6 +30,52 @@ const state=async url=>(await fetch(url+'/api/status')).json();
   }
   await page.waitForFunction(()=>window._forkState?.hudOnline);
   assert.equal(await page.locator('#hudPeerSettings .device-peer').filter({hasText:'R101'}).getByRole('button').count(),3);
+  const background=name=>page.locator('#hudPeerSettings .device-peer').filter({hasText:name}).getByRole('combobox',{name:'Фон HUD · '+name,exact:true});
+  const peers=async()=>(await (await fetch(base+'/api/hud/peers?limit=8')).json()).items;
+  assert.equal(await background('R101').inputValue(),'0');
+  const selectionBefore=(await state(base)).hudSelectionEpoch;
+  for(const [name,value] of [['R101','8'],['R102','2']]) {
+   const saved=page.waitForResponse(r=>r.url().endsWith('/api/hud/peers')&&r.request().method()==='POST');
+   await background(name).selectOption(value);assert.equal((await saved).status(),200);
+   await background(name).waitFor({state:'visible'});
+   await page.waitForFunction(()=>!hudBackgroundSaving);
+   assert.equal((await peers()).find(p=>p.name===name).background,Number(value));
+  }
+  assert.equal((await state(base)).hudSelectionEpoch,selectionBefore);
+  // Catalogue polling must not replace an open colour selector.
+  await background('R101').focus();
+  assert.equal(await page.evaluate(async()=>{const el=document.activeElement;await loadHudPeers();return el===document.activeElement&&el.isConnected}),true);
+  await background('R101').blur();
+  await page.route('**/api/hud/peers',route=>route.fulfill({status:507,contentType:'application/json',body:'{"ok":false,"result":"storage_full"}'}));
+  const failed=page.waitForResponse(r=>r.url().endsWith('/api/hud/peers')&&r.request().method()==='POST');
+  await background('R101').selectOption('3');assert.equal((await failed).status(),507);
+  await page.waitForFunction(()=>!hudBackgroundSaving);
+  assert.equal(await background('R101').inputValue(),'8');
+  await page.unroute('**/api/hud/peers');
+  let releasePending;
+  const pending=new Promise(resolve=>releasePending=resolve);
+  await page.route('**/api/hud/peers',async route=>{
+   const response=await route.fetch();await pending;await route.fulfill({response});
+  });
+  await background('R101').selectOption('8');await background('R102').selectOption('2');
+  await page.waitForFunction(()=>hudBackgroundSaving===2);
+  assert.equal(await page.evaluate(async()=>{const el=document.querySelector('[aria-label="Фон HUD · R102"]');await loadHudPeers();return el.isConnected&&el.disabled}),true);
+  releasePending();await page.waitForFunction(()=>!hudBackgroundSaving);
+  await page.unroute('**/api/hud/peers');
+  assert.equal((await peers()).find(p=>p.name==='R101').background,8);
+  assert.equal((await peers()).find(p=>p.name==='R102').background,2);
+  fs.mkdirSync('artifacts/screenshots',{recursive:true});
+  for(const width of [1100,390]) {
+   await page.setViewportSize({width,height:850});
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`HUD background overflow ${width}`);
+   await page.locator('#hudPeerSettings').screenshot({path:`artifacts/screenshots/hud-background-settings-${width}.png`});
+  }
+  await page.reload();await page.waitForFunction(()=>window._forkState?.hudOnline);
+  await page.getByRole('tab',{name:'Настройки',exact:true}).click();
+  await page.locator('#peersSettings > details > summary').click();
+  assert.equal(await background('R101').inputValue(),'8');assert.equal(await background('R102').inputValue(),'2');
+  assert.equal(await background('R101').locator('option:checked').textContent(),'Чёрный');
+  assert.equal(await page.locator('#hudPeerSettings .device-peer').filter({hasText:'R101'}).locator('.hud-background-swatch').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(0, 0, 0)');
   assert.match(await page.locator('#hudHeading').textContent(),/R101/);
   assert.equal(await page.locator('#caltoggle').isVisible(),false);
   assert.equal(await page.locator('#speedSettings').isVisible(),false);
@@ -58,6 +104,7 @@ const state=async url=>(await fetch(url+'/api/status')).json();
   await page.locator('#hudPeers button').filter({hasText:'R102'}).click();
   await page.waitForFunction(()=>window._forkState?.hudName==='R102'&&window._forkState?.hudOnline);
   assert.match(await page.locator('#hudPeers button[aria-pressed="true"]').textContent(),/R102/);
+  assert.equal((await peers()).find(p=>p.selected).background,2);
   assert.equal(await page.locator('#taz').inputValue(),'');
   assert.equal((await state(base)).rotorName,'R201');
   await page.evaluate(()=>forkPost('/api/target',{az:220,el:0}));
@@ -114,6 +161,6 @@ const state=async url=>(await fetch(url+'/api/status')).json();
   await page.waitForFunction(()=>window._forkState?.deviceRole==='controller');
   assert.equal(await page.locator('#hudSelector').isVisible(),false);
   assert.deepEqual(errors,[]);
-  console.log('PASS: HUD selection below presets on main tab, settings management/discovery, simulation, remote 202/ACK and STOP, offline values, 320/390/1100px');
+  console.log('PASS: per-controller HUD backgrounds, independent saves, rollback and reload, HUD selection/discovery, simulation, remote 202/ACK and STOP, offline values, 320/390/1100px');
  } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1});

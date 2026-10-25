@@ -1,5 +1,6 @@
 // Exercise the real LVGL UI at native resolutions, including gesture geometry.
 #include "panel_ui.hpp"
+#include "hud_background.hpp"
 #include <vector>
 #include <cassert>
 #include <cstdio>
@@ -44,7 +45,7 @@ int main(int argc,char **argv) {
   v.current=121;v.secondaryCurrent=35;v.targetValid=true;v.secondaryTargetValid=true;
   v.target=210;v.secondaryTarget=80;v.wifiConnected=true;v.wifiRssi=-55;
   std::strcpy(v.hudName,"Дача · G-5500");std::strcpy(v.hudAddress,"hud:192.168.3.234");
-  std::strcpy(v.status,"Остановлен");std::strcpy(v.ip,"STA: 192.168.3.234");std::strcpy(v.heap,"Heap: 123 КБ");
+  std::strcpy(v.status,"");std::strcpy(v.ip,"192.168.3.234");std::strcpy(v.heap,"Heap: 123 КБ");
   char path[512];
   const auto snapshot=[&](const char *name) {
     ui.update(v);settle(d);std::snprintf(path,sizeof path,"%s/%dx%d-%s.ppm",argv[1],width,height,name);save(path);
@@ -52,6 +53,48 @@ int main(int argc,char **argv) {
     for(unsigned i=0;i<4;++i) assert(buffer[i]==0x5aa5 && buffer[buffer.size()-1-i]==0x5aa5);
   };
   snapshot("dual");
+  {
+    const auto saved=v;
+    v.hudBackground=2;ui.update(v);settle(d);
+    assert(lv_color_to_u32(lv_obj_get_style_bg_color(ui.root(),LV_PART_MAIN))==
+           lv_color_to_u32(lv_color_hex(hudBackgroundColor(2))));
+    for(unsigned color=1;color<hudBackgroundCount;++color) {
+      v.sourceId=100+color;v.hudBackground=color;v.current=4;v.target=448;
+      char name[40];std::snprintf(name,sizeof name,"hud-background-%u",color);snapshot(name);
+      assert(lv_color_to_u32(lv_obj_get_style_bg_color(ui.root(),LV_PART_MAIN))==
+             lv_color_to_u32(lv_color_hex(hudBackgroundColor(color))));
+      // A colour-only update and a partial dial redraw must preserve the background.
+      v.current+=3;ui.update(v);settle(d);
+      const auto pixels=image;lv_obj_invalidate(ui.root());lv_refr_now(d);assert(pixels==image);
+      v.speedScreen=true;snapshot("hud-background-speed");
+      lv_obj_t *speedPanel=nullptr;
+      for(uint32_t i=0;i<lv_obj_get_child_count(ui.root());++i) {
+        auto *child=lv_obj_get_child(ui.root(),i);
+        if(!lv_obj_is_hidden(child) && lv_obj_get_width(child)==width && lv_obj_get_height(child)==height &&
+           lv_obj_get_style_bg_opa(child,LV_PART_MAIN)==LV_OPA_COVER)speedPanel=child;
+      }
+      assert(speedPanel && lv_color_to_u32(lv_obj_get_style_bg_color(speedPanel,LV_PART_MAIN))==
+             lv_color_to_u32(lv_color_hex(hudBackgroundColor(color))));
+      v.speedScreen=false;
+    }
+    v.sourceId=100;v.hudBackground=1;v.feedback=false;v.secondaryFeedback=false;
+    std::strcpy(v.status,"Нет связи с повороткой");snapshot("hud-background-offline");
+    v.hud=false;snapshot("background-local");
+    assert(lv_color_to_u32(lv_obj_get_style_bg_color(ui.root(),LV_PART_MAIN))==lv_color_to_u32(lv_color_hex(hudBackgroundColor(0))));
+    v=saved;ui.update(v);settle(d);
+  }
+  const auto idleGeometry=ui.touchLayout();
+  // The enlarged caption must have real Cyrillic glyphs, not placeholders.
+  const auto checkCaption=[&](auto &&self,lv_obj_t *object)->bool {
+    if(lv_obj_check_type(object,&lv_label_class) && !std::strcmp(lv_label_get_text(object),"Цель")) {
+      lv_font_glyph_dsc_t glyph{};
+      assert(lv_font_get_glyph_dsc(lv_obj_get_style_text_font(object,LV_PART_MAIN),&glyph,0x426,0));
+      return true;
+    }
+    for(uint32_t i=0;i<lv_obj_get_child_count(object);++i) if(self(self,lv_obj_get_child(object,i)))return true;
+    return false;
+  };
+  assert(checkCaption(checkCaption,ui.root()));
   v.elevation=true;std::swap(v.current,v.secondaryCurrent);std::swap(v.target,v.secondaryTarget);
   v.minimum=-30;v.maximum=210;snapshot("elevation");
   v.elevation=false;std::swap(v.current,v.secondaryCurrent);std::swap(v.target,v.secondaryTarget);
@@ -82,7 +125,7 @@ int main(int argc,char **argv) {
     assert(rimPixel(-30)!=nearTail && rimPixel(-75)==pastTail);
     v=saved;ui.update(v);settle(d);
   }
-  if(width<360 && height<360) {
+  if(std::min(width,height)<320) {
     // Hidden diagnostic telemetry must not dirty the compact screen's layout.
     const auto quiet=flushes;v.wifiRssi=-81;std::strcpy(v.heap,"Heap: 120 КБ");
     ui.update(v);settle(d);assert(flushes==quiet);
@@ -115,16 +158,83 @@ int main(int argc,char **argv) {
     }
     v=saved;ui.update(v);settle(d);
   }
+  const auto findLabel=[&](auto &&self,lv_obj_t *object,const char *value)->lv_obj_t * {
+    if(lv_obj_check_type(object,&lv_label_class) && !std::strcmp(lv_label_get_text(object),value))return object;
+    for(uint32_t i=0;i<lv_obj_get_child_count(object);++i)if(auto *found=self(self,lv_obj_get_child(object,i),value))return found;
+    return nullptr;
+  };
+  if(std::min(width,height)<320) {
+    const auto saved=v;
+    for(bool elevation:{false,true}) {
+      v.autoMode=false;v.pending=v.secondaryPending=false;v.elevation=elevation;
+      v.current=107.71f;v.secondaryCurrent=0;v.status[0]=0;
+      ui.update(v);settle(d);
+      auto *angle=findLabel(findLabel,ui.root(),"108°");assert(angle);
+      const auto *idleFont=lv_obj_get_style_text_font(angle,LV_PART_MAIN);
+      panel::TouchGesture swipe;const auto start=ui.touchLayout();
+      const int sx=start.current.x+start.current.width/2,sy=start.current.y+start.current.height/2;
+      swipe.sample(false,0,0,start,0);swipe.sample(true,sx,sy,start,10);
+      auto event=swipe.sample(true,sx,sy+30,start,20);assert(event.manual && event.el<0);
+      v.movingNow=true;v.elDirection=-1;v.secondaryCurrent=190;std::strcpy(v.status,"Вращение");
+      snapshot(elevation?"swipe-el-moving":"swipe-az-moving");
+      assert(lv_obj_get_style_text_font(angle,LV_PART_MAIN)->line_height<idleFont->line_height);
+      event=swipe.sample(false,0,0,ui.touchLayout(),30);assert(event.manual && event.release);
+      v.movingNow=false;v.elDirection=0;v.status[0]=0;
+      snapshot(elevation?"swipe-el-restored":"swipe-az-restored");
+      assert(!ui.touchLayout().stop.width);
+      assert(lv_obj_get_style_text_font(angle,LV_PART_MAIN)==idleFont);
+      const auto quiet=flushes;v.wifiRssi=-82;std::strcpy(v.heap,"Heap: 119 КБ");
+      ui.update(v);settle(d);assert(flushes==quiet);
+    }
+    v=saved;ui.update(v);settle(d);
+  }
+  const auto targetHeight=lv_obj_get_height(findLabel(findLabel,ui.root(),"210.0°"));
   v.autoMode=false;v.pending=true;snapshot("confirm");
+  if(std::min(width,height)<320) {
+    assert(lv_obj_get_height(findLabel(findLabel,ui.root(),"210.0°"))>=targetHeight*18/10);
+    auto pendingLayout=ui.touchLayout();assert(inside(pendingLayout.target));
+    auto *address=findLabel(findLabel,ui.root(),"192.168.3.234");
+    lv_area_t addressArea;lv_obj_get_coords(address,&addressArea);assert(addressArea.y2<height);
+    panel::TouchGesture confirmation;confirmation.sample(false,0,0,pendingLayout,0);
+    const auto down=press(confirmation,pendingLayout,pendingLayout.target,10);assert(!down.manual);
+    const auto &r=pendingLayout.target;
+    assert(confirmation.sample(false,r.x+r.width/2,r.y+r.height/2,pendingLayout,20).action==panel::TouchAction::Confirm);
+    const auto pendingView=v;
+    v.pending=false;v.secondaryPending=true;v.secondaryTarget=98.5f;snapshot("confirm-other");
+    assert(findLabel(findLabel,ui.root(),"ЕХАТЬ · EL"));
+    assert(lv_obj_get_height(findLabel(findLabel,ui.root(),"98.5°"))>=targetHeight*18/10);
+    v=pendingView;v.pending=false;snapshot("confirmed");
+    assert(lv_obj_get_height(findLabel(findLabel,ui.root(),"210.0°"))==targetHeight);
+    const auto saved=v;
+    for(int az=-1;az<=1;++az)for(int el=-1;el<=1;++el) {
+      if(!az&&!el)continue;
+      v.movingNow=true;v.azDirection=az;v.elDirection=el;
+      char name[40];std::snprintf(name,sizeof name,"direction-%d-%d",az,el);snapshot(name);
+      unsigned visible=0;
+      for(uint32_t i=0;i<lv_obj_get_child_count(ui.root());++i) {
+        auto *obj=lv_obj_get_child(ui.root(),i);
+        if(!lv_obj_check_type(obj,&lv_line_class)||lv_obj_is_hidden(obj))continue;
+        ++visible;assert(lv_line_get_point_count(obj)==5);
+        const auto *points=lv_line_get_points(obj);
+        const int dx=points[1].x-points[4].x,dy=points[1].y-points[4].y;
+        assert((dx>0)-(dx<0)==az && (dy>0)-(dy<0)==-el);
+      }
+      assert(visible==2);
+    }
+    v=saved;ui.update(v);settle(d);
+  }
   v.pending=false;v.movingNow=true;v.azDirection=1;std::strcpy(v.status,"Вращение");snapshot("moving");
-  layout=ui.touchLayout();panel::TouchGesture input;
+  layout=ui.touchLayout();
+  assert(idleGeometry.current.height>layout.current.height);
+  assert(idleGeometry.target.y>layout.target.y);
+  panel::TouchGesture input;
   input.sample(false,0,0,layout,0);assert(press(input,layout,layout.stop,10).action==panel::TouchAction::Stop);
   input.sample(false,0,0,layout,20);assert(press(input,layout,layout.stop,30).action==panel::TouchAction::Stop);
   // STOP remains reachable when ordinary commands are disabled, including the speed page.
   v.enabled=false;v.speedScreen=true;v.speedAvailable[0]=v.speedAvailable[1]=true;
   snapshot("speed-stop");layout=ui.touchLayout();panel::TouchGesture blocked;
   assert(press(blocked,layout,layout.stop,40).action==panel::TouchAction::Stop);
-  v.enabled=true;v.movingNow=false;v.azDirection=0;std::strcpy(v.status,"Остановлен");snapshot("speed");
+  v.enabled=true;v.movingNow=false;v.azDirection=0;std::strcpy(v.status,"");snapshot("speed");
   layout=ui.touchLayout();panel::TouchGesture speed;
   speed.sample(false,0,0,layout,50);
   const auto e=press(speed,layout,layout.speedTracks[1],60);assert(e.action==panel::TouchAction::SpeedValue && e.axis==1);
@@ -134,11 +244,11 @@ int main(int argc,char **argv) {
   v.hudSelector=false;v.feedback=v.secondaryFeedback=v.targetValid=v.secondaryTargetValid=false;
   std::strcpy(v.status,"Нет связи с повороткой");snapshot("offline");
   v.hud=false;v.settingsAvailable=DISPLAY_KIND==DISPLAY_ILI9341 && !roundPanel;v.dualAxis=false;v.feedback=true;v.current=359.9;
-  v.targetValid=true;v.target=450;v.minimum=0;v.maximum=450;std::strcpy(v.status,"Остановлен");snapshot("single");
+  v.targetValid=true;v.target=450;v.minimum=0;v.maximum=450;std::strcpy(v.status,"");snapshot("single");
   v.current=-359;v.target=721;v.minimum=-360;v.maximum=1080;snapshot("wide");
   // Gradient tails crossing 0 degrees must survive partial redraw clipping.
   v.current=v.minimum+4;v.target=v.maximum-8;snapshot("limits");
-  std::strcpy(v.ip,"STA: 255.255.255.255  AP: 192.168.4.1");snapshot("network");
+  std::strcpy(v.ip,"255.255.255.255  AP: 192.168.4.1");snapshot("network");
   v.statusFault=true;std::strcpy(v.status,"Ошибка AZ: нет изменения положения");snapshot("fault");
   std::printf("PASS %dx%d: native LVGL rendering, buffer bounds, idle redraw, arrows/release, repeated STOP and speed controls\n",width,height);
 }

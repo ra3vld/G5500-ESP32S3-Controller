@@ -12,6 +12,7 @@ class PanelUi {
   PanelView previous_;
   bool previousValid_=false;
   uint32_t actionEpoch_=0;
+  uint32_t background_=0x0a111c;
   int width_=480,height_=480,diameter_=480;
   bool round_=true;
   int p(int value) const { return (value*diameter_+240)/480; }
@@ -27,6 +28,7 @@ class PanelUi {
   void configureLayout(const PanelView &view);
   lv_point_precise_t arrowPoints_[4][5]{},wifiSlashPoints_[2]{};
   bool arrowMoving_[4]{};
+  int compactArrowDirection_=-1;
   void positionMarker(lv_obj_t *object,float degrees,bool valid,int size);
   void invalidateLimit(float boundary,bool lower,bool target);
   void updateLimitBand(std::array<uint8_t,180> &band,uint8_t lower,uint8_t upper);

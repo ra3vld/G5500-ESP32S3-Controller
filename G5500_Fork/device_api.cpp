@@ -1269,20 +1269,29 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       web_.send(400, "application/json", "{\"ok\":false,\"result\":\"invalid_peer\"}");
       return;
     }
+    unsigned background = p->background;
+    if (web_.hasArg("background") &&
+        (!integerArg(web_.arg("background"), background) || !validHudBackground(background))) {
+      web_.send(400, "application/json", "{\"ok\":false,\"result\":\"invalid_background\"}");
+      return;
+    }
     const bool oldSaved = p->saved;
+    const auto oldBackground = p->background;
     char oldLabel[49];
     std::memcpy(oldLabel, p->label, sizeof oldLabel);
     if (web_.arg("action") == "remove")
       p->saved = false;
     else {
       const auto label = web_.arg("name");
-      if (!hud.add(id, p->endpoint, label.length() ? label.c_str() : p->state.name, true)) {
+      if (!hud.add(id, p->endpoint, label.length() ? label.c_str() : oldSaved ? oldLabel : p->state.name, true)) {
         web_.send(400, "application/json", "{\"ok\":false,\"result\":\"invalid_name\"}");
         return;
       }
+      p->background = uint8_t(background);
     }
     if (!storage_.saveHudPeers(hud)) {
       p->saved = oldSaved;
+      p->background = oldBackground;
       std::memcpy(p->label, oldLabel, sizeof oldLabel);
       web_.send(507, "application/json", "{\"ok\":false,\"result\":\"storage_full\"}");
       return;
@@ -1291,7 +1300,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     if (!p->saved) {
       hud.remove(id);
       selectionSaved = storage_.saveHudConfig(hud.config);
-    } else if (!hud.config.selected) {
+    } else if (!oldSaved && !hud.config.selected) {
       hud.select(id);
       selectionSaved = storage_.saveHudConfig(hud.config);
     }
@@ -1300,6 +1309,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       web_.send(507, "application/json", "{\"ok\":false,\"result\":\"storage_full\"}");
       return;
     }
+    actions_.invalidateDisplay();
     web_.send(200, "application/json", "{\"ok\":true,\"result\":\"ok\"}");
 
     return;

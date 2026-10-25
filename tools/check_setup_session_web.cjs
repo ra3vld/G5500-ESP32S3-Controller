@@ -38,10 +38,41 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
      await route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});
     }finally{if(slow)--pendingPolls[key];}
    });
-   if(process.env.SETUP_SESSION_SCENARIO==='hud-role')await rpc('POST','/__fixture/hud');
+   if(['hud-role','hud-hardware','hud-review'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/hud');
    await page.goto('http://setup-session.test/setup');
    await page.waitForFunction(()=>wizard.active&&wizard.state?.token&&wizard.state.step===1);
    const session=await page.evaluate(()=>wizard.state.token);
+   if(process.env.SETUP_SESSION_SCENARIO==='hud-review'){
+    await page.waitForFunction(()=>!!window._forkState?.build?.board);
+    await rpc('POST','/__fixture/step','9');await page.evaluate(async()=>{await upd(true);await pollSetup();});
+    assert(await page.locator('#setupReview').isVisible());
+    assert(await page.locator('#setupMovementCheck').isHidden());
+    assert(!/Проверьте STOP/.test(await page.locator('#setupHint').textContent()));
+    assert(await page.locator('#setupTargetForm').isHidden());
+    assert.equal(await page.locator('#setupNext').textContent(),'Завершить настройку');
+    assert.equal(await page.locator('[data-setup-axis]:visible').count(),0);
+    assert(!trace.some(r=>['/api/move','/api/target'].includes(r.path)));
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    if(process.env.ARTIFACT_DIR){await page.locator('#setupReview').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`hud-review-${width}.png`)});}
+    await page.evaluate(()=>{wizard.state.role='controller';window._forkState.deviceRole='controller';renderSetup();});
+    assert(await page.locator('#setupMovementCheck').isVisible());assert(await page.locator('#setupTargetForm').isVisible());
+    assert.deepEqual(errors,[]);console.log(`PASS: ${width}px, HUD final review hides movement while retaining summary and finish; controller keeps movement checks`);continue;
+   }
+   if(process.env.SETUP_SESSION_SCENARIO==='hud-hardware'){
+    await rpc('POST','/__fixture/step','3');await page.evaluate(async()=>{await upd(true);await pollSetup();});
+    let frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
+    await frame.waitForFunction(()=>!!state&&!!metadata);await frame.locator('[name=forceApSta]').selectOption('1');
+    await page.locator('#setupNext').click();await page.waitForFunction(()=>wizard.waiting);
+    await rpc('POST','/__fixture/reboot');await page.evaluate(()=>pollSetup());await page.waitForFunction(()=>!wizard.waiting);
+    frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
+    await frame.waitForFunction(()=>state?.trial&&!!probe);
+    await page.locator('#setupNext').click();await page.waitForFunction(()=>wizard.waiting);
+    assert(trace.some(r=>r.path==='/api/hardware/confirm'&&r.status===200));
+    await rpc('POST','/__fixture/reboot');await page.evaluate(()=>pollSetup());
+    await page.waitForFunction(()=>!wizard.waiting&&wizard.state.step===4);
+    const hw=await rpc('GET','/api/hardware');assert(!hw.body.trial&&!hw.body.recovery&&hw.body.failureCount===0);
+    assert.deepEqual(errors,[]);console.log(`PASS: ${width}px, HUD hardware apply, trial probe, explicit confirm, second reboot, next step without failures`);continue;
+   }
    if(process.env.SETUP_SESSION_SCENARIO==='hud-role'){
     await page.waitForFunction(()=>window._forkState?.deviceRole==='hud');
     await page.locator('#setupDeviceName').fill('Remote HUD');

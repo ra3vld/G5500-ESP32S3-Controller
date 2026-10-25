@@ -81,8 +81,10 @@ int main() {
   storage.loadForkSettings(reboot);
   assert(reboot.protocol.rotorName == "HUD-N1MM");
   // Catalogue size is data-driven and stable across saves and boots.
-  for (unsigned i = 0; i < 80; ++i)
-    assert(hud.hud.add(100 + i, {0x0100007f + i, uint16_t(4534 + i), false}, "Station"));
+  for (unsigned i = 0; i < 80; ++i) {
+    auto *peer=hud.hud.add(100 + i, {0x0100007f + i, uint16_t(4534 + i), false}, "Station");
+    assert(peer);peer->background=i%hudBackgroundCount;
+  }
   assert(storage.saveHudPeers(hud.hud));
   MotionTestRuntime restored;
   storage.loadHud(restored);
@@ -90,7 +92,34 @@ int main() {
   auto *p = restored.hud.peers();
   for (unsigned i = 0; i < 80; ++i) {
     assert(p && p->id == 100 + i);
+    assert(p->background == i%hudBackgroundCount);
     p = p->next.get();
+  }
+  {
+    const auto saved=std::get<Preferences::Bytes>(Preferences::database["hudcfg"]["peers"]);
+    const auto load=[&](Preferences::Bytes bytes) {
+      const auto crc=hudCrc(bytes.data(),bytes.size()-4);
+      std::memcpy(bytes.data()+bytes.size()-4,&crc,4);
+      Preferences::database["hudcfg"]["peers"]=bytes;
+    };
+    auto legacy=saved;legacy[0]=1;load(legacy);
+    MotionTestRuntime migrated;storage.loadHud(migrated);
+    assert(!migrated.hud.catalogError && migrated.hud.count()==80);
+    for(auto *peer=migrated.hud.peers();peer;peer=peer->next.get())assert(!peer->background);
+    assert(storage.saveHudPeers(migrated.hud));
+    MotionTestRuntime roundtrip;storage.loadHud(roundtrip);
+    assert(!roundtrip.hud.catalogError && roundtrip.hud.count()==80);
+    auto bad=saved;bad[4+15]=255;load(bad);
+    MotionTestRuntime invalid;storage.loadHud(invalid);
+    assert(invalid.hud.catalogError && !invalid.hud.peer(100));
+    bad=saved;bad[0]=3;load(bad);
+    MotionTestRuntime future;storage.loadHud(future);
+    assert(future.hud.catalogError && !future.hud.count());
+    bad=saved;bad.back()^=1;
+    Preferences::database["hudcfg"]["peers"]=bad;
+    MotionTestRuntime corruptPeers;storage.loadHud(corruptPeers);
+    assert(corruptPeers.hud.catalogError && !corruptPeers.hud.count());
+    Preferences::database["hudcfg"]["peers"]=saved;
   }
   // Only real peers occupy NVS records; a saved virtual selection is recreated on boot.
   assert(hud.hud.select(HUD_SIMULATION_ID));

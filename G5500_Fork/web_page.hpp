@@ -58,6 +58,7 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 .device-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.device-fields .field{min-width:0}.device-fields label{display:block;margin-bottom:7px;color:var(--m);font-size:14px;line-height:1.4}.device-fields input,.device-fields select{min-height:44px;max-width:100%}
 .device-panel .btn{min-height:44px;font-size:15px;padding:10px 16px;border-radius:10px;cursor:pointer;touch-action:manipulation;overflow-wrap:anywhere}.device-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}.device-panel form{margin:0}.device-panel .hint{margin:12px 0}.device-address{display:grid;gap:12px;padding:16px 0}.device-address>.btn{justify-self:start}
 .device-list{display:grid;gap:10px}.device-peer{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px}.device-peer.select-only{grid-template-columns:minmax(0,1fr)}.device-peer>.btn:first-child{text-align:left}.device-peer-note{grid-column:1/-1;color:var(--m);font-size:13px}.device-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0;font-size:13px;color:var(--m)}.device-pagination>span{text-align:center;overflow-wrap:anywhere}
+.hud-background{grid-column:1/-1;display:flex;align-items:center;flex-wrap:wrap;gap:8px;color:var(--m);font-size:14px}.hud-background select{min-width:0;max-width:100%;min-height:44px}.hud-background-swatch{width:24px;height:24px;flex:none;border:1px solid #678091;border-radius:5px}
 @media(max-width:600px){.device-fields{grid-template-columns:minmax(0,1fr);gap:14px}.device-actions>.btn,.device-address>.btn{width:100%}.device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}.device-peer>.btn:first-child{grid-column:1/-1}.device-pagination .btn{padding:10px 12px}}
 [hidden]{display:none!important}.nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--a);outline-offset:2px}
 .history-intro{margin:20px 0}.history-intro h2{font-size:24px;margin:0 0 8px}.history-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}.history-entry.card{margin:0;padding:18px 20px}.history-entry h3{font-size:16px;color:var(--a);margin:0 0 12px}.history-entry ul{margin:0;padding-left:20px;line-height:1.6;font-size:15px}.history-entry li+li{margin-top:8px}#historyPanel{padding-bottom:16px}
@@ -365,6 +366,7 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <label class="check-field"><input id="hudSimulationEnabled" type="checkbox" onchange="saveHudSimulation(this)"/>Показывать имитацию в списке повороток</label>
 <p class="field-help">Встроенная имитация работает без другого контроллера. Настройка сохраняется сразу. При отключении выбранная имитация останавливается, выбор сбрасывается.</p>
 <p class="hint">Команды программ, подключённых к HUD, идут выбранной поворотке.</p>
+<p class="field-help">Для каждой поворотки можно выбрать фон экрана HUD. Цвет сохраняется на этом пульте и переключается вместе с повороткой во всех раскладках.</p>
 <div class="device-list" id="hudPeerSettings"></div>
 <div class="device-pagination"><button class="btn" id="hudSettingsPrev" onclick="hudPage(-1)">Назад</button><span id="hudSettingsPageInfo"></span><button class="btn" id="hudSettingsNext" onclick="hudPage(1)">Далее</button></div>
 <section class="settings-group"><h3>Добавить поворотку</h3>
@@ -803,7 +805,7 @@ setInterval(()=>{
 },250);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){queueLiveRender();upd(true)}});
 async function forkPost(path,body){
- const success={'/api/settings':'Настройки сохранены','/api/preset':'Предустановка сохранена','/api/device':'Настройки устройства сохранены','/api/hud/select':'Поворотка выбрана','/api/hud/peers':body.action==='remove'?'Поворотка удалена':body.name?'Имя поворотки сохранено':'Поворотка добавлена','/api/hud/discover':'Поиск устройств запущен'}[path];
+ const success={'/api/settings':'Настройки сохранены','/api/preset':'Предустановка сохранена','/api/device':'Настройки устройства сохранены','/api/hud/select':'Поворотка выбрана','/api/hud/peers':body.action==='remove'?'Поворотка удалена':body.background!==undefined?'Фон HUD сохранён':body.name?'Имя поворотки сохранено':'Поворотка добавлена','/api/hud/discover':'Поиск устройств запущен'}[path];
  const notice=success?beginSettingsAction(path==='/api/hud/discover'?'Поиск устройств…':'Ожидаем подтверждение устройства…',path+JSON.stringify(body)):null;
  if(success&&!notice)return false;
  try{
@@ -1571,7 +1573,8 @@ document.querySelectorAll('.movebtn').forEach(function(b){
   b.addEventListener('contextmenu',e=>e.preventDefault());
 });
 
-let hudSelection;
+let hudSelection,hudBackgroundSaving=0;
+const hudBackgrounds=[['Стандартный','#0a111c'],['Тёмно-синий','#081e3a'],['Тёмно-зелёный','#092c20'],['Тёмно-бирюзовый','#073035'],['Тёмно-фиолетовый','#241334'],['Бордовый','#35131e'],['Тёмно-коричневый','#302113'],['Графитовый','#181b20'],['Чёрный','#000000']];
 let hudOffset=0,hudDiscoveredOffset=0,hudTotal=0,hudDiscoveryTotal=0,hudPollBusy=false,hudLastPoll=0;
 async function hudPage(delta){hudOffset=Math.max(0,Math.min(Math.max(0,hudTotal-1),hudOffset+delta*8));await loadHudPeers()}
 async function hudDiscoveryPage(delta){hudDiscoveredOffset=Math.max(0,Math.min(Math.max(0,hudDiscoveryTotal-1),hudDiscoveredOffset+delta*8));await loadHudDiscovery()}
@@ -1586,6 +1589,14 @@ function hudRow(peer,discovered,manage=false){
  if(manage&&!discovered&&peer.transport!=='simulation'){
   const rename=document.createElement('button');rename.className='btn';rename.textContent='Имя';rename.onclick=async()=>{const name=prompt('Имя поворотки',peer.name);if(name!==null){await forkPost('/api/hud/peers',{id:peer.id,name});await loadHudPeers()}};row.append(rename);
   const remove=document.createElement('button');remove.className='btn';remove.textContent='Удалить';remove.onclick=async()=>{await forkPost('/api/hud/peers',{id:peer.id,action:'remove'});await loadHudPeers()};row.append(remove);
+  const field=document.createElement('label');field.className='hud-background';
+  const caption=document.createElement('span');caption.textContent='Фон HUD';
+  const swatch=document.createElement('span');swatch.className='hud-background-swatch';swatch.setAttribute('aria-hidden','true');
+  const background=document.createElement('select');background.setAttribute('aria-label','Фон HUD · '+peer.name);
+  hudBackgrounds.forEach(([name],i)=>background.add(new Option(name,String(i))));background.value=String(peer.background??0);
+  swatch.style.backgroundColor=hudBackgrounds[Number(background.value)][1];
+  background.onchange=async()=>{++hudBackgroundSaving;background.disabled=true;try{if(await forkPost('/api/hud/peers',{id:peer.id,background:background.value})){peer.background=Number(background.value);swatch.style.backgroundColor=hudBackgrounds[peer.background][1]}else background.value=String(peer.background??0)}finally{background.disabled=false;--hudBackgroundSaving}};
+  field.append(caption,swatch,background);row.append(field);
  }else if(discovered||peer.transport==='simulation'){const note=document.createElement('span');note.className='device-peer-note';note.textContent=peer.transport==='simulation'?'Встроенная имитация':'Нажмите, чтобы сохранить';row.append(note)}
  return row;
 }
@@ -1593,7 +1604,8 @@ async function loadHudPeers(){
  if(otaBusy||hudPollBusy)return;hudPollBusy=true;
  try{const data=await (await fetch('/api/hud/peers?offset='+hudOffset,{cache:'no-store'})).json();hudTotal=data.total;
  const box=document.getElementById('hudPeers');box.replaceChildren(...data.items.map(p=>hudRow(p,false)));
- document.getElementById('hudPeerSettings').replaceChildren(...data.items.map(p=>hudRow(p,false,true)));
+ const settings=document.getElementById('hudPeerSettings');
+ if(!hudBackgroundSaving&&!settings.querySelector('.hud-background select:focus'))settings.replaceChildren(...data.items.map(p=>hudRow(p,false,true)));
  for(const prefix of ['hud','hudSettings']){
   document.getElementById(prefix+'PageInfo').textContent=hudTotal?`${hudOffset+1}–${Math.min(hudOffset+8,hudTotal)} / ${hudTotal}`:'Добавьте поворотку';
   document.getElementById(prefix+'Prev').disabled=hudOffset===0;document.getElementById(prefix+'Next').disabled=hudOffset+8>=hudTotal;
@@ -1737,7 +1749,7 @@ async function coastAction(action,direction){try{const result=await setupRequest
 document.getElementById('coastForm').onsubmit=e=>{e.preventDefault();coastAction('start',e.submitter.value);};document.getElementById('coastCancel').onclick=()=>coastAction('cancel');document.getElementById('coastApply').onclick=()=>coastAction('apply');
 function renderCoast(result){const a=Number(document.getElementById('coastAxis').value),r=result.results[a];document.getElementById('coastResult').textContent=({idle:'Ожидание',running:'Пробный ход',coasting:'Измерение после отключения',complete:'Измерение завершено',failed:'Измерение прервано',cancelled:'Измерение отменено'}[result.phase]||result.phase)+(result.reason?' · '+({measurement_interrupted:'проверка прервана: проверьте датчик и состояние привода',measurement_timeout:'истекло время измерения',range_margin:'ось подошла к границе диапазона',no_movement:'движение не обнаружено',wrong_direction:'направление показаний не совпало с командой',cancelled:'остановлено пользователем'}[result.reason]||result.reason):'')+'; − '+r.degrees[0].toFixed(1)+'° / '+r.seconds[0].toFixed(2)+' с; + '+r.degrees[1].toFixed(1)+'° / '+r.seconds[1].toFixed(2)+' с';document.getElementById('coastApply').disabled=r.measured!==3||result.phase!=='complete';}
 const testCard=document.createElement('section');testCard.id='setupTests';testCard.className='card settings-section';testCard.hidden=true;
-testCard.innerHTML='<div class="settings-content"><div id="setupReview"><h3>Выбранная конфигурация</h3><ul id="setupReviewList"></ul><p id="setupReviewProblems" role="status"></p></div><h3>Проверка движения</h3><p>Удерживайте направление для короткой проверки. Отпускание и STOP прекращают управление. Во время калибровки ориентируйтесь на физическое положение антенны.</p><div class="setup-test-buttons"><button class="btn" type="button" data-setup-axis="0" data-direction="-1">AZ −</button><button class="btn" type="button" data-setup-axis="0" data-direction="1">AZ +</button><button class="btn el-setting" type="button" data-setup-axis="1" data-direction="-1">EL −</button><button class="btn el-setting" type="button" data-setup-axis="1" data-direction="1">EL +</button><button class="btn stop" id="setupStop" type="button">STOP</button></div><form id="setupTargetForm"><div class="field-action"><div class="field"><label for="setupTarget">Проверочный угол AZ, °</label><input id="setupTarget" type="number" step="0.1" required></div><button class="btn" type="submit">Проверить наведение</button></div></form><p id="setupTestResult" role="status"></p></div>';
+testCard.innerHTML='<div class="settings-content"><div id="setupReview"><h3>Выбранная конфигурация</h3><ul id="setupReviewList"></ul><p id="setupReviewProblems" role="status"></p></div><div id="setupMovementCheck"><h3>Проверка движения</h3><p>Удерживайте направление для короткой проверки. Отпускание и STOP прекращают управление. Во время калибровки ориентируйтесь на физическое положение антенны.</p><div class="setup-test-buttons"><button class="btn" type="button" data-setup-axis="0" data-direction="-1">AZ −</button><button class="btn" type="button" data-setup-axis="0" data-direction="1">AZ +</button><button class="btn el-setting" type="button" data-setup-axis="1" data-direction="-1">EL −</button><button class="btn el-setting" type="button" data-setup-axis="1" data-direction="1">EL +</button><button class="btn stop" id="setupStop" type="button">STOP</button></div><form id="setupTargetForm"><div class="field-action"><div class="field"><label for="setupTarget">Проверочный угол AZ, °</label><input id="setupTarget" type="number" step="0.1" required></div><button class="btn" type="submit">Проверить наведение</button></div></form><p id="setupTestResult" role="status"></p></div></div>';
 setupRoot.insertBefore(testCard,footer);
 const testStream={client:keyboardToken(),session:keyboardToken(),gesture:0,serial:0,timer:null,pending:false,axis:0,direction:0};
 async function testHold(release=false){const k=testStream;if(k.pending&&!release)return;k.pending=true;try{const body={d:release?'S':'H',client:k.client,session:k.session,gesture:k.gesture,serial:++k.serial,mask:1<<k.axis,az:!release&&k.axis===0?k.direction:0,el:!release&&k.axis===1?k.direction:0,selection:window._forkState?.hudSelectionEpoch,rangeRevision:window._forkState?.azRangeRevision};await setupRequest('/api/move',body);document.getElementById('setupTestResult').textContent=release?'Управление отпущено':'Удержание направления';}catch(e){clearInterval(k.timer);k.timer=null;document.getElementById('setupTestResult').textContent=e.message;}finally{k.pending=false;}}
@@ -1807,7 +1819,7 @@ function renderSetupSummary(state,j){
  lines.push('Режим: '+(j.controlMode==='manual'?'ручной':'автоматический')+'; порты N1MM '+j.n1mmPort+', PstRotator '+j.pstPort+', команды '+j.commandPort);
  const list=document.getElementById('setupReviewList');list.replaceChildren(...lines.filter(Boolean).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
  const issues=[];if(!state.storageOk)issues.push('Не удалось сохранить этап.');if(!state.equipment)issues.push('Оборудование не подтверждено.');if(j.fault)issues.push('Ошибка: '+j.fault+'.');if(j.moving)issues.push('Остановите движение.');if(hud&&!j.hudOnline)issues.push('Нет связи с выбранным контроллером.');if(!state.simulation&&!state.manualOnly&&axes.some(a=>!a.calibrated))issues.push('Не завершена калибровка углов.');if(!state.ready&&!issues.length)issues.push('Проверьте подключение сети, оборудование и настройку осей.');
- document.getElementById('setupReviewProblems').textContent=issues.length?issues.join(' '):'Обязательные настройки готовы. Выполните завершающие проверки и подтвердите результат.';
+ document.getElementById('setupReviewProblems').textContent=issues.length?issues.join(' '):hud?'Обязательные настройки готовы. Можно завершить настройку HUD.':'Обязательные настройки готовы. Выполните завершающие проверки и подтвердите результат.';
 }
 function renderSetup(){
  const state=wizard.state,j=window._forkState||{};if(!state)return;renderSetupSummary(state,j);
@@ -1820,10 +1832,10 @@ function renderSetup(){
  selectTab('settings',false);document.body.dataset.setupStep=String(state.step);
  const ids={0:['networkStatus','networkSettings'],1:['hudPanel'],2:['rotorSettings'],3:['equipmentSettings'],4:['equipmentSettings'],5:['calibrationSettings','setupTests'],6:['motionSettings','setupTests'],7:['programSettings'],8:['peersSettings'],9:['presetSettings','setupTests']};
  for(const id of ids[state.step]||[]){const card=document.getElementById(id);card.classList.add('setup-visible');const details=card.querySelector(':scope > details');if(details)details.open=true;}
- testCard.hidden=![5,6,9].includes(state.step);document.getElementById('setupTargetForm').hidden=state.step!==9;
+ testCard.hidden=![5,6,9].includes(state.step);document.getElementById('setupMovementCheck').hidden=state.role==='hud';document.getElementById('setupTargetForm').hidden=state.step!==9;
  const sequence=state.role==='hud'?[0,1,3,4,8,7,9]:(state.simulation||state.manualOnly)?[0,1,2,3,4,7,9]:[0,1,2,3,4,5,6,7,9];
  document.getElementById('setupProgress').textContent='Шаг '+(sequence.indexOf(state.step)+1)+' из '+sequence.length+' · '+(state.role==='hud'?'HUD':'Контроллер');
- document.getElementById('setupTitle').textContent=setupTitles[state.step]||'Настройка завершена';document.getElementById('setupHint').textContent=state.role==='hud'&&state.step===3?'Настройте Bluetooth, местные органы управления и GPIO пульта. Тип дисплея определяется прошивкой. Нажмите «Далее» для применения оборудования, затем для подтверждения пробного запуска.':setupHints[state.step]||'';
+ document.getElementById('setupTitle').textContent=setupTitles[state.step]||'Настройка завершена';document.getElementById('setupHint').textContent=state.role==='hud'&&state.step===3?'Настройте Bluetooth, местные органы управления и GPIO пульта. Тип дисплея определяется прошивкой. Нажмите «Далее» для применения оборудования, затем для подтверждения пробного запуска.':state.role==='hud'&&state.step===9?'Проверьте выбранного контроллера и итоговую конфигурацию. Предустановки необязательны. После завершения управление доступно на обычном экране HUD.':setupHints[state.step]||'';
  const frame=document.getElementById('equipmentFrame');if([3,4].includes(state.step)){frame.hidden=false;if(!frame.src)frame.src='/hardware?setup=1';frame.contentWindow?.postMessage({type:'hardwareStage',step:state.step,driveInterface:state.driveInterface,simulation:state.simulation},location.origin);document.getElementById('equipmentDriveSummary').textContent=state.role==='hud'?'':'Выбранный привод: '+(state.simulation?'Имитация движения':['Штатный блок Yaesu','LEFT / RIGHT + SPEED_PWM','LEFT_PWM / RIGHT_PWM (+ ENABLE)','DIR + SPEED_PWM'][state.driveInterface??0]);}
  document.getElementById('setupBack').disabled=state.step===0||wizard.busy;document.getElementById('setupNext').disabled=wizard.busy||wizard.waiting||(!state.ready&&!setupUnsaved()&&!([3,4].includes(state.step)&&wizard.hardwareCanApply)&&!state.restartRequired);document.getElementById('setupReset').disabled=wizard.busy||wizard.waiting||!setupUnsaved();document.getElementById('setupPause').disabled=wizard.busy;
  document.getElementById('setupNext').textContent=state.step===9?'Завершить настройку':'Далее';

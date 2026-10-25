@@ -59,7 +59,7 @@ struct Fixture {
   }
   void ready() {runtime.memoryGuard.begin(0,0);runtime.memoryGuard.sample(0,40000,16000,0,false);fakeHardware.now=10001;}
   Response call(const char *method,const char *path,const std::string &fields="",bool wire=true) {
-    CommandForm form;assert(form.parse(fields));char data[8000];JsonWriter out(data,sizeof data);
+    CommandForm form;assert(form.parse(fields,!wire&&std::string(path).find("/api/hardware")==0?1536:COMMAND_INPUT_MAX));char data[8000];JsonWriter out(data,sizeof data);
     int status=200;const char *type="application/json";
     api.execute(method,path,form.view(),out,status,type,wire);assert(out.good());return {status,{data,out.size()}};
   }
@@ -82,7 +82,43 @@ static void rs485DiscoveryApiTests() {
     assert(restored.hud.config.selected==101);
   }
 }
+static void hudBackgroundTests() {
+  Fixture f;auto &h=f.runtime.hud;h.config.role=DeviceRole::Hud;h.begin(1,0x1234);
+  auto *blue=h.add(2,{0x0100007f,4534,false},"Blue mast");
+  auto *green=h.add(3,{7,4534,true},"Green mast");
+  assert(blue && green && f.storage.saveHudConfig(h.config));
+  const auto update=[&](const std::string &fields) {return f.call("POST","/api/hud/peers",fields);};
+  assert(update("id=2&background=1").status==200);
+  assert(!h.config.selected && blue->background==1 && std::string(blue->label)=="Blue mast");
+  assert(h.select(2));const auto epoch=h.selectionEpoch;
+  assert(update("id=3&background=2").status==200);
+  assert(h.config.selected==2 && h.selectionEpoch==epoch && green->background==2);
+  for(const char *bad:{"", "-1", "9", "255", "256", "1.0", "green", "2x"}) {
+    assert(update(std::string("id=2&name=Changed&background=")+bad).status==400);
+    assert(blue->background==1 && std::string(blue->label)=="Blue mast");
+  }
+  Preferences::failedBytesKey="peers";
+  assert(update("id=2&name=Changed&background=3").status==507);
+  assert(blue->background==1 && blue->saved && std::string(blue->label)=="Blue mast");
+  Preferences::failedBytesKey.clear();
+  assert(update("id=2&name=Renamed").status==200 && blue->background==1);
+  assert(update("id=2&background=0").status==200 && blue->background==0);
+  for(unsigned i=0;i<hudBackgroundCount;++i) {
+    assert(update("id=2&background="+std::to_string(i)).status==200);
+    Runtime reboot;f.storage.loadHud(reboot);
+    assert(!reboot.hud.catalogError && reboot.hud.count()==2);
+    assert(reboot.hud.peer(2)->background==i && reboot.hud.peer(3)->background==2);
+    assert(std::string(reboot.hud.peer(2)->label)=="Renamed");
+    assert(reboot.hud.peer(3)->endpoint.uart && reboot.hud.peer(3)->endpoint.address==7);
+    assert(f.call("GET","/api/hud/peers","limit=8").body.find("\"background\":"+std::to_string(i))!=std::string::npos);
+  }
+  assert(h.select(3) && h.active()->background==2);
+  assert(h.select(2) && h.active()->background==hudBackgroundCount-1);
+  assert(update("id=2&action=remove").status==200);
+  assert(!h.peer(2) && h.peer(3)->background==2);
+}
 int main(int argc,char **argv) {
+  hudBackgroundTests();
   {
     Fixture hud;auto &r=hud.runtime;r.hud.config.role=DeviceRole::Hud;r.controller.remote=&r.hud;
     r.setup.required=true;r.setup.step=SetupStep::Role;r.setup.equipment=true;r.controller.setupRequired=true;
@@ -114,6 +150,13 @@ int main(int argc,char **argv) {
       Response reply;
       if(path=="/__fixture/hud") {
         f.runtime.hud.config.role=DeviceRole::Hud;f.runtime.controller.remote=&f.runtime.hud;
+        reply={200,"{}"};
+      } else if(path=="/__fixture/reboot") {
+        auto &r=f.runtime;
+        assert(f.restart.pending());f.restart=RestartDelay{};
+        r.setupLease=0;r.setupTestToken=0;r.setupSaving=false;r.setupRestartRequired=false;r.hardwareProbe=false;++r.hardwareToken;
+        assert(f.storage.loadSetup(r));f.storage.loadHardware(r);
+        r.memoryGuard.begin(fakeHardware.now-10001,0);r.memoryGuard.sample(fakeHardware.now-10001,60000,30000,0,r.hardwareTrial);
         reply={200,"{}"};
       } else if(path=="/__fixture/tuning") {
         auto &c=f.runtime.controller;auto config=c.hardware;config.simulation=false;config.pins=PinMap{};config.drive=DRIVE_BTS7960;

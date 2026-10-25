@@ -1080,7 +1080,7 @@ static_assert(sizeof(HudDiskConfigV2) == sizeof(HudDiskConfigV3));
 struct HudDiskPeer {
   uint32_t idLo = 0, idHi = 0, address = 0;
   uint16_t port = 4534;
-  uint8_t uart = 0, reserved = 0;
+  uint8_t uart = 0, background = 0;
   char label[49]{};
   uint8_t padding[3]{};
 };
@@ -1116,7 +1116,10 @@ bool Storage::saveHudConfig(const HudConfig &c) {
 bool Storage::saveHudPeers(const Hud &hud) {
   size_t count = 0;
   for (auto *p = hud.peers(); p; p = p->next.get())
-    if (p->saved && !p->simulated()) ++count;
+    if (p->saved && !p->simulated()) {
+      if (!validHudBackground(p->background)) return false;
+      ++count;
+    }
   if (count > (SIZE_MAX - 8) / sizeof(HudDiskPeer))
     return false;
   const size_t size = 8 + count * sizeof(HudDiskPeer);
@@ -1124,7 +1127,7 @@ bool Storage::saveHudPeers(const Hud &hud) {
                                                              &std::free);
   if (!data)
     return false;
-  const uint32_t version = 1;
+  const uint32_t version = 2;
   std::memcpy(data.get(), &version, 4);
   size_t offset = 4;
   for (auto *p = hud.peers(); p; p = p->next.get())
@@ -1135,6 +1138,7 @@ bool Storage::saveHudPeers(const Hud &hud) {
       d.address = p->endpoint.address;
       d.port = p->endpoint.port;
       d.uart = p->endpoint.uart;
+      d.background = p->background;
       std::memcpy(d.label, p->label, sizeof d.label);
       std::memcpy(data.get() + offset, &d, sizeof d);
       offset += sizeof d;
@@ -1206,15 +1210,20 @@ void Storage::loadHud(Runtime &runtime, bool peers) {
       uint32_t version, crc;
       std::memcpy(&version, data.get(), 4);
       std::memcpy(&crc, data.get() + size - 4, 4);
-      if (version != 1 || crc != hudCrc(data.get(), size - 4))
+      if ((version != 1 && version != 2) || crc != hudCrc(data.get(), size - 4))
         hud.catalogError = true;
       else
         for (size_t at = 4; at < size - 4; at += sizeof(HudDiskPeer)) {
           HudDiskPeer d;
           std::memcpy(&d, data.get() + at, sizeof d);
           const auto id = uint64_t(d.idLo) | (uint64_t(d.idHi) << 32);
-          if (d.uart > 1 || d.label[48] || !hud.add(id, {d.address, d.port, bool(d.uart)}, d.label))
+          const unsigned background = version == 1 ? 0 : d.background;
+          auto *peer = d.uart <= 1 && !d.label[48] && validHudBackground(background)
+              ? hud.add(id, {d.address, d.port, bool(d.uart)}, d.label) : nullptr;
+          if (!peer)
             hud.catalogError = true;
+          else
+            peer->background = uint8_t(background);
         }
     }
   } else if (size)

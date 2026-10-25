@@ -15,7 +15,7 @@
 #define LV_FONT_MONTSERRAT_22 1
 #define LV_FONT_MONTSERRAT_28 0
 #define LV_FONT_DEFAULT &crowpanel_font_11
-#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(panel_font_14) LV_FONT_DECLARE(panel_font_18) LV_FONT_DECLARE(panel_font_40) LV_FONT_DECLARE(panel_font_56) LV_FONT_DECLARE(crowpanel_font_11) LV_FONT_DECLARE(crowpanel_font_22) LV_FONT_DECLARE(crowpanel_font_36) LV_FONT_DECLARE(crowpanel_font_112) LV_FONT_DECLARE(crowpanel_font_28) LV_FONT_DECLARE(crowpanel_font_80)
+#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(panel_font_14) LV_FONT_DECLARE(panel_font_18) LV_FONT_DECLARE(panel_font_40) LV_FONT_DECLARE(panel_font_56) LV_FONT_DECLARE(panel_font_24) LV_FONT_DECLARE(panel_font_28) LV_FONT_DECLARE(panel_font_48) LV_FONT_DECLARE(panel_font_80) LV_FONT_DECLARE(panel_font_144) LV_FONT_DECLARE(crowpanel_font_11) LV_FONT_DECLARE(crowpanel_font_22) LV_FONT_DECLARE(crowpanel_font_36) LV_FONT_DECLARE(crowpanel_font_112) LV_FONT_DECLARE(crowpanel_font_28) LV_FONT_DECLARE(crowpanel_font_80)
 #define LV_USE_SNAPSHOT 0
 #define LV_USE_SDL 0
 #define LV_USE_ANIMIMG 0
