@@ -38,9 +38,24 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
      await route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});
     }finally{if(slow)--pendingPolls[key];}
    });
+   if(process.env.SETUP_SESSION_SCENARIO==='hud-role')await rpc('POST','/__fixture/hud');
    await page.goto('http://setup-session.test/setup');
    await page.waitForFunction(()=>wizard.active&&wizard.state?.token&&wizard.state.step===1);
    const session=await page.evaluate(()=>wizard.state.token);
+   if(process.env.SETUP_SESSION_SCENARIO==='hud-role'){
+    await page.waitForFunction(()=>window._forkState?.deviceRole==='hud');
+    await page.locator('#setupDeviceName').fill('Remote HUD');
+    await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===3);
+    assert.equal((await rpc('GET','/api/status')).body.rotorName,'Remote HUD');
+    const saved=trace.find(r=>r.path==='/api/settings'&&r.body.rotorName==='Remote HUD');
+    assert(saved&&saved.status===200&&saved.body.setupToken===String(session));
+    assert(!trace.some(r=>r.body.action==='arm'||r.body.action==='apply'));
+    await page.locator('#setupBack').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===1);
+    assert.equal(await page.locator('#setupDeviceName').inputValue(),'Remote HUD');
+    assert.deepEqual(errors,[]);
+    if(process.env.ARTIFACT_DIR){await page.locator('#setupTitle').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`hud-role-${width}.png`)});fs.writeFileSync(path.join(process.env.ARTIFACT_DIR,`hud-role-${width}.json`),JSON.stringify(trace,null,2));}
+    console.log(`PASS: ${width}px, HUD role step: name and setup token accepted by production API, implicit save, Next and Back without restart or motion`);continue;
+   }
    if(hardwarePolling){
     await rpc('POST','/__fixture/tuning');await rpc('POST','/__fixture/step','3');await page.evaluate(async()=>{await upd(true);await pollSetup();});
     const frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();

@@ -83,6 +83,23 @@ static void rs485DiscoveryApiTests() {
   }
 }
 int main(int argc,char **argv) {
+  {
+    Fixture hud;auto &r=hud.runtime;r.hud.config.role=DeviceRole::Hud;r.controller.remote=&r.hud;
+    r.setup.required=true;r.setup.step=SetupStep::Role;r.setup.equipment=true;r.controller.setupRequired=true;
+    assert(hud.call("POST","/api/setup","action=resume",false).status==200);
+    const auto token="&setupToken="+std::to_string(r.setupLease);
+    assert(hud.call("POST","/api/setup","action=begin_save"+token,false).status==200);
+    assert(hud.call("POST","/api/settings","rotorName=RemoteHud"+token,false).status==200);
+    assert(r.protocol.rotorName=="RemoteHud");
+    Runtime loaded;loaded.hud.config.role=DeviceRole::Hud;hud.storage.loadForkSettings(loaded);
+    assert(loaded.protocol.rotorName=="RemoteHud");
+    const auto rejected=hud.call("POST","/api/settings","rotorName=Wrong&model=G800SA"+token,false);
+    assert(rejected.status==400&&rejected.body.find("controller_settings_only")!=std::string::npos);
+    assert(r.protocol.rotorName=="RemoteHud");
+    assert(hud.call("POST","/api/setup","action=end_save"+token,false).status==200);
+    assert(hud.call("POST","/api/setup","action=advance&generation="+std::to_string(r.setup.generation)+token,false).status==200);
+    assert(r.setup.step==SetupStep::Equipment&&!r.controller.moving());
+  }
   rs485DiscoveryApiTests();
   if(argc==2 && std::string(argv[1])=="--rs485-check") {std::cout<<"PASS: RS485 discovery API, ranges, saved addresses and selection reload\n";return 0;}
   if(argc==2 && std::string(argv[1])=="--serve-http") {
@@ -95,7 +112,10 @@ int main(int argc,char **argv) {
       fakeHardware.now=uint32_t(std::stoul(line.substr(0,a)));
       const auto method=line.substr(a+1,b-a-1),path=line.substr(b+1,c-b-1),body=line.substr(c+1);
       Response reply;
-      if(path=="/__fixture/tuning") {
+      if(path=="/__fixture/hud") {
+        f.runtime.hud.config.role=DeviceRole::Hud;f.runtime.controller.remote=&f.runtime.hud;
+        reply={200,"{}"};
+      } else if(path=="/__fixture/tuning") {
         auto &c=f.runtime.controller;auto config=c.hardware;config.simulation=false;config.pins=PinMap{};config.drive=DRIVE_BTS7960;
         c.configureHardware(config);c.feedback(90,45,true,true);
         for(unsigned i=0;i<2;++i){auto m=c.motionSettings[i];m.mode=RegulatorMode::Cascade;m.ready=true;assert(c.configureMotion(i,m,fakeHardware.now));}

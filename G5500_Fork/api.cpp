@@ -228,6 +228,8 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     auto azMode = protocol.externalAzMode;
     for (const auto &entry : form) {
       const auto key = entry.first, value = entry.second;
+      // DeviceApi handles commissioning session metadata; these are not settings.
+      if (key == "setupToken" || key == "setupTestToken") continue;
       bool ok = false;
       if (key == "rotorName") {
         name = value;
