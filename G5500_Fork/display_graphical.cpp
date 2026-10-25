@@ -1,5 +1,6 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "display.hpp"
+#include "panel_metrics.hpp"
 #if GRAPHICAL_DISPLAY
 #include "device_actions.hpp"
 #include "hardware.hpp"
@@ -50,6 +51,10 @@ void Display::serviceTouch() {
   if(tftPage!=TFT_PAGE_DASH) { serviceCalibrationTouch();return; }
 #endif
   const auto sample=readTouch();
+  ++panelMetrics.touchReads;
+  if(!sample.healthy) ++panelMetrics.touchErrors;
+  panelMetrics.touchHealthy=sample.healthy;panelMetrics.touchDown=sample.down;
+  panelMetrics.touchX=sample.x;panelMetrics.touchY=sample.y;
   now=sample.sampledAt;
   const uint16_t x=sample.x,y=sample.y;
   touchHealthy_=sample.healthy;
@@ -202,6 +207,16 @@ void Display::updateLocalDisplay() {
 #endif
   if (redraw_ || uint32_t(now - lastUi_) >= 20) {
     lastUi_ = now; redraw_ = false;
+    updatePanelView(now);
+  }
+  // All LVGL calls stay on the Arduino loop task; no locks or cross-task writes.
+  const uint32_t started=micros();
+  rendering_=true;lv_timer_handler();rendering_=false;
+  panelMetrics.renderMaxUs=std::max(panelMetrics.renderMaxUs,uint32_t(micros()-started));
+}
+// Release the view/formatting stack before LVGL enters nested flush callbacks.
+[[gnu::noinline]] void Display::updatePanelView(uint32_t now) {
+  (void)now;
     const auto &controller = runtime_.controller;
     PanelView view;
     view.movingNow=controller.moving();
@@ -340,7 +355,11 @@ void Display::updateLocalDisplay() {
     view.bluetoothConnected = view.bluetoothEnabled && network_.bluetoothConnected();
     std::snprintf(view.heap, sizeof view.heap, "Heap: %lu КБ", static_cast<unsigned long>(heapFreeBytes() / 1024));
     const auto command=commandContext();
-    if(!(requestedCommand_==command)) lv_obj_invalidate(ui_.root());
+    if(!(requestedCommand_==command)) {
+      // Publish even a command change with unchanged rounded text, without
+      // redrawing the whole panel. Widgets invalidate their own changed areas.
+      const lv_area_t pixel{0,0,0,0};lv_obj_invalidate_area(ui_.root(), &pixel);
+    }
     requestedCommand_=command;
     ui_.setPressed(touchButtons_.pressed());
     ui_.update(view);
@@ -359,9 +378,7 @@ void Display::updateLocalDisplay() {
     }
     trace_.view(view, touchButtons_.pressed(), state, now);
 #endif
-  }
-  // All LVGL calls stay on the Arduino loop task; no locks or cross-task writes.
-  rendering_=true;lv_timer_handler();rendering_=false;
 }
+
 }
 #endif

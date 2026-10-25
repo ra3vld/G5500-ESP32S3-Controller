@@ -113,11 +113,20 @@ void PanelUi::positionMarker(lv_obj_t *obj,float degrees,bool valid,int size) {
   }
   lv_obj_set_hidden(obj,!visible);
 }
-void PanelUi::invalidateLimit(float boundary,bool lower) {
+void PanelUi::invalidateLimit(float boundary,bool lower,bool target) {
   if(!std::isfinite(boundary)) return;
-  lv_area_t a;lv_draw_arc_get_area(width_/2,height_/2,p(240),arcAngle(boundary-(lower?120:0)),
-      arcAngle(boundary+(lower?0:120)),p(34),false,&a);
-  a.x1-=3;a.y1-=3;a.x2+=3;a.y2+=3;lv_obj_invalidate_area(limits_,&a);
+  // Narrow arc bounds keep warning updates on their own lane, leaving room in
+  // LVGL's invalid-area list for the labels and independently moving markers.
+  const float start=boundary-(lower?crowpanel::LimitGradientDegrees:0);
+  for(int step=0;step<crowpanel::LimitGradientDegrees;step+=30) {
+    lv_area_t a;lv_draw_arc_get_area(width_/2,height_/2,p(target?239:225),arcAngle(start+step),
+        arcAngle(start+std::min(step+30,crowpanel::LimitGradientDegrees)),p(target?10:16),false,&a);
+    a.x1-=3;a.y1-=3;a.x2+=3;a.y2+=3;lv_obj_invalidate_area(limits_,&a);
+  }
+  // The stop tick reaches past the inner warning lane, only at its boundary.
+  lv_area_t tick;lv_draw_arc_get_area(width_/2,height_/2,p(240),arcAngle(boundary-1),
+      arcAngle(boundary+1),p(34),false,&tick);
+  tick.x1-=3;tick.y1-=3;tick.x2+=3;tick.y2+=3;lv_obj_invalidate_area(limits_,&tick);
 }
 void PanelUi::animateMarker(void *data, int32_t value) {
   auto &motion = *static_cast<MarkerMotion *>(data);
@@ -156,21 +165,35 @@ void PanelUi::updateMarker(MarkerMotion &motion, float degrees, bool valid, bool
   lv_anim_set_path_cb(&animation, lv_anim_path_linear);
   lv_anim_start(&animation);
 }
+void PanelUi::updateLimitBand(std::array<uint8_t,180> &band,uint8_t lower,uint8_t upper) {
+  const auto tail=[](float distance,uint8_t strength) {
+    distance=std::fmod(distance,360.f);
+    if(distance<0)distance+=360.f;
+    const float fade=std::max(0.f,1.f-distance/crowpanel::LimitGradientDegrees);
+    return uint8_t(std::lround(strength*fade*fade));
+  };
+  for(unsigned i=0;i<band.size();++i) {
+    const float bearing=float(i*2+1);
+    band[i]=std::max(tail(minimum_-bearing,lower),tail(bearing-maximum_,upper));
+  }
+}
 void PanelUi::drawLimits(lv_event_t *event) {
   auto &self = *static_cast<PanelUi *>(lv_event_get_user_data(event));
   auto *layer = lv_event_get_layer(event);
-  const auto drawBand = [&](uint8_t lower, uint8_t upper, uint32_t tint,
+  const auto drawBand = [&](const std::array<uint8_t,180> &band,uint8_t lower, uint8_t upper, uint32_t tint,
                             int radius, int width, int stopInner, int stopOuter) {
     if (!lower && !upper) return;
-    const auto opacity = [&](float bearing) {
-      const auto tail = [](float distance, uint8_t strength) {
-        distance = std::fmod(distance, 360.f);
-        if (distance < 0) distance += 360.f;
-        const float fade = std::max(0.f, 1.f - distance / 120.f);
-        return uint8_t(std::lround(strength * fade * fade));
-      };
-      return std::max(tail(self.minimum_ - bearing, lower), tail(bearing - self.maximum_, upper));
-    };
+    const auto &clip=layer->_clip_area;
+    const int cx=self.width_/2,cy=self.height_/2;
+    const int nearX=std::max({0,cx-int(clip.x2),int(clip.x1)-cx});
+    const int nearY=std::max({0,cy-int(clip.y2),int(clip.y1)-cy});
+    const int farX=std::max(std::abs(int(clip.x1)-cx),std::abs(int(clip.x2)-cx));
+    const int farY=std::max(std::abs(int(clip.y1)-cy),std::abs(int(clip.y2)-cy));
+    const int padding=std::max(1,self.p(3))+2;
+    const int inner=std::max(0,self.p(std::min(radius-width,stopInner))-padding);
+    const int outer=self.p(std::max(radius,stopOuter))+padding;
+    // Centre-only labels and areas outside the rim need no gradient tasks.
+    if(farX*farX+farY*farY<inner*inner || nearX*nearX+nearY*nearY>outer*outer) return;
     lv_draw_arc_dsc_t arc;
     lv_draw_arc_dsc_init(&arc);
     arc.center = {self.width_/2,self.height_/2};
@@ -178,12 +201,18 @@ void PanelUi::drawLimits(lv_event_t *event) {
     // Blend against the empty inner rim, then overlap opaque arc ends. This
     // avoids dark antialias seams between translucent segments of the gradient.
     for (int bearing = 0; bearing < 360; bearing += 2) {
-      const auto alpha = opacity(float(bearing + 1));
+      const auto alpha = band[bearing/2];
       if (!alpha) continue;
       arc.opa = LV_OPA_COVER;
       arc.color = lv_color_mix(lv_color_hex(tint), lv_color_hex(bg), alpha);
       arc.start_angle = arcAngle(bearing);
-      arc.end_angle = arcAngle(bearing + 2 + (opacity(float(bearing + 3)) ? 1 : 0));
+      arc.end_angle = arcAngle(bearing + 2 + (band[(bearing/2+1)%band.size()] ? 1 : 0));
+      // LVGL otherwise allocates a task for the entire circle, even when
+      // this short segment is outside the current partial-buffer stripe.
+      lv_area_t area;
+      lv_draw_arc_get_area(arc.center.x,arc.center.y,arc.radius,arc.start_angle,arc.end_angle,arc.width,false,&area);
+      area.x1-=2;area.y1-=2;area.x2+=2;area.y2+=2;
+      if(area.x2<clip.x1 || area.x1>clip.x2 || area.y2<clip.y1 || area.y1>clip.y2) continue;
       lv_draw_arc(layer, &arc);
     }
     for (unsigned end = 0; end < 2; ++end) {
@@ -199,10 +228,10 @@ void PanelUi::drawLimits(lv_event_t *event) {
       lv_draw_line(layer, &line);
     }
   };
-  drawBand(self.lowerLimit_, self.upperLimit_, 0xff3b3b, 225, 16, 207, 239);
+  drawBand(self.limitBand_,self.lowerLimit_, self.upperLimit_, 0xff3b3b, 225, 16, 207, 239);
   // The selected goal has its own outer lane, so it cannot hide the actual
   // position warning when both approach the same mechanical stop.
-  drawBand(self.targetLowerLimit_, self.targetUpperLimit_, targetColor, 239, 10, 230, 239);
+  drawBand(self.targetLimitBand_,self.targetLowerLimit_, self.targetUpperLimit_, targetColor, 239, 10, 230, 239);
 }
 void PanelUi::create(bool round) {
   width_=lv_display_get_horizontal_resolution(lv_display_get_default());
@@ -344,7 +373,7 @@ void PanelUi::configureLayout(const PanelView &v) {
   // Preserve room for touch controls instead of shrinking every widget uniformly.
   if(compact) {
     lv_obj_set_pos(modeButton_,x(224),y(90));lv_obj_set_size(modeButton_,p(160),28);
-    lv_obj_set_align(axis_,LV_ALIGN_TOP_LEFT);
+    if(lv_obj_get_style_align(axis_,LV_PART_MAIN)!=LV_ALIGN_TOP_LEFT) lv_obj_set_align(axis_,LV_ALIGN_TOP_LEFT);
     lv_obj_set_pos(axis_,x(110),y(100));lv_obj_set_width(axis_,p(108));
     set(axis_,v.hudSelector?"":v.dualAxis?(v.elevation?"EL":"AZ"):"AZ");
     font(axis_,face(28));
@@ -369,8 +398,9 @@ void PanelUi::configureLayout(const PanelView &v) {
       lv_obj_set_y(status_,y(394));lv_obj_set_y(ip_,y(422));lv_obj_set_height(ip_,face(11)->line_height);
     }
     set(hudAddress_,v.hudAddress);
-    lv_obj_set_size(hudAddress_,p(300),face(11)->line_height);lv_label_set_long_mode(hudAddress_,LV_LABEL_LONG_DOT);
-    lv_label_set_long_mode(ip_,LV_LABEL_LONG_DOT);
+    lv_obj_set_size(hudAddress_,p(300),face(11)->line_height);
+    if(lv_label_get_long_mode(hudAddress_)!=LV_LABEL_LONG_DOT) lv_label_set_long_mode(hudAddress_,LV_LABEL_LONG_DOT);
+    if(lv_label_get_long_mode(ip_)!=LV_LABEL_LONG_DOT) lv_label_set_long_mode(ip_,LV_LABEL_LONG_DOT);
     for(auto *obj:{bluetooth_,heap_,wifi_,wifiSlash_,wifiAp_}) lv_obj_set_hidden(obj,true);
     const auto current=bounds(angle_);const auto secondary=bounds(secondaryAngle_);
     const int leftCurrent=std::min(int(current.x),v.dualAxis?int(secondary.x):int(current.x));
@@ -427,6 +457,7 @@ void PanelUi::setPressed(panel::TouchAction action) {
 }
 void PanelUi::update(const PanelView &v) {
   if(previousValid_ && previous_==v) return;
+  const bool compact=diameter_<360;
   if(!previousValid_ || previous_.sourceId!=v.sourceId || previous_.pending!=v.pending ||
       previous_.secondaryPending!=v.secondaryPending || previous_.target!=v.target ||
       previous_.secondaryTarget!=v.secondaryTarget || previous_.autoMode!=v.autoMode || previous_.elevation!=v.elevation)
@@ -434,8 +465,8 @@ void PanelUi::update(const PanelView &v) {
   previous_=v;previousValid_=true;
   lv_obj_set_hidden(hudName_, !v.hud);
   lv_obj_set_hidden(hudAddress_, !v.hud);
-  if (v.hud) {
-    set(hudName_, v.hudName);
+  if (v.hud) set(hudName_,v.hudName);
+  if (v.hud && !compact) {
     char address[96];
     std::snprintf(address, sizeof address, "%s · %.1f°..%.1f°", v.hudAddress, double(v.minimum), double(v.maximum));
     set(hudAddress_, address);
@@ -446,7 +477,8 @@ void PanelUi::update(const PanelView &v) {
       set(hudRows_[i], v.hudRows[i]);
   set(mode_, v.autoHour ? "АВТО · 1 ЧАС" : v.autoMode ? "АВТО" : "РУЧНОЙ");
   color(mode_, v.autoMode ? 0x63dfb5 : 0xf0b85c);
-  set(axis_, !v.hudSelector && v.dualAxis ? (v.elevation ? "ЭЛЕВАЦИЯ · EL" : "АЗИМУТ · AZ") : "");
+  set(axis_,compact?(v.hudSelector?"":v.dualAxis?(v.elevation?"EL":"AZ"):"AZ"):
+      !v.hudSelector && v.dualAxis ? (v.elevation ? "ЭЛЕВАЦИЯ · EL" : "АЗИМУТ · AZ") : "");
   const bool confirmation = !v.autoMode && ((v.targetValid && v.pending) ||
                                             (v.secondaryTargetValid && v.secondaryPending));
   const bool emphasize=confirmation && diameter_>=360;
@@ -455,11 +487,11 @@ void PanelUi::update(const PanelView &v) {
                                       : face(112);
   const auto *otherFont = emphasize ? face(22) : face(28);
   const auto *goalFont =
-      confirmation ? (v.dualAxis ? face(80) : face(112)) : face(36);
+      compact ? face(36) : confirmation ? (v.dualAxis ? face(80) : face(112)) : face(36);
   font(angle_, mainFont);
   font(secondaryAngle_, otherFont);
   font(target_, goalFont);
-  font(targetCaption_, confirmation ? face(36) : face(22));
+  font(targetCaption_, !compact && confirmation ? face(36) : face(22));
   char value[80];
   std::snprintf(value, sizeof value, "%.1f°..%.1f°", double(v.minimum), double(v.maximum));
   set(range_, value);
@@ -506,7 +538,7 @@ void PanelUi::update(const PanelView &v) {
     return chosen;
   };
   mainFont = fit(angle_, secondaryAngle_, mainFont, p(330));
-  goalFont = fit(target_, secondaryTarget_, goalFont, p(confirmation ? 380 : 300));
+  if(!compact) goalFont = fit(target_, secondaryTarget_, goalFont, p(confirmation ? 380 : 300));
   auto row = [&](lv_obj_t *primary, lv_obj_t *secondary, const lv_font_t *large,
                  const lv_font_t *small, int top, int prefix) {
     lv_obj_update_layout(primary);
@@ -518,12 +550,12 @@ void PanelUi::update(const PanelView &v) {
     const bool secondaryFirst = v.dualAxis && v.elevation;
     lv_obj_set_pos(primary, x + prefix + (secondaryFirst ? lv_obj_get_width(secondary) : 0), y(top));
     lv_obj_set_pos(secondary, x + prefix + (secondaryFirst ? 0 : lv_obj_get_width(primary)),
-                   y(top) + large->line_height - large->base_line - small->line_height +
-                       small->base_line);
+                   compact ? y(top)+lv_obj_get_height(primary)-lv_obj_get_height(secondary) :
+                   y(top) + large->line_height - large->base_line - small->line_height + small->base_line);
     return x;
   };
-  font(axis_, v.dualAxis && confirmation ? face(11) : face(22));
-  const int currentY = v.dualAxis ? (confirmation ? 184 : 198) : 170;
+  font(axis_, compact?face(28):v.dualAxis && confirmation ? face(11) : face(22));
+  const int currentY = compact ? 178 : v.dualAxis ? (confirmation ? 184 : 198) : 170;
   const int currentLeft = row(angle_, secondaryAngle_, mainFont, otherFont, currentY, 0);
   lv_obj_update_layout(angle_);
   lv_obj_update_layout(secondaryAngle_);
@@ -533,9 +565,9 @@ void PanelUi::update(const PanelView &v) {
   const int goalY = confirmation ? (v.dualAxis ? 300 : 250) : (v.dualAxis ? 316 : 282);
   lv_obj_update_layout(targetCaption_);
   const int captionWidth = lv_obj_get_width(targetCaption_);
-  const int goalX = row(target_, secondaryTarget_, goalFont, face(22), goalY,
+  const int goalX = compact ? 0 : row(target_, secondaryTarget_, goalFont, face(22), goalY,
                         confirmation ? 0 : captionWidth + p(12));
-  lv_obj_set_pos(targetCaption_, confirmation ? (width_ - captionWidth) / 2 : goalX,
+  if(!compact) lv_obj_set_pos(targetCaption_, confirmation ? (width_ - captionWidth) / 2 : goalX,
                  confirmation ? y(v.dualAxis ? 266 : 210)
                               : y(goalY) + goalFont->line_height - goalFont->base_line -
                                     face(22)->line_height + face(22)->base_line);
@@ -580,8 +612,10 @@ void PanelUi::update(const PanelView &v) {
   touchLayout_.arrows[3] = {uint16_t(width_/2-std::max(15,p(22))), uint16_t(y(currentY) + currentHeight + p(2)), uint16_t(std::max(30,p(44))), uint16_t(std::max(30,p(44)))};
   for (unsigned i = 0; i < 4; ++i) {
     const auto &r = touchLayout_.arrows[i];
-    lv_obj_set_pos(arrows_[i], r.x + (r.width-p(36))/2, r.y + (r.height-p(36))/2);
-    lv_obj_set_hidden(arrows_[i], v.hudSelector || (i >= 2 && !v.dualAxis));
+    if(!compact) {
+      lv_obj_set_pos(arrows_[i], r.x + (r.width-p(36))/2, r.y + (r.height-p(36))/2);
+      lv_obj_set_hidden(arrows_[i], v.hudSelector || (i >= 2 && !v.dualAxis));
+    }
     const int az = v.azDirection ? v.azDirection : (!v.elevation ? v.direction : 0);
     const int el = v.elDirection ? v.elDirection : (v.elevation ? v.direction : 0);
     const bool moving = i == 0 ? az < 0 : i == 1 ? az > 0 : i == 2 ? el > 0 : el < 0;
@@ -598,6 +632,7 @@ void PanelUi::update(const PanelView &v) {
       lv_obj_set_style_line_color(arrows_[i], tint, 0);
     }
   }
+  if(!compact) {
   lv_obj_set_y(status_, y(v.dualAxis ? (confirmation ? 372 : 350) : (confirmation ? 350 : 322)));
   lv_obj_set_y(bluetooth_, y(v.dualAxis && confirmation ? 402 : 378));
   lv_obj_set_y(ip_, y(v.dualAxis && confirmation ? 417 : 393));
@@ -605,16 +640,20 @@ void PanelUi::update(const PanelView &v) {
   lv_obj_set_y(wifi_, y(v.dualAxis && confirmation ? 451 : 435));
   lv_obj_set_y(wifiSlash_, y(v.dualAxis && confirmation ? 449 : 433));
   lv_obj_set_y(wifiAp_, y(v.dualAxis && confirmation ? 458 : 442));
+  }
   const auto statusMode = v.statusFault ? LV_LABEL_LONG_SCROLL_CIRCULAR : LV_LABEL_LONG_CLIP;
   if (lv_label_get_long_mode(status_) != statusMode) lv_label_set_long_mode(status_, statusMode);
   color(status_, v.statusFault ? 0xff6b6b : 0xf0b85c);
   set(status_, v.status);
   color(wifi_, v.wifiConnected ? wifiWarning : wifiDisconnected);
-  lv_obj_set_hidden(wifi_, v.wifiConnected && v.wifiRssi > weakWifiRssi);
-  lv_obj_set_hidden(wifiSlash_, v.wifiConnected);
+  if(!compact) {
+    lv_obj_set_hidden(wifi_, v.wifiConnected && v.wifiRssi > weakWifiRssi);
+    lv_obj_set_hidden(wifiSlash_, v.wifiConnected);
+  }
   set(wifiAp_, v.wifiAp ? "AP" : "");
   set(bluetooth_, !v.bluetoothEnabled ? "" : v.bluetoothConnected ? "Bluetooth: подключён" : "Bluetooth: нет связи");
-  set(ip_, v.ip); set(heap_, v.heap);
+  if(!compact) set(ip_, v.ip);
+  set(heap_, v.heap);
   const bool contextChanged = sourceId_ != v.sourceId || elevation_ != v.elevation || maximum_ != v.maximum || minimum_ != v.minimum;
   const bool maximumValid = std::isfinite(v.maximum) && std::isfinite(v.minimum) && v.maximum > v.minimum;
   const bool rangeValid = v.feedback && std::isfinite(v.current) && maximumValid;
@@ -624,18 +663,23 @@ void PanelUi::update(const PanelView &v) {
                                 v.target >= v.minimum && v.target <= v.maximum;
   const auto targetLower = targetRangeValid ? crowpanel::limitOpacity(v.target - v.minimum) : uint8_t(0);
   const auto targetUpper = targetRangeValid ? crowpanel::limitOpacity(v.maximum - v.target) : uint8_t(0);
-  if (lower != lowerLimit_ || targetLower != targetLowerLimit_ || minimum_ != v.minimum) {
-    invalidateLimit( minimum_, true);
-    if (std::isfinite(v.minimum)) invalidateLimit( v.minimum, true);
+  if(minimum_!=v.minimum || maximum_!=v.maximum) {
+    // A range change moves both warning lanes; publish one complete update.
+    lv_obj_invalidate(limits_);
+  } else {
+    if(lower!=lowerLimit_) invalidateLimit(minimum_,true,false);
+    if(upper!=upperLimit_) invalidateLimit(maximum_,false,false);
+    if(targetLower!=targetLowerLimit_) invalidateLimit(minimum_,true,true);
+    if(targetUpper!=targetUpperLimit_) invalidateLimit(maximum_,false,true);
   }
-  if (upper != upperLimit_ || targetUpper != targetUpperLimit_ || maximum_ != v.maximum) {
-    invalidateLimit( maximum_, false);
-    if (std::isfinite(v.maximum)) invalidateLimit( v.maximum, false);
-  }
+  const bool limitChanged=lower!=lowerLimit_ || upper!=upperLimit_ || minimum_!=v.minimum || maximum_!=v.maximum;
+  const bool targetLimitChanged=targetLower!=targetLowerLimit_ || targetUpper!=targetUpperLimit_ || minimum_!=v.minimum || maximum_!=v.maximum;
   lowerLimit_ = lower; upperLimit_ = upper;
   targetLowerLimit_ = targetLower; targetUpperLimit_ = targetUpper;
   minimum_ = std::isfinite(v.minimum) ? v.minimum : 0;
   maximum_ = std::isfinite(v.maximum) ? v.maximum : 450;
+  if(limitChanged) updateLimitBand(limitBand_,lower,upper);
+  if(targetLimitChanged) updateLimitBand(targetLimitBand_,targetLower,targetUpper);
   sourceId_ = v.sourceId; elevation_ = v.elevation;
   updateMarker(currentMotion_, v.current, v.feedback, contextChanged, false);
   updateMarker(targetMotion_, v.target, v.targetValid, contextChanged, true);

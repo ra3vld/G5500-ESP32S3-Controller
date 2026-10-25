@@ -5,6 +5,7 @@
 #include "pin_json.hpp"
 #include "motion_json.hpp"
 #include "runtime_metrics.hpp"
+#include "panel_metrics.hpp"
 #include "tcp_memory.hpp"
 #include <esp_timer.h>
 namespace forkrot {
@@ -625,7 +626,15 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       if(i) output << ',';
       writeTiming(i);
     }
-    output << "]}";return;
+    output << ']';
+#if GRAPHICAL_DISPLAY
+    output << ",\"panel\":{\"renderMaxUs\":" << panelMetrics.renderMaxUs
+      << ",\"touchReads\":" << panelMetrics.touchReads << ",\"touchErrors\":" << panelMetrics.touchErrors
+      << ",\"touchHealthy\":" << (panelMetrics.touchHealthy?"true":"false")
+      << ",\"touchDown\":" << (panelMetrics.touchDown?"true":"false")
+      << ",\"x\":" << panelMetrics.touchX << ",\"y\":" << panelMetrics.touchY << '}';
+#endif
+    output << '}';return;
   }
   if(path=="/api/network" && method=="GET") {
     const bool connected=WiFi.status()==WL_CONNECTED;

@@ -28,7 +28,7 @@ void Display::sendPanelPixels(lv_display_t *display,const uint8_t *cmd,size_t co
   if(lv_display_flush_is_last(display)) self.publishFrame();
   lv_display_flush_ready(display);
   if(self.inputReady_) {
-    self.serviceTouch();self.network_.serviceHud();self.runtime_.controller.tick(millis());self.hardware_.controlRotator();
+    self.serviceTouch();self.network_.serviceHud(false);self.runtime_.controller.tick(millis());self.hardware_.controlRotator();
   }
 }
 void Display::initLocalDisplay() {

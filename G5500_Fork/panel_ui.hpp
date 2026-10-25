@@ -4,6 +4,7 @@
 #if GRAPHICAL_DISPLAY
 #include <lvgl.h>
 #include <cstdint>
+#include <array>
 #include "panel_input.hpp"
 #include "panel_view.hpp"
 namespace forkrot {
@@ -27,7 +28,8 @@ class PanelUi {
   lv_point_precise_t arrowPoints_[4][5]{},wifiSlashPoints_[2]{};
   bool arrowMoving_[4]{};
   void positionMarker(lv_obj_t *object,float degrees,bool valid,int size);
-  void invalidateLimit(float boundary,bool lower);
+  void invalidateLimit(float boundary,bool lower,bool target);
+  void updateLimitBand(std::array<uint8_t,180> &band,uint8_t lower,uint8_t upper);
 
   lv_font_t speedFont_{};
   lv_obj_t *speedPanel_ = nullptr, *speedBars_[2]{}, *speedValues_[2]{}, *speedAxes_[2]{}, *speedBack_ = nullptr;
@@ -50,6 +52,7 @@ class PanelUi {
   lv_obj_t *limits_ = nullptr;
   uint8_t lowerLimit_ = 0, upperLimit_ = 0;
   uint8_t targetLowerLimit_ = 0, targetUpperLimit_ = 0;
+  std::array<uint8_t,180> limitBand_{}, targetLimitBand_{};
   float minimum_ = 0, maximum_ = 450;
   uint64_t sourceId_ = 0;
   bool elevation_ = false, confirmationVisible_ = false;

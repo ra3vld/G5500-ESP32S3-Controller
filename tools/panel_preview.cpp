@@ -6,12 +6,15 @@
 #include <cstring>
 #include <cstdlib>
 #include <algorithm>
+#include <cmath>
 using namespace forkrot;
 static int width,height;static bool roundPanel;
 static std::vector<uint16_t> image;
 static unsigned flushes;
+static size_t flushedPixels;
 static void flush(lv_display_t *display,const lv_area_t *a,uint8_t *data) {
   ++flushes;auto *pixel=reinterpret_cast<uint16_t *>(data);
+  flushedPixels+=size_t(a->x2-a->x1+1)*(a->y2-a->y1+1);
   assert(a->x1>=0 && a->y1>=0 && a->x2<width && a->y2<height);
   for(int y=a->y1;y<=a->y2;++y) for(int x=a->x1;x<=a->x2;++x) image[y*width+x]=*pixel++;
   lv_display_flush_ready(display);
@@ -61,6 +64,57 @@ int main(int argc,char **argv) {
     const auto released=input.sample(false,0,0,layout,20);assert(released.manual && released.release);
   }
   const auto idle=flushes;for(int i=0;i<5;++i) {ui.update(v);settle(d);}assert(flushes==idle);
+  {
+    const auto saved=v;
+    v.hud=false;v.minimum=0;v.maximum=450;v.targetValid=false;v.current=51;
+    snapshot("limit-hidden");
+    const auto rimPixel=[&](float bearing) {
+      const float angle=bearing*3.14159265358979323846f/180.f;
+      const int radius=std::lround(217.f*std::min(width,height)/480.f);
+      const int x=width/2+std::lround(radius*std::sin(angle));
+      const int y=height/2-std::lround(radius*std::cos(angle));
+      return image[y*width+x];
+    };
+    const auto onset=rimPixel(-10),nearTail=rimPixel(-30),pastTail=rimPixel(-75);
+    v.current=50;snapshot("limit-threshold");assert(rimPixel(-10)==onset);
+    v.current=49;snapshot("limit-visible");assert(rimPixel(-10)!=onset);
+    v.current=0;snapshot("limit-tail");
+    assert(rimPixel(-30)!=nearTail && rimPixel(-75)==pastTail);
+    v=saved;ui.update(v);settle(d);
+  }
+  if(width<360 && height<360) {
+    // Hidden diagnostic telemetry must not dirty the compact screen's layout.
+    const auto quiet=flushes;v.wifiRssi=-81;std::strcpy(v.heap,"Heap: 120 КБ");
+    ui.update(v);settle(d);assert(flushes==quiet);
+    v.wifiRssi=-55;std::strcpy(v.heap,"Heap: 123 КБ");ui.update(v);settle(d);
+    assert(flushes==quiet);
+    const auto saved=v;
+    v.minimum=-50;v.maximum=190;v.current=-20.23f;v.target=154;
+    ui.update(v);settle(d);
+    const auto before=flushedPixels;
+    v.current+=.2f;ui.update(v);lv_refr_now(d);
+    // A warning-ring update must leave the centre of the screen alone.
+    assert(flushedPixels-before<size_t(width*height/4));
+    settle(d);
+    v.current+=4;ui.update(v);lv_refr_now(d);
+    unsigned animatedFrames=0;
+    for(unsigned i=0;i<6;++i) {
+      const auto step=flushedPixels;lv_tick_inc(LV_DEF_REFR_PERIOD);lv_timer_handler();lv_refr_now(d);
+      if(flushedPixels!=step)++animatedFrames;
+      assert(flushedPixels-step<size_t(width*height/40));
+      const auto pixels=image;lv_obj_invalidate(ui.root());lv_refr_now(d);assert(pixels==image);
+    }
+    assert(animatedFrames>=2);
+    // Both warning lanes and markers must restore their old pixels, including
+    // ranges crossing north and simultaneous lower/upper warning changes.
+    v.minimum=-25;v.maximum=155;
+    for(unsigned i=0;i<36;++i) {
+      v.current=-20+5.f*i;v.target=155-4.f*i;
+      ui.update(v);settle(d);
+      const auto pixels=image;lv_obj_invalidate(ui.root());lv_refr_now(d);assert(pixels==image);
+    }
+    v=saved;ui.update(v);settle(d);
+  }
   v.autoMode=false;v.pending=true;snapshot("confirm");
   v.pending=false;v.movingNow=true;v.azDirection=1;std::strcpy(v.status,"Вращение");snapshot("moving");
   layout=ui.touchLayout();panel::TouchGesture input;
@@ -82,6 +136,8 @@ int main(int argc,char **argv) {
   v.hud=false;v.settingsAvailable=DISPLAY_KIND==DISPLAY_ILI9341 && !roundPanel;v.dualAxis=false;v.feedback=true;v.current=359.9;
   v.targetValid=true;v.target=450;v.minimum=0;v.maximum=450;std::strcpy(v.status,"Остановлен");snapshot("single");
   v.current=-359;v.target=721;v.minimum=-360;v.maximum=1080;snapshot("wide");
+  // Gradient tails crossing 0 degrees must survive partial redraw clipping.
+  v.current=v.minimum+4;v.target=v.maximum-8;snapshot("limits");
   std::strcpy(v.ip,"STA: 255.255.255.255  AP: 192.168.4.1");snapshot("network");
   v.statusFault=true;std::strcpy(v.status,"Ошибка AZ: нет изменения положения");snapshot("fault");
   std::printf("PASS %dx%d: native LVGL rendering, buffer bounds, idle redraw, arrows/release, repeated STOP and speed controls\n",width,height);

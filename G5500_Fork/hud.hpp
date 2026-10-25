@@ -135,7 +135,7 @@ public:
     return available() && p && p->manual && (!paced(p->endpoint) || manualIntervalMs(p->endpoint)<=250);
   }
   HudReply result(uint32_t request) const;
-  void service(uint32_t at);
+  void service(uint32_t at, bool advanceSimulation = true);
   void receive(const HudEndpoint &, const uint8_t *, size_t, uint32_t at);
   bool discover(HudEndpoint endpoint);
   bool discoverRs485(uint8_t first,uint8_t last,uint8_t masterFirst,uint8_t masterCount);

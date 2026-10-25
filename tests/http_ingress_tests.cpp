@@ -162,6 +162,21 @@ int main() {
   }
   assert(waiting>20 && web.diagnostics().writeFailures==failuresBefore);
   assert(testSocket.output.substr(gzipStart)==std::string(compressed,sizeof WEB_PAGE_GZIP));
+  // A busy small-screen renderer may return to HTTP only once a second.
+  // Drain a bounded burst so the complete gzip arrives before HTML's deadline.
+  connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
+  fakeHeapFree=80000;fakeHeapBlock=65536;
+  testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof WEB_PAGE_GZIP); };
+  web.handleClient();
+  const auto slowStart=testSocket.output.find("\r\n\r\n")+4;
+  unsigned slowLoops=0;
+  while(testSocket.open && slowLoops<30) {
+    fakeHardware.now+=1000;const auto before=fakeHardware.now;const auto bytes=testSocket.output.size();
+    web.handleClient();++slowLoops;
+    assert(fakeHardware.now==before && testSocket.output.size()-bytes<=4096);
+  }
+  assert(!web.writeFailed() && !testSocket.open && slowLoops<30);
+  assert(testSocket.output.substr(slowStart)==std::string(compressed,sizeof WEB_PAGE_GZIP));
   // Reproduce the device's partial gzip response. TCP retransmission can take
   // 3s initially, followed by a longer backoff. The former 2s deadline killed
   // this response; HTML must survive a 9s stall without blocking the loop.
@@ -200,10 +215,11 @@ int main() {
   fakeHardware.now=UINT32_MAX-500;
   connect(request);testSocket.handler=[&] { web.sendPage(200,"text/html",WEB_PAGE,sizeof WEB_PAGE-1); };
   web.handleClient();testSocket.blockWrites=true;
+  const auto beforeStall=testSocket.output.size()-(testSocket.output.find("\r\n\r\n")+4);
   fakeHardware.now+=9999;web.handleClient();assert(!testSocket.reset);
   ++fakeHardware.now;web.handleClient();assert(testSocket.reset && web.writeFailed());
   assert(std::string(web.diagnostics().writeCause)=="idle" && web.diagnostics().writeErrno==EAGAIN);
-  assert(web.diagnostics().writeBytes==512 && web.diagnostics().writeSize==sizeof WEB_PAGE-1);
+  assert(web.diagnostics().writeBytes==beforeStall && web.diagnostics().writeSize==sizeof WEB_PAGE-1);
   connect(request);testSocket.handler=[&] { web.sendPage(200,"text/html",WEB_PAGE,sizeof WEB_PAGE-1); };
   web.handleClient();
   for(unsigned i=0;i<30;++i) {
@@ -213,7 +229,8 @@ int main() {
   assert(std::string(web.diagnostics().writeCause)=="total");
   // JSON polling still fails promptly instead of occupying the HTTP slot for
   // the longer HTML deadline.
-  connect(request);testSocket.handler=[&] { web.sendBuffer(200,"application/json",WEB_PAGE,1500); };
+  connect(request);testSocket.sendQuota=512;
+  testSocket.handler=[&] { web.sendBuffer(200,"application/json",WEB_PAGE,1500); };
   web.handleClient();testSocket.blockWrites=true;
   fakeHardware.now+=1999;web.handleClient();assert(!testSocket.reset);
   ++fakeHardware.now;web.handleClient();assert(testSocket.reset && web.writeFailed());
@@ -347,7 +364,7 @@ int main() {
     connect(closePoll);web.handleClient();assert(!testSocket.open && !testSocket.parsed);
     assert(testSocket.output.find("Connection: close")!=std::string::npos);
   }
-  // Raising throughput must not raise the per-loop send size or block control.
+  // Raising throughput keeps each burst bounded and never waits for TCP space.
   web.setRequestHandler(nullptr,nullptr);
   auto transferTime=[&](size_t heap) {
     connect(request);fakeHeapFree=heap;
@@ -357,14 +374,14 @@ int main() {
       const auto bytes=testSocket.output.size();fakeHardware.now+=5;
       if(heap<32768&&i==20)fakeHeapFree=65536;
       const auto now=fakeHardware.now;web.handleClient();
-      assert(fakeHardware.now==now && testSocket.output.size()-bytes<=512);
+      assert(fakeHardware.now==now && testSocket.output.size()-bytes<=4096);
     }
     assert(!testSocket.open && !testSocket.reset);return uint32_t(fakeHardware.now-start);
   };
   const auto slow=transferTime(16384),fast=transferTime(65536);
   assert(slow>=fast+100);
   std::cout<<"PASS: recovery POST remains writable with free=3000/max=512 while normal settings require larger blocks\n";
-  std::cout<<"PASS: 10000 parser-free persistent status polls at free=3000/max=512; bulk waits below control reserve, one nonblocking 512-byte send per loop\n";
+  std::cout<<"PASS: 10000 parser-free status polls at free=3000/max=512; bulk waits below control reserve, bounded nonblocking 4KB bursts\n";
   std::cout<<"PASS: complete current page over slow socket after low-heap admission, per-loop control progress, transfer deadlines and recovery\n";
   std::cout<<"PASS: gzip bytes through 1KB queue with repeated ENOMEM/ACKs, paced JSON, encoding negotiation and failure diagnostics\n";
   std::cout<<"PASS: HTTP fragments, complete POST body, low heap, timeouts, socket failures and 10000 requests without NetworkClient RX allocations\n";

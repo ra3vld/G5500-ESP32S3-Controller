@@ -59,6 +59,7 @@ class Display {
   bool flushPending_=false;
   uint32_t flushGeneration_=0,flushStarted_=0;
   bool serviceFrame();
+  void updatePanelView(uint32_t now);
   void serviceKnob();
   TouchSample readTouch();
   static void flushFrame(lv_display_t *display,const lv_area_t *area,uint8_t *pixels);

@@ -4,7 +4,8 @@
 #include <cstdint>
 
 namespace forkrot::crowpanel {
-inline constexpr float LimitWarningDegrees = 120.f;
+inline constexpr float LimitWarningDegrees = 50.f;
+inline constexpr int LimitGradientDegrees = 60;
 inline uint8_t limitOpacity(float distance) {
   if (!std::isfinite(distance) || distance >= LimitWarningDegrees) return 0;
   const float proximity = std::clamp(1.f - distance / LimitWarningDegrees, 0.f, 1.f);

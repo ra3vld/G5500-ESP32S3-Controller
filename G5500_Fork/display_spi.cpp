@@ -36,6 +36,7 @@ void Display::initLocalDisplay() {
 #endif
   panel_->fillScreen(0);
   lv_init();lv_tick_set_cb([]()->uint32_t{return millis();});
+  lv_delay_set_cb([](uint32_t ms){delay(ms);});
   display_=lv_display_create(PanelWidth,PanelHeight);
   if(!display_) {displayFailed_=true;diagnostics_.dbgPrintln("[Display] LVGL allocation failed");return;}
   lv_display_set_color_format(display_,LV_COLOR_FORMAT_RGB565);
@@ -60,7 +61,7 @@ void Display::flushFrame(lv_display_t *display,const lv_area_t *area,uint8_t *pi
   // serviceTouch only queues UI changes while rendering_ is set.
   if(self.inputReady_) {
     self.serviceTouch();
-    self.network_.serviceHud();
+    self.network_.serviceHud(false);
     self.runtime_.controller.tick(millis());
     self.hardware_.controlRotator();
   }

@@ -902,7 +902,8 @@ bool Hud::sendManual(Job &j) {
   if (j.peer == HUD_SIMULATION_ID) {
     if (!simulation_) return false;
     auto &c = simulation_->controller;
-    c.tick(now);
+    // Input (especially release/STOP) must not enter the motion planner from
+    // an LVGL flush callback. Simulation advances in service() on the loop.
     j.id = nextSerial();
     j.sent = now;
     const auto result = c.manualDrive(id, boot, j.manualGesture, j.id, j.command.axesMask,
@@ -1519,7 +1520,7 @@ void Hud::expireLeases(Controller &controller) {
     }
   }
 }
-void Hud::service(uint32_t at) {
+void Hud::service(uint32_t at, bool advanceSimulation) {
   now = at;
   if(isHud() && scanNext_ && (!scanning_ || scanAnswered_ || uint32_t(now-scanAt_)>=responseMs(scanEndpoint_))) {
     while(scanNext_<=scanLast_ && scanNext_>=scanMasterFirst_ && scanNext_<unsigned(scanMasterFirst_)+scanMasterCount_)++scanNext_;
@@ -1540,7 +1541,7 @@ void Hud::service(uint32_t at) {
     return;
   }
   if (simulation_) {
-    simulation_->controller.tick(now);
+    if (advanceSimulation) simulation_->controller.tick(now);
     expireLeases(simulation_->controller);
   }
   updateSimulation();

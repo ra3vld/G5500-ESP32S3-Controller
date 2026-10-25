@@ -258,20 +258,28 @@ private:
     const uint32_t interval = heapFreeBytes() >= 32768 && heapMaxBlockBytes() >= 6144 ? 5 : 20;
     if (uint32_t(now - pageAttemptMs_) < interval) return;
     pageAttemptMs_ = now;
-    const size_t chunk = std::min(pageSize_ - pageSent_, size_t(512));
-    const int count = ::send(client().fd(), page_ + pageSent_, chunk, MSG_DONTWAIT);
-    if (count > 0) {
-      pageSent_ += size_t(count);
-      pageProgressMs_ = now;
-      pageRetryErrno_ = 0;
-      if (pageSent_ == pageSize_) finishResponse();
-    } else if (count < 0) {
-      pageRetryErrno_ = errno;
-      if (!retryableWrite(pageRetryErrno_)) {
-        failWrite("socket", pageRetryErrno_, pageSent_, pageSize_); releaseClient();
+    // A display refresh can delay the next loop. One 512-byte send per loop
+    // otherwise leaves large HTML incomplete at its total deadline. Drain up
+    // to 4KB of available TCP space, without waiting or bypassing the reserve.
+    for(unsigned attempt=0;attempt<8;++attempt) {
+      if(pageSize_-pageSent_>256 && !networkBulkTxReady()) break;
+      const size_t chunk = std::min(pageSize_ - pageSent_, size_t(512));
+      const int count = ::send(client().fd(), page_ + pageSent_, chunk, MSG_DONTWAIT);
+      if (count > 0) {
+        pageSent_ += size_t(count);
+        pageProgressMs_ = now;
+        pageRetryErrno_ = 0;
+        if (pageSent_ == pageSize_) { finishResponse(); break; }
+      } else {
+        if(count<0) {
+          pageRetryErrno_ = errno;
+          if (!retryableWrite(pageRetryErrno_)) {
+            failWrite("socket", pageRetryErrno_, pageSent_, pageSize_); releaseClient();
+          }
+        }
+        break;
       }
     }
-    // At most one nonblocking send per loop, including on a slow connection.
   }
   static bool retryableWrite(int error) {
     return error == EAGAIN || error == EWOULDBLOCK || error == EINTR || error == ENOMEM || error == ENOBUFS;

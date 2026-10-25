@@ -91,8 +91,15 @@ int main() {
   assert(hud.submitAt(manual, now) == Result::Cancelled);
   manual.gesture = 11; manual.inputLeaseMs = 500;
   assert(hud.submitAt(manual, now) == Result::Deferred); advance(200);
+  // A panel flush pumps input/leases without entering the trajectory solver.
+  const float renderedPosition=mirror.axes[0].current;
+  now+=20;hud.service(now,false);mirror.tick(now);
+  assert(mirror.axes[0].current==renderedPosition);
   manual.release = true;
-  assert(hud.submitAt(manual, now) == Result::Deferred); tick();
+  now+=20;
+  assert(hud.submitAt(manual, now) == Result::Deferred);
+  assert(mirror.axes[0].current==renderedPosition && !mirror.moving());
+  tick();
   assert(!mirror.moving());
   assert(!hud.settingsDirty && !hud.presetsDirty && !transport.sent);
   // With one real peer plus simulation, the existing two-entry gesture switches directly.

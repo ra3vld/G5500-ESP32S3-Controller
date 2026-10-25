@@ -33,7 +33,7 @@ public:
         diagnostics_(diagnostics) {}
   bool beginSerial();
   void beginHud();
-  void serviceHud();
+  void serviceHud(bool advanceSimulation = true);
   bool sendHud(const HudEndpoint &, const uint8_t *, size_t) override;
   void selectionChanged() override { resetHudInputs(); }
   bool hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned report) const;

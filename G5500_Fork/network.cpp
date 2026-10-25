@@ -914,7 +914,7 @@ void Network::resetHudInputs() {
   for (auto &peer : reportPeers)
     peer.used = false;
 }
-void Network::serviceHud() {
+void Network::serviceHud(bool advanceSimulation) {
   resetHudInputs();
   auto &hud = runtime_.hud;
   const uint32_t started = millis();
@@ -952,7 +952,7 @@ void Network::serviceHud() {
         [] { return uart_wait_tx_done(UART_NUM_1,0)==ESP_OK; });
   }
   serviceModbusBus();
-  hud.service(millis());
+  hud.service(millis(), advanceSimulation);
   for (auto &reply : deferred_)
     if (reply.used) {
       const auto r = hud.result(reply.id);

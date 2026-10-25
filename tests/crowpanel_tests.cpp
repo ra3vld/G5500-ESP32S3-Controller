@@ -64,10 +64,10 @@ int main() {
   assert(buttons.sample(true, 400, 280, false, true) == TouchAction::None);
   buttons.sample(false, 0, 0);
   assert(buttons.sample(true, 240, 90, true, true) == TouchAction::Mode);
-  assert(crowpanel::limitOpacity(120) == 0 && crowpanel::limitOpacity(121) == 0);
-  assert(crowpanel::limitOpacity(90) > 0 && crowpanel::limitOpacity(90) < crowpanel::limitOpacity(20));
+  assert(crowpanel::limitOpacity(50) == 0 && crowpanel::limitOpacity(51) == 0);
+  assert(crowpanel::limitOpacity(49) > 0 && crowpanel::limitOpacity(49) < crowpanel::limitOpacity(20));
   assert(crowpanel::limitOpacity(0) == 255 && crowpanel::limitOpacity(-1) == 255);
-  assert(crowpanel::limitOpacity(450 - 350) > 0 && crowpanel::limitOpacity(450 - 90) == 0);
+  assert(crowpanel::limitOpacity(450 - 410) > 0 && crowpanel::limitOpacity(450 - 350) == 0);
   assert(crowpanel::limitOpacity(NAN) == 0);
   assert(crowpanel::shortestBearingDelta(359, 1) == 2);
   assert(crowpanel::shortestBearingDelta(1, 359) == -2);
