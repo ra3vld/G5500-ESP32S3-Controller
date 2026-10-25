@@ -126,11 +126,33 @@ bool decodeDrive(const DriveRecord &b,MotionSettings &m,SpeedSettings &s) {
 }
 bool Storage::loadModbus(Runtime &runtime) {
   runtime.modbus={};
-  if(!prefs_.begin("modbus",true)){prefs_.end();return true;}
-  const bool exists=prefs_.isKey("config1");ModbusBytes bytes{};
-  const bool ok=!exists || (prefs_.getBytesLength("config1")==bytes.size() &&
-      prefs_.getBytes("config1",bytes.data(),bytes.size())==bytes.size() && decodeModbus(bytes,runtime.modbus));
-  prefs_.end();return ok;
+  bool exists=false,legacy=false,ok=true;
+  if(prefs_.begin("modbus",true)) {
+    exists=prefs_.isKey("config1");
+    if(exists) {
+      const auto size=prefs_.getBytesLength("config1");
+      if(size==LegacyModbusBytes{}.size()) {
+        LegacyModbusBytes bytes{};legacy=true;
+        ok=prefs_.getBytes("config1",bytes.data(),bytes.size())==bytes.size()&&decodeModbus(bytes,runtime.modbus);
+      } else {
+        ModbusBytes bytes{};
+        ok=size==bytes.size()&&prefs_.getBytes("config1",bytes.data(),bytes.size())==bytes.size()&&decodeModbus(bytes,runtime.modbus);
+      }
+    }
+  }
+  prefs_.end();
+  if(!ok)return false; // Never replace a damaged record with defaults.
+  if(!exists) {
+    if(prefs_.begin("hudcfg",true))legacy=prefs_.isKey("config");
+    prefs_.end();
+    if(legacy)runtime.modbus.uart1.baud=115200;
+  }
+  if(legacy) {
+    if(runtime.hud.config.uart&&!runtime.controller.hardware.hudRs485()&&!runtime.modbus.pc)
+      runtime.modbus.uart0.baud=runtime.hud.config.link.baud;
+    return saveModbus(runtime.modbus);
+  }
+  return true;
 }
 bool Storage::saveModbus(const ModbusConfig &config) {
   if(config.validate())return false;
@@ -196,7 +218,6 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
   // configuration. Validate its physical fields with the unavailable radio off.
   auto invalidStored = [&](HardwareConfig config) {
     if (!BLUETOOTH_SUPPORT) config.bluetooth = false;
-    if (runtime.hud.config.link.paced() && config.hudRs485()) return "radio_requires_uart";
     return validateHardware(config, runtime.hud.config.uart);
   };
   const bool candidateBoot = record.phase == ConfigPhase::Pending || record.phase == ConfigPhase::Testing;

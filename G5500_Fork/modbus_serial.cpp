@@ -10,7 +10,7 @@
 namespace forkrot::mb {
 namespace {
 struct State {
-  uart_port_t port=UART_NUM_0;uint32_t baud=0;
+  uart_port_t port=UART_NUM_0;uint32_t baud=0;unsigned bits=11;
   QueueHandle_t events=nullptr,frames=nullptr;TaskHandle_t task=nullptr;
   Framer framer;
   uint32_t last=0,rejected=0,tx=0;
@@ -34,7 +34,7 @@ void worker(void *arg) {
       const bool late=e.size!=1 || uxQueueMessagesWaiting(s.events)>2;
       uint8_t byte;
       for(size_t i=0;i<e.size;++i)if(uart_read_bytes(s.port,&byte,1,0)==1) {
-        if(!late && !__atomic_load_n(&s.tx,__ATOMIC_ACQUIRE))s.framer.feed(byte,t,s.baud,deliver);
+        if(!late && !__atomic_load_n(&s.tx,__ATOMIC_ACQUIRE))s.framer.feed(byte,t,s.baud,deliver,s.bits);
       }
       if(late){s.framer.reset(t);__atomic_add_fetch(&s.rejected,1u,__ATOMIC_RELAXED);}
       __atomic_store_n(&s.last,t,__ATOMIC_RELEASE);
@@ -42,18 +42,19 @@ void worker(void *arg) {
       uart_flush_input(s.port);xQueueReset(s.events);s.framer.reset(t);
       __atomic_store_n(&s.last,t,__ATOMIC_RELEASE);__atomic_add_fetch(&s.rejected,1u,__ATOMIC_RELAXED);
     }
-    s.framer.poll(t,s.baud,deliver);
+    s.framer.poll(t,s.baud,deliver,s.bits);
     if(s.framer.rejected){__atomic_add_fetch(&s.rejected,s.framer.rejected,__ATOMIC_RELAXED);s.framer.rejected=0;}
   }
 }
 }
 SerialPort::~SerialPort(){if(!state_)return;auto *s=static_cast<State *>(state_);if(s->task)vTaskDelete(s->task);uart_driver_delete(s->port);if(s->frames)vQueueDelete(s->frames);delete s;}
-bool SerialPort::begin(unsigned port,int rx,int tx,int de,uint32_t baud) {
-  if(state_ || port>=UART_NUM_MAX || rx<0 || tx<0 || de<0)return false;
-  auto *s=new(std::nothrow) State;if(!s)return false;s->port=uart_port_t(port);s->baud=baud;s->last=now();s->framer.reset(s->last);
+bool SerialPort::begin(unsigned port,int rx,int tx,int de,const UartConfig &line) {
+  if(!line.valid() || state_ || port>=UART_NUM_MAX || rx<0 || tx<0 || de<0)return false;
+  auto *s=new(std::nothrow) State;if(!s)return false;s->port=uart_port_t(port);s->baud=line.baud;s->bits=line.frameBits();s->last=now();s->framer.reset(s->last);
   pinMode(de,OUTPUT);digitalWrite(de,LOW);
-  uart_config_t config{};config.baud_rate=int(baud);config.data_bits=UART_DATA_8_BITS;config.parity=UART_PARITY_EVEN;
-  config.stop_bits=UART_STOP_BITS_1;config.flow_ctrl=UART_HW_FLOWCTRL_DISABLE;config.source_clk=UART_SCLK_DEFAULT;
+  uart_config_t config{};config.baud_rate=int(line.baud);config.data_bits=UART_DATA_8_BITS;
+  config.parity=line.parity==1?UART_PARITY_EVEN:line.parity==2?UART_PARITY_ODD:UART_PARITY_DISABLE;
+  config.stop_bits=line.stopBits==2?UART_STOP_BITS_2:UART_STOP_BITS_1;config.flow_ctrl=UART_HW_FLOWCTRL_DISABLE;config.source_clk=UART_SCLK_DEFAULT;
   bool installed=false;
   if(uart_param_config(s->port,&config)==ESP_OK && uart_set_pin(s->port,tx,rx,de,UART_PIN_NO_CHANGE)==ESP_OK &&
       uart_driver_install(s->port,1024,512,128,&s->events,0)==ESP_OK) {
@@ -69,7 +70,7 @@ bool SerialPort::begin(unsigned port,int rx,int tx,int de,uint32_t baud) {
 bool SerialPort::read(Frame &f){return state_ && xQueueReceive(static_cast<State *>(state_)->frames,&f,0)==pdTRUE;}
 bool SerialPort::idle() const {
   if(!state_)return false;auto &s=*static_cast<State *>(state_);
-  return !__atomic_load_n(&s.tx,__ATOMIC_ACQUIRE) && uint32_t(now()-__atomic_load_n(&s.last,__ATOMIC_ACQUIRE))>=t35(s.baud);
+  return !__atomic_load_n(&s.tx,__ATOMIC_ACQUIRE) && uint32_t(now()-__atomic_load_n(&s.last,__ATOMIC_ACQUIRE))>=t35(s.baud,s.bits);
 }
 bool SerialPort::send(const Frame &f) {
   if(!f.valid()||!idle())return false;auto &s=*static_cast<State *>(state_);

@@ -21,7 +21,7 @@ python3 tools/controller_api.py --serial /dev/ttyUSB0 GET /api/network
 python3 tools/controller_api.py --serial /dev/ttyUSB0 GET /api/hardware
 ```
 
-Укажите свой порт. UART0 работает на 9600 бод, кроме режима HUD UART; native USB S2/S3 — отдельный порт. Если UART0 занят HUD, используйте native USB или сеть. `H4` с окончанием CR/LF показывает память и сеть; [значения полей](../boards/classic-esp32.md#диагностика). На CrowPanel `H5` дополняет диагностику состоянием экрана.
+Укажите свой порт. UART0 по умолчанию работает на 9600 бод, 8N1; используйте параметры линии, сохранённые в настройках оборудования; native USB S2/S3 — отдельный порт. Если UART0 занят HUD, используйте native USB или сеть. `H4` с окончанием CR/LF показывает память и сеть; [значения полей](../boards/classic-esp32.md#диагностика). На CrowPanel `H5` дополняет диагностику состоянием экрана.
 
 ## Нет движения или неверное положение
 

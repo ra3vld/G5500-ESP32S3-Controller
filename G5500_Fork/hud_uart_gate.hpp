@@ -17,7 +17,7 @@ public:
           if (flowControl && written) {
             wroteAt_=now;
             // Let the chunk leave UART and the radio update AUX before feeding more.
-            settleMs_=uint32_t((written*10000+config.baud-1)/config.baud)+2;
+            settleMs_=uint32_t((written*config.frameBits*1000+config.baud-1)/config.baud)+2;
           }
           return written;
         });

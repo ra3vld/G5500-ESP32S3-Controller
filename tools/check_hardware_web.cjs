@@ -6,11 +6,11 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
 (async()=>{
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||(fs.existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),headless:true,args:['--no-sandbox']});
  try{
-  for(const profile of ['1','2','3','4','5','az',...['1','2','3','4'].flatMap(board=>[board+'-d1',board+'-d2'])]) for(const mobile of [false,true]){
+  for(const profile of (process.env.HARDWARE_PROFILES?.split(',')||['1','2','3','4','5','az',...['1','2','3','4'].flatMap(board=>[board+'-d1',board+'-d2'])])) for(const mobile of [false,true]){
    const fixture=JSON.parse(fs.readFileSync(path.join(root,`build/pin-map-${profile}.json`),'utf8'));
    const config={driveInterface:0,simulation:1,bluetoothEnabled:0,bluetoothMode:3,forceApSta:0,buttonGpio:fixture.buttonGpio,buttonActiveLow:1,buttonPullup:1,pwmInverted:0,pins:{...fixture.pins}};
    let state={token:123,generation:2,recovery:true,trial:false,ready:false,reason:'low_memory',failureCount:2,failureLimit:3,failureResetMs:1800000,remainingMs:120000,heapFree:3000,heapMaxBlock:512,backend:'NONE',sppSupported:!!fixture.classicEsp32,classicEsp32:!!fixture.classicEsp32,crowpanel:!!fixture.crowpanel,crowpanelLocalDrive:profile==='az',separateDrive:profile!=='az',btsDrive:true,hasConfirmed:true,configured:config},probeFails=false;
-   const requests=[],errors=[];const mbState={pc:0,bus:0,address:1,node:201,first:201,count:1,owner:0};
+   const requests=[],errors=[];const mbState={pc:0,bus:0,address:1,node:201,first:201,count:1,owner:0,uart0Baud:9600,uart0Parity:0,uart0StopBits:1,uart1Baud:115200,uart1Parity:0,uart1StopBits:1};
    const page=await browser.newPage({viewport:{width:mobile?360:1100,height:900},locale:'ru-RU'});
    page.on('pageerror',e=>errors.push(e.message));
    await page.route('http://hardware.test/**',async route=>{
@@ -42,6 +42,13 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
     assert.match(await page.locator('#pin-validation').textContent(),/HC-05/);
     await page.locator('[name=bluetoothEnabled]').selectOption('0');
     for(const name of ['hudRx','hudTx','hudDe','uartDe'])await page.locator('[name="pin.'+name+'"]').selectOption('-1');
+   }
+   if(!fixture.crowpanel){
+    await page.locator('[name=driveInterface]').selectOption('3');await page.locator('[name=simulation]').selectOption('0');
+    assert(await page.locator('[name="pin.azNegative"]').isHidden());assert(await page.locator('[name="pin.azPositive"]').isVisible());
+    assert.match(await page.locator('[name="pin.azPositive"]').locator('..').textContent(),/DIR/);
+    await page.locator('[name=driveInterface]').selectOption('1');assert(await page.locator('[name="pin.azNegative"]').isVisible());
+    await page.locator('[name=driveInterface]').selectOption('0');await page.locator('[name=simulation]').selectOption('1');
    }
    assert(!await page.locator('#bts-settings').isVisible());
    await page.locator('[name=simulation]').selectOption('0');
@@ -132,14 +139,28 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    assert.deepEqual(errors,[]);
    state={...state,recovery:false,trial:false,reason:'none',hasConfirmed:true};await page.evaluate(()=>{dirty=false;document.getElementById('message').textContent='';});await page.evaluate(()=>refresh());
    if(profile==='1'){
+    for(const [name,value] of Object.entries({uart0Baud:9600,uart0Parity:0,uart0StopBits:1,uart1Baud:115200,uart1Parity:0,uart1StopBits:1}))
+     assert.equal(await page.locator(`#modbus [name=${name}]`).inputValue(),String(value));
+    for(const suffix of ['Baud','Parity','StopBits'])assert.deepEqual(
+     await page.locator(`[name=uart0${suffix}] option`).allTextContents(),await page.locator(`[name=uart1${suffix}] option`).allTextContents());
+    for(const [name,value] of Object.entries({uart0Baud:38400,uart0Parity:2,uart0StopBits:2,uart1Baud:19200,uart1Parity:1,uart1StopBits:1}))
+     await page.locator(`#modbus [name=${name}]`).selectOption(String(value));
     await page.locator('#modbus [name=pc]').selectOption('1');await page.locator('#modbus [name=bus]').selectOption('1');
     await page.locator('#modbus [name=count]').fill('2');await page.locator('#modbus [name=node]').fill('202');
     await page.locator('#modbus [name=address]').fill('201');const before=requests.length;
     await page.locator('#modbus-save').click();assert.equal(requests.length,before);assert.match(await page.locator('#message').textContent(),/вне диапазона/);
     await page.locator('#modbus [name=address]').fill('1');await page.evaluate(()=>refreshModbus());
     assert.equal(await page.locator('#modbus [name=node]').inputValue(),'202');
-    await page.locator('#modbus-save').click();await page.waitForFunction(()=>document.getElementById('message').textContent.startsWith('Сохранено'));
+    for(const mode of ['0','1']){
+     await page.locator('#modbus [name=pc]').selectOption(mode);await page.locator('#modbus [name=bus]').selectOption(mode);
+     assert.equal(await page.locator('[name=uart0Baud]').inputValue(),'38400');assert.equal(await page.locator('[name=uart1Baud]').inputValue(),'19200');
+     assert.equal(await page.locator('[name=uart0Parity]').inputValue(),'2');assert.equal(await page.locator('[name=uart0StopBits]').inputValue(),'2');
+    }
+    if(process.env.HARDWARE_SCREENSHOT_DIR){fs.mkdirSync(process.env.HARDWARE_SCREENSHOT_DIR,{recursive:true});await page.locator('#uart-settings').screenshot({path:path.join(process.env.HARDWARE_SCREENSHOT_DIR,`uart-${mobile?'mobile':'desktop'}.png`)});}
+
+    await page.locator('#modbus-save').click();await page.waitForFunction(()=>document.getElementById('message').textContent.startsWith('Сохранено')).catch(async e=>{throw new Error(e.message+' '+JSON.stringify({mobile,errors,requests:requests.slice(-2),form:await page.evaluate(()=>({message:msg.textContent,dirty:mbDirty,busy,values:Object.fromEntries(new FormData(mbForm))}))}));});
     assert.equal(requests.at(-1).path,'/api/hardware/modbus');assert.equal(requests.at(-1).body.node,'202');assert.equal(requests.at(-1).body.pc,'1');
+    for(const [name,value] of Object.entries({uart0Baud:38400,uart0Parity:2,uart0StopBits:2,uart1Baud:19200,uart1Parity:1,uart1StopBits:1}))assert.equal(requests.at(-1).body[name],String(value));
     assert(await page.locator('#modbus-save').isDisabled());await page.evaluate(()=>{busy=false;buttons();});
     mbState.fault=true;await page.evaluate(()=>refreshModbus());assert.match(await page.locator('#modbus-status').textContent(),/параметры кольца/);
    }
@@ -147,6 +168,6 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    if(process.env.HARDWARE_DOC_SCREENSHOT&&profile==='1'&&!mobile)await page.screenshot({path:process.env.HARDWARE_DOC_SCREENSHOT,fullPage:true});
    await page.close();
   }
-  console.log('PASS: 14 board/display configurations, mobile/desktop GPIO editing, TFT/LCD completeness, simulation, CrowPanel reservations, dirty fields, defaults and trial/probe/confirm');
+  console.log('PASS: selected board/display configurations, independent UART line parameters, mobile/desktop GPIO editing, TFT/LCD completeness, simulation, CrowPanel reservations, dirty fields, defaults and trial/probe/confirm');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

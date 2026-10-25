@@ -26,6 +26,45 @@ int main(){
     manual[54]=3; assert(transport.enqueue(manual,sizeof manual,0));
     assert(transport.enqueue(command,sizeof command,0)); // Release cleared the older commands.
   }
+ // Every supported physical format drives framing and slow token exchanges.
+ for(uint32_t baud:{1200u,9600u,38400u,115200u})for(uint8_t parity:{0,1,2})for(uint8_t stops:{1,2}) {
+   UartConfig line{baud,parity,stops};assert(line.valid());
+   assert(line.frameBits()==9+unsigned(parity!=0)+stops);
+   mb::Framer receiver;const auto gap=mb::t35(baud,line.frameBits());
+   receiver.reset(0);const auto query=read(0,4);uint32_t at=gap+1;unsigned frames=0;
+   auto receive=[&](const mb::Frame &frame){assert(frame.valid());++frames;};
+   for(unsigned i=0;i<query.size;++i){receiver.feed(query.data[i],at,baud,receive,line.frameBits());at+=line.wireUs(1);}
+   receiver.poll(at+gap,baud,receive,line.frameBits());assert(frames==1);
+ }
+ for(uint32_t baud:{1200u,9600u,38400u}) {
+   Controller controllers[3]={testController(),testController(),testController()};
+   Protocol protocols[3]={Protocol(controllers[0]),Protocol(controllers[1]),Protocol(controllers[2])};
+   Hud huds[3]={Hud(controllers[0],protocols[0]),Hud(controllers[1],protocols[1]),Hud(controllers[2],protocols[2])};
+   mb::Bus nodes[3]={mb::Bus(controllers[0],huds[0]),mb::Bus(controllers[1],huds[1]),mb::Bus(controllers[2],huds[2])};
+   ModbusConfig config;config.bus=1;config.count=2;config.uart1={baud,2,2};
+   for(unsigned i=0;i<3;++i){config.node=i==2?202:201;assert(nodes[i].begin(config,i!=0,42+i,0));}
+   struct Packet {mb::Frame frame;unsigned source;uint32_t due;};std::deque<Packet> wire;
+   uint32_t busyUntil=0;bool queued=false,answered=false;unsigned passed=0;
+   const uint32_t until=config.tokenRecoveryUs()+config.tokenLeaseUs()*20;
+   for(uint32_t now=1000;now<until;now+=1000) {
+     auto emit=[&](unsigned source,const mb::Frame &f){
+       if(now<busyUntil)return false;
+       busyUntil=now+config.uart1.wireUs(f.size)+mb::t35(baud,config.uart1.frameBits());
+       wire.push_back({f,source,busyUntil});return true;
+     };
+     if(!wire.empty()&&now>=wire.front().due) {
+       auto packet=wire.front();wire.pop_front();packet.frame.at=packet.due-mb::t35(baud,config.uart1.frameBits());
+       for(unsigned i=0;i<3;++i)if(i!=packet.source)nodes[i].receive(packet.frame,now,now/1000,
+         [&](const mb::Frame &f){return emit(i,f);},[](uint8_t,const uint8_t *,size_t,uint32_t){});
+     }
+     if(!queued&&nodes[1].owner()){assert(nodes[1].pcRequest(read(0,32),now));queued=true;}
+     for(unsigned i=0;i<3;++i)nodes[i].service(now,now/1000,now>=busyUntil,[&](const mb::Frame &f){return emit(i,f);});
+     mb::Frame reply;if(nodes[1].pcReply(reply)){assert(reply.valid()&&reply.data[1]==3&&reply.size==69);answered=true;}
+     passed=nodes[1].passes()+nodes[2].passes();
+     if(answered&&passed>=2)break;
+   }
+   assert(queued&&answered&&passed>=2&&!nodes[1].fault()&&!nodes[2].fault());
+ }
  const uint8_t vector[]={1,3,0,0,0,10};assert(mb::crc(vector,sizeof vector)==0xcdc5);
  Controller c=testController();Protocol p(c);Hud h(c,p);h.begin(1,456);c.feedback(20,30,true,true);c.setMode(Mode::Auto,0);
  mb::Registers registers(c,h);registers.begin(456);

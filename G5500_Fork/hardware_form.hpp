@@ -1,5 +1,6 @@
 // G5500 Fork; GPL-3.0. Small settings path independent of WebServer's String parser.
 #pragma once
+#include "modbus_config.hpp"
 #include "hardware_config.hpp"
 #include <limits>
 namespace forkrot {
@@ -106,14 +107,20 @@ inline bool parseHardwareForm(std::string_view body, HardwareForm &out, bool set
 // here used another 1537-byte buffer on the nested controller-loop stack.
 template<class Arguments>
 inline bool parseHardwareArguments(const Arguments &arguments, HardwareForm &out, bool settings,
-                                   const HardwareConfig &base = HardwareConfig{}) {
+                                   const HardwareConfig &base = HardwareConfig{}, ModbusConfig *modbus = nullptr) {
   hardware_form_detail::Parser parser(settings,base);
-  size_t bytes=0;
+  size_t bytes=0;uint16_t seenModbus=0;
   for(auto entry:arguments) {
     if(entry.first.size()>1536 || entry.second.size()>1536 ||
        entry.first.find_first_of("&=")!=entry.first.npos || entry.second.find_first_of("&=")!=entry.second.npos)return false;
     bytes+=(bytes?1:0)+entry.first.size()+1+entry.second.size();
-    if(bytes>1536 || !parser.add(entry.first,entry.second))return false;
+    if(bytes>1536)return false;
+    if(modbus && settings && entry.first.substr(0,3)=="mb.") {
+      unsigned i=0;while(i<12 && entry.first.substr(3)!=SerialFieldNames[i])++i;
+      uint32_t value=0;
+      if(i==12 || (seenModbus&(1u<<i)) || !hardwareUnsigned(entry.second,value) || !setSerialField(*modbus,i,value))return false;
+      seenModbus|=1u<<i;
+    } else if(!parser.add(entry.first,entry.second))return false;
   }
   return parser.finish(out);
 }

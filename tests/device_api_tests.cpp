@@ -1,4 +1,5 @@
 #include "device_api.hpp"
+#include "hardware_form.hpp"
 #include "command_api.hpp"
 #include "runtime_metrics.hpp"
 #include <ArduinoOTA.h>
@@ -191,6 +192,64 @@ int main(int argc,char **argv) {
     auto bytes=encodeModbus(mb.runtime.modbus);ModbusConfig decoded;assert(decodeModbus(bytes,decoded)&&decoded==mb.runtime.modbus);
     for(unsigned i=0;i<bytes.size();++i){auto bad=bytes;bad[i]^=1;assert(!decodeModbus(bad,decoded));}
     Preferences::database["modbus"]["config1"]=Preferences::Bytes(15,0);assert(!mb.storage.loadModbus(mb.runtime));
+  }
+  {
+    Fixture ports;
+    const std::string auth="token=11&generation=1";
+    assert(ports.runtime.modbus.uart0.baud==9600&&ports.runtime.modbus.uart1.baud==115200);
+    const auto saved=ports.runtime.modbus;
+    for(const auto *bad:{"uart0Baud=0","uart1Baud=12345","uart0Parity=3","uart1Parity=256","uart0StopBits=0","uart1StopBits=3","uart0Baud=-9600","uart1Baud=4294967296"}) {
+      assert(ports.call("POST","/api/hardware/modbus",auth+"&"+bad).status==400);
+      assert(ports.runtime.modbus==saved);
+    }
+    auto wiring=ports.runtime.controller.hardware;
+    wiring.pins.uartDe=8;wiring.pins.hudRx=9;wiring.pins.hudTx=10;wiring.pins.hudDe=11;
+    ports.runtime.controller.configureHardware(wiring);ports.runtime.hardwareHudUart=true;
+    for(unsigned parity=0;parity<3;++parity)for(unsigned stops=1;stops<=2;++stops) {
+      const auto fields=auth+"&uart0Baud=38400&uart0Parity="+std::to_string(parity)+"&uart0StopBits="+std::to_string(stops)+
+        "&uart1Baud=2400&uart1Parity="+std::to_string(2-parity)+"&uart1StopBits="+std::to_string(3-stops);
+      assert(ports.call("POST","/api/hardware/modbus",fields).status==200);
+      assert(ports.storage.loadModbus(ports.runtime));
+      const auto line0=ports.runtime.modbus.uart0,line1=ports.runtime.modbus.uart1;
+      assert(line0.baud==38400&&line0.parity==parity&&line0.stopBits==stops);
+      assert(line1.baud==2400&&line1.parity==2-parity&&line1.stopBits==3-stops);
+      for(const auto *protocol:{"&pc=1&bus=1","&pc=0&bus=0"}) {
+        assert(ports.call("POST","/api/hardware/modbus",auth+protocol).status==200);
+        assert(ports.storage.loadModbus(ports.runtime));
+        assert(ports.runtime.modbus.uart0==line0&&ports.runtime.modbus.uart1==line1);
+      }
+    }
+    const auto response=ports.call("GET","/api/hardware/modbus");
+    assert(response.body.find("\"uart0Baud\":38400")!=response.body.npos&&response.body.find("\"uart1Baud\":2400")!=response.body.npos);
+    wiring.pins.uartDe=-1;wiring.pins.hudRx=wiring.pins.hc05Rx;wiring.pins.hudTx=wiring.pins.hc05Tx;wiring.pins.hudDe=wiring.pins.hc05State;
+    wiring.bluetooth=false;ports.runtime.controller.configureHardware(wiring);
+    assert(ports.call("POST","/api/device","role=hud&wifi=existing&uart=1&port=4534&baud=115200").body.find("uart_settings_in_hardware")!=std::string::npos);
+    assert(ports.call("POST","/api/device","role=hud&wifi=existing&uart=1&port=4534").status==200);
+    Runtime reboot;ports.storage.loadHud(reboot);assert(ports.storage.loadModbus(reboot));
+    assert(reboot.modbus==ports.runtime.modbus&&reboot.hud.config.link.baud==2400);
+    CommandForm form;HardwareForm parsed;ModbusConfig combined;
+    assert(form.parse(auth+"&simulation=1&mb.uart0Baud=57600&mb.uart0Parity=2&mb.uart0StopBits=2&mb.uart1Baud=4800&mb.uart1Parity=1&mb.uart1StopBits=1"));
+    assert(parseHardwareArguments(form.view(),parsed,true,ports.runtime.controller.hardware,&combined));
+    assert(combined.uart0.baud==57600&&combined.uart0.parity==2&&combined.uart0.stopBits==2&&combined.uart1.baud==4800&&combined.uart1.parity==1);
+  }
+  {
+    // Migrate exact legacy line settings once, including the old HUD UART0 rate.
+    Fixture legacy;
+    LegacyModbusBytes bytes{'M','B',1,1,1,1,201,201,1};modbusChecksum(bytes);
+    Preferences::database["modbus"]["config1"]=Preferences::Bytes(bytes.begin(),bytes.end());
+    assert(legacy.storage.loadModbus(legacy.runtime));
+    assert((legacy.runtime.modbus.uart0==UartConfig{19200,1,1}));
+    assert((legacy.runtime.modbus.uart1==UartConfig{115200,1,1}));
+    assert(legacy.storage.loadModbus(legacy.runtime)&&legacy.runtime.modbus.uart0.baud==19200);
+    for(unsigned i=0;i<bytes.size();++i){auto bad=bytes;bad[i]^=1;ModbusConfig result;assert(!decodeModbus(bad,result));}
+    Preferences::database.erase("modbus");
+    legacy.runtime.hud.config.uart=true;legacy.runtime.hud.config.link.baud=4800;
+    assert(legacy.storage.saveHudConfig(legacy.runtime.hud.config));
+    assert(legacy.storage.loadModbus(legacy.runtime)&&legacy.runtime.modbus.uart0.baud==4800);
+    legacy.runtime.hud.config.link.baud=115200;
+    assert(legacy.storage.loadModbus(legacy.runtime)&&legacy.runtime.modbus.uart0.baud==4800);
+    Preferences::database.erase("modbus");Preferences::failedBytesKey="config1";
+    assert(!legacy.storage.loadModbus(legacy.runtime));Preferences::failedBytesKey.clear();
   }
   {
     Fixture local;

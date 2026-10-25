@@ -270,18 +270,23 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
       output << "{\"pc\":" << unsigned(c.pc) << ",\"bus\":" << unsigned(c.bus)
         << ",\"address\":" << unsigned(c.address) << ",\"node\":" << unsigned(c.node)
         << ",\"first\":" << unsigned(c.first) << ",\"count\":" << unsigned(c.count)
+        << ",\"uart0Baud\":" << c.uart0.baud << ",\"uart0Parity\":" << unsigned(c.uart0.parity) << ",\"uart0StopBits\":" << unsigned(c.uart0.stopBits)
+        << ",\"uart1Baud\":" << c.uart1.baud << ",\"uart1Parity\":" << unsigned(c.uart1.parity) << ",\"uart1StopBits\":" << unsigned(c.uart1.stopBits)
         << ",\"enabled\":" << (!runtime_.recovery&&(c.pc||c.bus)?"true":"false") << ",\"owner\":" << unsigned(s.owner)
         << ",\"received\":" << s.received << ",\"rejected\":" << s.rejected << ",\"timeouts\":" << s.timeouts
         << ",\"passes\":" << s.passes << ",\"recoveries\":" << s.recoveries << ",\"fault\":" << (s.fault?"true":"false") << '}';return;
     }
     if(method!="POST"){reply(405,"method_not_allowed");return;}
     ModbusConfig next=c;uint16_t seen=0;uint32_t token=0,generation=0;
-    constexpr const char *names[]={"token","generation","pc","bus","address","node","first","count"};
-    for(auto e:arguments){unsigned i=0;while(i<8 && e.first!=names[i])++i;
-      uint32_t v=0;if(i==8 || (seen&(1u<<i)) || !hardwareUnsigned(e.second,v) || (i>1&&v>255)){reply(400,"invalid_form");return;}
+    for(auto e:arguments){
+      unsigned i=0;
+      if(e.first=="token")i=0;
+      else if(e.first=="generation")i=1;
+      else {i=2;while(i<14&&e.first!=SerialFieldNames[i-2])++i;}
+      uint32_t v=0;
+      if(i==14 || (seen&(1u<<i)) || !hardwareUnsigned(e.second,v) || (i>=2&&!setSerialField(next,i-2,v))) {reply(400,"invalid_form");return;}
       seen|=1u<<i;
-      switch(i){case 0:token=v;break;case 1:generation=v;break;case 2:next.pc=v;break;case 3:next.bus=v;break;
-        case 4:next.address=v;break;case 5:next.node=v;break;case 6:next.first=v;break;case 7:next.count=v;break;}
+      if(i==0)token=v;else if(i==1)generation=v;
     }
     if((seen&3)!=3 || token!=runtime_.hardwareToken || generation!=runtime_.hardwareRecord.generation){reply(409,"stale_configuration");return;}
     const auto &record=runtime_.hardwareRecord;
@@ -295,9 +300,10 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
   if(method=="GET" && path=="/api/hardware") { writeHardwareStatus(output,command,web_.value("view")); return; }
   if(method!="POST") { reply(405,"method_not_allowed"); return; }
   HardwareForm form;
+  auto modbus=runtime_.modbus;
   const auto &r=runtime_.hardwareRecord;
   const auto &base=r.phase==ConfigPhase::Testing || r.phase==ConfigPhase::Pending || runtime_.recovery?r.candidate:r.good;
-  if(!parseHardwareArguments(arguments,form,path=="/api/hardware",base)) { reply(400,"invalid_form"); return; }
+  if(!parseHardwareArguments(arguments,form,path=="/api/hardware",base,path=="/api/hardware"?&modbus:nullptr)) { reply(400,"invalid_form"); return; }
   if(form.token!=runtime_.hardwareToken || form.generation!=runtime_.hardwareRecord.generation) { reply(409,"stale_configuration"); return; }
   if(path=="/api/hardware/joystick/start" || path=="/api/hardware/joystick/poll" || path=="/api/hardware/joystick/cancel") {
     if(path=="/api/hardware/joystick/cancel") { hardware_.cancelJoystickCalibration(); reply(200,""); return; }
@@ -320,11 +326,13 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
       output << "{\"ok\":false,\"error\":" << jsonQuoted(error.error) << ",\"field\":" << jsonQuoted(error.field)
         << ",\"gpio\":" << error.pin << ",\"owner\":" << jsonQuoted(error.owner) << '}'; return;
     }
-    if(const auto error=runtime_.modbus.wiring(form.config,runtime_.hardwareHudUart)){reply(400,error);return;}
-    if(runtime_.hud.config.link.paced() && form.config.hudRs485()) {reply(400,"radio_requires_uart");return;}
+    if(const auto error=modbus.wiring(form.config,runtime_.hardwareHudUart)){reply(400,error);return;}
+    const bool modbusChanged=!(modbus==runtime_.modbus);
+    if(modbusChanged && !storage_.saveModbus(modbus)){reply(503,"storage_failed");return;}
     invalidateSetup(SetupStep::Equipment);
     stopForConfiguration();
     saved=storage_.stageHardware(runtime_,form.config);
+    if(!saved && modbusChanged)storage_.saveModbus(runtime_.modbus);
   } else if(path=="/api/hardware/confirm") {
     if(runtime_.recovery || !runtime_.hardwareTrial || !runtime_.hardwareProbe || !runtime_.memoryGuard.ready(millis()) || heapFreeBytes()<MemoryGuard::HealthyFree || heapMaxBlockBytes()<MemoryGuard::HealthyBlock || runtimeMetrics.allocationFailures.load()!=runtime_.memoryGuard.failures) { reply(409,"not_ready"); return; }
     stopForConfiguration(); saved=storage_.confirmHardware(runtime_);
@@ -1060,20 +1068,19 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     config.wifi = wifi == "host" ? HudWifi::Host : wifi == "client" ? HudWifi::Client : HudWifi::Existing;
     config.uart = uart == "1";
     config.port = uint16_t(port);
-    struct LinkField { const char *name; unsigned maximum; };
-    unsigned linkValues[] = {config.link.baud,config.link.intervalMs,unsigned(config.link.readyHigh)};
-    const LinkField linkFields[] = {{"baud",115200},{"intervalMs",10000},{"readyHigh",1}};
-    for (unsigned i=0;i<3;++i) {
-      if (web_.hasArg(linkFields[i].name) && !integerArg(web_.arg(linkFields[i].name),linkValues[i],linkFields[i].maximum)) {
-        reply(400,"invalid_uart_settings"); return;
-      }
+    const auto &line=runtime_.controller.hardware.hudRs485()?runtime_.modbus.uart1:runtime_.modbus.uart0;
+    config.link.baud=line.baud;config.link.frameBits=line.frameBits();
+    // Old clients can echo the effective baud, but line edits belong to the
+    // hardware endpoint, with its token, generation and verified persistence.
+    if(web_.hasArg("baud")) {
+      unsigned baud=0;
+      if(!integerArg(web_.arg("baud"),baud)||baud!=line.baud) {reply(400,"uart_settings_in_hardware");return;}
     }
-    config.link.baud=linkValues[0]; config.link.intervalMs=uint16_t(linkValues[1]);
-    config.link.readyHigh=linkValues[2];
-    if (!config.link.valid()) { reply(400,"invalid_uart_settings"); return; }
-    if (config.link.paced() && (runtime_.controller.hardware.hudRs485() || runtime_.modbus.bus)) {
-      reply(400,"radio_requires_uart"); return;
-    }
+    unsigned interval=config.link.intervalMs,ready=unsigned(config.link.readyHigh);
+    if((web_.hasArg("intervalMs")&&!integerArg(web_.arg("intervalMs"),interval,10000)) ||
+       (web_.hasArg("readyHigh")&&!integerArg(web_.arg("readyHigh"),ready,1))) {reply(400,"invalid_uart_settings");return;}
+    config.link.intervalMs=uint16_t(interval);config.link.readyHigh=ready;
+    if(!config.link.valid()) {reply(400,"invalid_uart_settings");return;}
     if(const auto error=runtime_.modbus.wiring(runtime_.controller.hardware,config.uart)){reply(400,error);return;}
     if (!storage_.saveHudConfig(config)) {
       web_.send(507, "application/json", "{\"ok\":false,\"result\":\"storage_full\"}");

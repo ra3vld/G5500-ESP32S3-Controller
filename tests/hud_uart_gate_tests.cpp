@@ -27,6 +27,13 @@ int main() {
   ready=true; tick(101); assert(writes.size()==2 && tx.left==16);
   tick(137); assert(writes.size()==3 && !tx.left);
   tick(200); assert(writes.size()==3);
+  {
+    HudLinkConfig framed;framed.baud=1200;framed.frameBits=12;HudUartGate format;Tx data;
+    const auto write=[](const uint8_t *,size_t n){return n;};
+    format.service(0,framed,true,true,80,data,write);assert(data.left==48);
+    format.service(321,framed,true,true,80,data,write);assert(data.left==48);
+    format.service(322,framed,true,true,80,data,write);assert(data.left==16);
+  }
   Tx cable; HudUartGate direct;
   direct.service(0,config,false,true,100,cable,[](const uint8_t *,size_t n){return n;});
   assert(!cable.left);

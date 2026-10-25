@@ -774,18 +774,26 @@ void Network::serviceModbusBus() {
   m.link.service(micros(),millis(),m.bus.idle(),[&](const mb::Frame &f){return m.bus.send(f);});
   runtime_.modbusStatus={m.link.received+m.pcReceived,m.link.rejectedFrames()+m.pcRejected+m.bus.rejected()+m.pc.rejected(),m.link.timeouts+m.pcTimeouts,m.link.passes(),m.link.recoveries(),m.link.owner(),m.link.fault()};
 }
+namespace {
+uint32_t uartFormat(const UartConfig &port) {
+  if(port.parity==1)return port.stopBits==2?SERIAL_8E2:SERIAL_8E1;
+  if(port.parity==2)return port.stopBits==2?SERIAL_8O2:SERIAL_8O1;
+  return port.stopBits==2?SERIAL_8N2:SERIAL_8N1;
+}
+}
 bool Network::beginSerial() {
   const auto &config = runtime_.controller.hardware;
   if(!runtime_.recovery && (runtime_.modbus.pc||runtime_.modbus.bus) && !modbus_)return false;
   if(!runtime_.recovery && runtime_.modbus.wiring(config,runtime_.hud.config.uart))return false;
   if(modbus_ && runtime_.modbus.pc) {
-    if(!modbus_->pc.begin(0,config.pins.uartRx,config.pins.uartTx,config.pins.uartDe,19200))return false;
+    if(!modbus_->pc.begin(0,config.pins.uartRx,config.pins.uartTx,config.pins.uartDe,runtime_.modbus.uart0))return false;
   } else if (config.pins.uartRx >= 0 && config.pins.uartTx >= 0) {
     if (config.rs485()) {
       if(heapFreeBytes()<sizeof(Rs485Reply)+MemoryGuard::CriticalFree ||
           heapMaxBlockBytes()<sizeof(Rs485Reply)+MemoryGuard::CriticalBlock) return false;
       rs485Reply_.reset(new(std::nothrow) Rs485Reply);
       if(!rs485Reply_)return false;
+      rs485Reply_->configure(runtime_.modbus.uart0);
       // Receive until the driver owns a complete transmission. RTS is released
       // by IDF after the last stop bit, rather than when write() returns.
       digitalWrite(config.pins.uartDe, LOW);
@@ -795,12 +803,12 @@ bool Network::beginSerial() {
     if (runtime_.hud.config.uart && !config.hudRs485()) {
       if (config.pins.hudReady>=0) pinMode(config.pins.hudReady,INPUT);
     }
-    Serial0.begin(runtime_.hud.config.uart && !config.hudRs485() ? runtime_.hud.config.link.baud : 9600, SERIAL_8N1, config.pins.uartRx, config.pins.uartTx);
+    Serial0.begin(runtime_.modbus.uart0.baud, uartFormat(runtime_.modbus.uart0), config.pins.uartRx, config.pins.uartTx);
     if (config.rs485() && (!Serial0.setPins(-1, -1, -1, config.pins.uartDe) ||
         !Serial0.setMode(UART_MODE_RS485_HALF_DUPLEX))) return false;
   }
   if(modbus_ && runtime_.modbus.bus) {
-    if(!modbus_->bus.begin(1,config.pins.hudRx,config.pins.hudTx,config.pins.hudDe,115200) ||
+    if(!modbus_->bus.begin(1,config.pins.hudRx,config.pins.hudTx,config.pins.hudDe,runtime_.modbus.uart1) ||
         !modbus_->link.begin(runtime_.modbus,runtime_.hud.isHud(),uint32_t(runtime_.hud.boot),micros()))return false;
     modbus_->busReady=true;
   } else if (runtime_.hud.config.uart && config.hudRs485()) {
@@ -808,7 +816,7 @@ bool Network::beginSerial() {
     auto &serial=hud485_->serial;
     digitalWrite(config.pins.hudDe, LOW);pinMode(config.pins.hudDe, OUTPUT);
     serial.setRxBufferSize(2048);serial.setTxBufferSize(2048);
-    serial.begin(115200, SERIAL_8N1, config.pins.hudRx, config.pins.hudTx);
+    serial.begin(runtime_.modbus.uart1.baud, uartFormat(runtime_.modbus.uart1), config.pins.hudRx, config.pins.hudTx);
     if (!serial.setPins(-1,-1,-1,config.pins.hudDe) || !serial.setMode(UART_MODE_RS485_HALF_DUPLEX)) return false;
   }
   heapBeforeBt_ = heapFreeBytes();
@@ -827,6 +835,9 @@ bool Network::hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned 
   return portsValid(port,n1mm,pst,report,runtime_.loggerSettings.commandPort);
 }
 void Network::beginHud() {
+  const auto &line=runtime_.controller.hardware.hudRs485()?runtime_.modbus.uart1:runtime_.modbus.uart0;
+  runtime_.hud.config.link.baud=line.baud;
+  runtime_.hud.config.link.frameBits=line.frameBits();
   runtime_.hud.begin(ESP.getEfuseMac() & 0xffffffffffffULL, (uint64_t(esp_random()) << 32) | esp_random());
   runtime_.hud.setTransport(this);
   if(!runtime_.recovery && (runtime_.modbus.pc||runtime_.modbus.bus)) {
@@ -838,7 +849,7 @@ void Network::beginHud() {
     if (heapFreeBytes() >= sizeof(Rs485Link)+MemoryGuard::CriticalFree &&
         heapMaxBlockBytes() >= sizeof(Rs485Link)+MemoryGuard::CriticalBlock)
       hud485_.reset(new (std::nothrow) Rs485Link);
-    if (hud485_) hud485_->link.begin(runtime_.hud.isHud(),runtime_.hud.boot,millis());
+    if (hud485_) hud485_->link.begin(runtime_.hud.isHud(),runtime_.hud.boot,millis(),runtime_.modbus.uart1);
     else runtime_.hud.catalogError=true;
   } else if (runtime_.hud.config.uart && !runtime_.modbus.bus) {
     hudUart_.reset(new (std::nothrow) UartLink);

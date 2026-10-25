@@ -36,17 +36,17 @@ async function sampleState(){
   });
   await page.goto('http://hud-link.test/#settings');await page.waitForFunction(()=>window._forkState);
   await page.locator('#hudPanel summary').click();
-  assert.equal(await page.locator('#hudBaud').inputValue(),'9600');
+  assert.equal(await page.locator('#hudBaud').count(),0);
+  assert.equal(await page.locator('#hudUartSettings a').getAttribute('href'),'/hardware#uart-settings');
   assert.equal(await page.locator('#hudRefreshHz').inputValue(),'0.5');
   assert.equal(await page.locator('#hudReadyHigh').inputValue(),'0');
-  await page.locator('#hudBaud').selectOption('19200');
   await page.locator('#hudRefreshHz').fill('4');
   await page.evaluate(()=>upd(true));
-  assert.equal(await page.locator('#hudBaud').inputValue(),'19200'); // Polling preserves unsaved values.
+  assert.equal(await page.locator('#hudRefreshHz').inputValue(),'4'); // Polling preserves unsaved values.
   await page.locator('#hudConfig button[type=submit]').click();
   await page.waitForFunction(()=>!document.getElementById('hudConfig').dataset.dirty);
   assert.deepEqual(posts.at(-1),{path:'/api/device',form:{role:'controller',wifi:'existing',uart:'1',port:'4534',
-   baud:'19200',intervalMs:'250',readyHigh:'0'}});
+   intervalMs:'250',readyHigh:'0'}});
   await page.getByRole('button',{name:'Закрыть уведомление'}).click();
   for(const width of [320,390,1100]){
    await page.setViewportSize({width,height:900});
@@ -57,11 +57,11 @@ async function sampleState(){
   await page.locator('#hudUartSettings').scrollIntoViewIfNeeded();
   await page.locator('#hudUartSettings').screenshot({path:path.join(root,'artifacts/screenshots/hud-link-390.png')});
   await page.locator('#deviceUart').selectOption('0');
-  assert(await page.locator('#hudUartSettings').isHidden());assert(await page.locator('#hudBaud').isDisabled());
+  assert(await page.locator('#hudUartSettings').isHidden());assert(await page.locator('#hudRefreshHz').isDisabled());
   await page.locator('#hudConfig button[type=submit]').click();
   await page.waitForFunction(()=>!document.getElementById('hudConfig').dataset.dirty);
   assert.deepEqual(posts.at(-1),{path:'/api/device',form:{role:'controller',wifi:'existing',uart:'0',port:'4534'}});
   assert.deepEqual(errors,[]);
-  console.log('PASS: UART rate/frequency/AUX polarity, dirty form, disabled UART and 320/390/1100px layouts');
+  console.log('PASS: UART hardware link/frequency/AUX polarity, dirty form, disabled UART and 320/390/1100px layouts');
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

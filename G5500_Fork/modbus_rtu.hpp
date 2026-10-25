@@ -21,23 +21,23 @@ struct Frame {
   void finish(size_t n) {if(n>Max-2){size=0;return;}const auto c=crc(data,n);data[n]=uint8_t(c);data[n+1]=uint8_t(c>>8);size=uint16_t(n+2);}
 };
 inline Frame exception(const Frame &request,uint8_t code){Frame f;f.data[0]=request.data[0];f.data[1]=request.data[1]|0x80;f.data[2]=code;f.finish(3);return f;}
-inline uint32_t t35(uint32_t baud){return baud>19200?1750:(38500000u+baud-1)/baud;}
-inline uint32_t t15(uint32_t baud){return baud>19200?750:(16500000u+baud-1)/baud;}
+inline uint32_t t35(uint32_t baud,unsigned bits=11){return baud>19200?1750:(bits*3500000u+baud-1)/baud;}
+inline uint32_t t15(uint32_t baud,unsigned bits=11){return baud>19200?750:(bits*1500000u+baud-1)/baud;}
 // Tests and interrupt/event adapters supply timestamps, not main-loop read times.
 class Framer {
   Frame frame_;uint32_t last_=0;bool discard_=true,started_=false;
 public:
   uint32_t rejected=0;
-  template<class Receive> void poll(uint32_t now,uint32_t baud,Receive receive) {
-    if(!started_ && uint32_t(now-last_)>=t35(baud))discard_=false;
-    if(started_ && uint32_t(now-last_)>=t35(baud)) {
+  template<class Receive> void poll(uint32_t now,uint32_t baud,Receive receive,unsigned bits=11) {
+    if(!started_ && uint32_t(now-last_)>=t35(baud,bits))discard_=false;
+    if(started_ && uint32_t(now-last_)>=t35(baud,bits)) {
       if(!discard_ && frame_.valid()){frame_.at=last_;receive(frame_);}else if(frame_.size)++rejected;
       frame_.size=0;started_=false;discard_=false;
     }
   }
-  template<class Receive> void feed(uint8_t byte,uint32_t now,uint32_t baud,Receive receive) {
-    poll(now,baud,receive);
-    if(started_ && uint32_t(now-last_)>t15(baud))discard_=true;
+  template<class Receive> void feed(uint8_t byte,uint32_t now,uint32_t baud,Receive receive,unsigned bits=11) {
+    poll(now,baud,receive,bits);
+    if(started_ && uint32_t(now-last_)>t15(baud,bits))discard_=true;
     if(!started_){started_=true;frame_.size=0;}
     if(frame_.size<Max)frame_.data[frame_.size++]=byte;else discard_=true;
     last_=now;

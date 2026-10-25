@@ -61,12 +61,12 @@ void Application::controllerSetup() {
   runtime_.setupStorageOk=storage_.loadSetup(runtime_);
   runtime_.controller.setupRequired=runtime_.setup.required;
   storage_.loadHud(runtime_, false);
-  const bool modbusReadable=storage_.loadModbus(runtime_);
   const auto reset = esp_reset_reason();
   const bool unexpected = reset == ESP_RST_PANIC || reset == ESP_RST_INT_WDT ||
       reset == ESP_RST_TASK_WDT || reset == ESP_RST_WDT || reset == ESP_RST_BROWNOUT;
   storage_.loadHardware(runtime_, unexpected || (reset != ESP_RST_POWERON &&
       __atomic_load_n(&recoveryLatch, __ATOMIC_RELAXED) == RecoveryCookie));
+  const bool modbusReadable=storage_.loadModbus(runtime_);
   __atomic_store_n(&recoveryLatch, 0u, __ATOMIC_RELAXED);
   if(!runtime_.setupStorageOk || !modbusReadable || (!runtime_.recovery &&
       runtime_.modbus.wiring(runtime_.controller.hardware,runtime_.hud.config.uart))) {
@@ -186,18 +186,17 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln("=== G5500 " FORK_CHIP_NAME " v1.6.23 WEB ===");
 #endif
   diagnostics_.dbgPrintln("Copyright (c) UA1CFM");
-  diagnostics_.dbgPrintln(runtime_.controller.hardware.pins.uartRx < 0 ? "UART: disabled" : runtime_.controller.hardware.rs485() && (!runtime_.hud.config.uart || runtime_.controller.hardware.hudRs485())
-                              ? "UART0: GS-232 over RS-485, 9600 8N1" : runtime_.hud.config.uart && !runtime_.controller.hardware.hudRs485()
-                              ? "UART0: HUD/1, configured baud, 8N1; GS-232 disabled on these pins"
-                              : "UART0 USB: PSTROTATOR GS-232, 9600 baud (COM number assigned by Windows)");
+  for(unsigned i=0;i<2;++i) {
+    const auto &port=i?runtime_.modbus.uart1:runtime_.modbus.uart0;
+    diagnostics_.dbgPrintln(String("UART")+i+": "+port.baud+" 8"+
+        (port.parity==1?"E":port.parity==2?"O":"N")+port.stopBits);
+  }
 #if FORK_NATIVE_USB
   diagnostics_.dbgPrintln("Native USB " FORK_USB_NAME
                           ": diagnostics + programming (COM number assigned by Windows)");
 #else
   diagnostics_.dbgPrintln("UART0 bridge: GS-232 + programming; diagnostics: /diaglog");
 #endif
-  if(runtime_.hud.config.uart && runtime_.controller.hardware.hudRs485())
-    diagnostics_.dbgPrintln(runtime_.hud.isHud()?"UART1: HUD RS-485 master, 115200 8N1":"UART1: HUD RS-485 responder, 115200 8N1");
   diagnostics_.dbgPrintln("TCP 4533: Look4Sat/Hamlib + GS-232B full command set");
   diagnostics_.dbgPrintln("R4UAB DDE Client TCP: decimal comma accepted in Hamlib P az el command");
   diagnostics_.dbgPrintln(

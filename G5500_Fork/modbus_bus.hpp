@@ -11,6 +11,7 @@ class Bus {
   Token token_;
   Frame request_,reply_,pcRequest_,pcReply_;
   uint32_t requestAt_=0,pcAt_=0,pollAt_=0;
+  uint32_t replyWindowUs() const {return std::max<uint32_t>(20000u,t35(config_.uart1.baud,config_.uart1.frameBits())+5000);}
   bool master_=false,waiting_=false,gateway_=false,preferPc_=true;
   template<class Receive> void deliver(uint8_t address,const uint8_t *p,size_t n,uint32_t now,Receive receive){receive(address,p,n,now);}
 public:
@@ -65,7 +66,7 @@ public:
       return;
     }
     if(f.data[0]!=config_.address||reply_.size)return;
-    if(uint32_t(now-f.at)>20000){++rejected;return;} // Leave time for a full RTU response before timeout.
+    if(uint32_t(now-f.at)>replyWindowUs()){++rejected;return;} // Leave time for a full RTU response before timeout.
     if(f.data[1]==Service) {
       if(f.size<25||f.data[3]!=Mailbox::Exchange){reply_=exception(f,1);reply_.at=f.at;return;}
       const auto source=f.data[4];if(source<config_.first||source>=unsigned(config_.first)+config_.count)return;
@@ -75,12 +76,12 @@ public:
   }
   template<class Emit> void service(uint32_t now,uint32_t milliseconds,bool idle,Emit emit) {
     auto send=[&](const Frame &q){const bool ok=emit(q);if(ok)token_.activity(now);return ok;};
-    if(reply_.size){if(uint32_t(now-reply_.at)>20000){reply_.size=0;++timeouts;}else if(idle&&send(reply_))reply_.size=0;return;}
-    if(waiting_&&uint32_t(now-requestAt_)>=80000) {
+    if(reply_.size){if(uint32_t(now-reply_.at)>replyWindowUs()){reply_.size=0;++timeouts;}else if(idle&&send(reply_))reply_.size=0;return;}
+    if(waiting_&&uint32_t(now-requestAt_)>=config_.transactionUs()) {
       waiting_=false;++timeouts;token_.pass();pollAt_=now;preferPc_=!gateway_;
       if(gateway_){pcReply_=exception(pcRequest_,11);pcRequest_.size=0;gateway_=false;}
     }
-    if(pcRequest_.size&&!gateway_&&uint32_t(now-pcAt_)>1500000){pcReply_=exception(pcRequest_,11);pcRequest_.size=0;++timeouts;}
+    if(pcRequest_.size&&!gateway_&&uint32_t(now-pcAt_)>std::max<uint32_t>(1500000u,config_.transactionUs()*(config_.count*4+2))){pcReply_=exception(pcRequest_,11);pcRequest_.size=0;++timeouts;}
     token_.service(now,idle,waiting_,send);
     if(!master_||!idle||waiting_||!token_.canRequest(now)||uint32_t(now-pollAt_)<2000)return;
     // Alternate PC transactions and HUD exchanges, even with a continuously

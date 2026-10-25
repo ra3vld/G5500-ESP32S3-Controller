@@ -227,7 +227,7 @@ private:
   uint32_t responseMs(const HudEndpoint &e) const { return paced(e)?config.link.responseMs():1000; }
   uint32_t ticketMs(const HudEndpoint &e) const { return paced(e)?responseMs(e)*2:2000; }
   uint32_t manualIntervalMs(const HudEndpoint &e) const {
-    const uint32_t serialMs=paced(e)?(1600000u+config.link.baud-1)/config.link.baud:50;
+    const uint32_t serialMs=paced(e)?(160000u*config.link.frameBits+config.link.baud-1)/config.link.baud:50;
     return serialMs>50?serialMs:50;
   }
   void finish(Job &, Result);

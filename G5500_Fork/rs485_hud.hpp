@@ -10,6 +10,7 @@ class Rs485Hud {
   size_t encodedSize_=0, txSize_=0, txSent_=0;
   unsigned head_=0, count_=0, retries_=0;
   uint64_t session_=0;
+  uint32_t responseMs_=180;
   uint32_t seq_=0, lastRequestCrc_=0, lastRx_=0, at_=0;
   bool master_=false, overflow_=false, waiting_=false, transmitting_=false, haveRequest_=false;
   static uint32_t get32(const uint8_t *p) { uint32_t v=0;for(unsigned i=0;i<4;++i)v|=uint32_t(p[i])<<(8*i);return v; }
@@ -50,7 +51,8 @@ class Rs485Hud {
   }
 public:
   uint32_t received=0, rejected=0, timeouts=0, dropped=0;
-  void begin(bool master,uint64_t boot,uint32_t now) {
+  void begin(bool master,uint64_t boot,uint32_t now,const UartConfig &line=UartConfig{115200,0,1}) {
+    responseMs_=std::max<uint32_t>(180u,(line.wireUs(WireMax)+999)/1000+20);
     master_=master;session_=master?boot:0;seq_=0;haveRequest_=false;
     waiting_=transmitting_=overflow_=false;encodedSize_=txSize_=txSent_=0;
     lastRx_=now;at_=now-20;clearQueue();
@@ -109,7 +111,7 @@ public:
     }
     if(!master_) return;
     if(waiting_) {
-      if(uint32_t(now-at_)<180) return;
+      if(uint32_t(now-at_)<responseMs_) return;
       ++timeouts;
       if(stop_.size) { waiting_=false;at_=now-20;return; }
       if(retries_++<2) { txSent_=0;transmitting_=true;return; }

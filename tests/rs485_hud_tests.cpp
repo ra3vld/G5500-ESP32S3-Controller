@@ -40,6 +40,26 @@ int main() {
     manual[54]=3; assert(transport.enqueue(manual,sizeof manual,0));
     assert(transport.enqueue(command,sizeof command,0)); // Release cleared the older commands.
   }
+  for(uint32_t baud:{1200u,9600u,115200u}) {
+    const UartConfig line{baud,1,2};Rs485Hud master,slave;
+    master.begin(true,77,0,line);slave.begin(false,0,0,line);
+    uint8_t payload[64]{};payload[3]='5';payload[4]=2;
+    assert(master.enqueue(payload,sizeof payload,0));
+    struct Packet {std::vector<uint8_t> data;bool fromMaster;uint32_t due;};std::deque<Packet> packets;
+    uint32_t busyUntil=0;unsigned requests=0,replies=0;
+    for(uint32_t now=1;now<20000&&!replies;++now) {
+      if(!packets.empty()&&now>=packets.front().due) {
+        auto p=packets.front();packets.pop_front();
+        if(p.fromMaster)for(auto byte:p.data)slave.feed(byte,now,[&](const uint8_t *,size_t){++requests;assert(slave.enqueue(payload,sizeof payload,now));});
+        else for(auto byte:p.data)master.feed(byte,now,[&](const uint8_t *,size_t){++replies;});
+      }
+      for(bool fromMaster:{true,false}) {
+        auto write=[&](const uint8_t *p,size_t n){busyUntil=now+(line.wireUs(n)+999)/1000;packets.push_back({{p,p+n},fromMaster,busyUntil});return n;};
+        (fromMaster?master:slave).service(now,now>=busyUntil?2048:0,write,[&](){return now>=busyUntil;});
+      }
+    }
+    assert(requests==1&&replies==1&&master.timeouts==0);
+  }
   Rs485Reply reply;std::string output;
   const std::string text="AZ=123\r\n";
   assert(reply.write(reinterpret_cast<const uint8_t *>(text.data()),text.size())==text.size());
@@ -49,6 +69,12 @@ int main() {
   for(unsigned t=106;t<120;++t)reply.service(t,2,write);
   assert(output==text); // Complete response after CR/LF and partial UART writes.
 
+  {
+    Rs485Reply slow;slow.configure({1200,2,2});slow.received(0);assert(slow.write(reinterpret_cast<const uint8_t *>(text.data()),text.size())==text.size());
+    output.clear();slow.service(9,100,write);assert(output.empty());
+    slow.received(10);slow.service(29,100,write);assert(output.empty());
+    slow.service(30,100,write);assert(output==text); // Allow the trailing LF to finish at 1200, 8O2.
+  }
   Node controller(false),hud(true);
   // A responder has no right to start a transmission, even with telemetry queued.
   uint8_t dummy[60]{};dummy[3]='4';dummy[4]=14;
