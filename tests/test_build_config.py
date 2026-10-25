@@ -60,6 +60,44 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn('-D BLUETOOTH_SUPPORT=0', flags)
         self.assertIn('partitions_s2.csv', config['env:esp32_4mb_noweb']['board_build.partitions'])
 
+    def test_simulation_releases_pins_on_every_board(self):
+        source = '''#include "board.hpp"
+#include <cassert>
+using namespace forkrot;
+int main() {
+  for(unsigned drive=0;drive<=DRIVE_DIR_PWM;++drive) {
+    HardwareConfig config;config.drive=drive;config.simulation=true;
+    for(const auto &d:pinDefinitions) config.pins.*d.member=1;
+    const auto original=config;
+    auto physical=config;physical.simulation=false;
+    physical.releaseSimulationPins();assert(physical.pins==original.pins);
+    config.releaseSimulationPins();
+    for(const auto &d:pinDefinitions) {
+      const bool motor=d.group==PinGroup::Drive || d.group==PinGroup::SensorAz || d.group==PinGroup::SensorEl;
+      assert(config.pins.*d.member==(motor?-1:original.pins.*d.member));
+      if(motor)assert(!board::pinActive(config,d));
+    }
+    const auto released=config;config.releaseSimulationPins();assert(config==released);
+  }
+  HardwareConfig hud;hud.simulation=false;hud.bluetooth=false;
+  for(const auto &d:pinDefinitions)
+    if(d.group==PinGroup::Drive || d.group==PinGroup::SensorAz || d.group==PinGroup::SensorEl) {
+      hud.pins.*d.member=-1;assert(!board::pinActive(hud,d,true));
+    }
+  assert(!board::validateHardware(hud,false,true));
+}'''
+        for board in range(1, 11):
+            with self.subTest(board=board):
+                binary = self.root / ('simulation-pins-' + str(board))
+                flags = [f'-DBOARD_PROFILE={board}', '-DBLUETOOTH_ENABLED=0',
+                         '-DUSER_BUTTON_GPIO=-1', '-DDRIVE_SIMULATION=1',
+                         f'-DDISPLAY_KIND={ {5:3, 8:4, 10:5}.get(board,0)}']
+                result = subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++17',
+                                         '-I', str(self.source), *flags, '-x', 'c++', '-',
+                                         '-o', str(binary)], input=source, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                subprocess.run([str(binary)], check=True)
+
     def test_defaults(self):
         self.compile(dict(BOARD_PROFILE=0, SELECTED_BOARD=1, DISPLAY_KIND=0, TFT_DISPLAY_ENABLED=0,
                           BLUETOOTH_ENABLED=0, BLUETOOTH_BACKEND=0, BLUETOOTH_MODE=3,

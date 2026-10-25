@@ -66,6 +66,82 @@ static void recoveryPolicy() {
   }
   Preferences::database.clear();
 }
+static void confirmedRecoveryPreservesRecord() {
+  Storage storage;
+  HardwareConfig good;good.simulation=true;good.bluetooth=false;good.buttonGpio=-1;
+  good.releaseSimulationPins();assert(!board::validateHardware(good));
+  auto invalid=good;invalid.buttonGpio=100;assert(board::validateHardware(invalid));
+  auto save=[&](const HardwareRecord &record) {
+    Preferences::database.clear();const auto bytes=encodeHardware(record);
+    Preferences::database["hardware"]["config1"]=Preferences::Bytes(bytes.begin(),bytes.end());
+  };
+  auto stored=[&]() {
+    const auto &raw=std::get<Preferences::Bytes>(Preferences::database["hardware"]["config1"]);
+    HardwareBytes bytes{};assert(raw.size()==bytes.size());std::copy(raw.begin(),raw.end(),bytes.begin());
+    HardwareRecord record;assert(decodeHardware(bytes,record));return record;
+  };
+  HardwareRecord record;record.hasConfirmed=true;record.generation=42;record.probeCounter=17;
+  record.good=good;record.candidate=invalid;
+  // An obsolete candidate cannot invalidate the active confirmed map.
+  save(record);MotionTestRuntime normal;storage.loadHardware(normal);
+  assert(!normal.recovery && normal.hardwareRecord.hasConfirmed);
+  assert(normal.controller.hardware==good && stored().candidate==invalid);
+
+  // An invalid pending edit must preserve the prior confirmation and its identity.
+  record.phase=ConfigPhase::Pending;save(record);
+  MotionTestRuntime recovery;storage.loadHardware(recovery);
+  assert(recovery.recovery && recovery.recoveryReason==RecoveryReason::Invalid);
+  assert(recovery.hardwareRecord.hasConfirmed && recovery.hardwareRecord.generation==42);
+  assert(recovery.hardwareRecord.probeCounter==17 && recovery.hardwareRecord.good==good);
+  assert(stored().hasConfirmed && stored().candidate==invalid);
+  storage.loadHardware(recovery);assert(recovery.hardwareRecord.hasConfirmed);
+  assert(storage.stageHardware(recovery,good));
+  MotionTestRuntime retry;storage.loadHardware(retry);
+  assert(retry.hardwareTrial && retry.hardwareRecord.hasConfirmed && storage.confirmHardware(retry));
+
+  // A previously confirmed map may become incompatible after a role/image change.
+  // Keep it for inspection, allow a corrected candidate, and reject an unsafe fallback.
+  record.phase=ConfigPhase::Confirmed;record.good=invalid;record.candidate=good;save(record);
+  storage.loadHardware(recovery);
+  assert(recovery.recovery && recovery.hardwareRecord.hasConfirmed);
+  assert(recovery.hardwareRecord.good==invalid && recovery.hardwareRecord.generation==42);
+  assert(recovery.controller.hardware.pins.uartRx==-1 && recovery.controller.hardware.pins.uartTx==-1);
+  assert(storage.stageHardware(recovery,good));
+  MotionTestRuntime forced;storage.loadHardware(forced,true);
+  assert(forced.recovery && forced.recoveryReason==RecoveryReason::Invalid);
+  assert(forced.hardwareRecord.hasConfirmed && forced.controller.configurationLocked);
+  assert(storage.stageHardware(forced,good));storage.loadHardware(retry);
+  assert(retry.hardwareTrial && !retry.recovery && retry.hardwareRecord.hasConfirmed);
+  MotionTestRuntime interrupted;storage.loadHardware(interrupted);
+  assert(interrupted.recovery && interrupted.recoveryReason==RecoveryReason::Invalid);
+  assert(interrupted.hardwareRecord.hasConfirmed && interrupted.controller.configurationLocked);
+  assert(interrupted.hardwareRecord.good==invalid && interrupted.hardwareRecord.candidate==good);
+  assert(storage.stageHardware(interrupted,good));storage.loadHardware(retry);
+  assert(retry.hardwareTrial && storage.confirmHardware(retry));
+  storage.loadHardware(normal);assert(!normal.recovery && normal.hardwareRecord.hasConfirmed);
+  assert(normal.controller.hardware==good && !normal.controller.configurationLocked);
+
+  // Already erased/corrupt records acquire a real confirmation only after a successful trial.
+  record.hasConfirmed=false;record.phase=ConfigPhase::Recovery;record.reason=RecoveryReason::Unconfirmed;
+  record.good=record.candidate=good;save(record);storage.loadHardware(recovery);
+  assert(recovery.recovery && !recovery.hardwareRecord.hasConfirmed);
+  assert(storage.stageHardware(recovery,good));storage.loadHardware(retry);
+  assert(retry.hardwareTrial && !retry.hardwareRecord.hasConfirmed);
+  assert(storage.confirmHardware(retry));storage.loadHardware(normal);
+  assert(normal.hardwareRecord.hasConfirmed && !normal.recovery && !normal.controller.configurationLocked);
+
+  record.hasConfirmed=true;record.phase=ConfigPhase::Confirmed;record.reason=RecoveryReason::None;
+  save(record);auto damaged=std::get<Preferences::Bytes>(Preferences::database["hardware"]["config1"]);
+  damaged.back()^=1;Preferences::database["hardware"]["config1"]=damaged;
+  storage.loadHardware(recovery);
+  assert(recovery.recovery && !recovery.hardwareRecord.hasConfirmed);
+  assert(std::get<Preferences::Bytes>(Preferences::database["hardware"]["config1"])==damaged);
+  save(record);Preferences::beginSucceeds=false;storage.loadHardware(recovery);
+  assert(recovery.recovery && recovery.recoveryReason==RecoveryReason::Storage);
+  Preferences::beginSucceeds=true;storage.loadHardware(normal);
+  assert(normal.hardwareRecord.hasConfirmed && normal.hardwareRecord.generation==42);
+  Preferences::database.clear();
+}
 static void optionalPwmEnable() {
   for(unsigned driver:{DRIVE_SEPARATE_PWM,DRIVE_BTS7960,DRIVE_DIR_PWM}) for(unsigned mask=0;mask<4;++mask) {
     HardwareConfig cfg;cfg.drive=driver;cfg.simulation=false;cfg.bluetooth=false;
@@ -180,14 +256,14 @@ static void directionPwm() {
   assert(storage.confirmHardware(trial));storage.loadHardware(boot);assert(boot.controller.hardware==cfg&&!boot.recovery);
 }
 int main() {
-  recoveryPolicy();directionPwm();optionalPwmEnable();
+  confirmedRecoveryPreservesRecord();recoveryPolicy();directionPwm();optionalPwmEnable();
   // Each runtime driver/simulation combination is exercised in this one binary.
   for (unsigned drive=0; drive<4; ++drive) for (bool simulation : {false,true}) {
     HardwareConfig cfg; cfg.drive=drive; cfg.simulation=simulation;
     cfg.pwmInverted=drive==2; cfg.bluetooth=false;
     assert(!board::validateHardware(cfg));
     MotionTestRuntime r; r.controller.configureHardware(cfg);
-    assert(r.controller.hardware==cfg);
+    auto effective=cfg;effective.releaseSimulationPins();assert(r.controller.hardware==effective);
     r.controller.feedback(0,0,true,true);
     Hardware h(r); fakeHardware={};
     h.beginDirections(); h.beginAdc();
@@ -225,7 +301,7 @@ int main() {
   s.loadHardware(first); assert(s.finishHardwareBoot(first));
   HardwareConfig candidate=first.controller.hardware;
   candidate.drive=DRIVE_BTS7960; candidate.pwmInverted=true;
-  candidate.simulation=true; candidate.bluetooth=true; candidate.bluetoothMode=BT_HC05;
+  candidate.simulation=true; candidate.releaseSimulationPins(); candidate.bluetooth=true; candidate.bluetoothMode=BT_HC05;
   const auto good=first.hardwareRecord.good;
   assert(s.stageHardware(first,candidate));
   MotionTestRuntime trial; s.loadHardware(trial);
@@ -303,7 +379,7 @@ int main() {
   assert(!parseHardwareForm(body+"&unknown=1",form,true));
   assert(!parseHardwareForm("token=1",form,false));
   assert(parseHardwareForm("token=1&generation=1&pin.azAdc=1",form,true,candidate));
-  assert(form.config.pins.azAdc==1 && form.config.drive==candidate.drive);
+  assert(form.config.pins.azAdc==-1 && form.config.drive==candidate.drive);
   assert(!parseHardwareForm("token=1&generation=1",form,true));
   assert(!parseHardwareForm("token=1&generation=1&pin.azAdc=1&pin.azAdc=2",form,true));
   std::vector<FormArgument> arguments;

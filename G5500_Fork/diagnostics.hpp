@@ -31,6 +31,7 @@ public:
   void addResetHistoryEntry() {
     storage_.addResetHistoryEntry((int)bootResetReason, bootResetReasonText);
   }
+  void updateResetHistoryTime() { storage_.updateResetHistoryTime(); }
   bool writeHistoryJson(JsonWriter &j, RssiPeriod period);
   void diagClear();
   String diagSnapshot();

@@ -35,10 +35,10 @@ int main(int argc,char **argv) {
   assert(raw==0 && mv==0 && fakeHardware.readsRaw==0 && fakeHardware.readsMv==0);
   for(const auto &e:fakeHardware.events) assert(e.operation!="attach" && e.operation!="pwm");
   c.pins.azAdc=21;
-  assert(std::string(board::validateHardware(c))=="invalid_adc_gpio");
+  assert(!board::validateHardware(c)); // Physical ADC wiring is inactive in simulation.
   c.pins.azAdc=-1;
   if(SELECTED_BOARD!=BOARD_ESP32) {
-    c.pins.azNegative=19; assert(board::validateHardware(c)); c.pins.azNegative=-1;
+    c.pins.azNegative=19; assert(!board::validateHardware(c)); c.pins.azNegative=-1;
   }
   c.simulation=false;
   assert(std::string(board::validateHardware(c))=="missing_pin");
@@ -156,6 +156,7 @@ int main(int argc,char **argv) {
   auto priorBytes=encodeHardwareRecord<154>(prior);
   Preferences::database["hardware"]["config1"]=Preferences::Bytes(priorBytes.begin(),priorBytes.end());
   Storage previousStorage;MotionTestRuntime previous;previousStorage.loadHardware(previous);
+  prior.good.releaseSimulationPins();
   assert(!previous.recovery && previous.hardwareRecord.good==prior.good);
   assert(!previous.controller.hardware.rs485() && !previous.controller.hardware.hudRs485());
   assert(std::get<Preferences::Bytes>(Preferences::database["hardware"]["config1"]).size()==HardwareBytes{}.size());

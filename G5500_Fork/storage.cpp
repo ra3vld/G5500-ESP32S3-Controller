@@ -182,6 +182,7 @@ bool Storage::writeRecovery(const RecoveryHistory &history) {
 }
 void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
   runtime.hardwareHudUart = runtime.hud.config.uart;
+  runtime.hardwareHudRole = runtime.hud.isHud();
   HardwareRecord record;
   RecoveryHistory history;
   bool readable = prefs_.begin("hardware", false);
@@ -224,18 +225,23 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
   // configuration. Validate its physical fields with the unavailable radio off.
   auto invalidStored = [&](HardwareConfig config) {
     if (!BLUETOOTH_SUPPORT) config.bluetooth = false;
-    return validateHardware(config, runtime.hud.config.uart);
+    return validateHardware(config, runtime.hud.config.uart,runtime.hardwareHudRole);
   };
-  const bool candidateBoot = record.phase == ConfigPhase::Pending || record.phase == ConfigPhase::Testing;
+  // Pending starts the candidate; Testing on disk means an interrupted trial
+  // and must fall back to good. An inactive map cannot veto the selected one.
+  const bool candidateBoot=record.phase==ConfigPhase::Pending && !forceRecovery && !history.pending;
+  const auto &bootConfig=candidateBoot?record.candidate:record.good;
   const bool unsupportedRadio = !BLUETOOTH_SUPPORT &&
-      (candidateBoot ? record.candidate.bluetooth : record.good.bluetooth);
-  if (!readable || !valid || invalidStored(record.good) || invalidStored(record.candidate)) {
+      bootConfig.bluetooth;
+  if (!readable || !valid) {
     record = {};
     record.phase = ConfigPhase::Recovery;
     record.reason = !readable ? RecoveryReason::Storage : RecoveryReason::Invalid;
   } else if (!historyValid) {
     record.phase=ConfigPhase::Recovery;record.reason=RecoveryReason::Storage;
-  } else if (unsupportedRadio) {
+  } else if (unsupportedRadio || invalidStored(bootConfig)) {
+    // The record passed its format/checksum checks. Preserve both maps, the
+    // confirmation and generation even when this role/image cannot use it.
     record.phase = ConfigPhase::Recovery;
     record.reason = RecoveryReason::Invalid;
   } else if (fresh || (!record.hasConfirmed && record.phase == ConfigPhase::Recovery &&
@@ -262,7 +268,11 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
     record.phase = record.hasConfirmed ? ConfigPhase::Starting : ConfigPhase::Recovery;
     if (!record.hasConfirmed) record.reason = RecoveryReason::Initial;
   }
-  if (!writeHardware(record) || (!(history==savedHistory) && !writeRecovery(history))) {
+  record.good.releaseSimulationPins();
+  record.candidate.releaseSimulationPins();
+  // A failed read or undecodable record is not permission to overwrite NVS
+  // with defaults. Only an explicit recovery edit may replace those bytes.
+  if (readable && valid && (!writeHardware(record) || (!(history==savedHistory) && !writeRecovery(history)))) {
     record.phase = ConfigPhase::Recovery; record.reason = RecoveryReason::Storage;
     writeHardware(record);
   }
@@ -272,14 +282,19 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
   runtime.recoveryReason = record.reason;
   runtime.hardwareTrial = record.phase == ConfigPhase::Testing;
   HardwareConfig effective = runtime.hardwareTrial ? record.candidate : record.good;
-  if (runtime.recovery) effective=recoveryHardware(record);
+  if (runtime.recovery) {
+    effective=recoveryHardware(record);
+    // Retaining an incompatible confirmed map must not activate its UART pins.
+    if(invalidStored(record.good))effective.pins.uartRx=effective.pins.uartTx=-1;
+  }
   runtime.controller.configureHardware(effective);
   runtime.controller.configurationLocked = runtime.recovery || runtime.hardwareTrial;
 }
 bool Storage::stageHardware(Runtime &runtime, const HardwareConfig &config) {
-  if (validateHardware(config, runtime.hardwareHudUart)) return false;
+  if (validateHardware(config, runtime.hardwareHudUart,runtime.configuredAsHud())) return false;
   auto next = runtime.hardwareRecord;
-  next.candidate = config; next.phase = ConfigPhase::Pending; next.reason = RecoveryReason::None;
+  next.candidate = config; next.candidate.releaseSimulationPins();
+  next.phase = ConfigPhase::Pending; next.reason = RecoveryReason::None;
   if (!++next.generation) ++next.generation;
   // An explicit retry from recovery starts a new series. Ordinary settings
   // edits and successful short boots do not erase accumulated runtime faults.
@@ -904,8 +919,9 @@ void Storage::saveProfilePresets(const Runtime &runtime) {
   prefs_.end();
 }
 
-void Storage::addResetHistoryEntry(int bootResetReason, const String &bootResetReasonText) {
-  prefs_.begin("g5500rst", false);
+bool Storage::addResetHistoryEntry(int bootResetReason, const String &bootResetReasonText) {
+  resetHistorySlot_=-1;
+  if(!prefs_.begin("g5500rst", false)) { prefs_.end(); return false; }
 
   uint8_t head = prefs_.getUChar("head", 0);
   uint8_t count = prefs_.getUChar("count", 0);
@@ -925,9 +941,16 @@ void Storage::addResetHistoryEntry(int bootResetReason, const String &bootResetR
   snprintf(kc, sizeof(kc), "c%02u", head);
 
   prefs_.putULong64(kt, epoch);
-  prefs_.putString(kr, bootResetReasonText);
+  char reason[32];
+  const auto length=std::min(bootResetReasonText.length(),sizeof reason-1);
+  std::memcpy(reason,bootResetReasonText.c_str(),length);reason[length]=0;
+  const auto written=prefs_.putString(kr,reason);
   prefs_.putInt(kc, (int)bootResetReason);
-
+  char verified[32]{};
+  if(written!=length || !prefs_.getString(kr,verified,sizeof verified) ||
+      std::strcmp(reason,verified) || prefs_.getULong64(kt,UINT64_MAX)!=epoch ||
+      prefs_.getInt(kc,INT32_MIN)!=bootResetReason) { prefs_.end();return false; }
+  const auto slot=head;
   head = (head + 1) % RESET_HISTORY_MAX;
   if (count < RESET_HISTORY_MAX) {
     count++;
@@ -935,11 +958,26 @@ void Storage::addResetHistoryEntry(int bootResetReason, const String &bootResetR
 
   prefs_.putUChar("head", head);
   prefs_.putUChar("count", count);
+  const bool saved=prefs_.getUChar("head",255)==head && prefs_.getUChar("count",255)==count;
   prefs_.end();
+  if(saved)resetHistorySlot_=int8_t(slot);
+  return saved;
+}
+
+bool Storage::updateResetHistoryTime() {
+  const time_t now=time(nullptr);
+  if(resetHistorySlot_<0 || now<=1700000000)return false;
+  if(!prefs_.begin("g5500rst",false)) { prefs_.end();return false; }
+  char key[8];snprintf(key,sizeof key,"t%02u",unsigned(resetHistorySlot_));
+  prefs_.putULong64(key,uint64_t(now));
+  const bool saved=prefs_.getULong64(key,0)==uint64_t(now);
+  prefs_.end();return saved;
 }
 
 bool Storage::writeResetHistoryJson(JsonWriter &j) {
-  prefs_.begin("g5500rst", true);
+  if(!prefs_.begin("g5500rst", true)) {
+    prefs_.end();j << "{\"available\":false,\"count\":0,\"entries\":[]}";return j.good();
+  }
   uint8_t head = prefs_.getUChar("head", 0);
   uint8_t count = prefs_.getUChar("count", 0);
   if (head >= RESET_HISTORY_MAX) {
@@ -949,7 +987,7 @@ bool Storage::writeResetHistoryJson(JsonWriter &j) {
     count = RESET_HISTORY_MAX;
   }
 
-  j << "{\"count\":" << count << ",\"entries\":[";
+  j << "{\"available\":true,\"count\":" << count << ",\"entries\":[";
   for (uint8_t n = 0; n < count; n++) {
     int idx = (int)head - 1 - (int)n;
     while (idx < 0) {
@@ -962,13 +1000,14 @@ bool Storage::writeResetHistoryJson(JsonWriter &j) {
     snprintf(kc, sizeof(kc), "c%02d", idx);
 
     uint64_t epoch = prefs_.getULong64(kt, 0ULL);
-    String reason = prefs_.getString(kr, "UNKNOWN");
+    char reason[32]{};
+    if(!prefs_.getString(kr,reason,sizeof reason))std::strcpy(reason,"UNKNOWN");
     int code = prefs_.getInt(kc, 0);
 
     if (n) {
       j << ',';
     }
-    j << "{\"epoch\":" << epoch << ",\"reason\":" << jsonQuoted(reason.c_str()) << ",\"code\":" << code << '}';
+    j << "{\"epoch\":" << epoch << ",\"reason\":" << jsonQuoted(reason) << ",\"code\":" << code << '}';
   }
   j << "]}";
   prefs_.end();
@@ -976,7 +1015,8 @@ bool Storage::writeResetHistoryJson(JsonWriter &j) {
 }
 
 void Storage::clearResetHistory() {
-  prefs_.begin("g5500rst", false);
+  resetHistorySlot_=-1;
+  if(!prefs_.begin("g5500rst", false)) {prefs_.end();return;}
   prefs_.clear();
   prefs_.end();
 }

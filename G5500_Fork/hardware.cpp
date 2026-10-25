@@ -391,7 +391,7 @@ void Hardware::crowpanelFault() {
 void Hardware::beginInputs() {
   const auto &c = runtime_.controller.hardware;
   if (!runtime_.recovery && c.buttonGpio >= 0) pinMode(c.buttonGpio, c.buttonPullup ? INPUT_PULLUP : INPUT);
-  if (runtime_.recovery || board::validateHardware(c, runtime_.hud.config.uart)) return;
+  if (runtime_.recovery || board::validateHardware(c, runtime_.hud.config.uart,runtime_.hud.isHud())) return;
   localInput_.configure(c.localMask());
   for(const auto &d:pinDefinitions) if((d.group==PinGroup::Buttons || d.group==PinGroup::Joystick) && board::pinActive(c,d)) {
     const int pin=c.pins.*d.member;

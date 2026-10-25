@@ -25,6 +25,7 @@ void Controller::configureHardware(const HardwareConfig &config) {
   coast={};
   prepareMotionPlanner();
   hardware = config;
+  hardware.releaseSimulationPins();
   if (!hardware.simulation && !remote && hardware.singleAxis() && (!FORK_OPTIONAL_DRIVE || hardware.localAxisConfigured(0))) { if(model==Model::G5500)model = Model::G800DXA; axes[1] = {}; }
   speeds = {};
   motionSettings = {};

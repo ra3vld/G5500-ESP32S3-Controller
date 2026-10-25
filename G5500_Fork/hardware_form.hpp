@@ -86,7 +86,9 @@ public:
   }
   bool finish(HardwareForm &out) const {
     if (!seen[0] || !seen[1] || (settings ? fields==2 : fields!=2) || !next.token || !next.generation) return false;
-    out=next; return true;
+    out=next;
+    if(settings) out.config.releaseSimulationPins();
+    return true;
   }
 };
 }

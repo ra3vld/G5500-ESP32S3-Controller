@@ -57,6 +57,7 @@ void Application::serviceConfigurationSafety() {
 void Application::controllerSetup() {
   beginRuntimeMetrics(&recoveryLatch, RecoveryCookie);
   diagnostics_.readBootReason();
+  diagnostics_.addResetHistoryEntry();
 
   runtime_.setupStorageOk=storage_.loadSetup(runtime_);
   runtime_.controller.setupRequired=runtime_.setup.required;
@@ -175,7 +176,7 @@ void Application::controllerSetup() {
   network_.setupLoggerUdp();
 
   bool timeOk = diagnostics_.syncClockFromNtp();
-  diagnostics_.addResetHistoryEntry();
+  diagnostics_.updateResetHistoryTime();
   diagnostics_.dbgPrint("[TIME SYNC] ");
   diagnostics_.dbgPrintln(timeOk ? "NTP OK" : "NO NTP - history entry has no exact time");
 

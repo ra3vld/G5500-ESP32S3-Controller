@@ -32,6 +32,12 @@ struct HardwareConfig {
   int8_t buttonGpio = USER_BUTTON_GPIO;
   bool buttonLow = USER_BUTTON_ACTIVE_LOW, buttonPullup = USER_BUTTON_PULLUP;
   bool pwmInverted = BTS7960_PWM_INVERTED;
+  void releaseSimulationPins() {
+    if(!simulation) return;
+    for(const auto &d:pinDefinitions)
+      if(d.group==PinGroup::Drive || d.group==PinGroup::SensorAz || d.group==PinGroup::SensorEl)
+        pins.*d.member=-1;
+  }
   // BTS retains its persisted speed/enable role; other PWM modes use a separate optional pin.
   int enablePin(unsigned axis) const {
     return drive==DRIVE_BTS7960 ? (axis?pins.elSpeedEnable:pins.azSpeedEnable)

@@ -35,6 +35,16 @@ public:
   bool getBool(const char *key, bool fallback = false) { return get(key, fallback); }
   float getFloat(const char *key, float fallback = 0) { return get(key, fallback); }
   String getString(const char *key, String fallback = "") { return get(key, fallback); }
+  size_t getString(const char *key, char *out, size_t capacity) {
+    if(!active_)throw std::runtime_error("read from closed NVS");
+    const auto space=database.find(name_);
+    if(space==database.end())return 0;
+    const auto found=space->second.find(key);
+    if(found==space->second.end())return 0;
+    const auto *value=std::get_if<String>(&found->second);
+    if(!value || value->length()+1>capacity)return 0;
+    std::memcpy(out,value->c_str(),value->length()+1);return value->length()+1;
+  }
   bool isKey(const char *key) { return database[name_].count(key) != 0; }
   size_t getBytesLength(const char *key) { return get(key, Bytes{}).size(); }
   size_t getBytes(const char *key, void *out, size_t length) {

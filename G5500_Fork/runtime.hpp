@@ -21,12 +21,13 @@ struct Runtime {
   RecoveryHistory recoveryHistory;
   MemoryGuard memoryGuard;
   bool recovery = false, hardwareTrial = false, hardwareProbe = false;
-  bool hardwareHudUart = false;
+  bool hardwareHudUart = false, hardwareHudRole = false;
   uint32_t hardwareToken = 0;
   RecoveryReason recoveryReason = RecoveryReason::None;
   Protocol protocol{controller};
   Settings loggerSettings;
   Hud hud{controller, protocol};
+  bool configuredAsHud() const { return recovery ? hardwareHudRole : hud.isHud(); }
   float currentAz = 0, currentEl = 0, targetAz = 0, targetEl = 0;
   bool targetValid = false, azTrack = false, elTrack = false;
   uint32_t lastTargetRxMs = 0;

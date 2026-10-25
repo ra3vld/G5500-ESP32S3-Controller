@@ -28,6 +28,9 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    assert.match(await page.locator('#failures').textContent(),/Сбои: 2 \/ 3/);
    assert.match(await page.locator('#failures').textContent(),/30 минут/);
    assert(await page.locator('#confirm').isDisabled());
+   assert.equal(await page.locator('fieldset').filter({has:page.locator('legend', {hasText:'Привод'})}).locator('select:visible').count(),1);
+   assert.equal(await page.locator('[name=driveMode]').inputValue(),'simulation');
+   assert(await page.locator('#position-sensors').isHidden());
    // Only selected local devices request GPIO; switching does not discard assignments.
    for(const mode of [0,1,2,3]){
     await page.locator('[name=localInputMode]').selectOption(String(mode));
@@ -57,17 +60,18 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
     for(const name of ['hudRx','hudTx','hudDe','uartDe'])await page.locator('[name="pin.'+name+'"]').selectOption('-1');
    }
    if(!fixture.crowpanel){
-    await page.locator('[name=driveInterface]').selectOption('3');await page.locator('[name=simulation]').selectOption('0');
+    await page.evaluate(pins=>{for(const [name,pin]of Object.entries(pins)){const el=form.elements['pin.'+name];if(el)setPinValue(el,pin);}},fixture.pins);
+    await page.locator('[name=driveMode]').selectOption('3');
     assert(await page.locator('[name="pin.azNegative"]').isHidden());assert(await page.locator('[name="pin.azPositive"]').isVisible());
     assert.match(await page.locator('[name="pin.azPositive"]').locator('..').textContent(),/DIR/);
-    await page.locator('[name=driveInterface]').selectOption('1');assert(await page.locator('[name="pin.azNegative"]').isVisible());
-    await page.locator('[name=driveInterface]').selectOption('0');await page.locator('[name=simulation]').selectOption('1');
+    await page.locator('[name=driveMode]').selectOption('1');assert(await page.locator('[name="pin.azNegative"]').isVisible());
+    await page.locator('[name=driveMode]').selectOption('0');await page.locator('[name=driveMode]').selectOption('simulation');
    }
    if(profile==='1') {
-    const original=await page.evaluate(()=>draft());
+    const original=await page.evaluate(()=>draft());original.pins={...fixture.pins};
     for(const driver of [1,2,3]) {
      await page.evaluate(c=>{for(const [name,value]of Object.entries(c.pins))if(form.elements['pin.'+name])form.elements['pin.'+name].value=value;},original);
-     await page.locator('[name=driveInterface]').selectOption(String(driver));await page.locator('[name=simulation]').selectOption('0');
+     await page.locator('[name=driveMode]').selectOption(String(driver));
      const en=driver===2?['azSpeedEnable','elSpeedEnable']:['azEnable','elEnable'];
      for(const name of en) {
       const field=page.locator('[name="pin.'+name+'"]');assert(await field.isVisible());
@@ -88,30 +92,30 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
      const before=requests.length;await page.locator('#save').click();await page.waitForFunction(()=>document.getElementById('message').textContent.startsWith('Сохранено'));
      assert.equal(requests.length,before+1);
      for(let i=0;i<2;++i)assert.equal(requests.at(-1).body['pin.'+en[i]],String(38+i));
-     await page.evaluate(()=>{busy=false;dirty=false;return refresh();});
+     await page.waitForFunction(()=>!busy);await page.evaluate(()=>{dirty=false;return refresh();});
     }
-    await page.evaluate(c=>{for(const [name,value]of Object.entries(c.pins))if(form.elements['pin.'+name])form.elements['pin.'+name].value=value;for(const name of names)form.elements[name].value=c[name];busy=false;dirty=true;updatePins();},original);
+    await page.evaluate(c=>{for(const [name,value]of Object.entries(c.pins))if(form.elements['pin.'+name])form.elements['pin.'+name].value=value;for(const name of names)form.elements[name].value=c[name];busy=false;dirty=true;syncDriveMode();updatePins();},original);
    }
    assert.equal(await page.locator('[name=forceApSta]').isEnabled(),true);assert.match(await page.locator('[name=forceApSta]').locator('..').textContent(),/^Точка доступа/);assert.equal(await page.locator('input[name=buttonGpio]').count(),0);
    assert(!await page.locator('#bts-settings').isVisible());
-   await page.locator('[name=simulation]').selectOption('0');
-   await page.locator('[name=driveInterface]').selectOption('2');
+   await page.locator('[name=driveMode]').selectOption('0');
+   await page.locator('[name=driveMode]').selectOption('2');
    assert(await page.locator('#bts-settings').isVisible());
    await page.locator('[name=pwmInverted]').selectOption('1');
-   await page.locator('[name=driveInterface]').selectOption('0');
+   await page.locator('[name=driveMode]').selectOption('0');
    assert(!await page.locator('#bts-settings').isVisible());
    assert.equal(await page.locator('[name=pwmInverted]').inputValue(),'0');
-   await page.locator('[name=simulation]').selectOption('0');
+   await page.locator('[name=driveMode]').selectOption('0');
    // Every board accepts an incomplete motor map in simulation, rejects it in physical mode.
    await page.locator('[name="pin.azAdc"]').selectOption('-1');
-   await page.locator('[name=simulation]').selectOption('1');
+   await page.locator('[name=driveMode]').selectOption('simulation');
    await page.evaluate(()=>refresh());
    assert.equal(await page.locator('[name="pin.azAdc"]').inputValue(),'-1');
    assert(!(await page.locator('#save').isDisabled()));
-   await page.locator('[name=simulation]').selectOption('0');
+   await page.locator('[name=driveMode]').selectOption('0');
    assert(await page.locator('#save').isDisabled());
    assert.match(await page.locator('#pin-validation').textContent(),/Обратная связь AZ/);
-   await page.locator('[name=simulation]').selectOption('1');
+   await page.locator('[name=driveMode]').selectOption('simulation');
    if(fixture.metadata.displayKind===1){
     await page.locator('[name="pin.tftCs"]').selectOption('-1');assert(await page.locator('#save').isDisabled());
     await page.locator('[name="pin.tftCs"]').selectOption(String(fixture.pins.tftCs));
@@ -153,29 +157,34 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    assert.equal(requests.at(-1).body['pin.azAdc'],'-1');
    assert.equal(requests.at(-1).body.buttonGpio,'-1');
    assert.equal(requests.at(-1).body.simulation,'1');
-   await page.evaluate(()=>{busy=false;dirty=false;});
+   await page.waitForFunction(()=>!busy);await page.evaluate(()=>{dirty=false;});
    state={...state,recovery:false,trial:true,ready:true,failureCount:0,heapFree:40000,heapMaxBlock:16000};
    probeFails=true;await page.evaluate(()=>refresh());
+   await page.waitForFunction(()=>document.getElementById('failures').textContent.includes('Сбои: 0 / 3')&&document.getElementById('confirm').disabled);
    assert.match(await page.locator('#failures').textContent(),/Сбои: 0 \/ 3/);
    assert(await page.locator('#confirm').isDisabled()); // light status alone never authorizes confirmation
    probeFails=false;await page.evaluate(()=>refresh());
+   await page.waitForFunction(()=>!document.getElementById('confirm').disabled);
    assert(!(await page.locator('#confirm').isDisabled()));
    await page.locator('#confirm').click();
    await page.waitForFunction(()=>document.getElementById('message').textContent.startsWith('Сохранено'));
    assert.equal(requests.at(-1).path,'/api/hardware/confirm');
    assert(requests.some(r=>r.path==='/api/hardware/probe'));
-   await page.evaluate(()=>{busy=false;probe=false;});
+   await page.waitForFunction(()=>!busy);await page.evaluate(()=>{probe=false;});
    state={...state,recovery:true,trial:false,hasConfirmed:false};await page.evaluate(()=>refresh());
+   await page.waitForFunction(()=>document.getElementById('rollback').disabled);
    assert(await page.locator('#rollback').isDisabled());
    state={...state,failureCount:undefined};await page.evaluate(()=>refresh());
+   await page.waitForFunction(()=>document.getElementById('failures').textContent==='');
    assert.equal(await page.locator('#failures').textContent(),''); // older firmware remains readable
    state={...state,failureCount:3};await page.evaluate(()=>refresh());
+   await page.waitForFunction(()=>document.getElementById('failures').textContent.includes('Сбои: 3 / 3'));
    assert.match(await page.locator('#failures').textContent(),/Сбои: 3 \/ 3/);
    await page.locator('#reset-pins').click();
-   assert.equal(await page.locator('[name="pin.azAdc"]').inputValue(),String(fixture.pins.azAdc));
+   assert.equal(await page.locator('[name="pin.azAdc"]').inputValue(),'-1');
    assert.equal(await page.locator('[name=bluetoothMode] option[value="2"]').evaluate(el=>el.disabled),!fixture.classicEsp32);
    if(profile==='az'){
-    assert.equal(await page.locator('[name=driveInterface] option[value="1"]').evaluate(el=>el.disabled),true);
+    assert.equal(await page.locator('[name=driveMode] option[value="1"]').evaluate(el=>el.disabled),true);
     assert.equal(await page.locator('[name=bluetoothEnabled]').isDisabled(),true);
     assert.equal(await page.locator('[name=bluetoothEnabled]').inputValue(),'0');
    }

@@ -96,7 +96,7 @@ int main(int argc,char **argv) {
       const auto method=line.substr(a+1,b-a-1),path=line.substr(b+1,c-b-1),body=line.substr(c+1);
       Response reply;
       if(path=="/__fixture/tuning") {
-        auto &c=f.runtime.controller;auto config=c.hardware;config.simulation=false;config.drive=DRIVE_BTS7960;
+        auto &c=f.runtime.controller;auto config=c.hardware;config.simulation=false;config.pins=PinMap{};config.drive=DRIVE_BTS7960;
         c.configureHardware(config);c.feedback(90,45,true,true);
         for(unsigned i=0;i<2;++i){auto m=c.motionSettings[i];m.mode=RegulatorMode::Cascade;m.ready=true;assert(c.configureMotion(i,m,fakeHardware.now));}
         f.runtime.setup.step=SetupStep::Tuning;reply={200,"{}"};
@@ -213,7 +213,7 @@ int main(int argc,char **argv) {
   }
   {
     Fixture tuningStep;auto &r=tuningStep.runtime;auto &c=r.controller;
-    auto config=c.hardware;config.simulation=false;config.drive=DRIVE_BTS7960;c.configureHardware(config);c.feedback(90,45,true,true);
+    auto config=c.hardware;config.simulation=false;config.pins=PinMap{};config.drive=DRIVE_BTS7960;c.configureHardware(config);c.feedback(90,45,true,true);
     for(unsigned i=0;i<2;++i){auto m=c.motionSettings[i];m.mode=RegulatorMode::Cascade;m.ready=true;assert(c.configureMotion(i,m,fakeHardware.now));}
     assert(tuningStep.call("POST","/api/setup","action=start",false).status==200);r.setup.step=SetupStep::Tuning;
     const auto token="&setupToken="+std::to_string(r.setupLease);
@@ -333,7 +333,7 @@ int main(int argc,char **argv) {
 
 #if SELECTED_BOARD == BOARD_ESP32
   {
-    Fixture pot;auto cfg=pot.runtime.controller.hardware;cfg.simulation=false;cfg.sensors[6]=cfg.sensors[7]=1;
+    Fixture pot;auto cfg=pot.runtime.controller.hardware;cfg.simulation=false;cfg.pins=PinMap{};cfg.sensors[6]=cfg.sensors[7]=1;
     pot.runtime.controller.configureHardware(cfg);fakeHardware.millivolts[cfg.pins.azAdc]=2000;fakeHardware.millivolts[cfg.pins.elAdc]=1000;
     pot.hardware.beginAdc();const auto diag=pot.call("GET","/api/adcdiag","",false);
     assert(diag.body.find("\"azMv\":2000")!=diag.body.npos && diag.body.find("\"azValue\":1300")!=diag.body.npos);
@@ -342,7 +342,7 @@ int main(int argc,char **argv) {
   {
     Fixture sensors;
     auto &c=sensors.runtime.controller;
-    auto cfg=c.hardware;cfg.simulation=false;cfg.sensors={1,6,0,2,54,0};
+    auto cfg=c.hardware;cfg.simulation=false;cfg.pins=PinMap{};cfg.sensors={1,6,0,2,54,0};
     cfg.pins.azSensorSda=cfg.pins.elSensorSda=21;cfg.pins.azSensorScl=cfg.pins.elSensorScl=22;
     c.configureHardware(cfg);fakeI2c[0]={};fakeI2c[1]={};
     fakeI2c[0].devices[6][3]=0xff;fakeI2c[0].devices[6][4]=0xfc;
@@ -529,7 +529,7 @@ int main(int argc,char **argv) {
 #endif
   {
     Fixture held;auto &c=held.runtime.controller;auto hw=c.hardware;
-    hw.drive=DRIVE_BTS7960;hw.simulation=false;c.configureHardware(hw);
+    hw.drive=DRIVE_BTS7960;hw.simulation=false;hw.pins=PinMap{};c.configureHardware(hw);
     held.hardware.beginDirections();c.feedback(90,45,true,true);
     const std::string identity="&client=123&session=456&gesture=1&mask=3";
     assert(held.call("POST","/api/move","d=H&az=-1&el=1&serial=1"+identity,false).status==200);
@@ -545,7 +545,7 @@ int main(int argc,char **argv) {
     // position solve while the other axis is already running. STOP must still
     // reach both outputs before the request returns.
     Fixture motion;auto &c=motion.runtime.controller;
-    auto hw=c.hardware;hw.drive=DRIVE_BTS7960;hw.simulation=false;
+    auto hw=c.hardware;hw.drive=DRIVE_BTS7960;hw.simulation=false;hw.pins=PinMap{};
     c.configureHardware(hw);
     motion.hardware.beginDirections();
     for(unsigned axis=0;axis<2;++axis) {
@@ -573,7 +573,7 @@ int main(int argc,char **argv) {
   {
     Fixture tuning;
     auto &c=tuning.runtime.controller;
-    c.hardware.drive=DRIVE_BTS7960;c.hardware.simulation=false;
+    c.hardware.drive=DRIVE_BTS7960;c.hardware.simulation=false;c.hardware.pins=PinMap{};
     c.feedbackAt(0,90,true,fakeHardware.now);c.feedbackAt(1,45,true,fakeHardware.now);
     const auto defaults=tuning.call("GET","/api/motion/autotune","full=1");
     assert(defaults.status==200 && defaults.body.find("\"tuneSearchStartPercent\":5")!=std::string::npos);
@@ -679,6 +679,7 @@ int main(int argc,char **argv) {
   {
     Fixture pins;
     const auto original=pins.runtime.hardwareRecord.good;
+    pins.runtime.controller.configureHardware(original);
     assert(pins.call("POST","/api/hardware","token=11&generation=1&pin.azAdc=36",false).status==200);
     assert(pins.runtime.hardwareRecord.good==original);
     assert(pins.runtime.hardwareRecord.candidate.pins.azAdc==36);
@@ -694,6 +695,82 @@ int main(int argc,char **argv) {
     assert(pins.runtime.hardwareTrial && pins.runtime.controller.hardware.pins.azAdc==36);
     assert(pins.call("GET","/api/status","",false).body.find("\"azAdc\":36")!=std::string::npos);
     assert(pins.call("GET","/api/hardware","view=confirmed").body.find("\"azAdc\":34")!=std::string::npos);
+  }
+  {
+    Fixture incompatible;
+    auto record=incompatible.runtime.hardwareRecord;record.good.buttonGpio=100;
+    record.candidate=record.good;record.generation=42;
+    const auto bytes=encodeHardware(record);
+    Preferences::database["hardware"]["config1"]=Preferences::Bytes(bytes.begin(),bytes.end());
+    incompatible.storage.loadHardware(incompatible.runtime);
+    assert(incompatible.runtime.recovery && incompatible.runtime.hardwareRecord.hasConfirmed);
+    const auto reply=incompatible.call("POST","/api/hardware/rollback","token=11&generation=42",false);
+    assert(reply.status==400 && reply.body.find("buttonGpio")!=std::string::npos);
+    assert(!incompatible.restart.pending() && incompatible.runtime.hardwareRecord.generation==42);
+    assert(incompatible.call("POST","/api/hardware","token=11&generation=42&buttonGpio=-1",false).status==200);
+    incompatible.storage.loadHardware(incompatible.runtime);
+    assert(incompatible.runtime.hardwareTrial && incompatible.runtime.hardwareRecord.hasConfirmed);
+    assert(incompatible.storage.confirmHardware(incompatible.runtime));
+  }
+  {
+    Fixture simulation;
+    const auto confirmed=simulation.runtime.hardwareRecord.good;
+    assert(simulation.call("POST","/api/hardware","token=11&generation=1&simulation=1&pin.azAdc=25&pin.azNegative=25&pin.azSensorSda=25&azSensor=1",false).status==200);
+    const auto &candidate=simulation.runtime.hardwareRecord.candidate;
+    assert(candidate.simulation && simulation.runtime.hardwareRecord.good==confirmed);
+    for(const auto &d:pinDefinitions)
+      if(d.group==PinGroup::Drive || d.group==PinGroup::SensorAz || d.group==PinGroup::SensorEl)
+        assert(candidate.pins.*d.member==-1);
+    simulation.storage.loadHardware(simulation.runtime);
+    assert(simulation.runtime.hardwareTrial && simulation.runtime.controller.hardware==candidate);
+  }
+  {
+    Fixture recovery;recovery.runtime.recovery=true;
+    assert(recovery.storage.addResetHistoryEntry(4,"PANIC"));
+    assert(recovery.storage.addResetHistoryEntry(3,"SOFTWARE"));
+    const auto log=recovery.call("GET","/api/hardware/reboots","",false);
+    assert(log.status==200&&log.body.find("\"count\":2")!=std::string::npos);
+    assert(log.body.find("SOFTWARE")<log.body.find("PANIC"));
+    assert(log.body.find("\"current\":")!=std::string::npos);
+    const auto before=Preferences::database["g5500rst"];
+    assert(recovery.call("GET","/api/hardware/reboots").status==200);
+    assert(Preferences::database["g5500rst"]==before);
+    assert(recovery.call("POST","/api/hardware/reboots","token=11&generation=1",false).status==404);
+    assert(recovery.call("POST","/api/resethistory/clear","",false).status==409);
+    assert(Preferences::database["g5500rst"]==before);
+    Preferences::readOnlyBeginSucceeds=false;
+    assert(recovery.call("GET","/api/hardware/reboots","",false).body.find("\"available\":false")!=std::string::npos);
+    Preferences::readOnlyBeginSucceeds=true;
+  }
+  {
+    Fixture hud;auto &r=hud.runtime;
+    auto role=r.hud.config;role.role=DeviceRole::Hud;role.uart=false;role.simulationEnabled=false;
+    assert(hud.storage.saveHudConfig(role));
+    HardwareRecord record;record.hasConfirmed=true;
+    record.good.simulation=false;record.good.bluetooth=false;
+    for(const auto &d:pinDefinitions)
+      if(d.group==PinGroup::Drive || d.group==PinGroup::SensorAz || d.group==PinGroup::SensorEl)
+        record.good.pins.*d.member=-1;
+    record.candidate=record.good;const auto bytes=encodeHardware(record);
+    Preferences::database["hardware"]["config1"]=Preferences::Bytes(bytes.begin(),bytes.end());
+    hud.storage.loadHud(r,false);hud.storage.loadHardware(r);
+    assert(!r.recovery && r.configuredAsHud() && !r.hud.config.simulationEnabled);
+    r.setup.required=r.setup.equipment=true;r.setup.step=SetupStep::Equipment;
+    r.setup.drive=DRIVE_DIR_PWM;r.setup.simulation=true;
+    assert(hud.call("GET","/api/setup","",false).body.find("\"ready\":true")!=std::string::npos);
+    r.setup.required=false;r.setup.drive=-1;
+    assert(hud.call("GET","/api/hardware","",false).body.find("\"role\":\"hud\"")!=std::string::npos);
+    assert(hud.call("POST","/api/hardware","token=11&generation=1&pin.led=-1",false).status==200);
+    assert(!r.hardwareRecord.candidate.simulation && r.hardwareRecord.candidate.pins.azAdc==-1);
+    assert(hud.call("POST","/api/hardware","token=11&generation=2&pin.uartRx=1&pin.uartTx=-1",false).status==400);
+    assert(hud.storage.enterRecovery(r,RecoveryReason::Requested));
+    hud.storage.loadHardware(r);r.hud.config.role=DeviceRole::Controller;
+    assert(r.recovery && r.configuredAsHud());
+    assert(hud.call("GET","/api/hardware","",false).body.find("\"role\":\"hud\"")!=std::string::npos);
+    assert(hud.call("POST","/api/hardware","token=11&generation=2&pin.led=-1",false).status==200);
+    r.recovery=false;r.hud.config.role=DeviceRole::Hud;
+    assert(hud.call("POST","/api/device","role=hud&wifi=existing&uart=1&port=4534",false).status==200);
+    assert(hud.call("POST","/api/device","role=controller&wifi=existing&uart=1&port=4534",false).status==400);
   }
   {
     Fixture failure;auto &c=failure.runtime.controller;

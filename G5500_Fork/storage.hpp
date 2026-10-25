@@ -40,7 +40,8 @@ public:
   bool serviceRuntimeSpeeds(Runtime &runtime, uint32_t now, bool force = false);
   void loadProfilePresets(Runtime &runtime);
   void saveProfilePresets(const Runtime &runtime);
-  void addResetHistoryEntry(int bootResetReason, const String &bootResetReasonText);
+  bool addResetHistoryEntry(int bootResetReason, const String &bootResetReasonText);
+  bool updateResetHistoryTime();
   bool writeResetHistoryJson(JsonWriter &j);
   void clearResetHistory();
   void saveCalibrationMode(Model model, CalibrationMode mode);
@@ -54,6 +55,7 @@ private:
   const char *calNamespace(const Runtime &runtime);
   const char *presetNamespace(const Runtime &runtime);
   static constexpr uint8_t RESET_HISTORY_MAX = 20;
+  int8_t resetHistorySlot_ = -1;
   Preferences prefs_;
   bool wifiCredentialsReadOk_ = false;
 };

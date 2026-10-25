@@ -217,7 +217,8 @@ struct HardwareValidation {
   int pin=-1;
   explicit operator bool() const { return error!=nullptr; }
 };
-inline bool pinActive(const HardwareConfig &c,const PinDefinition &d) {
+inline bool pinActive(const HardwareConfig &c,const PinDefinition &d,bool hud=false) {
+  if(hud && (d.group==PinGroup::Drive || d.group==PinGroup::SensorAz || d.group==PinGroup::SensorEl)) return false;
   switch(d.group) {
   case PinGroup::Drive:
     if(FORK_OPTIONAL_DRIVE) {
@@ -263,8 +264,9 @@ inline bool sharedPanelSensorBus(const HardwareConfig &c,const PinDefinition &d)
   (void)c;(void)d;return false;
 #endif
 }
-inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool hudUart=false) {
-  for(unsigned i=0;i<2;++i) {
+inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool hudUart=false,bool hud=false) {
+  const bool physical=!hud && !c.simulation;
+  for(unsigned i=0;!hud && i<2;++i) {
     const auto at=i*3;
     if(c.sensors[6+i]>1 || c.sensorType(i)>2 || c.sensorAddress(i)<1 || c.sensorAddress(i)>127 ||
         (c.sensorType(i)==2 && c.sensorAddress(i)!=0x36) ||
@@ -273,32 +275,32 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
   }
 #if DISPLAY_KIND == DISPLAY_GC9A01
   // C3 has one I2C controller, already used by CST816. Encoders share that bus.
-  for(unsigned i=0;i<2;++i) if(c.sensorType(i) && (i==0 || !c.singleAxis())) {
+  for(unsigned i=0;i<2;++i) if(physical && c.sensorType(i) && (i==0 || !c.singleAxis())) {
     if(c.sensorAddress(i)==0x15) return {"sensor_address_conflict",i?"elSensorAddress":"azSensorAddress"};
     if((i?c.pins.elSensorSda:c.pins.azSensorSda)!=PIN_I2C_SDA ||
        (i?c.pins.elSensorScl:c.pins.azSensorScl)!=PIN_I2C_SCL)
       return {"sensor_bus_unavailable",i?"elSensor":"azSensor"};
   }
 #endif
-  const bool sharedSensors=c.sensorType(0) && c.sensorType(1) && !c.singleAxis() &&
+  const bool sharedSensors=physical && c.sensorType(0) && c.sensorType(1) && !c.singleAxis() &&
       c.pins.azSensorSda==c.pins.elSensorSda && c.pins.azSensorScl==c.pins.elSensorScl;
   if(sharedSensors && c.sensorAddress(0)==c.sensorAddress(1))
     return {"sensor_address_conflict","elSensorAddress"};
-  if(DISPLAY_KIND==DISPLAY_CROWPANEL_21 && c.sensorType(0) && c.sensorType(1) &&
+  if(physical && DISPLAY_KIND==DISPLAY_CROWPANEL_21 && c.sensorType(0) && c.sensorType(1) &&
       !c.singleAxis() && !sharedSensors) return {"sensor_bus_unavailable","elSensor"};
-  if((FORK_C3 || DISPLAY_KIND==DISPLAY_ST7796) && c.sensorType(0) && c.sensorType(1) &&
+  if(physical && (FORK_C3 || DISPLAY_KIND==DISPLAY_ST7796) && c.sensorType(0) && c.sensorType(1) &&
       !c.singleAxis() && !sharedSensors) return {"sensor_bus_unavailable","elSensor"};
   if(!BLUETOOTH_SUPPORT && c.bluetooth) return {"bluetooth_not_supported","bluetoothEnabled"};
   if(c.drive>DRIVE_DIR_PWM || c.bluetoothMode<BT_HC05 || c.bluetoothMode>BT_AUTO ||
-      (c.pwmInverted && c.drive!=DRIVE_BTS7960)) return {"invalid_hardware"};
+      (!hud && c.pwmInverted && c.drive!=DRIVE_BTS7960)) return {"invalid_hardware"};
   if(c.backend()==BT_ESP32_SPP && !FORK_CLASSIC_ESP32) return {"spp_not_supported","bluetoothMode"};
   // The modified adapter has an active-LOW, open-drain speed/enable stage.
-  if(CROWPANEL_LOCAL_DRIVE && !c.simulation && (!c.singleAxis() || c.separatePwm()))
+  if(CROWPANEL_LOCAL_DRIVE && physical && (!c.singleAxis() || c.separatePwm()))
     return {"drive_not_supported","driveInterface"};
 #if defined(SOC_LEDC_CHANNEL_NUM)
   const unsigned channels=CROWPANEL_LOCAL_DRIVE?2:c.drive==DRIVE_BTS7960?(c.singleAxis()?2:4):
       c.separatePwm()?(c.singleAxis()?1:2):1;
-  if(!c.simulation && SOC_LEDC_CHANNEL_NUM<channels) return {"drive_not_supported","driveInterface"};
+  if(physical && SOC_LEDC_CHANNEL_NUM<channels) return {"drive_not_supported","driveInterface"};
 #endif
   if((c.pins.uartRx<0)!=(c.pins.uartTx<0) || (((hudUart && !c.hudRs485()) || c.rs485()) && c.pins.uartRx<0))
     return {"incomplete_uart","pin.uartRx"};
@@ -335,15 +337,16 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
   for(const auto &d:pinDefinitions) {
     const int pin=c.pins.*d.member;
     if(pin < -1 || pin>48) return {"invalid_gpio",d.field,"",pin};
-    // Inactive roles do not acquire a wire, but an assigned number must still
-    // describe a usable signal; simulation cannot make Flash or built-in wiring available.
+    // Simulation never reserves physical drive/sensor wiring. Legacy maps
+    // are released when loading settings; their GPIO numbers still need valid encoding.
+    if((hud || c.simulation) && (d.group==PinGroup::Drive || d.group==PinGroup::SensorAz || d.group==PinGroup::SensorEl)) continue;
     if(pin>=0) {
       if(!gpio(pin)) return {"invalid_gpio",d.field,unavailablePinOwner(pin),pin};
       if(d.kind==PinKind::Adc && !adc(pin)) return {"invalid_adc_gpio",d.field,"",pin};
       if(d.kind==PinKind::Output && !output(pin)) return {"input_only_gpio",d.field,"",pin};
       if(const auto *owner=fixedPinOwner(pin);owner && !sharedPanelSensorBus(c,d)) return {"gpio_conflict",d.field,owner,pin};
     }
-    if(!pinActive(c,d)) continue;
+    if(!pinActive(c,d,hud)) continue;
     // Both axes may use one physical bus, provided their addresses differ.
     if(sharedSensors && d.group==PinGroup::SensorEl) continue;
     if(auto error=add(pin,d.field,d.kind,!pinOptional(c,d),d.group==PinGroup::Buttons,sharedPanelSensorBus(c,d))) return error;
@@ -351,8 +354,8 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
   if(auto error=add(c.buttonGpio,"buttonGpio",PinKind::Input,false,c.buttonPullup)) return error;
   return {};
 }
-inline const char *validateHardware(const HardwareConfig &c,bool hudUart=false) {
-  return validateHardwareDetailed(c,hudUart).error;
+inline const char *validateHardware(const HardwareConfig &c,bool hudUart=false,bool hud=false) {
+  return validateHardwareDetailed(c,hudUart,hud).error;
 }
 // Recovery may expose a confirmed console only when neither saved wiring map
 // assigns its wires to a motor. Never fall back to arbitrary default GPIOs.

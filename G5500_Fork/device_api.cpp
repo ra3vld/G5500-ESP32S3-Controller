@@ -87,7 +87,7 @@ void DeviceApi::writeHardwareStatus(JsonWriter &j, bool compact, std::string_vie
     config(view=="confirmed"?r.good:view=="effective"?runtime_.controller.hardware:configured);
     j << '}';return;
   }
-  j << "{\"role\":" << jsonQuoted(runtime_.hud.isHud()?"hud":"controller") << ",\"token\":" << runtime_.hardwareToken << ",\"generation\":" << r.generation
+  j << "{\"role\":" << jsonQuoted(runtime_.configuredAsHud()?"hud":"controller") << ",\"token\":" << runtime_.hardwareToken << ",\"generation\":" << r.generation
     << ",\"hasConfirmed\":" << (r.hasConfirmed ? "true" : "false")
     << ",\"trial\":" << (runtime_.hardwareTrial ? "true" : "false")
     << ",\"recovery\":" << (runtime_.recovery ? "true" : "false")
@@ -194,7 +194,7 @@ bool DeviceApi::setupReady(SetupStep step) const {
       }
     }
     case SetupStep::Equipment:return runtime_.setup.equipment && runtime_.hardwareRecord.hasConfirmed && !c.configurationLocked &&
-      (runtime_.setup.drive<0 || (c.hardware.drive==runtime_.setup.drive && c.hardware.simulation==runtime_.setup.simulation));
+      (runtime_.hud.isHud() || runtime_.setup.drive<0 || (c.hardware.drive==runtime_.setup.drive && c.hardware.simulation==runtime_.setup.simulation));
     case SetupStep::Calibration:return c.hardware.simulation || c.hardware.manualWithoutFeedback() || (c.axes[0].calibrated && (c.model!=Model::G5500 || c.axes[1].calibrated));
     case SetupStep::Tuning:
       if(c.autoTune.active() || c.coast.active() || c.hasDriveError())return false;
@@ -322,6 +322,12 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
   }
   if(method=="GET" && path=="/api/hardware/pins") { writePinCapabilities(output,runtime_.hardwareHudUart); return; }
   if(method=="GET" && path=="/api/hardware") { writeHardwareStatus(output,command,web_.value("view")); return; }
+  if(method=="GET" && path=="/api/hardware/reboots") {
+    output << "{\"current\":{\"reason\":" << jsonQuoted(diagnostics_.bootReasonText().c_str())
+      << ",\"code\":" << diagnostics_.bootReasonCode() << "},\"recoveryReason\":"
+      << jsonQuoted(recoveryReasonName(runtime_.recoveryReason)) << ",\"history\":";
+    storage_.writeResetHistoryJson(output);output << '}';return;
+  }
   if(method!="POST") { reply(405,"method_not_allowed"); return; }
   HardwareForm form;
   auto modbus=runtime_.modbus;
@@ -345,9 +351,9 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
     runtime_.controller.stopNow(-1,millis()); hardware_.applyOutputs(); runtime_.controller.configurationLocked=true;
   };
   if(path=="/api/hardware") {
-    if(runtime_.setup.required && runtime_.setupSaving && runtime_.setup.drive>=0 &&
+    if(!runtime_.configuredAsHud() && runtime_.setup.required && runtime_.setupSaving && runtime_.setup.drive>=0 &&
         (form.config.drive!=runtime_.setup.drive || form.config.simulation!=runtime_.setup.simulation)) {reply(409,"setup_drive_mismatch");return;}
-    if(const auto error=board::validateHardwareDetailed(form.config,runtime_.hardwareHudUart)) {
+    if(const auto error=board::validateHardwareDetailed(form.config,runtime_.hardwareHudUart,runtime_.configuredAsHud())) {
       status=400;
       output << "{\"ok\":false,\"error\":" << jsonQuoted(error.error) << ",\"field\":" << jsonQuoted(error.field)
         << ",\"gpio\":" << error.pin << ",\"owner\":" << jsonQuoted(error.owner) << '}'; return;
@@ -370,6 +376,11 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
     if(!runtime_.hardwareRecord.hasConfirmed) { reply(409,"no_confirmed_configuration"); return; }
     auto good=runtime_.hardwareRecord.good;
     if(!BLUETOOTH_SUPPORT)good.bluetooth=false;
+    if(const auto error=board::validateHardwareDetailed(good,runtime_.hardwareHudUart,runtime_.configuredAsHud())) {
+      status=400;
+      output << "{\"ok\":false,\"error\":" << jsonQuoted(error.error) << ",\"field\":" << jsonQuoted(error.field)
+        << ",\"gpio\":" << error.pin << ",\"owner\":" << jsonQuoted(error.owner) << '}';return;
+    }
     stopForConfiguration(); saved=storage_.stageHardware(runtime_,good);
   } else if(path=="/api/hardware/recovery") {
     stopForConfiguration(); saved=storage_.enterRecovery(runtime_,RecoveryReason::Requested);
@@ -1122,7 +1133,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       web_.send(400, "application/json", "{\"ok\":false,\"result\":\"invalid_or_port_conflict\"}");
       return;
     }
-    if (uart == "1" && board::validateHardware(runtime_.controller.hardware,true)) {
+    if (uart == "1" && board::validateHardware(runtime_.controller.hardware,true,role=="hud")) {
       web_.send(400, "application/json", "{\"ok\":false,\"result\":\"uart_disabled\"}");
       return;
     }

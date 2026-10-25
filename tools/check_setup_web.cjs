@@ -110,7 +110,8 @@ function equipmentSized(step){
    // Combined inputs are configured once; the next step exposes only tests/calibration.
    hw.configured.driveInterface=state.driveInterface;hw.configured.simulation=Number(state.simulation);
    hw.configured.localInputMode=3;hw.configured.pins={...fixture.pins,localAzNegative:21,localAzPositive:22,localAzAdc:36,localElAdc:39};
-   state.step=3;await page.evaluate(s=>{wizard.state=s;renderSetup();const w=document.getElementById('equipmentFrame').contentWindow;w.dirty=false;return w.refresh();},state);
+   state.step=3;await page.evaluate(s=>{wizard.state=s;renderSetup();},state);
+   await page.frameLocator('#equipmentFrame').locator('body').evaluate(()=>{dirty=false;return refresh();});
    const inputFrame=page.frameLocator('#equipmentFrame');
    await inputFrame.locator('[name=localInputMode]').selectOption('3');
    for(const [name,pin] of Object.entries({localAzNegative:21,localAzPositive:22,localAzAdc:36,localElAdc:39}))await inputFrame.locator(`[name="pin.${name}"]`).selectOption(String(pin));
@@ -136,7 +137,7 @@ function equipmentSized(step){
     await largeInputs.evaluate(e=>e.remove());
    }
    hw.configured.localInputMode=0;hw.configured.pins=fixture.pins;hw.configured.driveInterface=role==='controller'?2:0;state.restartRequired=false;state.pendingNext=false;
-   await page.evaluate(()=>{const w=document.getElementById('equipmentFrame').contentWindow;w.dirty=false;return w.refresh();});
+   await page.frameLocator('#equipmentFrame').locator('body').evaluate(()=>{dirty=false;return refresh();});
    if(role==='controller'){
     assert.deepEqual(await page.locator('#forkSettings-model option').evaluateAll(o=>o.map(e=>e.value)),['G5500','G800DXA','G800SA']);
     for(const [kind,drive,simulation,model] of [['G5500',0,false,'G5500'],['G800DXA',0,false,'G800DXA'],['G800SA',0,false,'G800SA'],['DIR_PWM',3,false],['SEPARATE_PWM',1,false],['BTS7960',2,false],['SIMULATION',2,true]]){
@@ -149,7 +150,7 @@ function equipmentSized(step){
      await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===3);
      assert.equal(state.driveInterface,drive);assert.equal(state.simulation,simulation);if(model)assert.equal(status.model,model);
      await page.waitForFunction(d=>document.getElementById('equipmentFrame').contentDocument.getElementById('hardware').elements.driveInterface.value===String(d),drive);
-     await page.evaluate(()=>document.getElementById('equipmentFrame').contentWindow.refresh());
+     await page.frameLocator('#equipmentFrame').locator('body').evaluate(()=>refresh());
      const hwFrame=page.frameLocator('#equipmentFrame');assert.equal(await hwFrame.locator('[name=driveInterface]').inputValue(),String(drive),'Selected driver survives hardware refresh');
      assert.equal(await hwFrame.locator('[name=simulation]').inputValue(),simulation?'1':'0');
      if(drive===0)assert.equal(await hwFrame.locator('[name=pwmInverted]').inputValue(),'0');
@@ -191,6 +192,8 @@ function equipmentSized(step){
    state.restartRequired=false;state.pendingNext=false;state.token++;state.step=1;await page.evaluate(s=>{wizard.state=s;wizard.restartToken=s.token-1;},state);await page.evaluate(()=>pollSetup());assert.equal(await page.evaluate(()=>wizard.waiting),false);
    // Hardware and Modbus drafts use one validated request; no inner Save button is needed.
    state.step=3;await page.evaluate(s=>{wizard.state=s;renderSetup();},state);
+   await page.frameLocator('#equipmentFrame').locator('body').evaluate(async()=>{await refresh();await refreshModbus();});
+   await page.waitForFunction(()=>wizard.hardwareCanApply);
    await page.frameLocator('#equipmentFrame').locator('[name=buttonActiveLow]').selectOption('0');
    await page.frameLocator('#equipmentFrame').locator('#modbus [name=address]').fill('2');
    await page.waitForFunction(()=>wizard.hardwareDirty);assert(await page.frameLocator('#equipmentFrame').locator('#save').isHidden());
