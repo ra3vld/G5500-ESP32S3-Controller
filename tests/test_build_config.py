@@ -64,7 +64,7 @@ class BuildConfigTests(unittest.TestCase):
         self.compile(dict(BOARD_PROFILE=0, SELECTED_BOARD=1, DISPLAY_KIND=0, TFT_DISPLAY_ENABLED=0,
                           BLUETOOTH_ENABLED=0, BLUETOOTH_BACKEND=0, BLUETOOTH_MODE=3,
                           DRIVE_SIMULATION=0, DRIVE_INTERFACE=0, CROWPANEL_USB_TRACE=0,
-                          ESP32_FORCE_AP_STA=0, **{'forkrot::board::WIFI_AP_ALWAYS_ON': 1},
+                          ESP32_FORCE_AP_STA=0, **{'forkrot::board::WIFI_AP_ALWAYS_ON': 0},
                           BTS7960_PWM_INVERTED=0, USER_BUTTON_GPIO=0, USER_BUTTON_ACTIVE_LOW=1,
                           USER_BUTTON_PULLUP=1, AZ_STOP_TOLERANCE_DEG='5.0f', EL_STOP_TOLERANCE_DEG='5.0f'))
 
@@ -174,7 +174,7 @@ class BuildConfigTests(unittest.TestCase):
                                      ('CONFIG_IDF_TARGET_ESP32=1', 4, 2)]:
             with self.subTest(flag=flag):
                 self.compile(dict(SELECTED_BOARD=board, BLUETOOTH_BACKEND=backend, DRIVE_SIMULATION=0,
-                                  **{'forkrot::board::WIFI_AP_ALWAYS_ON': int(board != 4)}), [flag, 'BLUETOOTH_ENABLED=1'])
+                                  **{'forkrot::board::WIFI_AP_ALWAYS_ON': 0}), [flag, 'BLUETOOTH_ENABLED=1'])
 
     def test_wt32_ethernet_profile_and_arduino_copy(self):
         self.compile(dict(SELECTED_BOARD=6, FORK_CLASSIC_ESP32=1, USER_BUTTON_GPIO=-1,
@@ -209,7 +209,7 @@ class BuildConfigTests(unittest.TestCase):
                       ['BOARD_PROFILE=7','USER_BUTTON_GPIO=8']):
             self.compile({},flags,success=False)
         for camera in (0,1):
-            for drive in (0,1,2):
+            for drive in (0,1,2,3):
                 self.compile({},['BOARD_PROFILE=7',f'CAMERA_ENABLED={camera}',f'DRIVE_INTERFACE={drive}'])
         result=subprocess.run([sys.executable,str(self.root/'tools/build_platformio.py'),
                                '--env','waveshare_esp32s3_eth','--dry-run'],capture_output=True,text=True)
@@ -241,7 +241,7 @@ class BuildConfigTests(unittest.TestCase):
         for board in (1, 2, 3, 4):
             for force in (0, 1):
                 with self.subTest(board=board, force=force):
-                    self.compile({'forkrot::board::WIFI_AP_ALWAYS_ON': int(board != 4 or force)},
+                    self.compile({'forkrot::board::WIFI_AP_ALWAYS_ON': force},
                                  [f'BOARD_PROFILE={board}', f'ESP32_FORCE_AP_STA={force}'])
         self.edit(BOARD_PROFILE=4, ESP32_FORCE_AP_STA=1)
         self.compile({'forkrot::board::WIFI_AP_ALWAYS_ON': 1})

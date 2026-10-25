@@ -151,7 +151,7 @@ inline RequestState inspectRequest(std::string_view bytes, size_t capacity, size
   if (url.empty() || url.front() != '/' || url.find(' ') != url.npos) return RequestState::Invalid;
   const auto query = url.find('?');
   const auto path=url.substr(0,query);
-  const size_t argumentLimit=path=="/api/hardware" || path.substr(0,14)=="/api/hardware/"?80:HTTP_MAX_ARGUMENTS;
+  const size_t argumentLimit=path=="/api/hardware" || path.substr(0,14)=="/api/hardware/"?96:HTTP_MAX_ARGUMENTS;
   size_t arguments = 0;
   if (query != url.npos && !boundedForm(url.substr(query + 1), arguments,argumentLimit)) return RequestState::TooLarge;
   pos += 2;

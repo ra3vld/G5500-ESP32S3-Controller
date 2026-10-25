@@ -38,7 +38,7 @@ bool CommandForm::parse(std::string_view text,size_t limit) {
   if (limit>=sizeof bytes || text.size() > limit) return false;
   size_t used = 0;
   while (!text.empty()) {
-    if (count == (limit>COMMAND_INPUT_MAX?entries.size():64)) return false;
+    if (count == entries.size()) return false;
     const auto amp = text.find('&');
     const auto pair = text.substr(0, amp);
     const auto equal = pair.find('=');

@@ -33,3 +33,4 @@ public:
   }
   int read() { if(!remaining_)return -1;--remaining_;return fakeI2c[bus_].devices[address_][readAt_++]; }
 };
+inline TwoWire Wire{0};

@@ -28,6 +28,19 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    assert.match(await page.locator('#failures').textContent(),/Сбои: 2 \/ 3/);
    assert.match(await page.locator('#failures').textContent(),/30 минут/);
    assert(await page.locator('#confirm').isDisabled());
+   // Only selected local devices request GPIO; switching does not discard assignments.
+   for(const mode of [0,1,2,3]){
+    await page.locator('[name=localInputMode]').selectOption(String(mode));
+    assert.equal(await page.locator('[data-pin-group=buttons]').isVisible(),!!(mode&1));
+    assert.equal(await page.locator('[data-pin-group=joystick]').isVisible(),!!(mode&2));
+    assert.equal(await page.locator('[data-pin-group=sensorAz]').isHidden(),true);
+    assert.equal(await page.locator('[data-pin-group=sensorEl]').isHidden(),true);
+    assert.equal(await page.locator('[data-pin-group=hc05]').isHidden(),true);
+    assert.equal(await page.locator('[data-pin-group=drive]').isHidden(),true);
+    assert.equal(await page.locator('#save').isDisabled(),mode!==0);
+    if(profile==='1'&&process.env.HARDWARE_SCREENSHOT_DIR){fs.mkdirSync(process.env.HARDWARE_SCREENSHOT_DIR,{recursive:true});await page.locator(`[data-pin-group=${mode&1?'buttons':mode&2?'joystick':'hudRadio'}]`).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(process.env.HARDWARE_SCREENSHOT_DIR,`gpio-mode-${mode}-${mobile?'mobile':'desktop'}.png`)});}
+   }
+   await page.locator('[name=localInputMode]').selectOption('0');
    if(profile==='1') {
     await page.locator('[name="pin.hudRx"]').selectOption('38');
     assert(await page.locator('#save').isDisabled());
@@ -50,6 +63,36 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
     await page.locator('[name=driveInterface]').selectOption('1');assert(await page.locator('[name="pin.azNegative"]').isVisible());
     await page.locator('[name=driveInterface]').selectOption('0');await page.locator('[name=simulation]').selectOption('1');
    }
+   if(profile==='1') {
+    const original=await page.evaluate(()=>draft());
+    for(const driver of [1,2,3]) {
+     await page.evaluate(c=>{for(const [name,value]of Object.entries(c.pins))if(form.elements['pin.'+name])form.elements['pin.'+name].value=value;},original);
+     await page.locator('[name=driveInterface]').selectOption(String(driver));await page.locator('[name=simulation]').selectOption('0');
+     const en=driver===2?['azSpeedEnable','elSpeedEnable']:['azEnable','elEnable'];
+     for(const name of en) {
+      const field=page.locator('[name="pin.'+name+'"]');assert(await field.isVisible());
+      assert.match(await field.locator('..').textContent(),/ENABLE.*необязательно/);
+      await field.selectOption('-1');
+     }
+     assert(!(await page.locator('#save').isDisabled()),'No ENABLE is required for PWM driver '+driver);
+     assert.equal(await page.locator('[name="pin.azEnable"]').isVisible(),driver!==2);
+     if(process.env.HARDWARE_SCREENSHOT_DIR)await page.locator('[data-pin-group=drive]').screenshot({path:path.join(process.env.HARDWARE_SCREENSHOT_DIR,`enable-${driver}-off-${mobile?'mobile':'desktop'}.png`)});
+     for(let i=0;i<2;++i)await page.locator('[name="pin.'+en[i]+'"]').selectOption(String(38+i));
+     assert(!(await page.locator('#save').isDisabled()));
+     const fields=await page.locator('[data-pin-group=drive] select:visible').evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return {width:r.width,height:r.height,left:r.left,right:r.right};}));
+     assert(fields.every(r=>r.width>0&&r.height>=40&&r.left>=0&&r.right<=(mobile?360:1100)));
+     if(process.env.HARDWARE_SCREENSHOT_DIR)await page.locator('[data-pin-group=drive]').screenshot({path:path.join(process.env.HARDWARE_SCREENSHOT_DIR,`enable-${driver}-on-${mobile?'mobile':'desktop'}.png`)});
+     await page.evaluate(name=>{const el=form.elements['pin.'+name];el.value=form.elements['pin.azPositive'].value;el.dispatchEvent(new Event('input',{bubbles:true}));},en[0]);
+     assert(await page.locator('#save').isDisabled());assert.match(await page.locator('#pin-validation').textContent(),/занят/);
+     await page.locator('[name="pin.'+en[0]+'"]').selectOption('38');
+     const before=requests.length;await page.locator('#save').click();await page.waitForFunction(()=>document.getElementById('message').textContent.startsWith('Сохранено'));
+     assert.equal(requests.length,before+1);
+     for(let i=0;i<2;++i)assert.equal(requests.at(-1).body['pin.'+en[i]],String(38+i));
+     await page.evaluate(()=>{busy=false;dirty=false;return refresh();});
+    }
+    await page.evaluate(c=>{for(const [name,value]of Object.entries(c.pins))if(form.elements['pin.'+name])form.elements['pin.'+name].value=value;for(const name of names)form.elements[name].value=c[name];busy=false;dirty=true;updatePins();},original);
+   }
+   assert.equal(await page.locator('[name=forceApSta]').isEnabled(),true);assert.match(await page.locator('[name=forceApSta]').locator('..').textContent(),/^Точка доступа/);assert.equal(await page.locator('input[name=buttonGpio]').count(),0);
    assert(!await page.locator('#bts-settings').isVisible());
    await page.locator('[name=simulation]').selectOption('0');
    await page.locator('[name=driveInterface]').selectOption('2');
@@ -58,9 +101,10 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    await page.locator('[name=driveInterface]').selectOption('0');
    assert(!await page.locator('#bts-settings').isVisible());
    assert.equal(await page.locator('[name=pwmInverted]').inputValue(),'0');
-   await page.locator('[name=simulation]').selectOption('1');
+   await page.locator('[name=simulation]').selectOption('0');
    // Every board accepts an incomplete motor map in simulation, rejects it in physical mode.
    await page.locator('[name="pin.azAdc"]').selectOption('-1');
+   await page.locator('[name=simulation]').selectOption('1');
    await page.evaluate(()=>refresh());
    assert.equal(await page.locator('[name="pin.azAdc"]').inputValue(),'-1');
    assert(!(await page.locator('#save').isDisabled()));
@@ -85,13 +129,13 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
     await page.locator('[name="pin.led"]').selectOption('-1');
    }
    // GPIO0 is available for an external button even on CrowPanel.
-   await page.locator('[name=buttonGpio]').fill('0');
+   await page.locator('[name=buttonGpio]').selectOption('0');
    assert(!(await page.locator('#save').isDisabled()));
    assert.equal(await page.locator('[name=buttonGpio]').getAttribute('readonly'),null);
    await page.evaluate(()=>{const el=form.elements['pin.led'];el.value='0';el.dispatchEvent(new Event('input',{bubbles:true}));});
    assert(await page.locator('#save').isDisabled());
    assert.match(await page.locator('#pin-validation').textContent(),/занят/);
-   await page.locator('[name=buttonGpio]').fill('-1');
+   await page.locator('[name=buttonGpio]').selectOption('-1');
    assert(!(await page.locator('#save').isDisabled()));
    // An integrated peripheral cannot be overwritten, including by a forced form value.
    if(fixture.crowpanel){
@@ -166,6 +210,17 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    }
    if(process.env.HARDWARE_SCREENSHOT_DIR){fs.mkdirSync(process.env.HARDWARE_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:path.join(process.env.HARDWARE_SCREENSHOT_DIR,`hardware-${profile}-${mobile?'mobile':'desktop'}.png`),fullPage:true});}
    if(process.env.HARDWARE_DOC_SCREENSHOT&&profile==='1'&&!mobile)await page.screenshot({path:process.env.HARDWARE_DOC_SCREENSHOT,fullPage:true});
+   if(profile==='1'&&!mobile){
+    await page.goto('http://hardware.test/hardware?setup=1');
+    await page.waitForFunction(()=>typeof mbNames!=='undefined'&&!!state&&!!metadata);
+    await page.locator('[name=uart0Baud]').selectOption('57600');await page.locator('[name=uart1StopBits]').selectOption('2');
+    const before=requests.length;
+    await page.evaluate(()=>window.postMessage({type:'hardwareAction',id:71,action:'save'},location.origin));
+    await page.waitForFunction(()=>!mbDirty);
+    assert.equal(requests.length,before+1);assert.equal(requests.at(-1).path,'/api/hardware');
+    assert.equal(requests.at(-1).body['mb.uart0Baud'],'57600');assert.equal(requests.at(-1).body['mb.uart1StopBits'],'2');
+    assert(new URLSearchParams(requests.at(-1).body).toString().length<=1536,'combined hardware form capacity');assert(Object.keys(requests.at(-1).body).length<=96);
+   }
    await page.close();
   }
   console.log('PASS: selected board/display configurations, independent UART line parameters, mobile/desktop GPIO editing, TFT/LCD completeness, simulation, CrowPanel reservations, dirty fields, defaults and trial/probe/confirm');

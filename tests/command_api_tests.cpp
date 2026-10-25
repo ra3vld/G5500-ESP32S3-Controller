@@ -36,6 +36,10 @@ int main() {
   assert(form.get("name")=="А &=");
   for(const auto *bad:{"a=1&a=2","a=%0","a=%GG","a=%00","a=%0A","a=1&","=1"})assert(!form.parse(bad));
   assert(!form.parse("a="+std::string(129,'x')));
+  std::string many;
+  for(size_t i=0;i<form.entries.size();++i)many+=(i?"&":"")+std::string("p")+std::to_string(i)+"=1";
+  assert(form.parse(many) && form.count==form.entries.size());
+  assert(!form.parse(many+"&overflow=1"));
   ApiLineBuffer line;std::string_view completed;
   std::string longLine="@"+std::string(1023,'x');
   for(char c:longLine)assert(!line.feed(c,completed));

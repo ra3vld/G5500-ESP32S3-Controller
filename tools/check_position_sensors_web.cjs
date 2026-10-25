@@ -12,7 +12,7 @@ const packed=Buffer.from([...asset.matchAll(/0x([0-9a-f]{2})/g)].map(m=>parseInt
  try {
   for(const width of [1100,390]) {
    const fixture=JSON.parse(fs.readFileSync(path.join(root,'build/pin-map-4.json'),'utf8'));
-   const config={driveInterface:0,simulation:0,bluetoothEnabled:0,bluetoothMode:3,forceApSta:0,buttonGpio:0,buttonActiveLow:1,buttonPullup:1,pwmInverted:0,localInputMode:0,localAzInvert:0,localElInvert:0,localAzMin:0,localAzCenter:2048,localAzMax:4095,localElMin:0,localElCenter:2048,localElMax:4095,localDeadzone:200,localHysteresis:50,azSensor:0,azSensorAddress:6,azSensorZero:0,elSensor:0,elSensorAddress:6,elSensorZero:0,pins:{...fixture.pins}};
+   const config={driveInterface:0,simulation:0,bluetoothEnabled:0,bluetoothMode:3,forceApSta:0,buttonGpio:0,buttonActiveLow:1,buttonPullup:1,pwmInverted:0,localInputMode:0,localAzInvert:0,localElInvert:0,localAzMin:0,localAzCenter:2048,localAzMax:4095,localElMin:0,localElCenter:2048,localElMax:4095,localDeadzone:200,localHysteresis:50,azSensor:0,azSensorAddress:6,azSensorZero:0,elSensor:0,elSensorAddress:6,elSensorZero:0,azSensorInverted:0,elSensorInverted:0,pins:{...fixture.pins}};
    const state={token:123,generation:2,recovery:false,trial:false,ready:true,reason:'none',remainingMs:120000,heapFree:100000,heapMaxBlock:40000,backend:'NONE',sppSupported:true,classicEsp32:true,hasConfirmed:true,configured:config};
    let diagnostic={hasEl:true,azSensor:'MT6701',elSensor:'ADC',azRaw:16383,azMv:null,azValue:16383,elRaw:2048,elMv:1550,elValue:1550};
    const errors=[],requests=[];const page=await browser.newPage({viewport:{width,height:950},locale:'ru-RU'});
@@ -30,10 +30,14 @@ const packed=Buffer.from([...asset.matchAll(/0x([0-9a-f]{2})/g)].map(m=>parseInt
    assert(await page.locator('#az-sensor-address').isHidden());assert(await page.locator('#el-sensor-zero').isHidden());
    const choose=(name,value)=>page.locator(`[name="${name}"]`).selectOption(String(value));
    await choose('azSensor',1);assert(await page.locator('#save').isDisabled());
-   await choose('pin.azSensorSda',21);await choose('pin.azSensorScl',22);await choose('pin.azAdc',-1);
+   assert(await page.locator('[data-pin-group=sensorAz]').isVisible());assert(await page.locator('[name="pin.azAdc"]').isHidden());
+   await choose('pin.azSensorSda',21);await choose('pin.azSensorScl',22);
+   await choose('azSensor',0);assert(await page.locator('[data-pin-group=sensorAz]').isHidden());assert(await page.locator('[name="pin.azAdc"]').isVisible());assert.equal(await page.locator('[name="pin.azAdc"]').inputValue(),String(fixture.pins.azAdc));
+   await choose('azSensor',1);assert.equal(await page.locator('[name="pin.azSensorSda"]').inputValue(),'21');
    assert(!await page.locator('#save').isDisabled());
    await choose('elSensor',2);assert.equal(await page.locator('[name=elSensorAddress]').inputValue(),'54');
-   await choose('pin.elSensorSda',21);await choose('pin.elSensorScl',22);await choose('pin.elAdc',-1);
+   assert(await page.locator('[data-pin-group=sensorEl]').isVisible());assert(await page.locator('[name="pin.elAdc"]').isHidden());
+   await choose('pin.elSensorSda',21);await choose('pin.elSensorScl',22);
    assert(!await page.locator('#save').isDisabled()); // shared bus accepted by both dropdowns
    await choose('elSensor',1);assert(await page.locator('#save').isDisabled());
    assert.match(await page.locator('#pin-validation').textContent(),/одинаковым адресом/);
@@ -44,13 +48,14 @@ const packed=Buffer.from([...asset.matchAll(/0x([0-9a-f]{2})/g)].map(m=>parseInt
    await page.locator('[name=azSensorZero]').fill('4096');assert(await page.locator('#save').isDisabled());
    await page.locator('[name=azSensorZero]').fill('4095');assert(!await page.locator('#save').isDisabled());
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
-   const out=path.join(root,'local-notes/position-sensors-web');fs.mkdirSync(out,{recursive:true});
+   const out=process.env.ARTIFACT_DIR||path.join(root,'local-notes/position-sensors-web');fs.mkdirSync(out,{recursive:true});
    await page.screenshot({path:path.join(out,`hardware-${width}.png`),fullPage:true});
    await page.locator('#position-sensors').locator('..').screenshot({path:path.join(out,`sensors-${width}.png`)});
    if(width===1100&&process.env.UPDATE_HARDWARE_IMAGE)await page.screenshot({path:path.join(root,'docs/images/web-hardware.png'),fullPage:true});
    await page.locator('#save').click();await page.waitForFunction(()=>document.getElementById('message').textContent.includes('Сохранено.'));
    assert.equal(requests.length,1);assert.equal(requests[0].azSensor,'2');assert.equal(requests[0]['pin.elSensorSda'],'23');assert.equal(requests[0].azSensorZero,'4095');
-   assert.equal(Object.keys(requests[0]).length,57);
+   assert.equal(Object.keys(requests[0]).length,30+await page.locator('[name^="pin."]').count());
+   assert.equal(requests[0]['pin.azAdc'],String(fixture.pins.azAdc));assert.equal(requests[0]['pin.elAdc'],String(fixture.pins.elAdc));
    await page.goto(origin+'/adc');await page.waitForFunction(()=>document.getElementById('azraw').textContent==='16383');
    assert.match(await page.locator('#azPin').textContent(),/MT6701/);assert(await page.locator('#azlin').locator('..').isHidden());
    assert(await page.locator('#ellin').isVisible());assert.match(await page.locator('#azmv').locator('..').textContent(),/С учётом нуля/);

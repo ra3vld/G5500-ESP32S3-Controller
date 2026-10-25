@@ -49,6 +49,12 @@ int main() {
   connect(request);testSocket.respond=true;testSocket.blockWrites=true;
   const auto beforeWrite=fakeHardware.now;
   web.handleClient();assert(web.writeFailed() && testSocket.reset && fakeHardware.now-beforeWrite==5);
+  // A full hardware map, local/sensor settings and UART parameters fit the bounded parser.
+  std::string allFields;
+  for(unsigned i=0;i<96;++i)allFields+=(i?"&":"")+std::string("p")+std::to_string(i)+"=1";
+  const auto hardwarePost=[&](const std::string &body){return "POST /api/hardware HTTP/1.1\r\nContent-Length: "+std::to_string(body.size())+"\r\n\r\n"+body;};
+  assert(inspectRequest(hardwarePost(allFields),sizeof buffer)==RequestState::Ready);
+  assert(inspectRequest(hardwarePost(allFields+"&overflow=1"),sizeof buffer)==RequestState::TooLarge);
   // Parameter amplification must be rejected before the stock parser.
   connect("POST /api/settings HTTP/1.1\r\nContent-Length: 1002\r\n\r\nx="+std::string(1000,'&'));
   web.handleClient(); assert(testSocket.parsed==0 && testSocket.reset);

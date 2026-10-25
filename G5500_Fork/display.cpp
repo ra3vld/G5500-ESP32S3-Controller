@@ -1,7 +1,6 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "display.hpp"
 #if DISPLAY_KIND == DISPLAY_LCD1602
-#include "display.hpp"
 #include <cstdio>
 #include <cmath>
 #include <cstring>
@@ -33,7 +32,7 @@ void Display::updateLocalDisplay() {
     } else if ((now / 4000) % 3 == 2 && (!i || runtime_.controller.model == Model::G5500)) {
       showBar=false;
       std::snprintf(text,sizeof text,"L%.6gR%.6g",double(runtime_.controller.range(i).start),double(runtime_.controller.range(i).end));
-    } else if (i && runtime_.controller.model == Model::G800DXA) {
+    } else if (i && runtime_.controller.model != Model::G5500) {
       std::snprintf(text, sizeof text, "%s %-9s", runtime_.controller.pendingValid ? "WAIT" : "MODE", Controller::modeName(runtime_.controller.mode));
     } else {
       char target[12] = "---";
@@ -47,7 +46,7 @@ void Display::updateLocalDisplay() {
     }
     for (unsigned col=0; col<16; ++col) {
       uint8_t value;
-      if (showBar && col==15 && !(i && runtime_.controller.model == Model::G800DXA)) {
+      if (showBar && col==15 && !(i && runtime_.controller.model != Model::G5500)) {
         const uint8_t width=uint8_t(lroundf(axis.speedOutputPercent*5.f/100.f));
         value = width ? width : uint8_t(' ');
       } else value = col < std::strlen(text) ? text[col] : ' ';

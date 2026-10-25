@@ -28,7 +28,7 @@ void Application::updatePosition() {
   if(hardware_.positionValid(0)) runtime_.currentAz = calibration_.mapAz(az);
   if(hardware_.positionValid(1)) runtime_.currentEl = calibration_.mapEl(el);
   calibrationState.cal.valid = calibration_.selectedCalibrationValid();
-  if (runtime_.controller.model == forkrot::Model::G800DXA) {
+  if (runtime_.controller.model != forkrot::Model::G5500) {
     runtime_.currentEl = 0;
   }
   for (unsigned i=0; i<2; ++i) runtime_.controller.feedbackAt(
@@ -138,7 +138,7 @@ void Application::captureGs232Cal(const String &cmd) {
   if (runtime_.hud.isHud())
     return;
   auto &calibrationState = calibration_.state();
-  if (runtime_.controller.model == forkrot::Model::G800DXA && (cmd == "O2" || cmd == "F2")) {
+  if (runtime_.controller.model != forkrot::Model::G5500 && (cmd == "O2" || cmd == "F2")) {
     return;
   }
 

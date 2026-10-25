@@ -25,7 +25,8 @@ def generate():
              "#ifndef ARDUINO", "#ifndef PROGMEM", "#define PROGMEM", "#endif", "#endif"]
     lines += ["template<size_t N> constexpr uint32_t webAssetHash(const char (&data)[N]) {",
               "  uint32_t hash = 2166136261u;",
-              "  for (size_t i = 0; i + 1 < N; ++i) hash = (hash ^ uint8_t(data[i])) * 16777619u;",
+              "  for (size_t block = 0; block + 1 < N; block += 1024)",
+              "    for (size_t i = block; i + 1 < N && i < block + 1024; ++i) hash = (hash ^ uint8_t(data[i])) * 16777619u;",
               "  return hash;", "}"]
     sizes = []
     for filename in SOURCES:

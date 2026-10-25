@@ -131,7 +131,7 @@ void DeviceApi::writeConfiguration(JsonWriter &j) {
   const auto &c=runtime_.controller;const auto &p=runtime_.protocol;const auto &s=runtime_.loggerSettings;
   // Configuration pages exclude ADC samples, ages, counters and motion state:
   // a moving/noisy axis must not invalidate every page of a settings read.
-  j << "{\"model\":" << jsonQuoted(c.model==Model::G5500?"G5500":"G800DXA")
+  j << "{\"model\":" << jsonQuoted(modelName(c.model))
     << ",\"rotorName\":" << jsonQuoted(p.rotorName) << ",\"controlMode\":" << jsonQuoted(Controller::modeName(c.mode))
     << ",\"n1mmPort\":" << s.n1mmPort << ",\"pstPort\":" << s.pstPort
     << ",\"reportPort\":" << s.reportPort << ",\"reportHost\":" << jsonQuoted(s.reportHost)
@@ -190,8 +190,9 @@ bool DeviceApi::setupReady(SetupStep step) const {
         }
       }
     }
-    case SetupStep::Equipment:return runtime_.setup.equipment && runtime_.hardwareRecord.hasConfirmed && !c.configurationLocked;
-    case SetupStep::Calibration:return c.hardware.simulation || c.hardware.manualWithoutFeedback() || (c.axes[0].calibrated && (c.model==Model::G800DXA || c.axes[1].calibrated));
+    case SetupStep::Equipment:return runtime_.setup.equipment && runtime_.hardwareRecord.hasConfirmed && !c.configurationLocked &&
+      (runtime_.setup.drive<0 || (c.hardware.drive==runtime_.setup.drive && c.hardware.simulation==runtime_.setup.simulation));
+    case SetupStep::Calibration:return c.hardware.simulation || c.hardware.manualWithoutFeedback() || (c.axes[0].calibrated && (c.model!=Model::G5500 || c.axes[1].calibrated));
     case SetupStep::Tuning:
       if(c.autoTune.active() || c.coast.active() || c.hasDriveError())return false;
       if(c.hardware.manualWithoutFeedback())return true;
@@ -200,7 +201,7 @@ bool DeviceApi::setupReady(SetupStep step) const {
             (runtime_.setup.fresh && !c.hardware.simulation && !(runtime_.setup.checked&(1u<<(12+i)))))return false;
       return true;
     case SetupStep::Peers:return runtime_.hud.isHud() && runtime_.hud.active() && runtime_.hud.active()->saved && c.remote && c.available() && c.axes[0].calibrated &&
-      (c.model==Model::G800DXA || c.axes[1].calibrated) && !c.hasDriveError();
+      (c.model!=Model::G5500 || c.axes[1].calibrated) && !c.hasDriveError();
     case SetupStep::Review:
       return setupReady(SetupStep::Network) && setupReady(SetupStep::Equipment) &&
         (runtime_.hud.isHud()?setupReady(SetupStep::Peers):c.hardware.simulation || (setupReady(SetupStep::Calibration)&&setupReady(SetupStep::Tuning))) && !c.moving() && !c.hasDriveError();
@@ -213,11 +214,25 @@ void DeviceApi::writeSetup(JsonWriter &j) const {
     << ",\"step\":" << unsigned(s.step) << ",\"checked\":" << s.checked << ",\"generation\":" << s.generation
     << ",\"equipment\":" << (s.equipment?"true":"false") << ",\"ready\":" << (setupReady(s.step)?"true":"false")
     << ",\"role\":" << jsonQuoted(runtime_.hud.isHud()?"hud":"controller")
-    << ",\"simulation\":" << (runtime_.controller.hardware.simulation?"true":"false")
+    << ",\"driveInterface\":" << unsigned(s.drive<0?runtime_.controller.hardware.drive:s.drive)
+    << ",\"separateDrive\":" << (CROWPANEL_LOCAL_DRIVE?"false":"true")
+    << ",\"simulation\":" << ((s.drive<0?runtime_.controller.hardware.simulation:s.simulation)?"true":"false")
     << ",\"manualOnly\":" << (runtime_.controller.hardware.manualWithoutFeedback()?"true":"false")
-    << ",\"token\":" << runtime_.setupLease << ",\"storageOk\":" << (runtime_.setupStorageOk?"true":"false") << '}';
+    << ",\"token\":" << runtime_.setupLease << ",\"storageOk\":" << (runtime_.setupStorageOk?"true":"false")
+    << ",\"restartRequired\":" << (runtime_.setupRestartRequired?"true":"false") << ",\"pendingNext\":" << (s.pendingNext?"true":"false") << '}';
+}
+void DeviceApi::configurationRestart() {
+  if(runtime_.setup.required && runtime_.setupSaving)runtime_.setupRestartRequired=true;
+  else restart_.request(millis());
 }
 void DeviceApi::serviceSetup(uint32_t now) {
+  if(runtime_.setup.required && runtime_.setup.pendingNext && !runtime_.setup.paused &&
+      !runtime_.setupSaving && !runtime_.setupRestartRequired && !restart_.pending() && setupReady(runtime_.setup.step)) {
+    auto next=runtime_.setup;next.checked|=uint16_t(1u<<unsigned(next.step));
+    next.step=next.next(runtime_.hud.isHud(),runtime_.controller.hardware.simulation || runtime_.controller.hardware.manualWithoutFeedback());next.pendingNext=false;++next.generation;
+    if(storage_.saveSetup(next))runtime_.setup=next;
+    else {runtime_.setupStorageOk=false;runtime_.controller.stopNow(-1,now);}
+  }
   if(!runtime_.setup.required || !runtime_.setupLease || uint32_t(now-runtime_.setupRenewed)<=1500)return;
   runtime_.setupLease=0;
   auto &c=runtime_.controller;c.cancelCoast(now);c.cancelAutoTune(now);c.stopNow(-1,now);hardware_.applyOutputs();
@@ -225,7 +240,9 @@ void DeviceApi::serviceSetup(uint32_t now) {
 void DeviceApi::invalidateSetup(SetupStep step) {
   if(!runtime_.setup.required)return;
   auto next=runtime_.setup;
+  next.pendingNext=false;
   if(step==SetupStep::Role || step==SetupStep::Equipment)next.equipment=false;
+  if(step==SetupStep::Equipment && !runtime_.setupSaving){next.drive=-1;next.simulation=false;}
   if(unsigned(next.step)>unsigned(step))next.step=step;
   next.checked&=uint16_t((1u<<unsigned(step))-1);++next.generation;
   if(!storage_.saveSetup(next)){runtime_.setupStorageOk=false;runtime_.controller.stopNow(-1,millis());}
@@ -296,7 +313,7 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
     if(const auto error=next.wiring(hardware,runtime_.hardwareHudUart)){reply(400,error);return;}
     if(!storage_.saveModbus(next)){reply(503,"storage_failed");return;}
     hardware_.cancelJoystickCalibration();runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
-    runtime_.controller.configurationLocked=true;reply(200,"");restart_.request(millis());return;
+    runtime_.controller.configurationLocked=true;reply(200,"");configurationRestart();return;
   }
   if(method=="GET" && path=="/api/hardware/pins") { writePinCapabilities(output,runtime_.hardwareHudUart); return; }
   if(method=="GET" && path=="/api/hardware") { writeHardwareStatus(output,command,web_.value("view")); return; }
@@ -323,17 +340,21 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
     runtime_.controller.stopNow(-1,millis()); hardware_.applyOutputs(); runtime_.controller.configurationLocked=true;
   };
   if(path=="/api/hardware") {
+    if(runtime_.setup.required && runtime_.setupSaving && runtime_.setup.drive>=0 &&
+        (form.config.drive!=runtime_.setup.drive || form.config.simulation!=runtime_.setup.simulation)) {reply(409,"setup_drive_mismatch");return;}
     if(const auto error=board::validateHardwareDetailed(form.config,runtime_.hardwareHudUart)) {
       status=400;
       output << "{\"ok\":false,\"error\":" << jsonQuoted(error.error) << ",\"field\":" << jsonQuoted(error.field)
         << ",\"gpio\":" << error.pin << ",\"owner\":" << jsonQuoted(error.owner) << '}'; return;
     }
     if(const auto error=modbus.wiring(form.config,runtime_.hardwareHudUart)){reply(400,error);return;}
+    const bool hardwareChanged=!runtime_.setupSaving || !(form.config==base) || (runtime_.setup.required && !runtime_.setup.equipment);
     const bool modbusChanged=!(modbus==runtime_.modbus);
+    if(!hardwareChanged && !modbusChanged){reply(200,"");return;}
     if(modbusChanged && !storage_.saveModbus(modbus)){reply(503,"storage_failed");return;}
-    invalidateSetup(SetupStep::Equipment);
+    if(hardwareChanged)invalidateSetup(SetupStep::Equipment);
     stopForConfiguration();
-    saved=storage_.stageHardware(runtime_,form.config);
+    saved=!hardwareChanged || storage_.stageHardware(runtime_,form.config);
     if(!saved && modbusChanged)storage_.saveModbus(runtime_.modbus);
   } else if(path=="/api/hardware/confirm") {
     if(runtime_.recovery || !runtime_.hardwareTrial || !runtime_.hardwareProbe || !runtime_.memoryGuard.ready(millis()) || heapFreeBytes()<MemoryGuard::HealthyFree || heapMaxBlockBytes()<MemoryGuard::HealthyBlock || runtimeMetrics.allocationFailures.load()!=runtime_.memoryGuard.failures) { reply(409,"not_ready"); return; }
@@ -350,7 +371,7 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
   }
   else { reply(404,"not_found"); return; }
   if(!saved) { reply(503,"storage_failed"); return; }
-  reply(200,""); restart_.request(millis()); return;
+  reply(200,""); configurationRestart(); return;
 }
 
 void DeviceApi::executeGeneral(std::string_view method, std::string_view path, FormView arguments,
@@ -368,30 +389,47 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       if(!lease || lease!=runtime_.setupLease || runtime_.setup.paused){reply(409,"setup_lease_expired");return;}
       runtime_.setupRenewed=millis();reply(200,"");return;
     }
+    if(action=="begin_save" || action=="end_save") {
+      if(!lease || lease!=runtime_.setupLease || runtime_.setup.paused){reply(409,"setup_lease_expired");return;}
+      runtime_.setupSaving=action=="begin_save";writeSetup(output);return;
+    }
     auto next=runtime_.setup;
-    if(action=="start" || action=="resume") {
+    if(action=="drive") {
+      uint32_t generation=0,drive=0,simulation=0;
+      if(!lease || lease!=runtime_.setupLease || !next.required || next.paused || next.step!=SetupStep::Model){reply(409,"setup_step_not_ready");return;}
+      if(!hardwareUnsigned(web_.value("generation"),generation)||generation!=next.generation){reply(409,"stale_setup");return;}
+      if(!hardwareUnsigned(web_.value("driveInterface"),drive)||drive>DRIVE_DIR_PWM ||
+          !hardwareUnsigned(web_.value("simulation"),simulation)||simulation>1 || (CROWPANEL_LOCAL_DRIVE && (drive==DRIVE_SEPARATE_PWM || drive==DRIVE_DIR_PWM))) {reply(400,"invalid_hardware");return;}
+      next.drive=int8_t(drive);next.simulation=simulation;
+      if(drive!=runtime_.controller.hardware.drive || bool(simulation)!=runtime_.controller.hardware.simulation)next.equipment=false;
+    } else if(action=="start" || action=="resume") {
       runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
       if(!next.required) {next.required=true;next.equipment=runtime_.hardwareRecord.hasConfirmed;next.checked=0;next.step=SetupStep::Network;}
       next.paused=false;
     } else if(action=="pause") {
-      next.paused=true;runtime_.setupLease=0;
+      next.paused=true;next.pendingNext=false;runtime_.setupLease=0;
       runtime_.controller.cancelCoast(millis());runtime_.controller.cancelAutoTune(millis());runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
     } else if(action=="back") {
       if(!next.required){reply(409,"setup_inactive");return;}
+      next.pendingNext=false;
       SetupState cursor;cursor.step=SetupStep::Network;
       while(cursor.next(runtime_.hud.isHud(),runtime_.controller.hardware.simulation || runtime_.controller.hardware.manualWithoutFeedback())!=next.step && cursor.step!=SetupStep::Review && cursor.step!=SetupStep::Done)
         cursor.step=cursor.next(runtime_.hud.isHud(),runtime_.controller.hardware.simulation || runtime_.controller.hardware.manualWithoutFeedback());
       next.step=next.step==SetupStep::Network?SetupStep::Network:cursor.step;
       runtime_.controller.cancelCoast(millis());runtime_.controller.cancelAutoTune(millis());runtime_.controller.stopNow(-1,millis());
+    } else if(action=="apply") {
+      if(!lease || lease!=runtime_.setupLease || next.paused || !runtime_.setupRestartRequired){reply(409,"setup_step_not_ready");return;}
+      next.pendingNext=true;
     } else if(action=="advance" || action=="complete") {
       uint32_t generation=0;
       if(!hardwareUnsigned(web_.value("generation"),generation)||generation!=next.generation){reply(409,"stale_setup");return;}
-      if(!next.required || next.paused || !setupReady(next.step) || web_.value("checked")!="1"){reply(409,"setup_step_not_ready");return;}
+      if(!next.required || next.paused || runtime_.setupRestartRequired || !setupReady(next.step)){reply(409,"setup_step_not_ready");return;}
       if(action=="complete" && next.step!=SetupStep::Review){reply(409,"setup_step_not_ready");return;}
       next.checked|=uint16_t(1u<<unsigned(next.step));
       const bool finished=next.step==SetupStep::Review;
       next.step=next.next(runtime_.hud.isHud(),runtime_.controller.hardware.simulation || runtime_.controller.hardware.manualWithoutFeedback());
-      if(finished){next.required=false;next.paused=false;next.fresh=false;runtime_.setupLease=0;runtime_.controller.stopNow(-1,millis());}
+      next.pendingNext=false;
+      if(finished){next.required=false;next.paused=false;next.fresh=false;next.drive=-1;next.simulation=false;runtime_.setupLease=0;runtime_.controller.stopNow(-1,millis());}
     } else {reply(400,"invalid_setup_action");return;}
     runtime_.controller.cancelCoast(millis());runtime_.controller.cancelAutoTune(millis());runtime_.controller.stopNow(-1,millis());
     hardware_.applyOutputs();
@@ -401,6 +439,10 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     runtime_.setupStorageOk=true;runtime_.setup=next;runtime_.controller.setupRequired=next.required;
     if(action=="start"||action=="resume") {
       runtime_.setupLease=(runtime_.hardwareToken^(next.generation*2654435761u))|1u;runtime_.setupRenewed=millis();
+    }
+    if(action=="apply" || action=="pause") {
+      runtime_.setupSaving=false;
+      if(runtime_.setupRestartRequired)restart_.request(millis());
     }
     writeSetup(output);return;
   }
@@ -432,7 +474,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     invalidateSetup(SetupStep::Network);
     runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
     network_.credentials().network=next;runtime_.hud.config.wifi=hud.wifi;
-    reply(200,"");restart_.request(millis());return;
+    reply(200,"");configurationRestart();return;
   }
   if(path=="/api/motion/coast") {
     auto &c=runtime_.controller;auto &m=c.coast;
@@ -491,7 +533,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       output.decimal(c.runtimeSpeedLimit(i),-1) << ",\"speedAdjustable\":" << (c.runtimeSpeedAvailable(i)?"true":"false");
       writeAxisMotion(output,c,i);output << '}';return;
     }
-    output << "{\"model\":" << jsonQuoted(c.model==Model::G5500?"G5500":"G800DXA")
+    output << "{\"model\":" << jsonQuoted(modelName(c.model))
       << ",\"role\":" << jsonQuoted(runtime_.hud.isHud()?"hud":"controller")
       << ",\"controlMode\":" << jsonQuoted(Controller::modeName(c.mode))
       << ",\"remainingMs\":" << c.remaining(millis())
@@ -594,15 +636,15 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       web_.send(403, "application/json", "{\"error\":\"controller_settings_only\"}");
       return;
     }
-    int azRaw = 0, azMv = 0, elRaw = 0, elMv = 0;
-    hardware_.positionDiagRead(0, azRaw, azMv);
+    int azRaw = 0, azMv = 0, elRaw = 0, elMv = 0, azPhysicalMv = 0, elPhysicalMv = 0;
+    hardware_.positionDiagRead(0, azRaw, azMv, &azPhysicalMv);
     if (runtime_.controller.model == forkrot::Model::G5500) {
-      hardware_.positionDiagRead(1, elRaw, elMv);
+      hardware_.positionDiagRead(1, elRaw, elMv, &elPhysicalMv);
     }
     String j = String("{\"hasEl\":") +
                (runtime_.controller.model == forkrot::Model::G5500 ? "true" : "false") +
-               ",\"azRaw\":" + String(azRaw) + ",\"azMv\":" + (runtime_.controller.hardware.sensorType(0)?String("null"):String(azMv)) +
-               ",\"elRaw\":" + String(elRaw) + ",\"elMv\":" + (runtime_.controller.hardware.sensorType(1)?String("null"):String(elMv)) +
+               ",\"azRaw\":" + String(azRaw) + ",\"azMv\":" + (runtime_.controller.hardware.sensorType(0)?String("null"):String(azPhysicalMv)) +
+               ",\"elRaw\":" + String(elRaw) + ",\"elMv\":" + (runtime_.controller.hardware.sensorType(1)?String("null"):String(elPhysicalMv)) +
                ",\"azValue\":" + String(azMv) + ",\"elValue\":" + String(elMv) +
                ",\"azSensor\":\"" + String(sensorName(runtime_.controller.hardware.sensorType(0))) +
                "\",\"elSensor\":\"" + String(sensorName(runtime_.controller.hardware.sensorType(1))) + "\"}";
@@ -708,7 +750,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     auto &calibrationState = calibration_.state();
     // MULTI-POINT. AZ is written only to the currently selected P36/P45 table.
     String p = web_.arg("p");
-    if (runtime_.controller.model == forkrot::Model::G800DXA && p.startsWith("el")) {
+    if (runtime_.controller.model != forkrot::Model::G5500 && p.startsWith("el")) {
       web_.send(400, "text/plain", "NO EL AXIS");
       return;
     }
@@ -765,7 +807,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     }
     String p = web_.arg("p");
     p.toUpperCase();
-    if (runtime_.controller.model == forkrot::Model::G800DXA && (p == "O2" || p == "F2")) {
+    if (runtime_.controller.model != forkrot::Model::G5500 && (p == "O2" || p == "F2")) {
       web_.send(400, "text/plain", "NO EL AXIS");
       return;
     }
@@ -841,7 +883,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
     if(!storage_.saveApPassword(p)){web_.send(503,"text/plain","Не удалось сохранить пароль AP.");return;}
     web_.send(200, "text/plain", p.length() ? "AP password saved" : "AP set to open");
-    restart_.request(millis());
+    configurationRestart();
 
     return;
   }
@@ -917,7 +959,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       << ",\"calibrated\":" << (calibrationState.cal.valid ? "true" : "false") << ",\"selectedCalOk\":"
       << ((runtime_.hud.isHud()
                ? runtime_.controller.axes[0].calibrated &&
-                     (runtime_.controller.model == Model::G800DXA || runtime_.controller.axes[1].calibrated)
+                     (runtime_.controller.model != Model::G5500 || runtime_.controller.axes[1].calibrated)
                : calibration_.selectedCalibrationValid())
               ? "true"
               : "false")
@@ -1065,7 +1107,6 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       web_.send(400, "application/json", "{\"ok\":false,\"result\":\"uart_disabled\"}");
       return;
     }
-    if(config.role != (role=="hud"?DeviceRole::Hud:DeviceRole::Controller))invalidateSetup(SetupStep::Role);
     config.role = role == "hud" ? DeviceRole::Hud : DeviceRole::Controller;
     config.wifi = wifi == "host" ? HudWifi::Host : wifi == "client" ? HudWifi::Client : HudWifi::Existing;
     config.uart = uart == "1";
@@ -1084,10 +1125,16 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     config.link.intervalMs=uint16_t(interval);config.link.readyHigh=ready;
     if(!config.link.valid()) {reply(400,"invalid_uart_settings");return;}
     if(const auto error=runtime_.modbus.wiring(runtime_.controller.hardware,config.uart)){reply(400,error);return;}
+    const auto &previous=runtime_.hud.config;
+    if(config.role==previous.role && config.wifi==previous.wifi && config.uart==previous.uart && config.port==previous.port &&
+        config.link.intervalMs==previous.link.intervalMs && config.link.readyHigh==previous.link.readyHigh) {
+      reply(200,"");return;
+    }
     if (!storage_.saveHudConfig(config)) {
       web_.send(507, "application/json", "{\"ok\":false,\"result\":\"storage_full\"}");
       return;
     }
+    if(config.role!=previous.role)invalidateSetup(SetupStep::Role);
     // Stop local outputs before rebooting into another role. Do not alter remote numerical jobs.
     if (!runtime_.hud.isHud()) {
       runtime_.controller.stopNow(-1, millis());
@@ -1095,7 +1142,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       runtime_.controller.driveFault = true;
     }
     web_.send(200, "application/json", "{\"ok\":true,\"result\":\"restart\"}");
-    restart_.request(millis());
+    configurationRestart();
 
     return;
   }
@@ -1245,7 +1292,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     return;
   }
   if(path=="/api/wifi" && (method=="GET" || method=="POST")) {
-    if (runtime_.hud.config.wifi == HudWifi::Host) {
+    if (runtime_.hud.config.wifi == HudWifi::Host && !runtime_.setupSaving) {
       web_.send(409, "text/plain; charset=utf-8", "Для подключения к роутеру выберите обычный режим Wi-Fi в разделе «Пульт и связь».");
       return;
     }
@@ -1265,7 +1312,8 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       return;
     }
     diagnostics_.dbgPrintln("[WIFI NVS] credentials saved and verified; connecting with setup AP retained");
-    network_.connectWifi(ssid, password);
+    if(runtime_.setupSaving)configurationRestart();
+    else network_.connectWifi(ssid, password);
     web_.send(200, "text/plain; charset=utf-8", "Настройки Wi-Fi сохранены. Подключаемся к сети; полученный IP появится на этой странице.");
     return;
   }

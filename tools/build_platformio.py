@@ -17,7 +17,7 @@ p.add_argument('--display',choices=['none','tft','lcd','crowpanel','gc9a01','st7
 p.add_argument('--bluetooth',choices=['0','1'])
 p.add_argument('--bluetooth-mode',choices=['auto','hc05','spp'])
 p.add_argument('--simulation',choices=['0','1'],help='Virtual drive on any board; disables motor GPIO/PWM and feedback ADC')
-p.add_argument('--drive',choices=['yaesu','separate-pwm','bts7960'])
+p.add_argument('--drive',choices=['yaesu','separate-pwm','bts7960','dir-pwm'])
 p.add_argument('--pwm-inverted',choices=['0','1'],help='Invert only BTS7960 RPWM/LPWM for optocoupler wiring')
 p.add_argument('--pio',default=os.environ.get('PIO','pio'))
 p.add_argument('--jobs',type=int,default=4)
@@ -74,7 +74,7 @@ if a.simulation is not None:
     flags.append('-DDRIVE_SIMULATION='+a.simulation)
 if a.drive:
     flags=[f for f in flags if not f.startswith('-DDRIVE_INTERFACE=')]
-    flags.append('-DDRIVE_INTERFACE='+str({'yaesu':0,'separate-pwm':1,'bts7960':2}[a.drive]))
+    flags.append('-DDRIVE_INTERFACE='+str({'yaesu':0,'separate-pwm':1,'bts7960':2,'dir-pwm':3}[a.drive]))
 if a.pwm_inverted is not None:
     flags=[f for f in flags if not f.startswith('-DBTS7960_PWM_INVERTED=')]
     flags.append('-DBTS7960_PWM_INVERTED='+a.pwm_inverted)

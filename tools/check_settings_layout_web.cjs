@@ -13,6 +13,9 @@ const request=async(route,body)=>{const r=await fetch(base+route,{method:'POST',
   const page=await browser.newPage({viewport:{width:1100,height:950}}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base+'/#settings');await page.waitForFunction(()=>window._forkState&&live.ready);
+  assert.equal(await page.locator('#settingsPanel > :first-child').getAttribute('id'),'setupEntry');
+  assert.equal(await page.locator('#setupEntry a').getAttribute('href'),'/setup');
+  assert.equal(await page.locator('.nav a[href="/setup"]').count(),0);
   const ids=['networkStatus','networkSettings','hudPanel','rotorSettings','equipmentSettings','calibrationSettings','motionSettings','peersSettings','programSettings','presetSettings','otaSettings','signalSettings'];
   assert.deepEqual(await page.locator('#settingsPanel > .settings-section:not(#setupTests)').evaluateAll(nodes=>nodes.map(n=>n.id)),ids);
   assert.equal(await page.locator('#settingsPanel details').count(),ids.length,'Every section has one consistent disclosure level');

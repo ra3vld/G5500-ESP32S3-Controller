@@ -69,7 +69,7 @@ public:
       switch (key) {
       case 0: next.token=value; break;
       case 1: next.generation=value; break;
-      case 2: if (value>2) return false; next.config.drive=value; break;
+      case 2: if (value>DRIVE_DIR_PWM) return false; next.config.drive=value; break;
       case 5: if (value<1 || value>3) return false; next.config.bluetoothMode=value; break;
       case 7: if (value>48) return false; next.config.buttonGpio=value; break;
       default:

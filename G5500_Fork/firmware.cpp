@@ -147,10 +147,10 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrint(" | drive=");
   diagnostics_.dbgPrintln(runtime_.hud.isHud() ? "HUD remote drive"
                           : runtime_.controller.hardware.simulation ? "SIMULATED 13.4 deg/s"
-                          : runtime_.controller.hardware.pins.azAdc < 0 ? "NONE"
+                          : !runtime_.controller.hardware.hasDirections(0) ? "NONE"
                           : runtime_.controller.hardware.drive == DRIVE_YAESU   ? "YAESU"
                           : runtime_.controller.hardware.drive == DRIVE_BTS7960 ? "BTS7960"
-                                                             : "SEPARATE_PWM");
+                                                             : runtime_.controller.hardware.drive == DRIVE_DIR_PWM ? "DIR_PWM" : "SEPARATE_PWM");
 #if FORK_CLASSIC_ESP32
   diagnostics_.dbgPrintln("[DIAG] /diaglog: fixed 2048-byte log; UART0 H4: RAM and Wi-Fi status");
 #else

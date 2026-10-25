@@ -79,14 +79,14 @@ bool writeLiveState(JsonWriter &j,const Controller &c,const Hud &h,uint32_t now)
     << ",\"stopEpoch\":" << c.stopEpoch
     << ",\"moving\":" << boolean(c.moving()) << ",\"motion\":" << jsonQuoted(c.moving()?"MOVING":"STOP")
     << ",\"presetActive\":" << boolean(c.presetActive) << ",\"presetSlot\":" << c.presetSlot
-    << ",\"model\":" << jsonQuoted(c.model==Model::G5500?"G5500":"G800DXA") << ",\"azMode\":" << unsigned(c.azProfile)
+    << ",\"model\":" << jsonQuoted(modelName(c.model)) << ",\"azMode\":" << unsigned(c.azProfile)
     << ",\"azProfile\":" << jsonQuoted(azProfileName(c.azProfile))
     << ",\"azStart\":" << c.minimum << ",\"azSpan\":" << c.azRange.span()
     << ",\"azMax\":" << c.maximum << ",\"azRangeRevision\":" << c.rangeRevision
     << ",\"elProfile\":" << jsonQuoted(elProfileName(c.elProfile))
     << ",\"elStart\":" << c.elRange.start << ",\"elSpan\":" << c.elRange.span()
     << ",\"elMax\":" << c.elRange.end << ",\"elRangeRevision\":" << c.rangeRevision
-    << ",\"selectedCalOk\":" << boolean(c.axes[0].calibrated&&(c.model==Model::G800DXA||c.axes[1].calibrated))
+    << ",\"selectedCalOk\":" << boolean(c.axes[0].calibrated&&(c.model!=Model::G5500||c.axes[1].calibrated))
     << ",\"fault\":" << jsonQuoted(c.fault) << ",\"axes\":[";
   for(unsigned i=0;i<2;++i) {
     if(i)j<<',';

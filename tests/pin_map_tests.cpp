@@ -15,7 +15,7 @@ int main(int argc,char **argv) {
     assert(board::output(46) && board::pullup(46) && !board::validateHardware(c));
   }
   if(argc==2 && std::string(argv[1])=="--describe") {
-    char data[STATUS_JSON_CAPACITY]; JsonWriter j(data,sizeof data);
+    char data[8192]; JsonWriter j(data,sizeof data);
     j << "{\"metadata\":"; writePinCapabilities(j,false);
     j << ",\"pins\":"; writePinMap(j,PinMap{});
     j << ",\"classicEsp32\":" << unsigned(SELECTED_BOARD==BOARD_ESP32)
@@ -111,7 +111,7 @@ int main(int argc,char **argv) {
   record.good.pins.uartDe=0;record.candidate.pins.hudRx=4;record.candidate.pins.hudTx=5;record.candidate.pins.hudDe=6;
   record.good.pins.led=-1; record.candidate.pins.led=0; record.candidate.buttonGpio=-1;
   const auto bytes=encodeHardware(record); HardwareRecord decoded;
-  assert(bytes[2]==6 && decodeHardware(bytes,decoded));
+  assert(bytes[2]==8 && decodeHardware(bytes,decoded));
   assert(decoded.good==record.good && decoded.candidate==record.candidate);
   auto broken=bytes; broken[36]^=1; assert(!decodeHardware(broken,decoded));
   const auto v2=encodeHardwareRecord<98>(record);
@@ -124,6 +124,14 @@ int main(int argc,char **argv) {
   const auto oldSensors=encodeHardwareRecord<194>(record);
   assert(oldSensors[2]==5 && decodeHardware(oldSensors,decoded));
   assert(decoded.good==record.good && decoded.good.pins.hudReady==-1);
+  const auto oldRadio=encodeHardwareRecord<196>(record);
+  assert(oldRadio[2]==6 && decodeHardware(oldRadio,decoded) && decoded.good==record.good);
+  record.good.sensors[6]=1;record.candidate.sensors[7]=1;
+  const auto oldInverted=encodeHardwareRecord<204>(record);
+  assert(oldInverted[2]==7 && decodeHardware(oldInverted,decoded));
+  assert(decoded.good==record.good && decoded.candidate==record.candidate);
+  assert(decoded.good.pins.azEnable==-1 && decoded.good.pins.elEnable==-1);
+  record.good.sensors[6]=record.candidate.sensors[7]=0;
   auto radio=record.good; radio.pins.uartDe=-1; radio.pins.hudReady=radio.pins.uartTx;
   assert(std::string(board::validateHardware(radio))=="gpio_conflict");
   const auto oldUart=encodeHardwareRecord<162>(record);

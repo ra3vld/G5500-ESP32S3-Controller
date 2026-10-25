@@ -60,13 +60,20 @@ int Hardware::positionValue(unsigned axis) {
   if(c.simulation) return 0;
   const int pin=axis?c.pins.elAdc:c.pins.azAdc;
   const int value=c.sensorType(axis)?sensors_.read(c,axis):board::adc(pin)?adcAvgMv(pin):-1;
-  positionValid_[axis]=value>=0;
-  return value;
+  const int directed = !c.sensorType(axis) && c.sensorInverted(axis) && value>=0 ? 3300-value : value;
+  positionValid_[axis]=directed>=0;
+  return directed;
 }
-void Hardware::positionDiagRead(unsigned axis,int &raw,int &value) {
+void Hardware::positionDiagRead(unsigned axis,int &raw,int &value,int *millivolts) {
   if(runtime_.controller.hardware.sensorType(axis)) {
     value=positionValue(axis);raw=sensors_.raw(axis);
-  } else adcDiagRead(axis?runtime_.controller.hardware.pins.elAdc:runtime_.controller.hardware.pins.azAdc,raw,value);
+  } else {
+    const auto &c=runtime_.controller.hardware;
+    const int pin=axis?c.pins.elAdc:c.pins.azAdc;
+    adcDiagRead(pin,raw,value);
+    if(millivolts) *millivolts=value;
+    if(c.sensorInverted(axis) && !c.simulation && !runtime_.recovery && !runtime_.hud.isHud() && board::adc(pin)) value=3300-value;
+  }
 }
 bool Hardware::buttonReleased() const {
   if (runtime_.controller.hardware.buttonGpio < 0) return true;
@@ -219,17 +226,17 @@ void Hardware::outputsOff() {
   return;
 #endif
   if (!directionsStarted_ || c.simulation || runtime_.hud.isHud()) return;
-  if (c.drive == DRIVE_BTS7960) {
-    preloadLevel(p.azSpeedEnable, LOW);
-    if(!c.pins.singleAxis()) preloadLevel(p.elSpeedEnable, LOW);
-  }
-  const int pins[] = {p.azNegative, p.azPositive, p.elNegative, p.elPositive, p.azSpeedEnable, c.drive != DRIVE_YAESU ? p.elSpeedEnable : -1};
+  for(unsigned i=0;i<(c.singleAxis()?1u:2u);++i)
+    if(c.enablePin(i)>=0) preloadLevel(c.enablePin(i),LOW);
+  pwmDirection_[0]=pwmDirection_[1]=0;
   const int pwm[] = {c.drive == DRIVE_BTS7960 ? p.azNegative : p.azSpeedEnable,
                     c.drive == DRIVE_BTS7960 ? p.azPositive : p.elSpeedEnable,
                     c.drive == DRIVE_BTS7960 ? p.elNegative : -1,
                     c.drive == DRIVE_BTS7960 ? p.elPositive : -1};
   for (unsigned i=0; i<4; ++i) if (attached_[i]) ledcWrite(pwm[i], motorPwmDuty(0));
-  for (int pin : pins) if (pin >= 0) preloadLevel(pin, idleOutputLevel(pin));
+  for(const auto &d:pinDefinitions) if(d.group==PinGroup::Drive && d.kind==PinKind::Output && board::pinActive(c,d)) {
+    const int pin=p.*d.member;if(pin>=0)preloadLevel(pin,idleOutputLevel(pin));
+  }
 }
 bool Hardware::preparePwm(bool enable) {
   const auto &p=runtime_.controller.hardware.pins;
@@ -242,7 +249,7 @@ bool Hardware::preparePwm(bool enable) {
   if (pwmFailed) return false;
   if (enable && !pwmReady) {
     outputsOff();
-    const unsigned count = c.drive == DRIVE_BTS7960 ? (c.pins.singleAxis()?2:4) : c.drive == DRIVE_SEPARATE_PWM ? (c.pins.singleAxis()?1:2) : 1;
+    const unsigned count = c.drive == DRIVE_BTS7960 ? (c.singleAxis()?2:4) : c.separatePwm() ? (c.singleAxis()?1:2) : 1;
     for (unsigned i=0; i<count; ++i) {
       attached_[i] = ledcAttach(pins[i], c.drive == DRIVE_YAESU ? 20000 : 1000, 10);
       if (!attached_[i]) {
@@ -272,7 +279,7 @@ bool Hardware::preparePwm(bool enable) {
   return true;
 }
 void Hardware::applyOutputs() {
-  if (runtime_.controller.configurationLocked || (runtime_.setup.required && !runtime_.setup.equipment)) { outputsOff(); return; }
+  if (runtime_.controller.configurationLocked || runtime_.controller.driveFault || (runtime_.setup.required && !runtime_.setup.equipment)) { outputsOff(); return; }
   if (runtime_.hud.isHud()) return;
   const auto &c = runtime_.controller.hardware;
   if(!c.simulation) for(unsigned i=0;i<2;++i)
@@ -283,7 +290,7 @@ void Hardware::applyOutputs() {
 #if CROWPANEL_LOCAL_DRIVE
   else {
     auto &controller = runtime_.controller;
-    if (controller.model != Model::G800DXA || !directionsStarted_) {
+    if (controller.model == Model::G5500 || !directionsStarted_) {
       if (directionsStarted_) crowpanelDrive_.stop();
       crowpanelFault();
     } else if (!crowpanelDrive_.apply(controller.driveFault ? 0 : controller.axes[0].direction,
@@ -294,32 +301,40 @@ void Hardware::applyOutputs() {
   else {
     const auto &p=c.pins;
     if(!directionsStarted_) return;
-    const bool ready = preparePwm(c.drive != DRIVE_YAESU || runtime_.controller.variableSpeed(0));
+    const bool ready = preparePwm(c.drive != DRIVE_YAESU || runtime_.controller.variableSpeed(0)) && !runtime_.controller.driveFault;
     const int neg[2] = {p.azNegative, p.elNegative}, pos[2] = {p.azPositive, p.elPositive}, speed[2] = {p.azSpeedEnable, p.elSpeedEnable};
-    if (c.drive == DRIVE_BTS7960) {
-      for (unsigned i=0; i<(c.pins.singleAxis()?1u:2u); ++i)
-        if (!ready || !runtime_.controller.axes[i].direction || runtime_.controller.axes[i].speedOutputPercent <= 0)
-          digitalWrite(speed[i], LOW);
+    for (unsigned i=0; i<(c.singleAxis()?1u:2u); ++i) {
+      const auto &axis=runtime_.controller.axes[i];
+      if(c.enablePin(i)>=0 && (!ready || !axis.direction || axis.speedOutputPercent<=0 || axis.direction!=pwmDirection_[i]))
+        digitalWrite(c.enablePin(i),LOW);
     }
-    for (unsigned i=0; i<(c.pins.singleAxis()?1u:2u); ++i) {
+    for (unsigned i=0; i<(c.singleAxis()?1u:2u); ++i) {
       if(!c.hasDirections(i)) continue;
       const auto &axis = runtime_.controller.axes[i];
       const int d = ready ? axis.direction : 0;
       const uint32_t duty = d ? uint32_t(lroundf(axis.speedOutputPercent*1023.f/100.f)) : 0;
       if (c.drive == DRIVE_BTS7960) {
-        if (!d || !duty) digitalWrite(speed[i], LOW);
         if (ready) {
           ledcWrite(d > 0 ? neg[i] : pos[i], motorPwmDuty(0));
           ledcWrite(d > 0 ? pos[i] : neg[i], motorPwmDuty(duty));
         }
-        digitalWrite(speed[i], d && duty ? HIGH : LOW);
+      } else if(c.drive==DRIVE_DIR_PWM) {
+        if(pwmReady) {
+          if(d && pwmDirection_[i]!=d) {
+            ledcWrite(speed[i],0); // Never change DIR while PWM is live.
+            digitalWrite(pos[i],d>0?HIGH:LOW);
+          }
+          ledcWrite(speed[i],duty);
+        }
       } else {
         if (d <= 0) digitalWrite(pos[i], LOW);
         if (d >= 0) digitalWrite(neg[i], LOW);
         if (d < 0) digitalWrite(neg[i], HIGH);
         if (d > 0) digitalWrite(pos[i], HIGH);
-        if (pwmReady && (c.drive == DRIVE_SEPARATE_PWM || i == 0)) ledcWrite(speed[i], duty);
+        if (pwmReady && (c.separatePwm() || i == 0)) ledcWrite(speed[i], duty);
       }
+      if(c.enablePin(i)>=0) digitalWrite(c.enablePin(i),d && duty ? HIGH:LOW);
+      pwmDirection_[i]=d && duty ? d:0;
     }
   }
 #endif
@@ -343,13 +358,13 @@ void Hardware::beginDirections() {
   directionsStarted_=true;
   if(!crowpanelDrive_.begin(c)) crowpanelFault();
 #else
-  if(c.drive==DRIVE_BTS7960) {
-    preloadLevel(c.pins.azSpeedEnable,LOW); pinMode(c.pins.azSpeedEnable,OUTPUT);
-    if(!c.pins.singleAxis()) { preloadLevel(c.pins.elSpeedEnable,LOW); pinMode(c.pins.elSpeedEnable,OUTPUT); }
+  // Disable an optional enable before acquiring direction/PWM outputs.
+  for(unsigned i=0;i<(c.singleAxis()?1u:2u);++i) if(c.enablePin(i)>=0) {
+    preloadLevel(c.enablePin(i),LOW);pinMode(c.enablePin(i),OUTPUT);
   }
-  const int motorPins[]={c.pins.azNegative,c.pins.azPositive,c.pins.elPositive,c.pins.elNegative,
-      c.pins.azSpeedEnable,c.drive!=DRIVE_YAESU?c.pins.elSpeedEnable:-1};
-  for(int pin:motorPins) if(pin>=0) { preloadLevel(pin,idleOutputLevel(pin)); pinMode(pin,OUTPUT); }
+  for(const auto &d:pinDefinitions) if(d.group==PinGroup::Drive && d.kind==PinKind::Output && board::pinActive(c,d)) {
+    const int pin=c.pins.*d.member;if(pin>=0){preloadLevel(pin,idleOutputLevel(pin));pinMode(pin,OUTPUT);}
+  }
   directionsStarted_=true;
 #endif
 }
@@ -391,7 +406,7 @@ void Hardware::beginInputs() {
   localInputsStarted_ = c.localMask()!=0;
 }
 bool Hardware::startJoystickCalibration() {
-  if(!localInputsStarted_ || runtime_.controller.hardware.local[0]!=LOCAL_INPUT_JOYSTICK ||
+  if(!localInputsStarted_ || !(runtime_.controller.hardware.local[0]&LOCAL_INPUT_JOYSTICK) ||
       runtime_.controller.configurationLocked || runtime_.controller.autoTune.active()) return false;
   runtime_.controller.stopNow(-1,millis()); applyOutputs();
   localInput_.sample(0,0,0,false,millis());
@@ -427,20 +442,28 @@ void Hardware::serviceLocalInputs() {
   const int negative[]={p.localAzNegative,p.localElNegative}, positive[]={p.localAzPositive,p.localElPositive};
   const int pins[]={p.localAzAdc,p.localElAdc};
   for (unsigned i = 0; i < 2; ++i) {
-    if (!(c.localMask() & (1u << i)) || (!calibrating_ && i == 1 && runtime_.controller.model == Model::G800DXA)) {
+    if (!(c.localMask() & (1u << i)) || (!calibrating_ && i == 1 && runtime_.controller.model != Model::G5500)) {
       neutralMask |= 1u << i; continue;
     }
-    if(c.local[0]==LOCAL_INPUT_BUTTONS) {
-      values[i] = localButtons_[i].sample(digitalRead(negative[i]) == LOW, digitalRead(positive[i]) == LOW, now);
-      if (localButtons_[i].neutral()) neutralMask |= 1u << i;
-      if (c.local[1+i]) values[i] = -values[i];
-    } else {
+    float buttons = 0, joystick = 0;
+    bool buttonNeutral = true, joystickNeutral = true;
+    if ((c.local[0]&LOCAL_INPUT_BUTTONS) && negative[i]>=0 && positive[i]>=0) {
+      buttons = localButtons_[i].sample(digitalRead(negative[i]) == LOW, digitalRead(positive[i]) == LOW, now);
+      buttonNeutral = localButtons_[i].neutral();
+      if (c.local[1+i]) buttons = -buttons;
+    }
+    if ((c.local[0]&LOCAL_INPUT_JOYSTICK) && pins[i]>=0) {
       int samples[5];
       for (int &value : samples) value = analogRead(pins[i]);
       std::sort(samples, samples + 5); localRaw_[i]=samples[2];
-      values[i] = localJoystick_[i].sample(samples[2]);
-      if (localJoystick_[i].neutral(samples[2])) neutralMask |= 1u << i;
+      joystick = localJoystick_[i].sample(samples[2]);
+      joystickNeutral = localJoystick_[i].neutral(samples[2]);
     }
+    const bool neutral = buttonNeutral && joystickNeutral;
+    // An opposing button pair also suppresses the joystick until released.
+    if (!buttonNeutral && !buttons) joystick = 0;
+    values[i] = localCombined_[i].sample(buttons, joystick, neutral);
+    if (neutral) neutralMask |= 1u << i;
   }
   // Selection changes, disconnect and remote takeover require a new neutral gesture.
   const auto selection=runtime_.hud.selectionEpoch;

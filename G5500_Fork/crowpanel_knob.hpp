@@ -27,7 +27,7 @@ class CrowPanelKnob {
       epoch_ = controller_.stopEpoch;
       inverted_ = inverted;
     }
-    if (model_ == Model::G800DXA) axis_ = 0;
+    if (model_ != Model::G5500) axis_ = 0;
     if (canResume_ && (active() ||
         controller_.pendingValid || !controller_.targetKnown ||
         (resumeTarget_.hasAz && controller_.axes[0].target != resumeTarget_.az) ||

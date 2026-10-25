@@ -33,8 +33,8 @@ HTTP-формы передаются как `application/x-www-form-urlencoded`.
 | POST `/api/execute` | без полей |
 | POST `/api/preset` | slot=1…4, label, az, el (G-5500) |
 | POST `/api/preset/run` | slot=1…4 |
-| POST `/api/settings` | model=G5500/G800DXA, rotorName, n1mmReport, n1mmPort, pstPort, reportPort, reportHost, n1mmManualFollow/pstManualFollow/gs232ManualFollow/rotctldManualFollow=true/false, externalAzMode=shortest/mechanical, speedEnabled=true/false, speedPercent/startSpeedPercent/approachSpeedPercent=1…100, accelerationMs/decelerationMs=100…10000, slowdownDegrees=1…90, coastDegrees=0…90, decelerationFactor=0.1…10 |
-| POST `/api/target` | az и/или el; хотя бы одна ось, для G-800DXA — az; явная локальная команда выполняется сразу |
+| POST `/api/settings` | model=G5500/G800DXA/G800SA, rotorName, n1mmReport, n1mmPort, pstPort, reportPort, reportHost, n1mmManualFollow/pstManualFollow/gs232ManualFollow/rotctldManualFollow=true/false, externalAzMode=shortest/mechanical, speedEnabled=true/false, speedPercent/startSpeedPercent/approachSpeedPercent=1…100, accelerationMs/decelerationMs=100…10000, slowdownDegrees=1…90, coastDegrees=0…90, decelerationFactor=0.1…10 |
+| POST `/api/target` | az и/или el; хотя бы одна ось, для G-800DXA и G-800SA — az; явная локальная команда выполняется сразу |
 
 `GET /api/status` также возвращает `n1mmManualFollow`, `pstManualFollow`, `gs232ManualFollow`, `rotctldManualFollow`: `true` — автоследование в ручном режиме, `false` — подтверждение. Эти параметры доступны на контроллере и на HUD для принимаемых ими команд. `externalAzMode` в статусе и настройках задаёт обработку внешнего AZ: `shortest` — кратчайший доступный путь (по умолчанию), `mechanical` — механическая координата программы. Отрицательный AZ в командах GS-232 и PST задаёт явную механическую координату и принимается только внутри настроенного диапазона, в том числе при `shortest`. В PST `LP=1` добавляет к базовому азимуту 180°.
 
@@ -48,7 +48,7 @@ JSON: `ok`, `result`; 200 успешно/ожидание, 400 неверно/н
 
 `azCoastDegrees`/`elCoastDegrees` — настроенный угол выбега; `azDecelerationFactor`/`elDecelerationFactor` — коэффициент торможения. Они доступны в `GET /api/status` и `POST /api/settings`. `coastDegrees` и `decelerationFactor` без префикса относятся к AZ. Фактический допуск находится в `axes[].stopToleranceDegrees`. Настройки выбега меняются на самом контроллере поворотки.
 
-`POST /api/settings` принимает настройки с префиксами `az`/`el` (кроме измеренных выходов). Поля без префикса также относятся к AZ. Если `speedPercent=50` и `azSpeedPercent=75` переданы вместе, весь запрос отклоняется без частичного изменения. `azSpeedEnabled` — алиас опционального `speedEnabled` Yaesu; у независимых приводов управление PWM является частью выбранного аппаратного интерфейса и не отключается настройкой. EL в модели G-800DXA выключена. Аппаратные поля доступны только для чтения; попытка изменить их через settings отклоняется.
+`POST /api/settings` принимает настройки с префиксами `az`/`el` (кроме измеренных выходов). Поля без префикса также относятся к AZ. Если `speedPercent=50` и `azSpeedPercent=75` переданы вместе, весь запрос отклоняется без частичного изменения. `azSpeedEnabled` — алиас опционального `speedEnabled` Yaesu; у независимых приводов управление PWM является частью выбранного аппаратного интерфейса и не отключается настройкой. EL в моделях G-800DXA и G-800SA выключена. G-800SA сохраняет собственный набор калибровок и предустановок. Аппаратные поля доступны только для чтения; попытка изменить их через settings отклоняется.
 
 `POST /api/speed` принимает `axis=az` / `el` и `value`: в простом режиме — процент выхода, в каскаде — °/с. Допустимый диапазон — от 5% до 100% верхнего предела оси (`speedLimit`). Уставка меняется без остановки текущего движения и сохраняется через 40 секунд после последнего изменения или перед штатной перезагрузкой. В контурах 100/200 Гц отложенная запись ожидает остановки всех осей. В `/api/status` и live-состоянии `axes[].speedSetpoint` и `speedLimit` содержат текущую уставку и её верхний предел, `speedAdjustable` — доступность регулировки. Команда доступна также через USB API контроллера. Для HUD и нерегулируемых выходов она отклоняется.
 
@@ -123,7 +123,7 @@ JSON: `ok`, `result`; 200 успешно/ожидание, 400 неверно/н
 
 ### Ограничения HTTP-клиента
 
-Передавайте POST-формы с `application/x-www-form-urlencoded`. Полный запрос вместе с заголовками и телом — до 4096 байт, суммарно до 40 параметров query/body; для `/api/hardware` и его подпутей — до 80; после URL-декодирования ключ — до 32 байт, значение — до 128 байт. Произвольные файлы и chunked-запросы не поддерживаются; для прошивки используйте отдельный [блочный API OTA](../maintenance/ota.md#http-api).
+Передавайте POST-формы с `application/x-www-form-urlencoded`. Полный запрос вместе с заголовками и телом — до 4096 байт, суммарно до 40 параметров query/body; для `/api/hardware` и его подпутей — до 96; после URL-декодирования ключ — до 32 байт, значение — до 128 байт. Произвольные файлы и chunked-запросы не поддерживаются; для прошивки используйте отдельный [блочный API OTA](../maintenance/ota.md#http-api).
 
 При обрыве или тайм-ауте запроса управления сначала прочитайте состояние: команда могла выполниться до потери ответа. Для HUD дополнительно дождитесь результата по `requestId`, как описано в [API HUD](../control/hud.md#http-api).
 
@@ -144,9 +144,9 @@ JSON: `ok`, `result`; 200 успешно/ожидание, 400 неверно/н
 
 При сохранении обязательны `token`, `generation` и хотя бы одно изменяемое поле. Пропущенные поля сохраняют значения текущей выбранной конфигурации. Поля оборудования: `driveInterface` (0 Yaesu, 1 LEFT/RIGHT + отдельный PWM, 2 LEFT_PWM/RIGHT_PWM + ENABLE, 3 DIR + PWM), `simulation`, `bluetoothEnabled`, `bluetoothMode` (1 HC-05, 2 SPP, 3 автоматически), `forceApSta`, `buttonGpio`, `buttonActiveLow`, `buttonPullup`, `pwmInverted`. Логические поля принимают 0 или 1.
 
-Датчики положения задаются полями `azSensor` / `elSensor`: 0 — потенциометр ADC, 1 — MT6701, 2 — AS5600. Поля `azSensorAddress` / `elSensorAddress` содержат десятичный 7-битный адрес I²C (обычно 6 для MT6701, строго 54 для AS5600), `azSensorZero` / `elSensorZero` — программный ноль в отсчётах датчика (0…16383 или 0…4095). При выборе энкодера ADC этой оси не требуется. Общая пара SDA/SCL допустима только для разных адресов. Смена типа, GPIO, адреса или нуля сбрасывает калибровку соответствующей оси. См. [подключение и калибровку](../setup/position-sensors.md).
+Датчики положения задаются полями `azSensor` / `elSensor`: 0 — потенциометр ADC, 1 — MT6701, 2 — AS5600. Поля `azSensorAddress` / `elSensorAddress` содержат десятичный 7-битный адрес I²C (обычно 6 для MT6701, строго 54 для AS5600), `azSensorZero` / `elSensorZero` — программный ноль в отсчётах датчика (0…16383 или 0…4095). При выборе энкодера ADC этой оси не требуется. Общая пара SDA/SCL допустима только для разных адресов. Поля `azSensorInverted` / `elSensorInverted` задают направление сигнала для всех датчиков: 0 — прямое, 1 — обратное (исходный отсчёт уменьшается с ростом реального угла). Смена типа, GPIO, адреса, нуля или направления сбрасывает калибровку соответствующей оси. См. [подключение и калибровку](../setup/position-sensors.md).
 
-`GET /api/adcdiag` возвращает `azSensor` / `elSensor` (`ADC`, `MT6701`, `AS5600`), `azRaw` / `elRaw` (исходный отсчёт), `azValue` / `elValue` (значение для калибровки с учётом программного нуля). Для потенциометра `Value` измеряется в мВ; для энкодера — в его отсчётах. Прежние `azMv` / `elMv` для энкодера равны `null`. При ошибке чтения `Value` равен −1. В `/api/status` и `/api/config` поля `azSensor` / `elSensor` указывают источник положения.
+`GET /api/adcdiag` возвращает `azSensor` / `elSensor` (`ADC`, `MT6701`, `AS5600`), `azRaw` / `elRaw` (исходный отсчёт), `azValue` / `elValue` (значение для калибровки с учётом программного нуля и направления). Для потенциометра `Value` измеряется в мВ; для энкодера — в его отсчётах. Прежние `azMv` / `elMv` для энкодера равны `null`. При ошибке чтения `Value` равен −1. В `/api/status` и `/api/config` поля `azSensor` / `elSensor` указывают источник положения.
 
 Для GPIO используйте поля `pin.<имя>` со значением `−1` или номером GPIO:
 
@@ -160,6 +160,8 @@ JSON: `ok`, `result`; 200 успешно/ожидание, 400 неверно/н
 | LCD1602 | `lcdRs`, `lcdE`, `lcdD4`, `lcdD5`, `lcdD6`, `lcdD7` |
 
 GPIO кнопки передаётся прежним полем `buttonGpio`. `GET /api/hardware/pins` возвращает `roles` с именем, группой, типом, необязательностью и начальным GPIO сигнала, а также `gpios` с номером, возможностями `caps` и владельцем `owner`. Биты `caps`: 1 — вход, 2 — выход, 4 — ADC1, 8 — внутренняя подтяжка. `owner` обозначает встроенную периферию или аппаратный резерв. Занятость настраиваемыми сигналами определяется текущими значениями `pins` и режимом оборудования.
+
+Во всех PWM-интерфейсах ENABLE оси необязателен: `−1` отключает GPIO, назначенный вывод активен HIGH при движении. В DIR_PWM и SEPARATE_PWM передавайте `pin.azEnable` / `pin.elEnable`; в BTS7960 — `pin.azSpeedEnable` / `pin.elSpeedEnable`, как и раньше. Поля скорости SEPARATE_PWM и DIR_PWM остаются обязательными.
 
 Пример частичного изменения на S3 после чтения актуальных `token` и `generation`:
 
@@ -194,7 +196,7 @@ curl --data 'token=123&generation=2&pin.azAdc=1' http://192.168.4.1/api/hardware
 
 ### Кнопки и калибровка джойстика
 
-`GET /api/hardware` возвращает в настройках оборудования `localInputMode` (0 — выключено, 1 — кнопки, 2 — джойстик), `localAzInvert` / `localElInvert` (0/1), `localAzMin/Center/Max`, `localElMin/Center/Max`, `localDeadzone` и `localHysteresis` (12-битные отсчёты ADC). GPIO находятся в `pins.localAzNegative`, `localAzPositive`, `localElNegative`, `localElPositive`, `localAzAdc`, `localElAdc`. Запись выполняется частичными полями через `POST /api/hardware` с актуальными `token` и `generation`; изменения требуют перезапуска и подтверждения оборудования.
+`GET /api/hardware` возвращает в настройках оборудования `localInputMode` (0 — выключено, 1 — кнопки, 2 — джойстик, 3 — кнопки и джойстик одновременно), `localAzInvert` / `localElInvert` (0/1), `localAzMin/Center/Max`, `localElMin/Center/Max`, `localDeadzone` и `localHysteresis` (12-битные отсчёты ADC). GPIO находятся в `pins.localAzNegative`, `localAzPositive`, `localElNegative`, `localElPositive`, `localAzAdc`, `localElAdc`. Запись выполняется частичными полями через `POST /api/hardware` с актуальными `token` и `generation`; изменения требуют перезапуска и подтверждения оборудования.
 
 После сохранения и подтверждения GPIO джойстика доступны POST-запросы с теми же `token` и `generation`:
 
@@ -208,11 +210,17 @@ curl --data 'token=123&generation=2&pin.azAdc=1' http://192.168.4.1/api/hardware
 
 ## Мастер настройки и адреса сети
 
-`GET /api/setup` возвращает версию состояния, `required`, `paused`, номер `step`, `generation`, готовность текущего шага `ready` и токен проверочной сессии. `POST /api/setup` принимает `action=start|resume|back|advance|pause|complete|renew`. Для перехода вперёд нужны актуальная `generation` и `checked=1`; готовность проверяет устройство. Номера шагов: 0 сеть, 1 роль, 2 модель, 3 оборудование, 4 местные входы, 5 калибровка, 6 регуляторы, 7 программы, 8 поворотки HUD, 9 завершение, 10 закончено. Неприменимые шаги пропускаются.
+`GET /api/setup` возвращает версию состояния, `required`, `paused`, номер `step`, `generation`, готовность текущего шага `ready` токен проверочной сессии, выбранные `driveInterface` и `simulation`, `restartRequired` (сохранённые параметры ожидают перезапуска) и `pendingNext` (продолжение после перезапуска). `POST /api/setup` принимает `action=start|resume|back|advance|pause|complete|renew|begin_save|end_save|apply|drive`. Для перехода вперёд нужна актуальная `generation`; готовность проверяет устройство. Номера шагов: 0 сеть, 1 роль, 2 модель, 3 оборудование, 4 местные входы, 5 калибровка, 6 регуляторы, 7 программы, 8 поворотки HUD, 9 завершение, 10 закончено. Неприменимые шаги пропускаются.
+
+На шаге 2 действие `drive` с актуальной `generation`, `setupToken`, `driveInterface=0|1|2` (Yaesu, отдельный PWM, BTS7960) и `simulation=0|1` сохраняет выбор для последующего применения оборудования. Это не инициализирует моторные выходы и не перезапускает устройство.
+
+Сохранение нескольких форм шага начинается с `begin_save` с действующим `setupToken`. В этом режиме сеть, роль и оборудование откладывают перезапуск, пока клиент записывает остальные формы. `end_save` завершает запись. При `restartRequired=true` действие `apply` с тем же токеном сохраняет продолжение и запускает один перезапуск; иначе используется `advance` или `complete`. После перезапуска мастер ждёт фактической готовности шага и продолжает настройку. `pause` сохраняет этап и применяет ожидающий перезапуск. Без этой последовательности отдельные API настроек сохраняют прежнее поведение.
 
 Проверочные HTTP-команды движения требуют `setupToken` действующей сессии, открытого шага калибровки, регуляторов или завершения и продления через `action=renew` не реже раза в секунду. Через 1,5 секунды без продления проверка отменяется и моторные выходы отключаются. STOP доступен всегда. На шаге программ с тем же токеном также можно включить ручной режим. Обычные команды программ, WebSocket и местных входов не получают проверочный допуск. Состояние мастера сохраняется после перезапуска; токен сессии не сохраняется.
 
 `GET /api/network` также возвращает `choice` и объекты `wifi`/`eth` с `mode`, `address`, `mask`, `gateway`, `dns1`, `dns2`. `POST /api/network` принимает `choice=0…4` (роутер Wi-Fi, AP, общая AP, клиент общей AP, Ethernet), `wifiMode`/`ethMode=dhcp|static` и поля с префиксом интерфейса: например, `wifiAddress`, `wifiMask`, `wifiGateway`, `wifiDns1`, `wifiDns2`. Сохранение перезапускает устройство. Отсутствующая адресная конфигурация означает DHCP. SSID и пароли по-прежнему задаются через `/api/wifi` и `/api/ap`.
+
+`POST /api/hardware` также принимает поля `mb.pc`, `mb.bus`, `mb.address`, `mb.node`, `mb.first`, `mb.count` для совместной проверки и применения GPIO и параметров Modbus. Отдельный `/api/hardware/modbus` сохраняется.
 
 `GET /api/hardware/modbus` также возвращает `uart0Baud`, `uart0Parity`, `uart0StopBits`, `uart1Baud`, `uart1Parity`, `uart1StopBits`. `POST` на тот же адрес принимает эти поля с актуальными `token` и `generation`; пропущенные параметры сохраняются. Для совместного применения через `/api/hardware` используйте префикс `mb.`, например `mb.uart0Baud`. Скорости: 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200. Чётность: 0 — нет, 1 — чётная, 2 — нечётная; стоп-биты: 1 или 2; битов данных всегда 8. Неверные параметры линии возвращают HTTP 400 / `invalid_uart_settings`. Изменение протокола `pc` или `bus` не изменяет настройки линии. Успешная запись проверяется чтением и требует перезапуска.
 

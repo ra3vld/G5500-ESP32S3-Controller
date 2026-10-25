@@ -2,7 +2,7 @@
 
 [Документация](../index.md)
 
-Выберите YAESU / SEPARATE_PWM / BTS7960 в [веб-настройках оборудования](../setup/configuration.md#оборудование-в-веб-интерфейсе); параметры сборки задают начальный выбор. [Профили плат и GPIO](../setup/configuration.md), [подключение G-800DXA](g800dxa/index.md), [подключение двух BTS7960 / IBT-2](bts7960/index.md).
+Выберите YAESU / DIR_PWM / SEPARATE_PWM / BTS7960 в [веб-настройках оборудования](../setup/configuration.md#оборудование-в-веб-интерфейсе); параметры сборки задают начальный выбор. [Профили плат и GPIO](../setup/configuration.md), [подключение G-800DXA](g800dxa/index.md), [подключение двух BTS7960 / IBT-2](bts7960/index.md).
 
 | Привод | Инструкция |
 |---|---|
@@ -10,7 +10,7 @@
 | Штатный блок G-800DXA, одна AZ | [EXT CONTROL и скорость 0–5 В](g800dxa/index.md) |
 | Штатный блок G-800SA, одна AZ | [Датчик, RIGHT/LEFT и переделка скорости с готовым ШИМ-модулем](g800sa/index.md) |
 | Независимые DC-двигатели, RPWM/LPWM | [BTS7960 / IBT-2](bts7960/index.md) |
-| Два направления и отдельный PWM | [SEPARATE_PWM](separate-pwm.md) |
+| Один DIR или два направления и отдельный PWM | [SEPARATE_PWM](separate-pwm.md) |
 
 Для **CrowPanel 2.1 с локальным AZ** используйте [отдельную инструкцию переделки и подключения Yaesu / BTS7960](../boards/crowpanel-az.md). Она задаёт другие GPIO, уровни RX/TX и обязательную инверсию BOOT. Распиновка DevKit и обычный профиль `crowpanel_21` для такого подключения не подходят.
 

@@ -34,7 +34,7 @@
 #define FORK_USB_NAME "Serial/JTAG"
 #endif
 namespace forkrot { namespace board {
-inline constexpr bool WIFI_AP_ALWAYS_ON = FORK_C3 ? ESP32_FORCE_AP_STA : !FORK_CLASSIC_ESP32 || ESP32_FORCE_AP_STA;
+inline constexpr bool WIFI_AP_ALWAYS_ON = ESP32_FORCE_AP_STA;
 inline constexpr int PIN_CONFIRM = USER_BUTTON_GPIO;
 inline constexpr int TOUCH_RAW_X_MIN = 240, TOUCH_RAW_X_MAX = 3850;
 inline constexpr int TOUCH_RAW_Y_MIN = 240, TOUCH_RAW_Y_MAX = 3850;
@@ -64,9 +64,10 @@ constexpr bool output(int n) { return gpio(n) && (FORK_CLASSIC_ESP32 ? n < 34 : 
 constexpr bool pullup(int n) { return gpio(n) && (FORK_CLASSIC_ESP32 ? n < 34 : (FORK_S3) || n != 46); }
 constexpr bool adc(int n) { return gpio(n) && (FORK_C3 ? n <= 4 : FORK_CLASSIC_ESP32 ? n >= 32 : n >= 1 && n <= 10); }
 inline constexpr int localInputPins[] = {
-#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+#if LOCAL_INPUT_MODE & LOCAL_INPUT_BUTTONS
  LOCAL_AZ_NEG_GPIO, LOCAL_AZ_POS_GPIO, LOCAL_EL_NEG_GPIO, LOCAL_EL_POS_GPIO,
-#elif LOCAL_INPUT_MODE == LOCAL_INPUT_JOYSTICK
+#endif
+#if LOCAL_INPUT_MODE & LOCAL_INPUT_JOYSTICK
  LOCAL_AZ_ADC_GPIO, LOCAL_EL_ADC_GPIO,
 #endif
  -1
@@ -75,19 +76,22 @@ constexpr bool validLocalInputs() {
  for (int pin : localInputPins) {
   if (pin < -1) return false;
   if (pin == -1) continue;
-  if (LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS ? !pullup(pin) : !adc(pin)) return false;
+  const bool button = (LOCAL_INPUT_MODE & LOCAL_INPUT_BUTTONS) &&
+      (pin==LOCAL_AZ_NEG_GPIO || pin==LOCAL_AZ_POS_GPIO || pin==LOCAL_EL_NEG_GPIO || pin==LOCAL_EL_POS_GPIO);
+  if (button ? !pullup(pin) : !adc(pin)) return false;
  }
  return true;
 }
 static_assert(validLocalInputs(), "Local controls require pullup-capable GPIO / ADC1 inputs");
 inline const char *localPinOwner(int pin) {
   if (pin < 0) return nullptr;
-#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+#if LOCAL_INPUT_MODE & LOCAL_INPUT_BUTTONS
   if (pin == LOCAL_AZ_NEG_GPIO) return "local.azNegative";
   if (pin == LOCAL_AZ_POS_GPIO) return "local.azPositive";
   if (pin == LOCAL_EL_NEG_GPIO) return "local.elNegative";
   if (pin == LOCAL_EL_POS_GPIO) return "local.elPositive";
-#elif LOCAL_INPUT_MODE == LOCAL_INPUT_JOYSTICK
+#endif
+#if LOCAL_INPUT_MODE & LOCAL_INPUT_JOYSTICK
   if (pin == LOCAL_AZ_ADC_GPIO) return "local.azJoystick";
   if (pin == LOCAL_EL_ADC_GPIO) return "local.elJoystick";
 #endif
@@ -101,9 +105,10 @@ inline constexpr int activePins[] = {
 #endif
  (SELECTED_BOARD == BOARD_CROWPANEL_21 && BLUETOOTH_BACKEND == BT_HC05) ? -1 : PIN_UART_RX,
  (SELECTED_BOARD == BOARD_CROWPANEL_21 && BLUETOOTH_BACKEND == BT_HC05) ? -1 : PIN_UART_TX, PIN_CONFIRM, PIN_RGB, PIN_LED,
-#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+#if LOCAL_INPUT_MODE & LOCAL_INPUT_BUTTONS
  LOCAL_AZ_NEG_GPIO, LOCAL_AZ_POS_GPIO, LOCAL_EL_NEG_GPIO, LOCAL_EL_POS_GPIO,
-#elif LOCAL_INPUT_MODE == LOCAL_INPUT_JOYSTICK
+#endif
+#if LOCAL_INPUT_MODE & LOCAL_INPUT_JOYSTICK
  LOCAL_AZ_ADC_GPIO, LOCAL_EL_ADC_GPIO,
 #endif
 #if BLUETOOTH_BACKEND == BT_HC05
@@ -165,7 +170,7 @@ static_assert(output(PIN_LEFT) && output(PIN_RIGHT) && output(PIN_UP) && output(
 static_assert(output(PIN_EL_SPEED), "Independent drive requires two speed/enable outputs");
 #endif
 #if defined(SOC_LEDC_CHANNEL_NUM)
-static_assert(SOC_LEDC_CHANNEL_NUM >= (CROWPANEL_LOCAL_DRIVE ? 2 : DRIVE_INTERFACE == DRIVE_BTS7960 ? 4 : DRIVE_INTERFACE == DRIVE_SEPARATE_PWM ? 2 : 1), "Insufficient LEDC channels");
+static_assert(SOC_LEDC_CHANNEL_NUM >= (CROWPANEL_LOCAL_DRIVE ? 2 : DRIVE_INTERFACE == DRIVE_BTS7960 ? 4 : (DRIVE_INTERFACE == DRIVE_SEPARATE_PWM || DRIVE_INTERFACE == DRIVE_DIR_PWM) ? 2 : 1), "Insufficient LEDC channels");
 #endif
 // Physical connections on CrowPanel cannot be freed by software switches.
 inline const char *fixedPinOwner(int n) {
@@ -217,23 +222,25 @@ inline bool pinActive(const HardwareConfig &c,const PinDefinition &d) {
   case PinGroup::Drive:
     if(FORK_OPTIONAL_DRIVE) {
       const bool el=d.member==&PinMap::elAdc || d.member==&PinMap::elNegative ||
-          d.member==&PinMap::elPositive || d.member==&PinMap::elSpeedEnable;
+          d.member==&PinMap::elPositive || d.member==&PinMap::elSpeedEnable || d.member==&PinMap::elEnable;
       if(!c.localAxisConfigured(el?1:0)) return false;
       if((d.member==&PinMap::azAdc || d.member==&PinMap::elAdc) && c.pins.*d.member<0) return false;
-      if(d.member==&PinMap::azSpeedEnable && c.drive==DRIVE_YAESU && c.pins.azSpeedEnable<0) return false;
     }
     if(c.simulation) return false;
+    if((d.member==&PinMap::azEnable || d.member==&PinMap::elEnable) && !c.separatePwm()) return false;
+    if(c.drive==DRIVE_DIR_PWM && (d.member==&PinMap::azNegative || d.member==&PinMap::elNegative)) return false;
+    if(c.drive==DRIVE_YAESU && d.member==&PinMap::azSpeedEnable && c.pins.azSpeedEnable<0) return false;
     if(d.member==&PinMap::azAdc && c.sensorType(0)) return false;
     if(d.member==&PinMap::elAdc && c.sensorType(1)) return false;
-    if(c.pins.singleAxis() && (d.member==&PinMap::elAdc || d.member==&PinMap::elNegative ||
-        d.member==&PinMap::elPositive || d.member==&PinMap::elSpeedEnable)) return false;
+    if(c.singleAxis() && (d.member==&PinMap::elAdc || d.member==&PinMap::elNegative ||
+        d.member==&PinMap::elPositive || d.member==&PinMap::elSpeedEnable || d.member==&PinMap::elEnable)) return false;
     return d.member!=&PinMap::elSpeedEnable || c.drive!=DRIVE_YAESU;
-  case PinGroup::Buttons:return c.local[0]==LOCAL_INPUT_BUTTONS;
-  case PinGroup::Joystick:return c.local[0]==LOCAL_INPUT_JOYSTICK;
+  case PinGroup::Buttons:return c.local[0]&LOCAL_INPUT_BUTTONS;
+  case PinGroup::Joystick:return c.local[0]&LOCAL_INPUT_JOYSTICK;
   case PinGroup::Uart:return true;
   case PinGroup::Hud485:return c.hudRs485();
   case PinGroup::SensorAz:return !c.simulation && c.sensorType(0)!=0;
-  case PinGroup::SensorEl:return !c.simulation && !c.pins.singleAxis() && c.sensorType(1)!=0;
+  case PinGroup::SensorEl:return !c.simulation && !c.singleAxis() && c.sensorType(1)!=0;
   case PinGroup::Hc05:return c.backend()==BT_HC05;
   case PinGroup::Indicator:return true;
   case PinGroup::HudRadio:return true;
@@ -259,38 +266,38 @@ inline bool sharedPanelSensorBus(const HardwareConfig &c,const PinDefinition &d)
 inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool hudUart=false) {
   for(unsigned i=0;i<2;++i) {
     const auto at=i*3;
-    if(c.sensorType(i)>2 || c.sensorAddress(i)<1 || c.sensorAddress(i)>127 ||
+    if(c.sensors[6+i]>1 || c.sensorType(i)>2 || c.sensorAddress(i)<1 || c.sensorAddress(i)>127 ||
         (c.sensorType(i)==2 && c.sensorAddress(i)!=0x36) ||
         (c.sensorType(i) && c.sensorZero(i)>=sensorCounts(c.sensorType(i))))
       return {"invalid_position_sensor",sensorSettingNames[at]};
   }
 #if DISPLAY_KIND == DISPLAY_GC9A01
   // C3 has one I2C controller, already used by CST816. Encoders share that bus.
-  for(unsigned i=0;i<2;++i) if(c.sensorType(i) && (i==0 || !c.pins.singleAxis())) {
+  for(unsigned i=0;i<2;++i) if(c.sensorType(i) && (i==0 || !c.singleAxis())) {
     if(c.sensorAddress(i)==0x15) return {"sensor_address_conflict",i?"elSensorAddress":"azSensorAddress"};
     if((i?c.pins.elSensorSda:c.pins.azSensorSda)!=PIN_I2C_SDA ||
        (i?c.pins.elSensorScl:c.pins.azSensorScl)!=PIN_I2C_SCL)
       return {"sensor_bus_unavailable",i?"elSensor":"azSensor"};
   }
 #endif
-  const bool sharedSensors=c.sensorType(0) && c.sensorType(1) && !c.pins.singleAxis() &&
+  const bool sharedSensors=c.sensorType(0) && c.sensorType(1) && !c.singleAxis() &&
       c.pins.azSensorSda==c.pins.elSensorSda && c.pins.azSensorScl==c.pins.elSensorScl;
   if(sharedSensors && c.sensorAddress(0)==c.sensorAddress(1))
     return {"sensor_address_conflict","elSensorAddress"};
   if(DISPLAY_KIND==DISPLAY_CROWPANEL_21 && c.sensorType(0) && c.sensorType(1) &&
-      !c.pins.singleAxis() && !sharedSensors) return {"sensor_bus_unavailable","elSensor"};
+      !c.singleAxis() && !sharedSensors) return {"sensor_bus_unavailable","elSensor"};
   if((FORK_C3 || DISPLAY_KIND==DISPLAY_ST7796) && c.sensorType(0) && c.sensorType(1) &&
-      !c.pins.singleAxis() && !sharedSensors) return {"sensor_bus_unavailable","elSensor"};
+      !c.singleAxis() && !sharedSensors) return {"sensor_bus_unavailable","elSensor"};
   if(!BLUETOOTH_SUPPORT && c.bluetooth) return {"bluetooth_not_supported","bluetoothEnabled"};
-  if(c.drive>DRIVE_BTS7960 || c.bluetoothMode<BT_HC05 || c.bluetoothMode>BT_AUTO ||
+  if(c.drive>DRIVE_DIR_PWM || c.bluetoothMode<BT_HC05 || c.bluetoothMode>BT_AUTO ||
       (c.pwmInverted && c.drive!=DRIVE_BTS7960)) return {"invalid_hardware"};
   if(c.backend()==BT_ESP32_SPP && !FORK_CLASSIC_ESP32) return {"spp_not_supported","bluetoothMode"};
   // The modified adapter has an active-LOW, open-drain speed/enable stage.
-  if(CROWPANEL_LOCAL_DRIVE && !c.simulation && (!c.pins.singleAxis() || c.drive==DRIVE_SEPARATE_PWM))
+  if(CROWPANEL_LOCAL_DRIVE && !c.simulation && (!c.singleAxis() || c.separatePwm()))
     return {"drive_not_supported","driveInterface"};
 #if defined(SOC_LEDC_CHANNEL_NUM)
-  const unsigned channels=CROWPANEL_LOCAL_DRIVE?2:c.drive==DRIVE_BTS7960?(c.pins.singleAxis()?2:4):
-      c.drive==DRIVE_SEPARATE_PWM?(c.pins.singleAxis()?1:2):1;
+  const unsigned channels=CROWPANEL_LOCAL_DRIVE?2:c.drive==DRIVE_BTS7960?(c.singleAxis()?2:4):
+      c.separatePwm()?(c.singleAxis()?1:2):1;
   if(!c.simulation && SOC_LEDC_CHANNEL_NUM<channels) return {"drive_not_supported","driveInterface"};
 #endif
   if((c.pins.uartRx<0)!=(c.pins.uartTx<0) || (((hudUart && !c.hudRs485()) || c.rs485()) && c.pins.uartRx<0))
@@ -301,8 +308,8 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
   if(hudUart && c.rs485() && !c.hudRs485()) return {"hud485_required","pin.hudRx"};
   if (c.pins.hudReady>=0 && (c.rs485() || c.hudRs485()))
     return {"radio_requires_uart","pin.hudReady"};
-  if(c.local[0]>2 || c.local[1]>1 || c.local[2]>1) return {"invalid_local_input","localInputMode"};
-  if(c.local[0]==LOCAL_INPUT_BUTTONS &&
+  if(c.local[0]>LOCAL_INPUT_BOTH || c.local[1]>1 || c.local[2]>1) return {"invalid_local_input","localInputMode"};
+  if((c.local[0]&LOCAL_INPUT_BUTTONS) &&
       ((c.pins.localAzNegative<0)!=(c.pins.localAzPositive<0) ||
        (c.pins.localElNegative<0)!=(c.pins.localElPositive<0))) return {"incomplete_buttons","localInputMode"};
   if(c.local[0] && !c.localMask()) return {"missing_pin","localInputMode"};

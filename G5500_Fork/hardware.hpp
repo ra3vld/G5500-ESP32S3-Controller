@@ -30,7 +30,7 @@ public:
   int adcAvgMv(int pin);
   int positionValue(unsigned axis);
   bool positionValid(unsigned axis) const { return positionValid_[axis]; }
-  void positionDiagRead(unsigned axis,int &raw,int &value);
+  void positionDiagRead(unsigned axis,int &raw,int &value,int *millivolts=nullptr);
   int filteredMv(unsigned axis);
   uint32_t sampledAt(unsigned axis) const { return filters_[axis].sampledAt(); }
   uint32_t sampleMaxIntervalMs(unsigned axis) const { return filters_[axis].maxIntervalMs(); }
@@ -57,10 +57,12 @@ private:
   uint32_t localSampleAt_ = 0, calibrationUntil_ = 0;
   bool calibrating_ = false;
   AxisButtons localButtons_[2];
+  CombinedLocalAxis localCombined_[2];
   JoystickAxis localJoystick_[2] = {{0,2048,4095,200,50,false},{0,2048,4095,200,50,false}};
   int localRaw_[2] = {-1,-1};
   bool pwmReady = false, pwmFailed = false, directionsStarted_ = false;
   bool attached_[4] = {};
+  int pwmDirection_[2]{};
   PositionFilter filters_[2];
   PositionSensors sensors_;
   bool positionValid_[2]{};

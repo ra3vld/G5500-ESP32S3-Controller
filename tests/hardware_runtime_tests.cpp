@@ -66,10 +66,123 @@ static void recoveryPolicy() {
   }
   Preferences::database.clear();
 }
+static void optionalPwmEnable() {
+  for(unsigned driver:{DRIVE_SEPARATE_PWM,DRIVE_BTS7960,DRIVE_DIR_PWM}) for(unsigned mask=0;mask<4;++mask) {
+    HardwareConfig cfg;cfg.drive=driver;cfg.simulation=false;cfg.bluetooth=false;
+    if(driver==DRIVE_BTS7960) {cfg.pins.azSpeedEnable=mask&1?21:-1;cfg.pins.elSpeedEnable=mask&2?47:-1;cfg.pwmInverted=true;}
+    else {cfg.pins.azEnable=mask&1?38:-1;cfg.pins.elEnable=mask&2?39:-1;}
+    assert(!board::validateHardware(cfg));
+    auto conflict=cfg;
+    if(driver==DRIVE_BTS7960) conflict.pins.azSpeedEnable=cfg.pins.azPositive;
+    else conflict.pins.azEnable=cfg.pins.azPositive;
+    assert(std::string(board::validateHardware(conflict))=="gpio_conflict");
+    MotionTestRuntime r;r.controller.configureHardware(cfg);r.controller.feedback(90,45,true,true);
+    Hardware h(r);fakeHardware={};h.beginDirections();h.beginAdc();
+    const auto disabled=[&](){for(unsigned axis=0;axis<2;++axis)if(cfg.enablePin(axis)>=0)assert(fakeHardware.levels[cfg.enablePin(axis)]==LOW);};
+    const auto noInvalid=[&](){for(const auto &e:fakeHardware.events)assert(e.pin>=0 && e.operation!="write_unowned");};
+    disabled();noInvalid();
+    const auto drive=[&](int az,int el){r.controller.axes[0].direction=az;r.controller.axes[1].direction=el;
+      r.controller.axes[0].speedOutputPercent=50;r.controller.axes[1].speedOutputPercent=40;h.applyOutputs();};
+    drive(1,-1);
+    for(unsigned axis=0;axis<2;++axis)if(cfg.enablePin(axis)>=0)assert(fakeHardware.levels[cfg.enablePin(axis)]==HIGH);
+    const auto reversedAt=fakeHardware.events.size();drive(-1,1);
+    // An assigned ENABLE is off before PWM/direction changes and enabled afterwards.
+    for(unsigned axis=0;axis<2;++axis)if(cfg.enablePin(axis)>=0) {
+      bool off=false,on=false,changed=false;
+      for(size_t i=reversedAt;i<fakeHardware.events.size();++i) {
+        const auto &e=fakeHardware.events[i];
+        if(e.pin==cfg.enablePin(axis)&&e.operation=="write") {if(!e.value)off=true;else{assert(off&&changed);on=true;}}
+        const bool pwm=driver==DRIVE_BTS7960?(e.pin==(axis?cfg.pins.elNegative:cfg.pins.azNegative)||e.pin==(axis?cfg.pins.elPositive:cfg.pins.azPositive)):e.pin==(axis?cfg.pins.elSpeedEnable:cfg.pins.azSpeedEnable);
+        if(pwm&&e.operation=="pwm") {assert(off&&!on);changed=true;}
+      }
+      assert(on);
+    }
+    drive(0,1);
+    if(cfg.enablePin(0)>=0)assert(fakeHardware.levels[cfg.enablePin(0)]==LOW);
+    if(cfg.enablePin(1)>=0)assert(fakeHardware.levels[cfg.enablePin(1)]==HIGH);
+    h.allStop();disabled();drive(1,1);r.controller.driveFault=true;h.applyOutputs();disabled();
+    const auto idle=cfg.pwmInverted?1023u:0u;
+    std::map<int,uint32_t> last;
+    for(const auto &e:fakeHardware.events)if(e.operation=="pwm")last[e.pin]=e.value;
+    for(const auto &[pin,duty]:last) { (void)pin;assert(duty==idle); }
+    noInvalid();
+    HardwareRecord record;record.good=record.candidate=cfg;HardwareRecord restored;
+    assert(decodeHardware(encodeHardware(record),restored)&&restored.good==cfg);
+    // No enable signal may make an otherwise disconnected EL axis appear.
+    cfg.pins.elAdc=cfg.pins.elNegative=cfg.pins.elPositive=-1;
+    if(driver!=DRIVE_BTS7960)cfg.pins.elSpeedEnable=-1;
+    assert(cfg.singleAxis()&&!board::validateHardware(cfg));
+  }
+  for(unsigned driver:{DRIVE_SEPARATE_PWM,DRIVE_BTS7960,DRIVE_DIR_PWM}) for(bool enable:{false,true}) {
+    HardwareConfig cfg;cfg.drive=driver;cfg.simulation=false;cfg.bluetooth=false;
+    if(driver==DRIVE_BTS7960)cfg.pins.azSpeedEnable=cfg.pins.elSpeedEnable=enable?38:-1;
+    else cfg.pins.azEnable=cfg.pins.elEnable=enable?38:-1;
+    if(enable) {if(driver==DRIVE_BTS7960)cfg.pins.elSpeedEnable=39;else cfg.pins.elEnable=39;}
+    assert(!board::validateHardware(cfg));
+    const auto count=driver==DRIVE_BTS7960?4:2;
+    for(int fail=0;fail<count;++fail) {
+      MotionTestRuntime r;r.controller.configureHardware(cfg);Hardware h(r);fakeHardware={};fakeHardware.failAttachAt=fail;
+      h.beginDirections();r.controller.axes[0].direction=1;r.controller.axes[0].speedOutputPercent=80;h.applyOutputs();
+      assert(r.controller.driveFault);
+      for(unsigned axis=0;axis<2;++axis)if(cfg.enablePin(axis)>=0)assert(fakeHardware.levels[cfg.enablePin(axis)]==LOW);
+      for(const auto &e:fakeHardware.events)assert(e.pin>=0 && e.operation!="write_unowned");
+    }
+    for(bool hud:{false,true}) {
+      MotionTestRuntime r;auto isolated=cfg;isolated.simulation=!hud;r.controller.configureHardware(isolated);
+      if(hud)r.hud.config.role=DeviceRole::Hud;
+      Hardware h(r);fakeHardware={};h.beginDirections();h.applyOutputs();h.allStop();
+      for(const auto &e:fakeHardware.events)for(unsigned axis=0;axis<2;++axis)assert(e.pin!=cfg.enablePin(axis));
+    }
+  }
+  Preferences::database.clear();Storage storage;
+  HardwareRecord old;old.hasConfirmed=true;old.good.drive=old.candidate.drive=DRIVE_BTS7960;
+  old.good.sensors[6]=old.candidate.sensors[6]=1;
+  const auto legacy=encodeHardwareRecord<204>(old);
+  Preferences::database["hardware"]["config1"]=Preferences::Bytes(legacy.begin(),legacy.end());
+  MotionTestRuntime boot;storage.loadHardware(boot);
+  assert(!boot.recovery && boot.controller.hardware==old.good);
+  assert(boot.controller.hardware.enablePin(0)==old.good.pins.azSpeedEnable && boot.controller.hardware.pins.azEnable==-1);
+  assert(storage.finishHardwareBoot(boot));
+}
+static void directionPwm() {
+  HardwareConfig cfg;cfg.drive=DRIVE_DIR_PWM;cfg.simulation=false;cfg.bluetooth=false;
+  cfg.pins.azNegative=cfg.pins.uartRx;cfg.pins.elNegative=cfg.pins.uartTx;
+  assert(!board::validateHardware(cfg));
+  MotionTestRuntime r;r.controller.configureHardware(cfg);r.controller.feedback(90,45,true,true);
+  Hardware h(r);fakeHardware={};h.beginDirections();h.beginAdc();
+  const auto drive=[&](int az,int el){r.controller.axes[0].direction=az;r.controller.axes[1].direction=el;
+    r.controller.axes[0].speedOutputPercent=50;r.controller.axes[1].speedOutputPercent=40;h.applyOutputs();};
+  drive(1,-1);
+  assert(fakeHardware.levels[cfg.pins.azPositive]==HIGH && fakeHardware.levels[cfg.pins.elPositive]==LOW);
+  drive(-1,1);
+  assert(fakeHardware.levels[cfg.pins.azPositive]==LOW && fakeHardware.levels[cfg.pins.elPositive]==HIGH);
+  for(size_t i=0;i<fakeHardware.events.size();++i){const auto &e=fakeHardware.events[i];
+    assert(e.pin!=cfg.pins.azNegative && e.pin!=cfg.pins.elNegative); // Unused pins can belong to UART.
+    if(e.operation=="write"&&(e.pin==cfg.pins.azPositive||e.pin==cfg.pins.elPositive)) {
+      assert(i>0);const auto &before=fakeHardware.events[i-1];
+      assert(before.operation=="pwm" && before.value==0 && before.pin==(e.pin==cfg.pins.azPositive?cfg.pins.azSpeedEnable:cfg.pins.elSpeedEnable));
+    }
+  }
+  r.controller.stopNow(-1,100);h.applyOutputs();
+  for(int pin:{cfg.pins.azSpeedEnable,cfg.pins.elSpeedEnable}){
+    bool found=false;for(auto i=fakeHardware.events.rbegin();i!=fakeHardware.events.rend();++i)if(i->pin==pin&&i->operation=="pwm"){assert(i->value==0);found=true;break;}assert(found);
+  }
+  r.controller.configurationLocked=true;h.applyOutputs();
+  drive(1,1); // Locked output remains off.
+  for(int pin:{cfg.pins.azSpeedEnable,cfg.pins.elSpeedEnable})for(auto i=fakeHardware.events.rbegin();i!=fakeHardware.events.rend();++i)if(i->pin==pin&&i->operation=="pwm"){assert(i->value==0);break;}
+  cfg.pins.elAdc=cfg.pins.elPositive=cfg.pins.elSpeedEnable=-1;
+  assert(cfg.singleAxis() && !board::validateHardware(cfg)); // Saved inactive negative does not create EL.
+  HardwareRecord record;record.good=record.candidate=cfg;HardwareRecord restored;
+  assert(decodeHardware(encodeHardware(record),restored)&&restored.good==cfg);
+  Preferences::database.clear();Storage storage;MotionTestRuntime boot;storage.loadHardware(boot);assert(storage.finishHardwareBoot(boot));
+  assert(storage.stageHardware(boot,cfg));MotionTestRuntime trial;storage.loadHardware(trial);
+  assert(trial.hardwareTrial&&trial.controller.hardware.drive==DRIVE_DIR_PWM&&trial.controller.hardware.singleAxis());
+  assert(storage.confirmHardware(trial));storage.loadHardware(boot);assert(boot.controller.hardware==cfg&&!boot.recovery);
+}
 int main() {
-  recoveryPolicy();
+  recoveryPolicy();directionPwm();optionalPwmEnable();
   // Each runtime driver/simulation combination is exercised in this one binary.
-  for (unsigned drive=0; drive<3; ++drive) for (bool simulation : {false,true}) {
+  for (unsigned drive=0; drive<4; ++drive) for (bool simulation : {false,true}) {
     HardwareConfig cfg; cfg.drive=drive; cfg.simulation=simulation;
     cfg.pwmInverted=drive==2; cfg.bluetooth=false;
     assert(!board::validateHardware(cfg));

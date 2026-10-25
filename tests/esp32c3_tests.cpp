@@ -52,8 +52,9 @@ static void relaysOnFreedPins() {
   r.controller.stopNow(-1,340);tick(340);
   assert(fakeHardware.levels[6]==LOW && fakeHardware.levels[7]==LOW);
   assert(!fakeHardware.readsRaw && !fakeHardware.readsMv);
-  for(auto drive:{DRIVE_SEPARATE_PWM,DRIVE_BTS7960}) {
+  for(auto drive:{DRIVE_SEPARATE_PWM,DRIVE_BTS7960,DRIVE_DIR_PWM}) {
     auto next=c;next.drive=drive;next.pins.azSpeedEnable=8;
+    if(drive==DRIVE_DIR_PWM) next.pins.azNegative=-1;
     assert(!board::validateHardware(next));
   }
 }

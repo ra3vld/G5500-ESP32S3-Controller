@@ -159,5 +159,13 @@ int main(){try{
  CHECK(api(c,p,cfg,"/api/preset",{{"slot","1"},{"label","Россия"},{"az","270"}},3).status==200);CHECK(c.presets[0].label=="Россия");CHECK(!c.presets[0].target.hasEl);
  CHECK(api(c,p,cfg,"/api/preset",{{"slot","0"},{"label","bad"},{"az","0"}},3).status==400);
  CHECK(jsonQuote("a\"b\nc")=="\"a\\\"b\\u000ac\"");CHECK(stateJson(c,p,cfg,4).find("Россия")!=std::string::npos);}
+ {auto c=ready();Protocol p(c);Settings cfg;
+ CHECK(api(c,p,cfg,"/api/settings",{{"model","G800SA"},{"speedEnabled","true"}},1).status==200);
+ CHECK(c.model==Model::G800SA&&c.variableSpeed(0)&&!c.variableSpeed(1));
+ c.feedback(20,90,true,false);CHECK(c.axes[1].current==0);
+ CHECK(c.jog(1,1,false,2)==Result::Invalid);
+ CHECK(c.target({90,1,true,true},true,3)==Result::Invalid);
+ CHECK(stateJson(c,p,cfg,4).find("\"model\":\"G800SA\"")!=std::string::npos);
+ CHECK(api(c,p,cfg,"/api/preset",{{"slot","1"},{"label","SA"},{"az","90"}},5).status==200&&!c.presets[0].target.hasEl);}
  std::cout<<"PASS: "<<checks<<" assertions covering modes, presets, protocols, limits, button, profiles, API\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

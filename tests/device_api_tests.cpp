@@ -64,27 +64,18 @@ struct Fixture {
     api.execute(method,path,form.view(),out,status,type,wire);assert(out.good());return {status,{data,out.size()}};
   }
 };
-static void rs485DiscoveryApiTests() {
-  {
-    Fixture scan;scan.runtime.hud.config.role=DeviceRole::Hud;scan.runtime.hud.config.uart=true;scan.runtime.hud.begin(1,0x1234);
-    assert(scan.call("POST","/api/hud/discover","transport=rs485").status==400);
-    scan.runtime.modbus.bus=1;
-    assert(scan.call("POST","/api/hud/discover","transport=rs485&first=3&last=7").status==200);
-    assert(scan.call("GET","/api/hud/peers","discovered=1").body.find("\"scanActive\":true")!=std::string::npos);
-    for(auto bad:{"first=0","first=248","first=8&last=7","last=-1","last=999","first=no"})
-      assert(scan.call("POST","/api/hud/discover",std::string("transport=rs485&")+bad).status==400);
-    assert(scan.runtime.hud.add(100,{3,4534,true},"RS485 three"));
-    assert(scan.runtime.hud.add(101,{7,4534,true},"RS485 seven"));
-    assert(scan.storage.saveHudPeers(scan.runtime.hud));
-    assert(scan.runtime.hud.select(101)&&scan.storage.saveHudConfig(scan.runtime.hud.config));
-    Runtime restored;scan.storage.loadHud(restored);
-    assert(restored.hud.peer(100)->endpoint.address==3&&restored.hud.peer(101)->endpoint.address==7);
-    assert(restored.hud.config.selected==101);
-  }
-}
 int main(int argc,char **argv) {
-  rs485DiscoveryApiTests();
-  if(argc==2 && std::string(argv[1])=="--rs485-check") {std::cout<<"PASS: RS485 discovery API, ranges, saved addresses and selection reload\n";return 0;}
+  {
+    Fixture f;f.runtime.setup.required=false;
+    auto &n=f.network.credentials().network;n.choice=NetworkChoice::Wifi;
+    f.runtime.hud.config.wifi=HudWifi::Existing;
+    f.runtime.controller.hardware.forceAp=false;assert(!f.network.apAlwaysOn());
+    f.runtime.controller.hardware.forceAp=true;assert(f.network.apAlwaysOn());
+    f.runtime.controller.hardware.forceAp=false;f.runtime.setup.required=true;assert(f.network.apAlwaysOn());
+    f.runtime.setup.required=false;f.runtime.recovery=true;assert(f.network.apAlwaysOn());
+    f.runtime.recovery=false;n.choice=NetworkChoice::Ap;assert(f.network.apAlwaysOn());
+  }
+
   {
     Preferences::database.clear();Runtime fresh;Storage storage;
     assert(storage.loadSetup(fresh));assert(fresh.setup.required && fresh.setup.step==SetupStep::Network);
@@ -92,6 +83,16 @@ int main(int argc,char **argv) {
     assert(fakeHardware.events.empty()&&fakeHardware.readsRaw==0&&fakeHardware.readsMv==0);
     fresh.setup.step=SetupStep::Equipment;fresh.setup.paused=true;assert(storage.saveSetup(fresh.setup));
     Runtime restored;assert(storage.loadSetup(restored));assert(restored.setup.required&&restored.setup.paused&&restored.setup.step==SetupStep::Equipment);
+    for(int drive=-1;drive<=3;++drive)for(bool simulation:{false,true}){
+      if(drive<0&&simulation)continue;
+      SetupState source;source.drive=drive;source.simulation=simulation;source.fresh=true;source.pendingNext=true;SetupState decoded;
+      assert(decodeSetup(encodeSetup(source),decoded)&&decoded.drive==drive&&decoded.simulation==simulation&&decoded.pendingNext);
+    }
+    SetupState old;old.drive=2;old.simulation=true;old.fresh=true;old.pendingNext=true;
+    auto legacy=encodeSetup(old);legacy[0]=1;legacy[7]=31;uint32_t crc=2166136261u;
+    for(unsigned i=0;i<12;++i)crc=(crc^legacy[i])*16777619u;
+    for(unsigned i=0;i<4;++i)legacy[12+i]=crc>>(8*i);
+    SetupState decoded;assert(decodeSetup(legacy,decoded)&&decoded.drive==2&&decoded.simulation&&decoded.fresh&&decoded.pendingNext);
     auto bytes=encodeSetup(fresh.setup);for(unsigned i=0;i<bytes.size();++i){auto bad=bytes;bad[i]^=1;SetupState state;assert(!decodeSetup(bad,state));}
     Preferences::database["setup"]["state1"]=Preferences::Bytes(16,0);Preferences::failedBytesKey="state1";assert(!storage.loadSetup(restored));
     Preferences::failedBytesKey.clear();assert(storage.loadSetup(restored)&&restored.setup.required&&!restored.setup.equipment&&restored.setup.step==SetupStep::Network);
@@ -109,7 +110,7 @@ int main(int argc,char **argv) {
     assert(setup.call("POST","/api/setup","action=advance&generation=0&checked=1",false).status==409);
     assert(setup.call("POST","/api/setup","action=advance&generation="+std::to_string(r.setup.generation)+"&checked=1",false).status==409);
     WiFi.connectionStatus=WL_CONNECTED;
-    assert(setup.call("POST","/api/setup","action=advance&generation="+std::to_string(r.setup.generation)+"&checked=1",false).status==200);
+    assert(setup.call("POST","/api/setup","action=advance&generation="+std::to_string(r.setup.generation),false).status==200);
     assert(r.setup.step==SetupStep::Role);
     r.setup.step=SetupStep::Review;
     const auto token=std::to_string(r.setupLease);
@@ -137,11 +138,76 @@ int main(int argc,char **argv) {
     Preferences::failedBytesKey.clear();
   }
   {
+    Fixture draft;auto &r=draft.runtime;
+    assert(draft.call("POST","/api/setup","action=start",false).status==200);
+    r.setup.step=SetupStep::Role;const auto token="&setupToken="+std::to_string(r.setupLease);
+    assert(draft.call("POST","/api/setup","action=begin_save",false).status==409);
+    assert(draft.call("POST","/api/setup","action=begin_save"+token,false).status==200);
+    assert(draft.call("POST","/api/settings","rotorName=NewName"+token,false).status==200);
+    assert(!draft.restart.pending()&&!r.setupRestartRequired);
+    assert(draft.call("POST","/api/device","role=controller&wifi=existing&uart=0&port=4534"+token,false).status==200);
+    assert(!draft.restart.pending()&&!r.setupRestartRequired); // unchanged role/link is live
+    assert(draft.call("POST","/api/setup","action=end_save"+token,false).status==200);
+    assert(draft.call("POST","/api/setup","action=advance&generation="+std::to_string(r.setup.generation),false).status==200);
+    assert(r.setup.step==SetupStep::Model);
+    const auto active=r.controller.hardware;
+    assert(draft.call("POST","/api/setup","action=drive&driveInterface=0&simulation=0&generation="+std::to_string(r.setup.generation)+token,false).status==200);
+    assert(r.setup.drive==0&&!r.setup.simulation&&r.controller.hardware==active&&!draft.restart.pending());
+    Runtime restored;assert(draft.storage.loadSetup(restored)&&restored.setup.drive==0&&!restored.setup.simulation);
+    assert(draft.call("POST","/api/setup","action=begin_save"+token,false).status==200);
+    assert(draft.call("POST","/api/hardware","token=11&generation=1&driveInterface=2",false).body.find("setup_drive_mismatch")!=std::string::npos);
+    assert(draft.call("POST","/api/setup","action=end_save"+token,false).status==200);
+    assert(draft.call("POST","/api/setup","action=drive&driveInterface=3&simulation=0&generation="+std::to_string(r.setup.generation)+token,false).status==200);
+    assert(r.setup.drive==3&&r.controller.hardware==active);
+    assert(draft.storage.loadSetup(restored)&&restored.setup.drive==3);
+    assert(draft.call("POST","/api/setup","action=drive&driveInterface=4&simulation=0&generation="+std::to_string(r.setup.generation)+token,false).status==400);
+    assert(draft.call("POST","/api/setup","action=drive&driveInterface=2&simulation=1&generation=0"+token,false).status==409);
+  }
+  {
+    Fixture batch;auto &r=batch.runtime;
+    assert(batch.call("POST","/api/setup","action=start",false).status==200);
+    const auto token="&setupToken="+std::to_string(r.setupLease);
+    assert(batch.call("POST","/api/setup","action=begin_save"+token,false).status==200);
+    assert(batch.call("POST","/api/network","choice=0&wifiMode=dhcp&ethMode=dhcp"+token,false).status==200);
+    assert(batch.call("POST","/api/wifi","ssid=NewNetwork&pass=password123"+token,false).status==200);
+    assert(batch.call("POST","/api/ap","pass=accesspoint123"+token,false).status==200);
+    assert(r.setupRestartRequired&&!batch.restart.pending());
+    assert(batch.call("POST","/api/setup","action=end_save"+token,false).status==200);
+    assert(batch.call("POST","/api/setup","action=advance&generation="+std::to_string(r.setup.generation),false).status==409);
+    assert(batch.call("POST","/api/setup","action=apply"+token,false).status==200);
+    assert(batch.restart.pending()&&r.setup.pendingNext);
+    Runtime boot;assert(batch.storage.loadSetup(boot)&&boot.setup.pendingNext); // power loss retains continuation
+    assert(batch.restart.consume(fakeHardware.now+1500));r.setupRestartRequired=false;r.setupLease=0;
+    WiFi.connectionStatus=0;batch.api.serviceSetup(fakeHardware.now);assert(r.setup.step==SetupStep::Network);
+    WiFi.connectionStatus=WL_CONNECTED;batch.api.serviceSetup(fakeHardware.now);assert(r.setup.step==SetupStep::Role&&!r.setup.pendingNext);
+  }
+  {
+    Fixture hardware;auto &r=hardware.runtime;
+    assert(hardware.call("POST","/api/setup","action=start",false).status==200);r.setup.step=SetupStep::Equipment;
+    const auto token="&setupToken="+std::to_string(r.setupLease);
+    assert(hardware.call("POST","/api/setup","action=begin_save"+token,false).status==200);
+    const std::string body="token=11&generation=1&buttonActiveLow=0&mb.address=2";
+    assert(hardware.call("POST","/api/hardware",body+"&mb.invalid=3",false).status==400);
+    Preferences::failedBytesKey="config1";
+    assert(hardware.call("POST","/api/hardware",body,false).status==503);
+    Preferences::failedBytesKey.clear();
+    assert(hardware.call("POST","/api/hardware",body,false).status==200);
+    Runtime modbusBoot;assert(hardware.storage.loadModbus(modbusBoot)&&modbusBoot.modbus.address==2);
+    assert(r.hardwareRecord.candidate.buttonLow==false&&r.setupRestartRequired&&!hardware.restart.pending());
+    assert(hardware.call("POST","/api/setup","action=apply"+token,false).status==200&&hardware.restart.pending());
+  }
+  {
     Fixture role;assert(role.call("POST","/api/setup","action=start",false).status==200);
     assert(role.runtime.setup.equipment);
     role.runtime.setup.step=SetupStep::Programs;
     assert(role.call("POST","/api/device","role=hud&wifi=existing&uart=0&port=4534",false).status==200);
     assert(!role.runtime.setup.equipment && role.runtime.setup.step==SetupStep::Role);
+  }
+  {
+    Fixture sa;assert(sa.call("POST","/api/settings","model=G800SA",false).status==200);
+    assert(sa.runtime.controller.model==Model::G800SA);
+    assert(sa.call("GET","/api/status","",false).body.find("\"model\":\"G800SA\"")!=std::string::npos);
+    Runtime boot;sa.storage.loadForkSettings(boot);assert(boot.controller.model==Model::G800SA);
   }
   {
     Fixture net;NetworkConfig stored;
@@ -163,6 +229,13 @@ int main(int argc,char **argv) {
   }
 
 #if SELECTED_BOARD == BOARD_ESP32
+  {
+    Fixture pot;auto cfg=pot.runtime.controller.hardware;cfg.simulation=false;cfg.sensors[6]=cfg.sensors[7]=1;
+    pot.runtime.controller.configureHardware(cfg);fakeHardware.millivolts[cfg.pins.azAdc]=2000;fakeHardware.millivolts[cfg.pins.elAdc]=1000;
+    pot.hardware.beginAdc();const auto diag=pot.call("GET","/api/adcdiag","",false);
+    assert(diag.body.find("\"azMv\":2000")!=diag.body.npos && diag.body.find("\"azValue\":1300")!=diag.body.npos);
+    assert(diag.body.find("\"elMv\":1000")!=diag.body.npos && diag.body.find("\"elValue\":2300")!=diag.body.npos);
+  }
   {
     Fixture sensors;
     auto &c=sensors.runtime.controller;
@@ -212,6 +285,22 @@ int main(int argc,char **argv) {
     auto bytes=encodeModbus(mb.runtime.modbus);ModbusConfig decoded;assert(decodeModbus(bytes,decoded)&&decoded==mb.runtime.modbus);
     for(unsigned i=0;i<bytes.size();++i){auto bad=bytes;bad[i]^=1;assert(!decodeModbus(bad,decoded));}
     Preferences::database["modbus"]["config1"]=Preferences::Bytes(15,0);assert(!mb.storage.loadModbus(mb.runtime));
+  }
+  {
+    Fixture scan;scan.runtime.hud.config.role=DeviceRole::Hud;scan.runtime.hud.config.uart=true;scan.runtime.hud.begin(1,0x1234);scan.runtime.hud.begin(1,0x1234);
+    assert(scan.call("POST","/api/hud/discover","transport=rs485").status==400);
+    scan.runtime.modbus.bus=1;
+    assert(scan.call("POST","/api/hud/discover","transport=rs485&first=3&last=7").status==200);
+    assert(scan.call("GET","/api/hud/peers","discovered=1").body.find("\"scanActive\":true")!=std::string::npos);
+    for(auto bad:{"first=0","first=248","first=8&last=7","last=-1","last=999","first=no"})
+      assert(scan.call("POST","/api/hud/discover",std::string("transport=rs485&")+bad).status==400);
+    assert(scan.runtime.hud.add(100,{3,4534,true},"RS485 three"));
+    assert(scan.runtime.hud.add(101,{7,4534,true},"RS485 seven"));
+    assert(scan.storage.saveHudPeers(scan.runtime.hud));
+    assert(scan.runtime.hud.select(101)&&scan.storage.saveHudConfig(scan.runtime.hud.config));
+    Runtime restored;scan.storage.loadHud(restored);
+    assert(restored.hud.peer(100)->endpoint.address==3&&restored.hud.peer(101)->endpoint.address==7);
+    assert(restored.hud.config.selected==101);
   }
   {
     Fixture ports;
@@ -273,7 +362,8 @@ int main(int argc,char **argv) {
   }
   {
     Fixture local;
-    const char *fields="token=11&generation=1&simulation=1&localInputMode=2&pin.localAzAdc=36&pin.localElAdc=39&localAzMin=100&localAzCenter=1900&localAzMax=3800&localDeadzone=180&localHysteresis=40";
+    const std::string fields="token=11&generation=1&simulation=1&localInputMode=3&pin.localAzAdc=36&pin.localElAdc=39&localAzMin=100&localAzCenter=1900&localAzMax=3800&localDeadzone=180&localHysteresis=40&pin.localAzNegative="+
+        std::to_string(SELECTED_BOARD==BOARD_WT32_ETH01?32:21)+"&pin.localAzPositive="+std::to_string(SELECTED_BOARD==BOARD_WT32_ETH01?33:22);
     assert(local.call("POST","/api/hardware",fields,false).status==200);
     assert(local.runtime.hardwareRecord.candidate.local[4]==1900);
     local.storage.loadHardware(local.runtime);
@@ -293,7 +383,7 @@ int main(int argc,char **argv) {
     assert(!local.hardware.calibratingJoystick() && !local.runtime.controller.configurationLocked);
     assert(local.call("POST","/api/hardware/joystick/poll","token=11&generation=2").status==409);
     assert(local.call("POST","/api/hardware","token=11&generation=2&localAzCenter=100").status==400);
-    assert(local.call("POST","/api/hardware","token=11&generation=2&localInputMode=1&pin.localAzNegative=21").status==400);
+    assert(local.call("POST","/api/hardware","token=11&generation=2&localInputMode=1&pin.localAzPositive=-1").status==400);
     assert(local.runtime.hardwareRecord.candidate.local[4]==1900);
     assert(local.hardware.startJoystickCalibration());
     Preferences::failedBytesKey="config1";

@@ -25,7 +25,7 @@ void Controller::configureHardware(const HardwareConfig &config) {
   coast={};
   prepareMotionPlanner();
   hardware = config;
-  if (!hardware.simulation && !remote && hardware.pins.singleAxis() && (!FORK_OPTIONAL_DRIVE || hardware.localAxisConfigured(0))) { model = Model::G800DXA; axes[1] = {}; }
+  if (!hardware.simulation && !remote && hardware.singleAxis() && (!FORK_OPTIONAL_DRIVE || hardware.localAxisConfigured(0))) { if(model==Model::G5500)model = Model::G800DXA; axes[1] = {}; }
   speeds = {};
   motionSettings = {};
   motion_ = {};
@@ -132,7 +132,7 @@ void Controller::feedback(float azimuth, float elevation, bool azCalibrated, boo
     return;
   axes[0].current = azimuth;
   axes[0].calibrated = azCalibrated && std::isfinite(azimuth);
-  axes[1].current = model == Model::G800DXA ? 0 : elevation;
+  axes[1].current = model != Model::G5500 ? 0 : elevation;
   axes[1].calibrated = model == Model::G5500 && elCalibrated && std::isfinite(elevation);
 }
 bool Controller::valid(Target candidate) const {
@@ -220,7 +220,7 @@ Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
   }
   if (accepted) {
     lastTarget = nextTarget;
-    if (model == Model::G800DXA) lastTarget.hasEl = false;
+    if (model != Model::G5500) lastTarget.hasEl = false;
     if(axes[0].motionError==MotionError::None && axes[1].motionError==MotionError::None) fault.clear();
   }
   return Result::Ok;
@@ -273,7 +273,7 @@ Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now
     return remote->submit(c);
   }
   expire(now);
-  if (axis > 1 || (axis == 1 && model == Model::G800DXA) || direction < -1 || direction > 1) {
+  if (axis > 1 || (axis == 1 && model != Model::G5500) || direction < -1 || direction > 1) {
     return Result::Invalid;
   }
   if (direction == 0) {
@@ -442,7 +442,7 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
                                uint32_t now, uint16_t inputLeaseMs, bool absoluteSpeed) {
   if (autoTune.active() && !autoTune.internal && !release) return Result::Busy;
   if (movementBlocked()) return Result::Unavailable;
-  if (!gesture || !serial || mask > 3 || (!release && model == Model::G800DXA && (mask & 2)) ||
+  if (!gesture || !serial || mask > 3 || (!release && model != Model::G5500 && (mask & 2)) ||
       !std::isfinite(az) || !std::isfinite(el) || std::abs(az) > 1 || std::abs(el) > 1) {
     return Result::Invalid;
   }
@@ -604,10 +604,10 @@ void Controller::restoreMode(Mode savedMode) {
 void Controller::setModel(Model nextModel) {
   if (remote)
     return;
-  if (!hardware.simulation && hardware.pins.singleAxis() && (!FORK_OPTIONAL_DRIVE || hardware.localAxisConfigured(0)) && nextModel != Model::G800DXA) return;
+  if (!hardware.simulation && hardware.singleAxis() && (!FORK_OPTIONAL_DRIVE || hardware.localAxisConfigured(0)) && nextModel == Model::G5500) return;
   stop();
   model = nextModel;
-  if (model == Model::G800DXA) {
+  if (model != Model::G5500) {
     if (elProfile != EL_STANDARD || !(elRange == RotationRange{0,180})) {
       elRange = {0,180};elProfile = EL_STANDARD;
       if (!++rangeRevision) ++rangeRevision;
@@ -817,7 +817,7 @@ bool Controller::variableSpeed(unsigned i) const {
   if (remote)
     return i < 2 && remoteVariable[i];
   if (hardware.simulation) return i == 0 || (i == 1 && model == Model::G5500);
-  if (hardware.drive == DRIVE_YAESU) return i == 0 && model == Model::G800DXA && speedEnabled && hardware.pins.azSpeedEnable>=0;
+  if (hardware.drive == DRIVE_YAESU) return i == 0 && model != Model::G5500 && speedEnabled && hardware.pins.azSpeedEnable>=0;
   return i == 0 || model == Model::G5500;
 }
 bool Controller::runtimeSpeedAvailable(unsigned i) const {
@@ -975,7 +975,7 @@ void Controller::tick(uint32_t now) {
   for (unsigned i = 0; i < 2; ++i) {
     auto &axis = axes[i];
     if (driveFault) { axis.wanted = 0; axis.tracking = false; }
-    if (i == 1 && model == Model::G800DXA) {
+    if (i == 1 && model != Model::G5500) {
       axis.wanted = 0;
       axis.tracking = false;
     }
@@ -1002,7 +1002,7 @@ void Controller::tick(uint32_t now) {
         axis.speedOutputPercent = 0;
       }
     }
-    if (model == Model::G800DXA && axis.hasRun &&
+    if (model != Model::G5500 && axis.hasRun &&
         uint32_t(now - axis.runAt) >= kContinuousMotionTimeoutMs) {
       stop();
       fault = "continuous_motion_timeout";

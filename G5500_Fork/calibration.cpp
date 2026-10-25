@@ -299,7 +299,7 @@ bool Calibration::selectedCalibrationValid() const {
       state_.calibrationMode == CAL_MULTI_POINT ? activeAzMultiValid() : activeAzLinearValid();
   bool elOk =
       state_.calibrationMode == CAL_MULTI_POINT ? activeElMultiValid() : activeElLinearValid();
-  return azOk && (controller_.model == forkrot::Model::G800DXA || elOk);
+  return azOk && (controller_.model != forkrot::Model::G5500 || elOk);
 }
 
 const char *Calibration::calibrationModeName() const {

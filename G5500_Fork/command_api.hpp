@@ -6,7 +6,7 @@ namespace forkrot {
 inline constexpr size_t COMMAND_INPUT_MAX = 1024, COMMAND_REPLY_MAX = 1200, COMMAND_PAGE_MAX = 672;
 struct CommandForm {
   char bytes[1537]{}; // larger only for the hardware HTTP form
-  std::array<FormArgument, 80> entries;
+  std::array<FormArgument, 96> entries;
   size_t count = 0;
   bool parse(std::string_view text, size_t limit = COMMAND_INPUT_MAX);
   std::string_view get(std::string_view name) const;

@@ -201,6 +201,12 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
     } else if(prefs_.getBytesLength("config1")==UartHardwareBytes{}.size()) {
       UartHardwareBytes legacy{};
       valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
+    } else if(prefs_.getBytesLength("config1")==InvertedSensorHardwareBytes{}.size()) {
+      InvertedSensorHardwareBytes legacy{};
+      valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
+    } else if(prefs_.getBytesLength("config1")==RadioHardwareBytes{}.size()) {
+      RadioHardwareBytes legacy{};
+      valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
     } else if(prefs_.getBytesLength("config1")==SensorHardwareBytes{}.size()) {
       SensorHardwareBytes legacy{};
       valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
@@ -328,7 +334,7 @@ bool Storage::probeHardwareStorage(Runtime &runtime) {
   runtime.hardwareRecord = next; return true;
 }
 const char *Storage::calNamespace(const Runtime &runtime) {
-  return runtime.controller.model == forkrot::Model::G800DXA ? "g800cal" : "g5500";
+  return runtime.controller.model==Model::G800SA?"g800sacal":runtime.controller.model!=Model::G5500?"g800cal":"g5500";
 }
 
 void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredentials &credentials, bool wifiOnly) {
@@ -674,9 +680,9 @@ void Storage::loadForkSettings(Runtime &runtime) {
     prefs_.end();
   }
   prefs_.begin("forkcfg",true);
-  runtime.controller.model =
-      prefs_.getUChar("model", 0) == 1 ? forkrot::Model::G800DXA : forkrot::Model::G5500;
-  if (!runtime.hud.isHud() && !runtime.controller.hardware.simulation && runtime.controller.hardware.pins.singleAxis()) runtime.controller.model = Model::G800DXA;
+  const auto savedModel=prefs_.getUChar("model",0);
+  runtime.controller.model=savedModel<=uint8_t(Model::G800SA)?Model(savedModel):Model::G5500;
+  if (!runtime.hud.isHud() && !runtime.controller.hardware.simulation && runtime.controller.hardware.singleAxis() && runtime.controller.model==Model::G5500) runtime.controller.model = Model::G800DXA;
   runtime.controller.restoreMode(prefs_.getUChar("mode", 0) == 1 ? forkrot::Mode::Auto
                                                                  : forkrot::Mode::Manual);
   if (runtime.controller.hardware.drive == DRIVE_YAESU) {
@@ -798,7 +804,7 @@ bool Storage::saveForkSettings(const Runtime &runtime) {
   const auto &savedAz=reportedSpeed(runtime.controller,0);
   prefs_.begin("forkcfg", false);
   if (!runtime.hud.isHud()) {
-    prefs_.putUChar("model", runtime.controller.model == forkrot::Model::G800DXA ? 1 : 0);
+    prefs_.putUChar("model", uint8_t(runtime.controller.model));
     prefs_.putUChar("mode", runtime.controller.mode == forkrot::Mode::Auto ? 1 : 0);
   if (runtime.controller.hardware.drive == DRIVE_YAESU) {
   prefs_.putBool("speedon", runtime.controller.speedEnabled);
@@ -867,7 +873,7 @@ bool Storage::saveForkSettings(const Runtime &runtime) {
 }
 
 const char *Storage::presetNamespace(const Runtime &runtime) {
-  return runtime.controller.model == forkrot::Model::G800DXA ? "fork800" : "fork5500";
+  return runtime.controller.model==Model::G800SA?"fork800sa":runtime.controller.model!=Model::G5500?"fork800":"fork5500";
 }
 
 void Storage::loadProfilePresets(Runtime &runtime) {
@@ -975,12 +981,12 @@ void Storage::clearResetHistory() {
   prefs_.end();
 }
 void Storage::saveCalibrationMode(Model model, CalibrationMode mode) {
-  prefs_.begin(model == Model::G800DXA ? "g800cal" : "g5500", false);
+  prefs_.begin(model==Model::G800SA?"g800sacal":model!=Model::G5500?"g800cal":"g5500", false);
   prefs_.putUChar("calmode", (uint8_t)mode);
   prefs_.end();
 }
 void Storage::saveAzMode(Model model, uint8_t mode) {
-  prefs_.begin(model == Model::G800DXA ? "g800cal" : "g5500", false);
+  prefs_.begin(model==Model::G800SA?"g800sacal":model!=Model::G5500?"g800cal":"g5500", false);
   prefs_.putUChar("azmode", mode);
   prefs_.end();
 }

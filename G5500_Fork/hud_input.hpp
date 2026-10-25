@@ -45,7 +45,7 @@ class HudKnob {
       stopEpoch_ = controller_.stopEpoch;
       resume_ = false;
     }
-    if (controller_.model == Model::G800DXA)
+    if (controller_.model != Model::G5500)
       axis_ = 0;
   }
 

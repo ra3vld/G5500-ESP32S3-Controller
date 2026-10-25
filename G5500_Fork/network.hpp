@@ -39,7 +39,7 @@ public:
   bool hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned report) const;
   bool apAlwaysOn() const {
     return runtime_.setup.required || credentials_.network.choice==NetworkChoice::Ap || credentials_.network.choice==NetworkChoice::SharedHost || wifiSetupAp_ || runtime_.recovery || runtime_.hud.config.wifi == HudWifi::Host ||
-           (runtime_.hud.config.wifi == HudWifi::Existing && (!FORK_CLASSIC_ESP32 || runtime_.controller.hardware.forceAp));
+           (runtime_.hud.config.wifi == HudWifi::Existing && runtime_.controller.hardware.forceAp);
   }
 
   WifiCredentials &credentials() {

@@ -61,7 +61,9 @@ enum class PinGroup : uint8_t { Drive, Hud485, Uart, Hc05, Indicator, Tft, Lcd, 
  X(azSensorScl, PIN_UART_DE, Output, SensorAz, false) \
  X(elSensorSda, PIN_UART_DE, Output, SensorEl, false) \
  X(elSensorScl, PIN_UART_DE, Output, SensorEl, false) \
- X(hudReady, PIN_UART_DE, Input, HudRadio, true)
+ X(hudReady, PIN_UART_DE, Input, HudRadio, true) \
+ X(azEnable, PIN_UART_DE, Output, Drive, true) \
+ X(elEnable, PIN_UART_DE, Output, Drive, true)
 struct PinMap {
 #define FORK_PIN_MEMBER(name, initial, kind, group, optional) int8_t name = board::initial < 0 ? -1 : board::initial;
   FORK_PIN_MAP(FORK_PIN_MEMBER)
@@ -79,7 +81,7 @@ struct PinDefinition {
   PinGroup group;
   bool optional;
 };
-inline constexpr std::array<PinDefinition,44> pinDefinitions{{
+inline constexpr std::array<PinDefinition,46> pinDefinitions{{
 #define FORK_PIN_DEFINITION(name, initial, kind, group, optional) {#name,"pin." #name,&PinMap::name,PinKind::kind,PinGroup::group,optional},
   FORK_PIN_MAP(FORK_PIN_DEFINITION)
 #undef FORK_PIN_DEFINITION

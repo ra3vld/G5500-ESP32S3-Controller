@@ -12,6 +12,7 @@ struct Runtime {
   SetupState setup;
   bool setupStorageOk = true;
   uint32_t setupLease = 0, setupRenewed = 0;
+  bool setupSaving = false, setupRestartRequired = false;
   ModbusConfig modbus;
   ModbusStatus modbusStatus;
   HardwareRecord hardwareRecord;

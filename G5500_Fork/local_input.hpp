@@ -45,6 +45,17 @@ public:
   bool neutral(int raw) const { return std::abs(raw - center_) <= deadzone_; }
 };
 
+class CombinedLocalAxis {
+  bool blocked_ = false;
+public:
+  float sample(float buttons, float joystick, bool neutral) {
+    if (neutral) blocked_ = false;
+    if (buttons * joystick < 0) blocked_ = true;
+    if (blocked_) return 0;
+    return buttons ? buttons : joystick;
+  }
+};
+
 // Uses the controller's manual lease and ownership checks. Idle inputs send no
 // commands, and releasing an old gesture cannot stop a newer external command.
 // The same controller facade routes HUD samples through its remote manual lease.
@@ -67,7 +78,7 @@ public:
   void configure(uint8_t mask) { mask_=mask; }
   void sample(float az, float el, uint8_t neutralMask, bool healthy, uint32_t now, uint32_t selection = 0) {
     auto &c = controller_;
-    const uint8_t mask = mask_ & (c.model == Model::G800DXA ? 1 : 3);
+    const uint8_t mask = mask_ & (c.model != Model::G5500 ? 1 : 3);
     if (!(mask & 1)) az = 0;
     if (!(mask & 2)) el = 0;
     bool changed = started_ && (selection != selection_ ||c.stopEpoch != stopEpoch_ || c.rangeRevision != rangeRevision_ || c.model != model_);

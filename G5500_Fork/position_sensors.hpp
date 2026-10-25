@@ -14,7 +14,7 @@ public:
     axes_[0]=axes_[1]=nullptr;
     if(c.simulation) return;
     for(unsigned i=0;i<2;++i) {
-      if(!c.sensorType(i) || (i && c.pins.singleAxis())) continue;
+      if(!c.sensorType(i) || (i && c.singleAxis())) continue;
       const int sda=i?c.pins.elSensorSda:c.pins.azSensorSda;
       const int scl=i?c.pins.elSensorScl:c.pins.azSensorScl;
 #if DISPLAY_KIND == DISPLAY_GC9A01
@@ -37,7 +37,8 @@ public:
     }
     raw_[axis]=raw;
     const unsigned counts=sensorCounts(c.sensorType(axis));
-    const int value=(unsigned(raw)+counts-c.sensorZero(axis))%counts;
+    const unsigned offset=(unsigned(raw)+counts-c.sensorZero(axis))%counts;
+    const int value=c.sensorInverted(axis)?(counts-offset)%counts:offset;
     // A branch cut cannot be a real shaft step at rotator speeds. Reject it
     // before the median filter can turn it into a calibrated endpoint.
     if(previous_[axis]>=0 && unsigned(value>previous_[axis]?value-previous_[axis]:previous_[axis]-value)>counts/2)

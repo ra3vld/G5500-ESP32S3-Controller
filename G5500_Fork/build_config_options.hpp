@@ -28,6 +28,7 @@
 #define DRIVE_YAESU 0
 #define DRIVE_SEPARATE_PWM 1
 #define DRIVE_BTS7960 2
+#define DRIVE_DIR_PWM 3
 
 #define BT_NONE 0
 #define BT_HC05 1
@@ -37,6 +38,7 @@
 #define LOCAL_INPUT_NONE 0
 #define LOCAL_INPUT_BUTTONS 1
 #define LOCAL_INPUT_JOYSTICK 2
+#define LOCAL_INPUT_BOTH 3
 
 // Совместимость прежних CrowPanel-сборок; новый флаг -D имеет приоритет.
 #if !defined(DRIVE_SIMULATION) && defined(CROWPANEL_SIMULATION)

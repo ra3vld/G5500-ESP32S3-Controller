@@ -20,7 +20,7 @@ public:
     controlOff();
     nativeOff();
     // Detect a held button or an external pull-down before acquiring any PWM.
-    if (digitalRead(pins_[2]) != HIGH) return fail();
+    if (pins_[2]>=0 && digitalRead(pins_[2]) != HIGH) return fail();
     for (unsigned i = pwm_ ? 0 : 2; i < (pwm_ ? 2u : 3u); ++i) {
       attached_[i] = ledcAttach(pins_[i], pwm_ ? 1000 : 20000, 10);
       if (!attached_[i]) {
@@ -44,12 +44,12 @@ public:
     output = std::min<uint32_t>(output, 1023u);
     if (direction < -1 || direction > 1) return fail();
     if (direction == 0 || (pwm_ && output == 0)) return stop();
-    if (pwm_ && !enabled_ && digitalRead(pins_[2]) != HIGH) return fail();
+    if (pwm_ && pins_[2]>=0 && !enabled_ && digitalRead(pins_[2]) != HIGH) return fail();
     if (direction != direction_) { controlOff(); nativeOff(); }
     if (pwm_) {
       ledcWrite(direction > 0 ? pins_[0] : pins_[1], duty(0));
       ledcWrite(direction > 0 ? pins_[1] : pins_[0], duty(output));
-      digitalWrite(pins_[2], LOW);
+      if(pins_[2]>=0) digitalWrite(pins_[2], LOW);
       enabled_ = true;
     } else {
       digitalWrite(direction > 0 ? pins_[0] : pins_[1], LOW);
@@ -64,7 +64,7 @@ public:
     controlOff();
     nativeOff();
     direction_ = 0;
-    if (pwm_ && digitalRead(pins_[2]) != HIGH) return fail();
+    if (pwm_ && pins_[2]>=0 && digitalRead(pins_[2]) != HIGH) return fail();
     return !failed_;
   }
 private:
@@ -74,6 +74,7 @@ private:
   int direction_ = 0;
   uint32_t duty(uint32_t value) const { return inverted_ ? 1023-value : value; }
   void controlOff() {
+    if(pins_[2]<0) { enabled_=false;return; }
     if (attached_[2]) ledcWrite(pins_[2], 1023);
     else {
       gpio_set_level(static_cast<gpio_num_t>(pins_[2]), HIGH);

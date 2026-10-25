@@ -22,6 +22,7 @@ private:
   bool setupReady(SetupStep step) const;
   void writeSetup(JsonWriter &) const;
   void invalidateSetup(SetupStep step);
+  void configurationRestart();
   Response callApi(std::string_view path, FormView form);
   void writeHardwareStatus(JsonWriter &, bool compact = false, std::string_view view = {});
   void writeConfiguration(JsonWriter &);

@@ -337,7 +337,7 @@ bool state(Reader &r, HudState &s, bool compact = false, bool extended = false, 
   s.lastTarget = target(r);
   if (!compact) r.text(s.name, sizeof s.name);
   r.text(s.fault, sizeof s.fault);
-  if (s.model > Model::G800DXA || s.mode > Mode::AutoHour || (!geometry && s.maximum != 360 && s.maximum != 450) ||
+  if (s.model > Model::G800SA || s.mode > Mode::AutoHour || (!geometry && s.maximum != 360 && s.maximum != 450) ||
       s.presetSlot > 3 || s.sequenceCount > 16 || s.sequenceIndex > 16 || f > 31 || s.drive > 4)
     return false;
   for (unsigned i = 0; i < 2; ++i) {

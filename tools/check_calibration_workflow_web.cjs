@@ -70,7 +70,7 @@ const request=async(route,body)=>{const r=await fetch(base+route,body?{method:'P
    const row=page.locator('#'+axis+'PointList .point-row[data-angle="15.5"]');
    assert((await row.innerText()).includes(expectedMv+' мВ'));assert(await row.locator('button.good').count());
    assert.equal((await request('/api/status')).moving,false);
-   assert.match(await page.locator('#settingsFeedbackText').innerText(),/ADC запомнено/);
+   assert.match(await page.locator('#settingsFeedbackText').innerText(),/показание датчика запомнено/);
    // Duplicate rejection must preserve the captured value and the input for correction.
    await input.fill('15.5');await add.click();
    await page.waitForFunction(()=>document.getElementById('settingsFeedback').dataset.state==='error');

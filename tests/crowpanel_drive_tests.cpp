@@ -124,6 +124,18 @@ int main() {
     for(const auto &e:fakeHardware.events) if(e.operation=="direction" && e.pin==0 && e.value==GPIO_MODE_INPUT_OUTPUT_OD) openDrainAfterAttach=true;
     assert(openDrainAfterAttach);noInvalidGpio();
   }
+  if(DRIVE_INTERFACE==DRIVE_BTS7960) {
+    reset();auto noEnable=HardwareConfig{};noEnable.pins.azSpeedEnable=-1;
+    assert(!validateHardware(noEnable));CrowPanelDrive drive;
+    assert(drive.begin(noEnable) && drive.apply(1,400,true));
+    assert(moduleDuty(duties()[PIN_RIGHT])==400);
+    assert(drive.stop() && moduleDuty(duties()[PIN_RIGHT])==0);
+    for(const auto &e:fakeHardware.events)assert(e.pin==PIN_LEFT || e.pin==PIN_RIGHT);
+    for(int failure=0;failure<2;++failure) {
+      reset();fakeHardware.failAttachAt=failure;CrowPanelDrive failed;assert(!failed.begin(noEnable));
+      for(const auto &e:fakeHardware.events)assert(e.pin==PIN_LEFT || e.pin==PIN_RIGHT);
+    }
+  }
   Preferences::database.clear();Storage storage;Preferences::database["forkcfg"]["model"]=uint8_t(0);
   MotionTestRuntime loaded;storage.loadForkSettings(loaded);assert(loaded.controller.model==Model::G800DXA);
   for(bool hud:{false,true}) {

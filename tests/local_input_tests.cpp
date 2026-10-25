@@ -171,9 +171,10 @@ static void runtimePinOwnership() {
 static void gpioAdapter() {
   Runtime r; r.controller = readyController();
   Hardware h(r); fakeHardware = {};
-#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+#if LOCAL_INPUT_MODE & LOCAL_INPUT_BUTTONS
   for (int pin : board::localInputPins) if (pin >= 0) fakeHardware.inputOverrides[pin] = HIGH;
-#elif LOCAL_INPUT_MODE == LOCAL_INPUT_JOYSTICK
+#endif
+#if LOCAL_INPUT_MODE & LOCAL_INPUT_JOYSTICK
   fakeHardware.millivolts[LOCAL_AZ_ADC_GPIO] = LOCAL_AZ_ADC_CENTER;
   fakeHardware.millivolts[LOCAL_EL_ADC_GPIO] = LOCAL_EL_ADC_CENTER;
 #endif
@@ -208,6 +209,8 @@ static void gpioAdapter() {
     auto cfg = r.controller.hardware; cfg.bluetooth = true; cfg.bluetoothMode = BT_HC05;
     assert(board::validateHardware(cfg)); // Enabling HC-05 cannot steal GPIO6.
   }
+#elif LOCAL_INPUT_MODE == LOCAL_INPUT_BOTH
+  assert(fakeHardware.readsRaw>0 && !fakeHardware.readsMv);
 #else
   assert(!fakeHardware.readsRaw && !fakeHardware.readsMv);
 #endif
@@ -215,13 +218,54 @@ static void gpioAdapter() {
   Hardware remote(hud); fakeHardware = {}; remote.beginInputs();
   remote.serviceLocalInputs();
   assert(!hud.controller.moving());
-#if LOCAL_INPUT_MODE == LOCAL_INPUT_JOYSTICK
+#if LOCAL_INPUT_MODE & LOCAL_INPUT_JOYSTICK
   assert(fakeHardware.readsRaw>0); // HUD reads its joystick, never position feedback.
 #else
   assert(!fakeHardware.readsRaw);
 #endif
 }
+static void combinedInputs() {
+  Runtime r; r.controller=readyController(); auto &c=r.controller.hardware;
+  c.simulation=true; c.bluetooth=false; c.buttonGpio=-1; c.local[0]=LOCAL_INPUT_BOTH;
+  for(const auto &d:pinDefinitions) c.pins.*d.member=-1;
+  bool used[49]{};
+  auto pin=[&](bool analog) {
+    for(int n=0;n<=48;++n) if(!used[n] && !board::fixedPinOwner(n) && !board::localPinOwner(n) &&
+        (analog?board::adc(n):board::pullup(n))) { used[n]=true;return n; }
+    assert(false);return -1;
+  };
+  c.pins.localAzAdc=pin(true); c.pins.localElAdc=pin(true);
+  c.pins.localAzNegative=pin(false); c.pins.localAzPositive=pin(false);
+  c.pins.localElNegative=pin(false); c.pins.localElPositive=pin(false);
+  assert(!board::validateHardware(c) && c.localMask()==3);
+  HardwareRecord record;record.good=record.candidate=c;HardwareRecord decoded;
+  assert(decodeHardware(encodeHardware(record),decoded) && decoded.good.local[0]==LOCAL_INPUT_BOTH);
+  auto bad=c;bad.pins.localAzPositive=bad.pins.localAzAdc;assert(board::validateHardware(bad));
+  bad=c;bad.pins.localAzPositive=-1;assert(board::validateHardware(bad));
+  fakeHardware={};
+  for(int n:{c.pins.localAzNegative,c.pins.localAzPositive,c.pins.localElNegative,c.pins.localElPositive})fakeHardware.inputOverrides[n]=HIGH;
+  fakeHardware.millivolts[c.pins.localAzAdc]=c.local[4];fakeHardware.millivolts[c.pins.localElAdc]=c.local[7];
+  Hardware h(r);h.beginInputs();
+  auto sample=[&](uint32_t now){fakeHardware.now=now;h.serviceLocalInputs();};
+  sample(0);sample(40);sample(80);
+  fakeHardware.inputOverrides[c.pins.localAzPositive]=LOW;sample(90);sample(130);
+  assert(r.controller.axes[0].wanted==(c.local[1]?-1:1)); // Neutral joystick does not cancel button.
+  fakeHardware.millivolts[c.pins.localElAdc]=4095;sample(140);
+  assert(r.controller.axes[0].wanted && r.controller.axes[1].wanted); // Independent devices/axes.
+  fakeHardware.millivolts[c.pins.localAzAdc]=0;sample(150);
+  assert(!r.controller.axes[0].wanted); // Opposing devices stop this axis.
+  fakeHardware.inputOverrides[c.pins.localAzPositive]=HIGH;sample(160);sample(200);
+  assert(!r.controller.axes[0].wanted); // Releasing just one device cannot reverse motion.
+  fakeHardware.millivolts[c.pins.localAzAdc]=c.local[4];fakeHardware.millivolts[c.pins.localElAdc]=c.local[7];
+  sample(210);sample(250);sample(290);
+  fakeHardware.millivolts[c.pins.localAzAdc]=4095;sample(300);
+  assert(r.controller.axes[0].wanted==(c.local[1]?-1:1));
+  assert(h.startJoystickCalibration());assert(r.controller.configurationLocked && !r.controller.axes[0].wanted);
+  fakeHardware.inputOverrides[c.pins.localAzPositive]=LOW;sample(310);sample(350);
+  assert(!r.controller.axes[0].wanted && h.calibratingJoystick());
+  h.cancelJoystickCalibration();sample(360);sample(400);assert(!r.controller.axes[0].wanted);
+}
 int main() {
-  buttons(); joystick(); gestures(); protection(); movement(); runtimePinOwnership(); gpioAdapter();
+  buttons(); joystick(); combinedInputs(); gestures(); protection(); movement(); runtimePinOwnership(); gpioAdapter();
   std::cout << "PASS: local controls debounce, proportional ADC, simultaneous axes, ownership, STOP, lease, faults and GPIO adapter\n";
 }

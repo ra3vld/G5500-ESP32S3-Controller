@@ -68,6 +68,12 @@ void Bus::tick(uint32_t at) {
   pump();
 }
 int main() {
+  {Bus wire;Node motor(wire,0x901,0x0a000091),panel(wire,0x902,0x0a000092,true);
+   motor.controller.setModel(Model::G800SA);motor.controller.feedback(30,0,true,false);
+   panel.save(motor);assert(panel.hud.select(motor.hud.id));wire.tick(100);wire.tick(200);
+   assert(panel.controller.model==Model::G800SA&&panel.controller.axes[0].calibrated&&!panel.controller.axes[1].calibrated);
+   assert(panel.controller.jog(1,1,false,200)==Result::Deferred);const auto request=panel.hud.requestId();wire.tick(300);assert(panel.hud.result(request).result==Result::Invalid&&!motor.controller.moving());}
+
   {
     Bus stream;Node motor(stream,1,1),panel(stream,2,2,true);
     motor.controller.hardware.drive=DRIVE_BTS7960;motor.controller.speedEnabled=true;

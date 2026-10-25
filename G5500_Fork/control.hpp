@@ -14,7 +14,10 @@
 #include <string_view>
 #include "fixed_vector.hpp"
 namespace forkrot {
-enum class Model { G5500, G800DXA };
+enum class Model { G5500, G800DXA, G800SA };
+inline const char *modelName(Model model) {
+  return model==Model::G5500?"G5500":model==Model::G800SA?"G800SA":"G800DXA";
+}
 enum class Mode { Manual, Auto, AutoHour };
 enum class Result {
   Ok,

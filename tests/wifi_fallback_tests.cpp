@@ -56,7 +56,7 @@ int main() {
   assert(policy.update(19998, true, false, true) == WifiAction::None);
   assert(policy.update(19999, true, false, true) == WifiAction::StartSta);
   assert(policy.update(27999, true, false, true) == WifiAction::StartAp);
-  // S2/S3 and explicitly forced ESP32 keep AP after a successful STA attempt.
+  // Explicitly enabled permanent AP remains after a successful STA attempt.
   policy.reset(0, false);
   assert(policy.update(30000, false, false, true, true) == WifiAction::None);
   assert(policy.update(30000, true, false, true, true) == WifiAction::StartSta);

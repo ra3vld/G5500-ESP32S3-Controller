@@ -1,3 +1,3 @@
-"""Keep S2 firmware within the existing OTA slots without removing features."""
+"""Keep firmware compact on boards with 4 MB Flash."""
 Import("env")
 env.Append(LINKFLAGS=["-flto"])

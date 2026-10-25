@@ -23,7 +23,7 @@ static void as(unsigned bus,unsigned raw,unsigned status=0x20) {
 static void validationAndRecords() {
   auto c=config();HardwareRecord record;record.good=record.candidate=c;
   const auto encoded=encodeHardware(record);HardwareRecord next;
-  assert(encoded[2]==5 && decodeHardware(encoded,next));assert(next.good==c && next.candidate==c);
+  assert(encoded[2]==8 && decodeHardware(encoded,next));assert(next.good==c && next.candidate==c);
   for(unsigned i=0;i<encoded.size();++i) {auto bad=encoded;bad[i]^=1;assert(!decodeHardware(bad,next));}
   for(unsigned version:{40,98,154,162}) {
     auto old=record;old.good=old.candidate=HardwareConfig{};
@@ -32,6 +32,14 @@ static void validationAndRecords() {
       decodeHardware(encodeHardwareRecord<154>(old),next):decodeHardware(encodeHardwareRecord<162>(old),next);
     assert(ok && next.good.sensorType(0)==0 && next.good.sensorType(1)==0);
   }
+  for(auto legacy:{encodeHardwareRecord<194>(record).size(),encodeHardwareRecord<196>(record).size()}) {
+    if(legacy==194) assert(decodeHardware(encodeHardwareRecord<194>(record),next));
+    else assert(decodeHardware(encodeHardwareRecord<196>(record),next));
+    assert(!next.good.sensorInverted(0) && !next.good.sensorInverted(1));
+  }
+  c.sensors[6]=1;c.sensors[7]=1;record.good=record.candidate=c;
+  assert(decodeHardware(encodeHardware(record),next) && next.good==c);
+  c.sensors[6]=2;assert(board::validateHardware(c));c=config();
   c.sensors[0]=2;c.sensors[1]=54;assert(std::string(board::validateHardware(c))=="sensor_address_conflict");
   c.pins.elSensorSda=23;c.pins.elSensorScl=18;assert(!board::validateHardware(c));
   c.sensors[5]=4096;assert(std::string(board::validateHardware(c))=="invalid_position_sensor");c.sensors[5]=0;
@@ -45,10 +53,10 @@ static void validationAndRecords() {
   std::string body="token=1&generation=1&driveInterface=0&simulation=0&bluetoothEnabled=0&bluetoothMode=3&forceApSta=0&buttonGpio=0&buttonActiveLow=1&buttonPullup=1&pwmInverted=0";
   for(const auto &p:pinDefinitions) body+='&'+std::string(p.field)+'='+std::to_string(config().pins.*p.member);
   for(unsigned i=0;i<11;++i)body+='&'+std::string(localSettingNames[i])+'='+std::to_string(c.local[i]);
-  for(unsigned i=0;i<6;++i)body+='&'+std::string(sensorSettingNames[i])+'='+std::to_string(config().sensors[i]);
+  for(unsigned i=0;i<SensorSettings{}.size();++i)body+='&'+std::string(sensorSettingNames[i])+'='+std::to_string(config().sensors[i]);
   assert(parseHardwareForm(body,form,true) && !board::validateHardware(form.config));
   assert(!parseHardwareForm(body+"&azSensor=0",form,true));
-  CommandForm http;assert(http.parse(body,1536) && http.count==71);
+  CommandForm http;assert(http.parse(body,1536) && http.count==11+pinDefinitions.size()+LocalSettings{}.size()+SensorSettings{}.size());
   const auto request="POST /api/hardware HTTP/1.1\r\nContent-Length: "+std::to_string(body.size())+"\r\n\r\n"+body;
   assert(inspectRequest(request,4096)==RequestState::Ready);
   const auto ordinary="POST /api/settings HTTP/1.1\r\nContent-Length: "+std::to_string(body.size())+"\r\n\r\n"+body;
@@ -106,6 +114,27 @@ static void acquisition() {
   c.simulation=false;r.controller.configureHardware(c);r.recovery=true;Hardware recovery(r);recovery.beginAdc();
   assert(fakeI2c[0].begins==begins && recovery.positionValue(0)==-1);
 }
+static void invertedSensors() {
+  fakeHardware={};fakeI2c[0]={};fakeI2c[1]={};
+  auto c=config();c.sensors[6]=c.sensors[7]=1;
+  MotionTestRuntime r;r.controller.configureHardware(c);Hardware h(r);mt(0,8000);as(0,2000);h.beginAdc();
+  assert(h.positionValue(0)==8384 && h.positionValue(1)==2096);
+  mt(0,7000);as(0,1000);assert(h.positionValue(0)==9384 && h.positionValue(1)==3096);
+  int raw,value;h.positionDiagRead(0,raw,value);assert(raw==7000 && value==9384);
+  c.sensors[0]=c.sensors[3]=0;r.controller.configureHardware(c);Hardware pot(r);pot.beginAdc();
+  fakeHardware.millivolts[c.pins.azAdc]=2000;fakeHardware.millivolts[c.pins.elAdc]=1000;
+  assert(pot.positionValue(0)==1300 && pot.positionValue(1)==2300);
+  int physical;pot.positionDiagRead(0,raw,value,&physical);assert(physical==2000 && value==1300);
+  CalibrationState state;state.az45LinearValid=state.elLinearValid=true;
+  bindPositionSensors(state,c);assert(!state.az45LinearValid && !state.elLinearValid);
+  state.az45LinearValid=state.elLinearValid=true;c.sensors[6]=0;bindPositionSensors(state,c);
+  assert(!state.az45LinearValid && state.elLinearValid);
+  // All shipped hardware record versions retain direct direction when migrated.
+  Preferences::database.clear();Storage storage;Runtime loaded;HardwareRecord old;old.hasConfirmed=true;
+  const auto bytes=encodeHardwareRecord<196>(old);
+  Preferences::database["hardware"]["config1"]=Preferences::Bytes(bytes.begin(),bytes.end());
+  storage.loadHardware(loaded);assert(!loaded.recovery && !loaded.controller.hardware.sensorInverted(0));
+}
 static void calibrationStorage() {
   Preferences::database.clear();Storage storage;Runtime r;Calibration cal(r.controller);WifiCredentials wifi;
   auto c=config();r.controller.configureHardware(c);storage.loadPrefs(r,cal,wifi);
@@ -127,4 +156,4 @@ static void calibrationStorage() {
   const auto crc=calibrationCrc(old.data(),old.size()-4);for(unsigned i=0;i<4;++i)old[old.size()-4+i]=crc>>(i*8);
   assert(readCalibrationRecord(old,state) && state.sensorIdentity[0]==0);
 }
-int main() {validationAndRecords();acquisition();calibrationStorage();std::cout<<"PASS: runtime sensors, NVS migration, 14/12-bit I2C, failures, STOP, wrap and calibration identity\n";}
+int main() {validationAndRecords();acquisition();invertedSensors();calibrationStorage();std::cout<<"PASS: runtime sensors, NVS migration, 14/12-bit I2C, failures, STOP, wrap and calibration identity\n";}

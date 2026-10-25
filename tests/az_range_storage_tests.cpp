@@ -68,5 +68,13 @@ int main() {
   reboot.controller.model=Model::G5500;storage.loadPrefs(reboot,loaded,credentials);
   assert(loaded.state().gsAzMode==AZ_CUSTOM && loaded.activeAzRange().start==-60);
   assert(credentials.wifiSsid==String("untouched"));
+  // G-800SA keeps its identity and calibration separate from G-800DXA.
+  r.controller.model=Model::G800SA;assert(storage.saveForkSettings(r));
+  assert(cal.configureAz(AZ_CUSTOM,-90,450));assert(storage.saveCal(r,cal));
+  MotionTestRuntime sa;Calibration saCal(sa.controller);WifiCredentials saWifi;
+  storage.loadForkSettings(sa);assert(sa.controller.model==Model::G800SA);
+  storage.loadPrefs(sa,saCal,saWifi);assert(sa.controller.minimum==-90&&sa.controller.maximum==360);
+  assert(Preferences::database.count("g800sacal"));
+  sa.controller.model=Model::G800DXA;storage.loadPrefs(sa,saCal,saWifi);assert(sa.controller.minimum!=-90);
   std::cout<<"PASS: range NVS migration, reboot, per-model banks, failed writes, corruption and explicit recovery\n";
 }

@@ -73,7 +73,7 @@ static_assert(BOARD_PROFILE >= BOARD_AUTO && BOARD_PROFILE <= BOARD_ESP32_3248S0
 #error "DRIVE_SIMULATION must be 0 or 1"
 #endif
 
-#if DISPLAY_KIND < 0 || DISPLAY_KIND > DISPLAY_ST7796 || DRIVE_INTERFACE < 0 || DRIVE_INTERFACE > 2
+#if DISPLAY_KIND < 0 || DISPLAY_KIND > DISPLAY_ST7796 || DRIVE_INTERFACE < 0 || DRIVE_INTERFACE > DRIVE_DIR_PWM
 #error "Unknown display or drive interface"
 #endif
 #if SELECTED_BOARD == BOARD_ESP32_3248S035C
@@ -97,7 +97,7 @@ static_assert(BOARD_PROFILE >= BOARD_AUTO && BOARD_PROFILE <= BOARD_ESP32_3248S0
 #if DISPLAY_KIND != DISPLAY_CROWPANEL_21 || USER_BUTTON_GPIO != -1
 #error "CrowPanel requires its RGB display and PCF8574 button (USER_BUTTON_GPIO=-1)"
 #endif
-#if (!CROWPANEL_LOCAL_DRIVE && DRIVE_INTERFACE != DRIVE_YAESU) || DRIVE_INTERFACE == DRIVE_SEPARATE_PWM
+#if (!CROWPANEL_LOCAL_DRIVE && DRIVE_INTERFACE != DRIVE_YAESU) || DRIVE_INTERFACE == DRIVE_SEPARATE_PWM || DRIVE_INTERFACE == DRIVE_DIR_PWM
 #error "CrowPanel local AZ supports only YAESU/BTS7960; unmodified board requires YAESU placeholder"
 #endif
 #elif DISPLAY_KIND == DISPLAY_CROWPANEL_21
@@ -138,13 +138,14 @@ static_assert(BOARD_PROFILE >= BOARD_AUTO && BOARD_PROFILE <= BOARD_ESP32_3248S0
 #endif
 static_assert(AZ_STOP_TOLERANCE_DEG > 0 && AZ_STOP_TOLERANCE_DEG <= 90, "Invalid AZ tolerance");
 static_assert(EL_STOP_TOLERANCE_DEG > 0 && EL_STOP_TOLERANCE_DEG <= 90, "Invalid EL tolerance");
-static_assert(LOCAL_INPUT_MODE >= LOCAL_INPUT_NONE && LOCAL_INPUT_MODE <= LOCAL_INPUT_JOYSTICK,
+static_assert(LOCAL_INPUT_MODE >= LOCAL_INPUT_NONE && LOCAL_INPUT_MODE <= LOCAL_INPUT_BOTH,
               "Invalid LOCAL_INPUT_MODE");
-#if LOCAL_INPUT_MODE == LOCAL_INPUT_BUTTONS
+#if LOCAL_INPUT_MODE & LOCAL_INPUT_BUTTONS
 static_assert((LOCAL_AZ_NEG_GPIO == -1) == (LOCAL_AZ_POS_GPIO == -1) &&
               (LOCAL_EL_NEG_GPIO == -1) == (LOCAL_EL_POS_GPIO == -1), "Configure both buttons of each axis");
 static_assert(LOCAL_AZ_NEG_GPIO >= 0 || LOCAL_EL_NEG_GPIO >= 0, "Configure at least one local button pair");
-#elif LOCAL_INPUT_MODE == LOCAL_INPUT_JOYSTICK
+#endif
+#if LOCAL_INPUT_MODE & LOCAL_INPUT_JOYSTICK
 static_assert(LOCAL_AZ_ADC_GPIO >= 0 || LOCAL_EL_ADC_GPIO >= 0, "Configure at least one joystick ADC");
 static_assert(LOCAL_ADC_DEADZONE > 0 && LOCAL_ADC_HYSTERESIS >= 0, "Invalid joystick dead zone/hysteresis");
 static_assert(LOCAL_AZ_ADC_MIN >= 0 && LOCAL_AZ_ADC_MAX <= 4095 &&

@@ -78,7 +78,7 @@ void writeTargetJson(JsonWriter &json, Target t) {
 } // namespace
 bool writeStateJson(JsonWriter &json, const Controller &controller, const Protocol &protocol,
                     const Settings &settings, uint32_t now, bool appendMembers) {
-  json << (appendMembers ? ",\"model\":" : "{\"model\":") << jsonQuoted(controller.model == Model::G5500 ? "G5500" : "G800DXA")
+  json << (appendMembers ? ",\"model\":" : "{\"model\":") << jsonQuoted(modelName(controller.model))
        << ",\"azProfile\":" << jsonQuoted(azProfileName(controller.azProfile))
        << ",\"azStart\":" << controller.minimum << ",\"azSpan\":" << controller.azRange.span()
        << ",\"azMax\":" << controller.maximum << ",\"azRangeRevision\":" << controller.rangeRevision
@@ -150,11 +150,11 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"bluetoothBackend\":" << jsonQuoted(controller.hardware.backendName()) << ",\"drive\":"
        << jsonQuoted(controller.remote                      ? "HUD"
                      : controller.hardware.simulation                     ? "SIMULATED"
-                     : !controller.hardware.hasDirections(0) && !controller.hardware.hasDirections(1) ? "NONE"
+                     : !controller.hardware.hasDirections(0) ? "NONE"
                      : controller.hardware.drive == DRIVE_YAESU       ? "YAESU"
                      : controller.hardware.drive == DRIVE_BTS7960     ? "BTS7960"
-                                                            : "SEPARATE_PWM")
-       << ",\"singleAxis\":" << (controller.hardware.pins.singleAxis() && (!FORK_C3 || controller.hardware.localAxisConfigured(0)) && !controller.remote && !controller.hardware.simulation ? "true" : "false")
+                                                            : controller.hardware.drive == DRIVE_DIR_PWM ? "DIR_PWM" : "SEPARATE_PWM")
+       << ",\"singleAxis\":" << (controller.hardware.singleAxis() && (!FORK_C3 || controller.hardware.localAxisConfigured(0)) && !controller.remote && !controller.hardware.simulation ? "true" : "false")
        << ",\"userButtonGpio\":" << int(controller.hardware.buttonGpio)
        << ",\"userButtonActiveLow\":" << (controller.hardware.buttonLow ? "true" : "false")
        << ",\"userButtonPullup\":" << (controller.hardware.buttonPullup ? "true" : "false")
@@ -289,7 +289,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       } else {
         float az, el = 0;
         if (number(get(form, "az"), az) &&
-            (controller.model == Model::G800DXA || number(get(form, "el"), el))) {
+            (controller.model != Model::G5500 || number(get(form, "el"), el))) {
           result = controller.savePreset(slot - 1, std::string(get(form, "label")),
                                          {az, el, true, controller.model == Model::G5500});
         }
@@ -318,9 +318,9 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     }
     if (has(form, "model")) {
       auto m = get(form, "model");
-      valid = (m == "G5500" || m == "G800DXA") && valid;
-      model = m == "G800DXA" ? Model::G800DXA : Model::G5500;
-      if (!controller.remote && !controller.hardware.simulation && controller.hardware.pins.singleAxis() && (!FORK_C3 || controller.hardware.localAxisConfigured(0)) && model != Model::G800DXA) valid = false;
+      valid = (m == "G5500" || m == "G800DXA" || m == "G800SA") && valid;
+      model = m == "G800SA" ? Model::G800SA : m == "G800DXA" ? Model::G800DXA : Model::G5500;
+      if (!controller.remote && !controller.hardware.simulation && controller.hardware.singleAxis() && (!FORK_C3 || controller.hardware.localAxisConfigured(0)) && model == Model::G5500) valid = false;
     }
     if (has(form, "rotorName")) {
       name = get(form, "rotorName");
@@ -425,7 +425,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       if(motionTouched[i]) m.ready=true; // legacy MotionReady is accepted, never an authorization gate
       valid=m.valid()&&valid;
       const bool variable=controller.hardware.simulation || (controller.hardware.drive==DRIVE_YAESU
-          ? i==0 && model==Model::G800DXA && enabled : i==0 || model==Model::G5500);
+          ? i==0 && model!=Model::G5500 && enabled : i==0 || model==Model::G5500);
       if(motionTouched[i] && m.mode==RegulatorMode::Cascade && !variable) valid=false;
 
     }

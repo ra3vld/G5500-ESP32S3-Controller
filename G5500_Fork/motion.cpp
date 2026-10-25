@@ -220,7 +220,7 @@ void Controller::resetFeedback(int axis,uint32_t now) {
   }
 }
 void Controller::feedbackAt(unsigned i, float position, bool calibrated, uint32_t stamp) {
-  if (remote || i > 1 || (i == 1 && model == Model::G800DXA)) return;
+  if (remote || i > 1 || (i == 1 && model != Model::G5500)) return;
   auto &f = motion_[i].feedback;
   const auto &cfg = motionSettings[i];
   const float previousPosition=axes[i].current,previousVelocity=f.velocity;

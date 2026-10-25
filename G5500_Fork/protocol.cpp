@@ -261,7 +261,7 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
     return packet;
   }
   if (el && (!number(el->text, elevation) || !controller_.elRange.contains(elevation) ||
-             (controller_.model == Model::G800DXA && elevation != 0))) {
+             (controller_.model != Model::G5500 && elevation != 0))) {
     return packet;
   }
   for (const auto &n : root.children) {
