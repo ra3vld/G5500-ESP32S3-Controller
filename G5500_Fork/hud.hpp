@@ -138,6 +138,7 @@ public:
   void service(uint32_t at);
   void receive(const HudEndpoint &, const uint8_t *, size_t, uint32_t at);
   bool discover(HudEndpoint endpoint);
+  bool discoverRs485(uint8_t first,uint8_t last,uint8_t masterFirst,uint8_t masterCount);
   HudPeer *peers() { return peers_.get(); }
   const HudPeer *peers() const { return peers_.get(); }
   HudPeer *peer(uint64_t) const;
@@ -220,6 +221,9 @@ private:
   Result lastResult_ = Result::Ok;
   uint32_t scanSerial_ = 0;
   bool scanning_ = false;
+  uint16_t scanNext_=0,scanLast_=0;
+  uint8_t scanMasterFirst_=0,scanMasterCount_=0;
+  bool scanAnswered_=false;
   HudEndpoint scanEndpoint_;
   uint8_t tx_[HUD_FRAME_MAX]{};
   uint32_t nextSerial();

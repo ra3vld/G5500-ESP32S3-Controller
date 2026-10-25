@@ -363,9 +363,13 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <div class="device-pagination"><button class="btn" id="hudSettingsPrev" onclick="hudPage(-1)">Назад</button><span id="hudSettingsPageInfo"></span><button class="btn" id="hudSettingsNext" onclick="hudPage(1)">Далее</button></div>
 <section class="settings-group"><h3>Добавить поворотку</h3>
 <div class="form-actions"><button class="btn" onclick="hudSearch()">Найти в сети</button><button class="btn" id="hudUartSearch" onclick="hudSearch(true)">Найти по UART</button></div>
+<form class="device-address" onsubmit="event.preventDefault();hudSearchRs485()">
+<div class="device-fields"><div class="field"><label for="hudBusFirst">RS‑485 · первый адрес</label><input id="hudBusFirst" type="number" min="1" max="247" value="1" required/></div><div class="field"><label for="hudBusLast">Последний адрес</label><input id="hudBusLast" type="number" min="1" max="247" value="247" required/></div></div>
+<button class="btn" id="hudBusSearch">Найти на шине RS‑485</button><p class="field-help">Для режима «Modbus RTU с маркером». Адреса опрашиваются по очереди; полный поиск может занять несколько минут. Адреса ведущих пропускаются.</p></form>
 <form class="device-address" onsubmit="event.preventDefault();hudSearch(false,true)">
 <div class="device-fields"><div class="field"><label for="hudAddress">IP контроллера</label><input aria-describedby="hudAddress-help" id="hudAddress" placeholder="192.168.4.1"/><p class="field-help" id="hudAddress-help">IPv4-адрес контроллера, если поиск в сети его не нашёл. Адрес указан в веб-интерфейсе самого контроллера.</p></div><div class="field"><label for="hudPeerPort">UDP-порт HUD</label><input aria-describedby="hudPeerPort-help" id="hudPeerPort" max="65535" min="1" type="number" value="4534"/><p class="field-help" id="hudPeerPort-help">UDP-порт HUD на добавляемом контроллере. Он должен совпадать с портом в его настройках связи.</p></div></div>
 <button class="btn">Проверить адрес</button></form>
+<p class="hint" id="hudBusProgress" role="status"></p>
 <div class="device-list" id="hudDiscovered"></div>
 <div class="device-pagination"><button class="btn" onclick="hudDiscoveryPage(-1)">Назад</button><span id="hudDiscoveryInfo"></span><button class="btn" onclick="hudDiscoveryPage(1)">Далее</button></div>
 </section></div>
@@ -813,7 +817,7 @@ async function forkPost(path,body){
   const missingCalibration=path==='/api/target'?['az','el'].filter((axis,i)=>body[axis]!==undefined&&window._forkState?.axes?.[i]?.calibrated===false).map(axis=>axis.toUpperCase()):[];
   if(j.superseded)return false;
   const calibrationMessage='Сначала выполните калибровку'+(missingCalibration.length?' '+missingCalibration.join(' и '):'');
-  const messages={uart_settings_in_hardware:'Скорость, чётность и стоп-биты меняются в настройках оборудования → UART и RS-485',invalid_uart_settings:'Проверьте скорость UART, частоту обновления и уровень готовности',radio_requires_uart:'Для радиомоста выберите обычный UART0 без отдельного HUD RS‑485 и Modbus',deferred:'Ожидаем подтверждение',timeout:'Нет подтверждения — проверьте состояние поворотки',unavailable:'Проверьте связь, параметры движения и ошибку оси',busy:'Поворотка занята, повторите команду',cancelled:'Команда отменена',storage_full:'Не хватает памяти для сохранения',motion_storage_failed:'Не удалось сохранить параметры движения',hud_port_conflict:'Порт HUD совпадает с портом логгера',controller_settings_only:'Эти настройки доступны на контроллере поворотки',restart:'Сохранено. Устройство перезагружается',searching:'Поиск устройств…',invalid_or_port_conflict:'Проверьте настройки и порты',uart_in_use_by_hc05:'UART занят HC-05: выключите Bluetooth в настройках оборудования',uart_disabled:'Назначьте RX и TX UART в настройках оборудования',not_calibrated:calibrationMessage,invalid:'Проверьте значения',ignored:'Сейчас выполняется предустановка',pending:'Цель ожидает подтверждения',ok:'Готово'};
+  const messages={uart_settings_in_hardware:'Скорость, чётность и стоп-биты меняются в настройках оборудования → UART и RS-485',invalid_uart_settings:'Проверьте скорость UART, частоту обновления и уровень готовности',radio_requires_uart:'Для радиомоста выберите обычный UART0 без отдельного HUD RS‑485 и Modbus',deferred:'Ожидаем подтверждение',timeout:'Нет подтверждения — проверьте состояние поворотки',unavailable:'Проверьте связь, параметры движения и ошибку оси',busy:'Поворотка занята, повторите команду',cancelled:'Команда отменена',storage_full:'Не хватает памяти для сохранения',motion_storage_failed:'Не удалось сохранить параметры движения',hud_port_conflict:'Порт HUD совпадает с портом логгера',controller_settings_only:'Эти настройки доступны на контроллере поворотки',restart:'Сохранено. Устройство перезагружается',searching:'Поиск устройств…',invalid_or_port_conflict:'Проверьте настройки и порты',uart_in_use_by_hc05:'UART занят HC-05: выключите Bluetooth в настройках оборудования',modbus_bus_disabled:'Включите Modbus RTU с маркером в настройках UART и RS‑485',uart_disabled:'Назначьте RX и TX UART в настройках оборудования',not_calibrated:calibrationMessage,invalid:'Проверьте значения',ignored:'Сейчас выполняется предустановка',pending:'Цель ожидает подтверждения',ok:'Готово'};
   document.getElementById('forkMessage').textContent=(messages[j.result]||'Ошибка')+(path!=='/api/hud/select'&&name&&selection!==window._forkState?.hudSelectionEpoch?' · команда для '+name:'');
   const ok=r.status<400&&!!j.ok;
   notice?.finish(ok,ok&&j.result==='ok'?success:(messages[j.result]||'Не удалось выполнить действие'));
@@ -1568,7 +1572,7 @@ function hudRow(peer,discovered,manage=false){
  if(!discovered)select.setAttribute('aria-pressed',String(!!peer.selected));
  const age=peer.ageMs===null?'нет данных':Math.round(peer.ageMs/1000)+' с назад';
  const position=axis=>peer[axis+'Calibrated']===false?'NC':Number.isFinite(peer[axis])?Number(peer[axis]).toFixed(1)+'°':'—';
- select.textContent=peer.name+' · '+(peer.online?'AZ '+position('az')+(peer.hasEl===false?'':' / EL '+position('el'))+(peer.moving?' · вращение':''):'нет связи')+' · '+age;
+ select.textContent=peer.name+(peer.busAddress?' · RS‑485 №'+peer.busAddress:'')+' · '+(peer.online?'AZ '+position('az')+(peer.hasEl===false?'':' / EL '+position('el'))+(peer.moving?' · вращение':''):'нет связи')+' · '+age;
  select.onclick=async()=>{await forkPost(discovered?'/api/hud/peers':'/api/hud/select',{id:peer.id});await loadHudPeers();if(discovered)await loadHudDiscovery()};row.append(select);
  if(manage&&!discovered&&peer.transport!=='simulation'){
   const rename=document.createElement('button');rename.className='btn';rename.textContent='Имя';rename.onclick=async()=>{const name=prompt('Имя поворотки',peer.name);if(name!==null){await forkPost('/api/hud/peers',{id:peer.id,name});await loadHudPeers()}};row.append(rename);
@@ -1587,7 +1591,9 @@ async function loadHudPeers(){
  }
  }catch(e){}finally{hudPollBusy=false;hudLastPoll=Date.now()}
 }
-async function loadHudDiscovery(){if(otaBusy)return;try{const data=await (await fetch('/api/hud/peers?discovered=1&offset='+hudDiscoveredOffset,{cache:'no-store'})).json();hudDiscoveryTotal=data.total;document.getElementById('hudDiscovered').replaceChildren(...data.items.map(p=>hudRow(p,true)));document.getElementById('hudDiscoveryInfo').textContent='Найдено: '+data.total}catch(e){}}
+let hudScanTimer;
+async function loadHudDiscovery(){if(otaBusy)return;try{const data=await (await fetch('/api/hud/peers?discovered=1&offset='+hudDiscoveredOffset,{cache:'no-store'})).json();hudDiscoveryTotal=data.total;document.getElementById('hudDiscovered').replaceChildren(...data.items.map(p=>hudRow(p,true)));document.getElementById('hudBusProgress').textContent=data.scanActive?'Поиск RS‑485: адрес '+data.scanAddress+' / '+data.scanLast:'';document.getElementById('hudDiscoveryInfo').textContent='Найдено: '+data.total;clearTimeout(hudScanTimer);if(data.scanActive)hudScanTimer=setTimeout(loadHudDiscovery,1000)}catch(e){}}
+async function hudSearchRs485(){if(Number(document.getElementById('hudBusFirst').value)>Number(document.getElementById('hudBusLast').value)){alert('Первый адрес должен быть не больше последнего');return;}if(await forkPost('/api/hud/discover',{transport:'rs485',first:document.getElementById('hudBusFirst').value,last:document.getElementById('hudBusLast').value})){hudDiscoveredOffset=0;await loadHudDiscovery();}}
 async function hudSearch(uart=false,manual=false){
  await forkPost('/api/hud/discover',{transport:uart?'uart':'wifi',address:manual?document.getElementById('hudAddress').value:'',port:manual?document.getElementById('hudPeerPort').value:window._forkState?.hudPort||4534});
  hudDiscoveredOffset=0;setTimeout(loadHudDiscovery,500);setTimeout(loadHudDiscovery,1800);
@@ -1607,7 +1613,7 @@ function updateHud(j){
  document.getElementById('hudHeading').textContent=hud?'HUD · '+(j.hudName||'Выберите поворотку')+(j.remoteDrive?' · '+j.model+' / '+j.remoteDrive:''):'Контроллер поворотки';
  document.getElementById('hudLink').textContent=hud?(j.hudOnline?(j.hudTransport==='simulation'?'Встроенная имитация':'Связь: '+j.hudTransport+' · '+j.hudAgeMs+' мс'):'Нет связи с выбранной повороткой'):'';
  if(j.hudCatalogError)document.getElementById('hudLink').textContent+=' · Ошибка памяти или сохранённых настроек';
- document.getElementById('hudUartSearch').disabled=!j.hudUart;
+ document.getElementById('hudUartSearch').disabled=!j.hudUart;document.getElementById('hudBusSearch').disabled=!j.hudUart;
  const f=document.getElementById('hudConfig');if(!f.dataset.dirty&&!f.contains(document.activeElement)){f.elements.role.value=j.deviceRole||'controller';f.elements.wifi.value=['existing','host','client'][j.hudWifi||0];f.elements.uart.value=j.hudUart?'1':'0';f.elements.port.value=j.hudPort||4534;f.elements.refreshHz.value=Number((1000/(j.hudIntervalMs||100)).toFixed(1));f.elements.readyHigh.value=String(j.hudReadyHigh??1);hudUartFields();}
  document.getElementById('caltoggle').closest('.card').classList.toggle('hide',hud);
  document.getElementById('speedSettings').classList.toggle('hide',hud||document.getElementById('speedSettings').classList.contains('hide'));
@@ -1663,7 +1669,7 @@ for(const id of ordered)setupRoot.append(document.getElementById(id));
 document.addEventListener('input',event=>{if(event.target.form===sharedForm){sharedForm.dataset.dirty='1';if(wizard.active)renderSetup();}});
 // Put the field action on the same grid row as its input. Explanations occupy
 // their own row and cannot push the button away from its associated control.
-const addressForm=document.querySelector('.device-address');
+const addressForm=document.getElementById('hudAddress').closest('form');
 addressForm.classList.add('field-action');const addressButton=addressForm.lastElementChild;addressForm.firstElementChild.append(addressButton);
 const shell=document.createElement('section');shell.id='setupWizard';shell.className='card';shell.hidden=true;
 shell.innerHTML='<p id="setupProgress" class="hint"></p><h2 id="setupTitle" tabindex="-1"></h2><p id="setupHint"></p><p id="setupMessage" role="status" aria-live="polite"></p>';

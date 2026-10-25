@@ -957,7 +957,7 @@ bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
     return false;
   if (discovery) {
     scanSerial_ = serial;
-    if (!paced(e)) for (uint8_t oldVersion : {uint8_t(4),uint8_t(3),uint8_t(2),uint8_t(1)}) {
+    if (!paced(e) && !(e.uart && e.address)) for (uint8_t oldVersion : {uint8_t(4),uint8_t(3),uint8_t(2),uint8_t(1)}) {
       Writer legacy{tx_,sizeof tx_}; header(legacy,{Kind::Discover,id,targetId,boot,0,serial,0,oldVersion});
       const auto bytes=legacy.finish();
       if(bytes) transport_->sendHud(e,tx_,bytes);
@@ -985,10 +985,17 @@ bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
   return true;
 }
 bool Hud::discover(HudEndpoint e) {
+  scanNext_=scanLast_=0;
   scanning_ = true;
   scanAt_ = now;
   scanEndpoint_ = e;
   return sendQuery(e, 0, true);
+}
+bool Hud::discoverRs485(uint8_t first,uint8_t last,uint8_t masterFirst,uint8_t masterCount) {
+  if(!isHud()||!config.uart||!first||last>247||first>last)return false;
+  scanNext_=first;scanLast_=last;scanMasterFirst_=masterFirst;scanMasterCount_=masterCount;
+  scanning_=false;scanAnswered_=false;
+  return true;
 }
 bool Hud::sendState(const HudEndpoint &e, uint64_t targetId, uint32_t seq, bool ack, Result result,
                     uint64_t targetBoot, bool compact, uint8_t version) {
@@ -1170,9 +1177,10 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     const bool discovery =
         h.kind == Kind::State && scanning_ && h.serial == scanSerial_ && uint32_t(now - scanAt_) < responseMs(e) &&
         e.uart == scanEndpoint_.uart &&
-        (e.uart || (e.port == scanEndpoint_.port &&
+        ((e.uart && e.address == scanEndpoint_.address) || (!e.uart && e.port == scanEndpoint_.port &&
                     (scanEndpoint_.address == 0xffffffffu || e.address == scanEndpoint_.address)));
     if (discovery) {
+      scanAnswered_=true;
       requested = true;
       requestedAt = scanAt_;
     }
@@ -1513,6 +1521,15 @@ void Hud::expireLeases(Controller &controller) {
 }
 void Hud::service(uint32_t at) {
   now = at;
+  if(isHud() && scanNext_ && (!scanning_ || scanAnswered_ || uint32_t(now-scanAt_)>=responseMs(scanEndpoint_))) {
+    while(scanNext_<=scanLast_ && scanNext_>=scanMasterFirst_ && scanNext_<unsigned(scanMasterFirst_)+scanMasterCount_)++scanNext_;
+    if(scanNext_>scanLast_) {scanNext_=0;scanning_=false;}
+    else {
+      scanEndpoint_={scanNext_,config.port,true};scanAt_=now;scanAnswered_=false;scanning_=true;
+      if(sendQuery(scanEndpoint_,0,true))++scanNext_;
+      else scanning_=false;
+    }
+  }
   if (!isHud()) {
     publishLive();
     expireLeases(controller_);
@@ -1604,7 +1621,8 @@ void Hud::service(uint32_t at) {
   }
 }
 bool Hud::writePeers(JsonWriter &j, size_t offset, size_t limit, bool discovered) const {
-  j << "{\"total\":" << count(!discovered) << ",\"offset\":" << offset << ",\"items\":[";
+  j << "{\"scanActive\":" << (scanNext_?"true":"false") << ",\"scanAddress\":" << (scanNext_?scanEndpoint_.address:0)
+    << ",\"scanLast\":" << scanLast_ << ",\"total\":" << count(!discovered) << ",\"offset\":" << offset << ",\"items\":[";
   size_t n = 0, shown = 0;
   for (auto *p = peers_.get(); p; p = p->next.get()) {
     if (p->saved == discovered)
@@ -1622,6 +1640,7 @@ bool Hud::writePeers(JsonWriter &j, size_t offset, size_t limit, bool discovered
       << ",\"transport\":" << jsonQuoted(p->simulated() ? "simulation" : p->endpoint.uart ? "uart" : "wifi") << ",\"address\":\""
       << (address & 255) << '.' << ((address >> 8) & 255) << '.' << ((address >> 16) & 255) << '.'
       << ((address >> 24) & 255) << "\",\"port\":" << p->endpoint.port
+      << ",\"busAddress\":" << (p->endpoint.uart?address:0)
       << ",\"selected\":" << (p->id == config.selected ? "true" : "false") << ",\"online\":"
       << (p->fresh(now, std::max<uint32_t>(3000, uint32_t(count() * 300))) ? "true" : "false")
       << ",\"ageMs\":";

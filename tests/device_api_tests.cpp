@@ -64,7 +64,27 @@ struct Fixture {
     api.execute(method,path,form.view(),out,status,type,wire);assert(out.good());return {status,{data,out.size()}};
   }
 };
+static void rs485DiscoveryApiTests() {
+  {
+    Fixture scan;scan.runtime.hud.config.role=DeviceRole::Hud;scan.runtime.hud.config.uart=true;scan.runtime.hud.begin(1,0x1234);
+    assert(scan.call("POST","/api/hud/discover","transport=rs485").status==400);
+    scan.runtime.modbus.bus=1;
+    assert(scan.call("POST","/api/hud/discover","transport=rs485&first=3&last=7").status==200);
+    assert(scan.call("GET","/api/hud/peers","discovered=1").body.find("\"scanActive\":true")!=std::string::npos);
+    for(auto bad:{"first=0","first=248","first=8&last=7","last=-1","last=999","first=no"})
+      assert(scan.call("POST","/api/hud/discover",std::string("transport=rs485&")+bad).status==400);
+    assert(scan.runtime.hud.add(100,{3,4534,true},"RS485 three"));
+    assert(scan.runtime.hud.add(101,{7,4534,true},"RS485 seven"));
+    assert(scan.storage.saveHudPeers(scan.runtime.hud));
+    assert(scan.runtime.hud.select(101)&&scan.storage.saveHudConfig(scan.runtime.hud.config));
+    Runtime restored;scan.storage.loadHud(restored);
+    assert(restored.hud.peer(100)->endpoint.address==3&&restored.hud.peer(101)->endpoint.address==7);
+    assert(restored.hud.config.selected==101);
+  }
+}
 int main(int argc,char **argv) {
+  rs485DiscoveryApiTests();
+  if(argc==2 && std::string(argv[1])=="--rs485-check") {std::cout<<"PASS: RS485 discovery API, ranges, saved addresses and selection reload\n";return 0;}
   {
     Preferences::database.clear();Runtime fresh;Storage storage;
     assert(storage.loadSetup(fresh));assert(fresh.setup.required && fresh.setup.step==SetupStep::Network);

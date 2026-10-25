@@ -135,11 +135,14 @@ int main(){
  Protocol cp(cc),hp1(hc1),hp2(hc2);Hud ch(cc,cp),hh1(hc1,hp1),hh2(hc2,hp2);
  ch.begin(11,111);hh1.config.role=hh2.config.role=DeviceRole::Hud;hh1.config.uart=hh2.config.uart=true;hh1.begin(21,222);hh2.begin(31,333);
  cc.feedback(25,30,true,true);cc.setMode(Mode::Auto,0);
- struct Pipe:HudTransport {mb::Bus *bus=nullptr;uint32_t now=0;bool sendHud(const HudEndpoint &e,const uint8_t *p,size_t n)override{return e.uart&&bus->enqueue(uint8_t(e.address),p,n,now);}} pipes[3];
- mb::Bus controllerBus(cc,ch),hud1(hc1,hh1),hud2(hc2,hh2);mb::Bus *buses[]={&controllerBus,&hud1,&hud2};Hud *huds[]={&ch,&hh1,&hh2};
+ struct Pipe:HudTransport {mb::Bus *bus=nullptr;uint32_t now=0;bool sendHud(const HudEndpoint &e,const uint8_t *p,size_t n)override{return e.uart&&bus->enqueue(uint8_t(e.address),p,n,now);}} pipes[4];
+ Controller other=testController();Protocol otherProtocol(other);Hud otherHud(other,otherProtocol);otherHud.begin(12,112);other.feedback(55,15,true,true);other.setMode(Mode::Auto,0);
+ mb::Bus otherBus(other,otherHud);
+ mb::Bus controllerBus(cc,ch),hud1(hc1,hh1),hud2(hc2,hh2);mb::Bus *buses[]={&controllerBus,&hud1,&hud2,&otherBus};Hud *huds[]={&ch,&hh1,&hh2,&otherHud};
  ModbusConfig cfg;cfg.bus=1;cfg.count=2;
  assert(controllerBus.begin(cfg,false,111,0));assert(hud1.begin(cfg,true,222,0));cfg.node=202;assert(hud2.begin(cfg,true,333,0));
- for(unsigned i=0;i<3;++i){pipes[i].bus=buses[i];huds[i]->setTransport(&pipes[i]);}
+ cfg.address=3;assert(otherBus.begin(cfg,false,112,0));cfg.address=1;
+ for(unsigned i=0;i<4;++i){pipes[i].bus=buses[i];huds[i]->setTransport(&pipes[i]);}
  struct Wire {mb::Frame f;unsigned source;uint32_t due;};std::deque<Wire> packets;
  uint32_t busFree=0;bool lost=false,pcFlood=false,pcOutstanding=false;unsigned pcReplies=0;
  auto run=[&](uint32_t from,uint32_t until) {
@@ -147,12 +150,12 @@ int main(){
      for(auto &pipe:pipes)pipe.now=us/1000;
      if(!packets.empty()&&int32_t(us-packets.front().due)>=0) {
        auto p=packets.front();packets.pop_front();p.f.at=us-2000;
-       for(unsigned i=0;i<3;++i)if(i!=p.source) {
+       for(unsigned i=0;i<4;++i)if(i!=p.source) {
          auto emit=[&,i](const mb::Frame &f){if(int32_t(us-busFree)<0)return false;packets.push_back({f,i,us+uint32_t(f.size*96+2000)});busFree=packets.back().due;return true;};
          buses[i]->receive(p.f,us,us/1000,emit,[&,i](uint8_t address,const uint8_t *data,size_t n,uint32_t at){huds[i]->receive({address,4534,true},data,n,at);});
        }
      }
-     for(unsigned i=0;i<3;++i){
+     for(unsigned i=0;i<4;++i){
        buses[i]->service(us,us/1000,int32_t(us-busFree)>=0,[&,i](const mb::Frame &f){
          if(int32_t(us-busFree)<0)return false;
          if(!lost&&f.data[1]==mb::Service&&f.data[3]==mb::Mailbox::Reply){lost=true;busFree=us+uint32_t(f.size*96+2000);return true;}
@@ -188,6 +191,20 @@ int main(){
  abandoned.service(1600000,1600,true,[](const mb::Frame &){return false;});assert(abandoned.pcReply(pcAnswer)&&pcAnswer.data[2]==11);
  const auto stopped=cc.stopEpoch;assert(hp1.line("S",5300).result==Result::Deferred);run(5300000,5900000);assert(cc.stopEpoch==stopped+1);
  pcFlood=true;run(5900000,8900000);assert(pcReplies>2&&hh1.available()&&hh2.available());
+ // Sequential bus discovery skips an empty address and saves each routed endpoint.
+ assert(hh1.discoverRs485(1,4,201,2));run(8900000,13900000);
+ assert(hh1.peer(12)&&hh1.peer(12)->endpoint.address==3);
+ assert(hh1.add(12,hh1.peer(12)->endpoint,"second"));assert(hh1.select(12));run(13900000,14900000);
+ assert(hp1.line("W210 060",14900).result==Result::Deferred);run(14900000,15600000);
+ assert(other.axes[0].target==210&&other.axes[1].target==60&&cc.axes[0].target==130);
+ const auto firstStop=cc.stopEpoch,otherStop=other.stopEpoch;
+ assert(hp1.line("S",15600).result==Result::Deferred);run(15600000,16300000);
+ assert(other.stopEpoch==otherStop+1&&cc.stopEpoch==firstStop);
+ assert(hh1.select(11));run(16300000,17300000);assert(hh1.available());
+ // Scan must never send HUD traffic to master addresses, including the range end.
+ assert(hh1.discoverRs485(201,202,201,2));run(17300000,17400000);
+ char scanJson[4096];JsonWriter scanOut(scanJson,sizeof scanJson);hh1.writePeers(scanOut,0,8,true);
+ assert(std::string(scanJson).find("\"scanActive\":false")!=std::string::npos);
  // RTU microsecond wrap must not reset the controller/HUD millisecond clock.
  Controller longController=testController();Protocol longProtocol(longController);Hud longHud(longController,longProtocol);longHud.begin(51,444);
  mb::Bus longBus(longController,longHud);cfg.count=1;cfg.node=201;

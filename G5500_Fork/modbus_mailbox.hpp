@@ -82,5 +82,6 @@ public:
     return append(get32(f.data+15),get16(f.data+19),get16(f.data+21),f.data+23,f.size-25,receive);
   }
   bool complete() const {return !tx_.size && (!rxId_||rxOffset_==rxSize_);}
+  bool urgentPending() const {return stop_.size!=0;}
 };
 }

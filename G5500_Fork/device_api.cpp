@@ -1118,11 +1118,22 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     }
     HudEndpoint endpoint;
     endpoint.port = hud.config.port;
-    endpoint.uart = web_.arg("transport") == "uart";
+    const bool rs485=web_.arg("transport")=="rs485";
+    endpoint.uart = rs485 || web_.arg("transport") == "uart";
     if (endpoint.uart && !hud.config.uart) {
       web_.send(400, "application/json", "{\"ok\":false,\"result\":\"uart_disabled\"}");
       return;
     }
+    if(endpoint.uart && runtime_.modbus.bus) {
+      unsigned first=1,last=247;
+      if((web_.hasArg("first")&&!integerArg(web_.arg("first"),first,247))||
+         (web_.hasArg("last")&&!integerArg(web_.arg("last"),last,247))||!first||first>last) {
+        web_.send(400,"application/json","{\"ok\":false,\"result\":\"invalid_address\"}");return;
+      }
+      const bool ok=hud.discoverRs485(first,last,runtime_.modbus.first,runtime_.modbus.count);
+      web_.send(ok?200:503,"application/json",ok?"{\"ok\":true,\"result\":\"searching\"}":"{\"ok\":false,\"result\":\"unavailable\"}");return;
+    }
+    if(rs485){web_.send(400,"application/json","{\"ok\":false,\"result\":\"modbus_bus_disabled\"}");return;}
     if (!endpoint.uart) {
       IPAddress ip;
       const String address = web_.arg("address");
