@@ -1,5 +1,5 @@
 #include "build_config.hpp"
-#if DISPLAY_KIND == DISPLAY_CROWPANEL_21
+#if GRAPHICAL_DISPLAY
 /*******************************************************************************
  * Size: 11 px
  * Bpp: 4

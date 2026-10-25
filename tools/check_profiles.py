@@ -15,6 +15,11 @@ def compile_case(flags, expected):
         raise SystemExit(f'Unexpected result for {flags}:\n{result.stderr}')
     checks+=1
 
+for bt,drive in itertools.product(range(2),range(3)):
+    compile_case(['BOARD_PROFILE=10','DISPLAY_KIND=5',f'BLUETOOTH_ENABLED={bt}',f'DRIVE_INTERFACE={drive}'],True)
+compile_case(['BOARD_PROFILE=10','DISPLAY_KIND=1'],False)
+compile_case(['BOARD_PROFILE=4','DISPLAY_KIND=5'],False)
+
 for board,display,bt,drive in itertools.product((1,3,4),range(3),range(2),range(3)):
     compile_case([f'BOARD_PROFILE={board}',f'DISPLAY_KIND={display}',f'BLUETOOTH_ENABLED={bt}',f'DRIVE_INTERFACE={drive}'],True)
 for flags in [
@@ -109,6 +114,21 @@ for flags in [
     ['BOARD_PROFILE=6','LOCAL_INPUT_MODE=2','LOCAL_AZ_ADC_GPIO=25'],
 ]: compile_case(flags,False)
 compile_case(['CONFIG_IDF_TARGET_ESP32C3=1'],True)
+panel=['BOARD_PROFILE=8','DISPLAY_KIND=4']
+compile_case(panel+['CONFIG_IDF_TARGET_ESP32C3=1'],True)
+compile_case(['CONFIG_IDF_TARGET_ESP32C3=1'],True)
+compile_case(panel+['DRIVE_SIMULATION=1'],True)
+for flags in [['BLUETOOTH_ENABLED=1'],['DRIVE_INTERFACE=1'],['DRIVE_INTERFACE=2'],['USER_BUTTON_GPIO=8'],
+              ['USER_BUTTON_GPIO=-1','LOCAL_INPUT_MODE=1','LOCAL_AZ_NEG_GPIO=8','LOCAL_AZ_POS_GPIO=9']]:
+    compile_case(panel+flags,True)
+for flags in [
+    panel+['CONFIG_IDF_TARGET_ESP32=1'],panel+['CONFIG_IDF_TARGET_ESP32S3=1'],
+    panel+['CONFIG_IDF_TARGET_ESP32S2=1'],['CONFIG_IDF_TARGET_ESP32C3=1','DISPLAY_KIND=4'],
+    ['BOARD_PROFILE=1','CONFIG_IDF_TARGET_ESP32C3=1'],['BOARD_PROFILE=10'],
+    ['BOARD_PROFILE=1','DISPLAY_KIND=4'],panel+['USER_BUTTON_GPIO=7'],
+    panel+['USER_BUTTON_GPIO=18'],panel+['USER_BUTTON_GPIO=12'],
+    panel+['LOCAL_INPUT_MODE=1','LOCAL_AZ_NEG_GPIO=8','LOCAL_AZ_POS_GPIO=9'],
+]: compile_case(flags,False)
 headless=['BOARD_PROFILE=9','DISPLAY_KIND=0']
 for drive,bt,simulation in itertools.product(range(3),range(2),range(2)):
     compile_case(headless+[f'DRIVE_INTERFACE={drive}',f'BLUETOOTH_ENABLED={bt}',

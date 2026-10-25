@@ -1,4 +1,4 @@
-# Classic ESP32 4MB: Wi-Fi + Bluetooth SPP needs one 3MB app (no OTA slot).
+# ESP32-family 4MB: one 3MB app for SPP or LVGL builds (no OTA slot).
 # NVS and reserved otadata retain the established offsets.
 # Name,   Type, SubType, Offset,  Size, Flags
 nvs,      data, nvs,     0x9000,  0x5000,

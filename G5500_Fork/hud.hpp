@@ -11,7 +11,7 @@ enum class HudWifi : uint8_t { Existing, Host, Client };
 // Reserved multicast address: cannot be a controller's ESP32 MAC address.
 inline constexpr uint64_t HUD_SIMULATION_ID = 0xfffffffffffeULL;
 struct HudConfig {
-  DeviceRole role = DeviceRole::Controller;
+  DeviceRole role = (SELECTED_BOARD == BOARD_ESP32_2424S012C || SELECTED_BOARD == BOARD_ESP32_3248S035C) ? DeviceRole::Hud : DeviceRole::Controller;
   HudWifi wifi = HudWifi::Existing;
   bool uart = false;
   bool simulationEnabled = false;

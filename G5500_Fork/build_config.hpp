@@ -24,7 +24,9 @@
 // BOARD_WT32_ETH01 — Wireless-Tag WT32-ETH01, LAN8720 Ethernet, без дисплея.
 // BOARD_WAVESHARE_S3_ETH — Waveshare ESP32-S3-ETH, W5500 + DVP-камера.
 // BOARD_CROWPANEL_21 — Elecrow DHE03921D, круглый ST7701 480x480.
-// BOARD_ESP32_C3 — ESP32-C3 с Flash 4 МБ, без дисплея.
+// BOARD_ESP32_2424S012C — Guition ESP32-C3, GC9A01 240x240 + CST816.
+// BOARD_ESP32_C3 — обычная ESP32-C3 с Flash 4 МБ, без дисплея.
+// BOARD_ESP32_3248S035C — Sunton ESP32, ST7796 480x320 + GT911.
 #ifndef BOARD_PROFILE
 #define BOARD_PROFILE BOARD_AUTO
 #endif
@@ -51,6 +53,8 @@
 // DISPLAY_ILI9341 — TFT ILI9341 + сенсор XPT2046.
 // DISPLAY_LCD1602 — параллельный LCD1602 / HD44780 (не I2C).
 // DISPLAY_CROWPANEL_21 — встроенный экран CrowPanel 2.1 (только эта плата).
+// DISPLAY_GC9A01 — встроенный экран ESP32-2424S012C, включая Y(B).
+// DISPLAY_ST7796 — встроенный экран ESP32-3248S035C.
 #ifndef DISPLAY_KIND
 #define DISPLAY_KIND DISPLAY_NONE
 #endif
@@ -117,3 +121,9 @@
 #endif
 
 #include "build_config_checks.hpp"
+
+// One graphics stack; drivers and buffer policy remain board-specific.
+#define GRAPHICAL_DISPLAY (DISPLAY_KIND == DISPLAY_ILI9341 || DISPLAY_KIND == DISPLAY_CROWPANEL_21 || DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796)
+
+// SPI profiles have a 240-pixel short side; omit unused large font bitmaps.
+#define PANEL_COMPACT_FONTS (DISPLAY_KIND == DISPLAY_ILI9341 || DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796)

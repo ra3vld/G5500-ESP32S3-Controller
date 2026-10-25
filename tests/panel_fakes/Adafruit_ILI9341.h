@@ -1,0 +1,6 @@
+#pragma once
+#include <Arduino.h>
+inline constexpr uint16_t ILI9341_BLACK=0,ILI9341_WHITE=0xffff,ILI9341_CYAN=0x07ff,
+  ILI9341_YELLOW=0xffe0,ILI9341_GREEN=0x07e0,ILI9341_ORANGE=0xfd20,ILI9341_RED=0xf800,
+  ILI9341_BLUE=0x001f,ILI9341_MAGENTA=0xf81f;
+class Adafruit_ILI9341 {};

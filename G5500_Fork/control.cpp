@@ -25,7 +25,7 @@ void Controller::configureHardware(const HardwareConfig &config) {
   coast={};
   prepareMotionPlanner();
   hardware = config;
-  if (!hardware.simulation && !remote && hardware.pins.singleAxis() && (!FORK_C3 || hardware.localAxisConfigured(0))) { model = Model::G800DXA; axes[1] = {}; }
+  if (!hardware.simulation && !remote && hardware.pins.singleAxis() && (!FORK_OPTIONAL_DRIVE || hardware.localAxisConfigured(0))) { model = Model::G800DXA; axes[1] = {}; }
   speeds = {};
   motionSettings = {};
   motion_ = {};
@@ -604,7 +604,7 @@ void Controller::restoreMode(Mode savedMode) {
 void Controller::setModel(Model nextModel) {
   if (remote)
     return;
-  if (!hardware.simulation && hardware.pins.singleAxis() && (!FORK_C3 || hardware.localAxisConfigured(0)) && nextModel != Model::G800DXA) return;
+  if (!hardware.simulation && hardware.pins.singleAxis() && (!FORK_OPTIONAL_DRIVE || hardware.localAxisConfigured(0)) && nextModel != Model::G800DXA) return;
   stop();
   model = nextModel;
   if (model == Model::G800DXA) {

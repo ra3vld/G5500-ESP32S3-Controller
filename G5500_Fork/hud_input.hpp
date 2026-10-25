@@ -63,6 +63,7 @@ public:
       busyNotice_ = false;
     return busyNotice_;
   }
+  void selectAxis() { sync();axis_=controller_.model==Model::G5500?1-axis_:0;resume_=click_=false; }
   void confirmPending(uint32_t now) {
     sync();
     const unsigned selected = axis();

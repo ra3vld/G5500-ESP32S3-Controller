@@ -22,11 +22,14 @@
 
 ## Платы и дисплеи
 
-- [ESP32-C3 без дисплея](boards/esp32-c3.md).
+- [Общий сенсорный интерфейс CrowPanel, GC9A01 и ILI9341](control/display.md).
 - [Классический ESP32 WROOM/WROVER](boards/classic-esp32.md).
+- [ESP32-C3 без дисплея](boards/esp32-c3.md).
 - [WT32-ETH01 с Ethernet](boards/wt32-eth01.md).
 - [Waveshare ESP32-S3-ETH: камера и два BTS7960](boards/waveshare-esp32-s3-eth.md).
 - [CrowPanel: экран и жесты](boards/crowpanel-21.md), [переделка CrowPanel для локального AZ](boards/crowpanel-az.md).
+- [ESP32-2424S012C-Y(B): круглый сенсорный HUD на ESP32-C3](boards/esp32-2424s012c.md).
+- [ESP32-3248S035C: сенсорный HUD 480×320, ST7796/GT911](boards/esp32-3248s035c.md).
 
 ## Подключение приводов и схемы
 

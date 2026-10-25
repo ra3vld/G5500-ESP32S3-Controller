@@ -13,8 +13,12 @@
 #include "board_waveshare_s3_eth.hpp"
 #elif SELECTED_BOARD == BOARD_ESP32
 #include "board_esp32.hpp"
+#elif SELECTED_BOARD == BOARD_ESP32_2424S012C
+#include "board_esp32_2424s012c.hpp"
 #elif SELECTED_BOARD == BOARD_ESP32_C3
 #include "board_esp32c3.hpp"
+#elif SELECTED_BOARD == BOARD_ESP32_3248S035C
+#include "board_esp32_3248s035c.hpp"
 #elif SELECTED_BOARD == BOARD_CROWPANEL_21
 #include "board_crowpanel_21.hpp"
 // The built-in RGB panel has no external TFT/LCD wiring defaults.

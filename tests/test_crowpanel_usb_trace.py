@@ -36,7 +36,7 @@ class CrowPanelUsbTraceTests(unittest.TestCase):
         self.assertEqual((rows[0]['width'], rows[0]['height']), (480, 480))
         self.assertEqual(rows[0]['elfSha256'], 'abcdef')
         view = rows[1]['view']
-        bools = '''hud hudSelector dualAxis speedScreen elevation feedback targetValid uncalibrated
+        bools = '''movingNow settingsAvailable enabled hud hudSelector dualAxis speedScreen elevation feedback targetValid uncalibrated
                    secondaryUncalibrated pending moving autoMode autoHour secondaryFeedback
                    secondaryTargetValid secondaryPending wifiConnected wifiAp bluetoothEnabled
                    bluetoothConnected statusFault'''.split()

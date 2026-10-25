@@ -1,6 +1,6 @@
 # G5500 Controller
 
-Прошивка контроллера антенных поворотных устройств Yaesu G-5500, G-800DXA и независимых DC-приводов. Поддерживает ESP32 WROOM/WROVER, [ESP32-C3 без дисплея](docs/boards/esp32-c3.md), ESP32-S3, ESP32-S2, WT32-ETH01 с Ethernet, [Waveshare ESP32-S3-ETH с камерой](docs/boards/waveshare-esp32-s3-eth.md) и CrowPanel 2.1.
+Прошивка контроллера антенных поворотных устройств Yaesu G-5500, G-800DXA и независимых DC-приводов. Поддерживает ESP32 WROOM/WROVER, [ESP32-C3 без дисплея](docs/boards/esp32-c3.md), ESP32-S3, ESP32-S2, WT32-ETH01 с Ethernet, [Waveshare ESP32-S3-ETH с камерой](docs/boards/waveshare-esp32-s3-eth.md), CrowPanel 2.1, [ESP32-3248S035C](docs/boards/esp32-3248s035c.md) и [сенсорный пульт ESP32-2424S012C-Y(B)](docs/boards/esp32-2424s012c.md).
 
 ## Возможности
 
@@ -8,7 +8,7 @@
 - Штатные блоки Yaesu, отдельные PWM-приводы и BTS7960.
 - GS-232, rotctld, N1MM и PstRotator UDP(в том числе UR5EQF, 5MContest, SkyRoof, TR4W, DXLog.net, Log4OM 2 и Gpredict.); HTTP, WebSocket и командный API.
 - Веб-управление, предустановки, кнопки направлений и аналоговый джойстик.
-- Дисплеи ILI9341/XPT2046, LCD1602 и CrowPanel 2.1.
+- Дисплеи ILI9341/XPT2046, LCD1602, CrowPanel 2.1, GC9A01/CST816 на ESP32-2424S012C и ST7796/GT911 на ESP32-3248S035C.
 - Возможность подключения удаленного (HUD) пульта по сети или UART для контроля удаленного поворотного устройства.
 - Практически полное переконфигурирование подключенного оборудовния без перепрошивки(тип поворотки, GPIO, дисплей, BLuetooth).
 - OTA обновление по Wi-Fi.

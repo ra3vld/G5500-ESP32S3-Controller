@@ -33,7 +33,7 @@ INPUT_SIZE = 600
 REAL_FIELDS = frozenset(("current", "target", "minimum", "maximum", "secondaryCurrent", "secondaryTarget"))
 NULLABLE_REAL_FIELDS = REAL_FIELDS - {"minimum", "maximum"}
 BOOL_FIELDS = frozenset((
-    "hud", "hudSelector", "dualAxis", "speedScreen", "speedAvailable[0]", "speedAvailable[1]",
+    "movingNow", "settingsAvailable", "enabled", "hud", "hudSelector", "dualAxis", "speedScreen", "speedAvailable[0]", "speedAvailable[1]",
     "elevation", "feedback", "targetValid", "uncalibrated", "secondaryUncalibrated", "pending",
     "moving", "autoMode", "autoHour", "secondaryFeedback", "secondaryTargetValid", "secondaryPending",
     "wifiConnected", "wifiAp", "bluetoothEnabled", "bluetoothConnected", "statusFault"))
@@ -55,6 +55,7 @@ def renderer_path(explicit: str | None = None) -> Path:
                ROOT / "tools/build_crowpanel_trace_renderer.sh"]
     sources += list((ROOT / "G5500_Fork").glob("crowpanel_*.?pp"))
     sources += list((ROOT / "G5500_Fork").glob("crowpanel_*.h"))
+    sources += list((ROOT / "G5500_Fork").glob("panel_*.?pp"))
     sources += [ROOT / "G5500_Fork/lv_conf.h", ROOT / "G5500_Fork/build_config.hpp"]
     if not path.is_file() or any(p.stat().st_mtime > path.stat().st_mtime for p in sources):
         result = subprocess.check_output(["sh", str(ROOT / "tools/build_crowpanel_trace_renderer.sh")], cwd=ROOT)

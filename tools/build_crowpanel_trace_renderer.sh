@@ -31,7 +31,7 @@ mkdir -p "$build"
 "$cmake_bin" --build "$build/lvgl" -j "${BUILD_JOBS:-4}" >&2
 ${CXX:-g++} -std=c++17 -O2 -DBOARD_PROFILE=5 -DDISPLAY_KIND=3 \
   -DDRIVE_INTERFACE=0 -DUSER_BUTTON_GPIO=-1 -DBLUETOOTH_ENABLED=0 -DLV_CONF_INCLUDE_SIMPLE \
-  -I G5500_Fork -I "$LVGL_DIR" tools/crowpanel_trace_renderer.cpp G5500_Fork/crowpanel_ui.cpp \
+  -I G5500_Fork -I "$LVGL_DIR" tools/crowpanel_trace_renderer.cpp G5500_Fork/panel_ui.cpp G5500_Fork/panel_fonts.cpp \
   G5500_Fork/crowpanel_font_11.cpp G5500_Fork/crowpanel_font_22.cpp \
   G5500_Fork/crowpanel_font_36.cpp G5500_Fork/crowpanel_font_112.cpp \
   G5500_Fork/crowpanel_font_28.cpp G5500_Fork/crowpanel_font_80.cpp \

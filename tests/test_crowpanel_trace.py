@@ -71,7 +71,7 @@ class DecoderTests(unittest.TestCase):
 
     def test_invalid_envelopes_and_nonfinite_numbers(self):
         bad = [wire(seq=True), wire(ms=-1), wire(ms=UINT32), wire(seq=UINT64),
-               wire(dropped=UINT64), wire(boot="not hex"), wire(pressed=7),
+               wire(dropped=UINT64), wire(boot="not hex"), wire(pressed=10),
                wire(v=True), wire(v=2), wire(kind="other"), wire(view=[]),
                wire(view={"current": float("nan")}), wire(view={"current": float("inf")})]
         for record in bad:

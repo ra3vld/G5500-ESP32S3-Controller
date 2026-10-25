@@ -68,6 +68,53 @@ class BuildConfigTests(unittest.TestCase):
                           BTS7960_PWM_INVERTED=0, USER_BUTTON_GPIO=0, USER_BUTTON_ACTIVE_LOW=1,
                           USER_BUTTON_PULLUP=1, AZ_STOP_TOLERANCE_DEG='5.0f', EL_STOP_TOLERANCE_DEG='5.0f'))
 
+    def test_round_c3_profile(self):
+        self.compile(dict(SELECTED_BOARD=8, FORK_C3=1, FORK_S3=0, FORK_CLASSIC_ESP32=0,
+                          USER_BUTTON_GPIO=9, DRIVE_SIMULATION=0, TFT_DISPLAY_ENABLED=0),
+                     ['BOARD_PROFILE=BOARD_ESP32_2424S012C','CONFIG_IDF_TARGET_ESP32C3=1','DISPLAY_KIND=4'])
+        result=subprocess.run([sys.executable,str(self.root/'tools/build_platformio.py'),
+                               '--env','esp32_2424s012c','--dry-run'],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        config=configparser.ConfigParser(interpolation=None)
+        config.read(self.root/'build/platformio-config/esp32_2424s012c.ini')
+        selected=config['env:selected']
+        self.assertIn('-DBOARD_PROFILE=BOARD_ESP32_2424S012C',selected['build_flags'])
+        self.assertIn('-DDISPLAY_KIND=4',selected['build_flags'])
+        self.assertIn('Adafruit GC9A01A @ 1.1.0',selected['lib_deps'])
+        self.assertIn('lvgl/lvgl @ 9.6.0',selected['lib_deps'])
+        self.assertIn('-DLV_CONF_INCLUDE_SIMPLE',selected['build_flags'])
+        self.assertEqual(selected['lib_ldf_mode'], 'chain')
+        result=subprocess.run([sys.executable,str(self.root/'tools/prepare_sketch.py'),
+                               '--target','esp32-2424s012c'],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        sketch=self.root/'build/arduino-esp32-2424s012c/G5500_Fork'
+        self.assertEqual((sketch/'partitions.csv').read_bytes(),(self.source/'partitions_esp32.csv').read_bytes())
+
+    def test_st7796_profile(self):
+        self.compile(dict(SELECTED_BOARD=10, FORK_CLASSIC_ESP32=1, FORK_S3=0, FORK_C3=0,
+                          GRAPHICAL_DISPLAY=1, PANEL_COMPACT_FONTS=1, TFT_DISPLAY_ENABLED=0),
+                     ['BOARD_PROFILE=BOARD_ESP32_3248S035C','DISPLAY_KIND=DISPLAY_ST7796',
+                      'CONFIG_IDF_TARGET_ESP32=1'])
+        self.compile({}, ['BOARD_PROFILE=10','DISPLAY_KIND=1'], success=False)
+        self.compile({}, ['BOARD_PROFILE=4','DISPLAY_KIND=5'], success=False)
+        self.compile({}, ['BOARD_PROFILE=10','DISPLAY_KIND=5','CONFIG_IDF_TARGET_ESP32C3=1'], success=False)
+        result=subprocess.run([sys.executable,str(self.root/'tools/build_platformio.py'),
+                               '--env','esp32_3248s035c','--display','st7796','--dry-run'],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        config=configparser.ConfigParser(interpolation=None)
+        config.read(self.root/'build/platformio-config/esp32_3248s035c.ini')
+        selected=config['env:selected']
+        self.assertIn('-DDISPLAY_KIND=5',selected['build_flags'])
+        self.assertIn('-flto',selected['build_flags'])
+        self.assertIn('lvgl',selected['lib_deps'])
+        self.assertNotIn('Adafruit',selected['lib_deps'])
+        result=subprocess.run([sys.executable,str(self.root/'tools/prepare_sketch.py'),
+                               '--target','esp32-3248s035c'],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        sketch=self.root/'build/arduino-esp32-3248s035c/G5500_Fork'
+        self.assertEqual((sketch/'partitions.csv').read_bytes(),(self.source/'partitions_esp32.csv').read_bytes())
+        self.assertTrue((sketch/'display_st7796.cpp').is_file())
+
     def test_headless_c3_profile(self):
         expected=dict(SELECTED_BOARD=9,FORK_C3=1,FORK_S3=0,FORK_CLASSIC_ESP32=0,
                       DISPLAY_KIND=0,USER_BUTTON_GPIO=9,DRIVE_SIMULATION=0,
@@ -245,7 +292,16 @@ class BuildConfigTests(unittest.TestCase):
         sketch = self.root / 'build/arduino-s2-mini/G5500_Fork'
         for name in ['build_config.hpp', 'build_config_options.hpp', 'build_config_checks.hpp', 'runtime_defaults.hpp', 'hardware_config.hpp']:
             self.assertEqual((sketch / name).read_bytes(), (self.source / name).read_bytes())
-        self.assertEqual((sketch / 'partitions.csv').read_bytes(), (self.source / 'partitions_s2.csv').read_bytes())
+        self.assertEqual((sketch / 'partitions.csv').read_bytes(), (self.source / 'partitions_esp32.csv').read_bytes())
+        config = configparser.ConfigParser(interpolation=None)
+        config.read(self.root / 'platformio.ini')
+        mini = config['env:esp32s2_mini']
+        self.assertEqual(int(mini['board_upload.maximum_size']), 3 << 20)
+        self.assertEqual(mini['board_build.partitions'], 'G5500_Fork/partitions_esp32.csv')
+        for variant in ('_tft', '_lcd', '_headless'):
+            self.assertEqual(config['env:esp32s2_mini' + variant]['extends'], 'env:esp32s2_mini')
+        # The former S2 wiring keeps its independent two-slot layout.
+        self.assertEqual(config['env:esp32s2_4mb']['board_build.partitions'], 'G5500_Fork/partitions_s2.csv')
         for path in (self.source / 'src').rglob('*'):
             if path.is_file():
                 self.assertEqual((sketch / path.relative_to(self.source)).read_bytes(), path.read_bytes())
@@ -294,7 +350,9 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn('lvgl', config['env:selected']['lib_deps'])
 
     def test_esp32_ota_partitions_and_arduino_copy(self):
-        for name, flash in [('partitions_s2.csv', 4 << 20), ('partitions_esp32_8mb.csv', 8 << 20)]:
+        for name, flash, count in [('partitions_s2.csv', 4 << 20, 2),
+                                   ('partitions_esp32_8mb.csv', 8 << 20, 2),
+                                   ('partitions_esp32.csv', 4 << 20, 1)]:
             previous = 0
             slots = []
             for line in (self.source / name).read_text().splitlines():
@@ -307,9 +365,17 @@ class BuildConfigTests(unittest.TestCase):
                 previous = offset + size
                 if fields[1] == 'app':
                     self.assertEqual(offset % 65536, 0)
+                    if count == 1:
+                        self.assertEqual(fields[2], 'factory')
+                        self.assertEqual(offset, 0x10000)
                     slots.append(size)
-            self.assertEqual(len(slots), 2)
-            self.assertEqual(slots[0], slots[1])
+                if fields[2] == 'nvs':
+                    self.assertEqual((offset, size), (0x9000, 0x5000))
+            self.assertEqual(len(slots), count)
+            if count == 2:
+                self.assertEqual(slots[0], slots[1])
+            else:
+                self.assertEqual(slots[0], 3 << 20)
         result = subprocess.run([sys.executable, str(self.root / 'tools/prepare_sketch.py'),
                                  '--target', 'esp32-8mb'], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)

@@ -22,6 +22,7 @@ inline void writeCrowPanelView(JsonWriter &j, const CrowPanelView &v) {
 #define CP_NUMBER(name) j << "\"" #name "\":" << v.name << ','
 #define CP_FLOAT(name) j << "\"" #name "\":"; writeCrowPanelReal(j, v.name); j << ','
 #define CP_TEXT(name) j << "\"" #name "\":" << jsonQuoted(v.name) << ','
+  CP_BOOL(movingNow); CP_BOOL(settingsAvailable); CP_BOOL(enabled);
   CP_BOOL(hud); CP_BOOL(hudSelector); CP_TEXT(hudName); CP_TEXT(hudAddress);
   j << "\"hudRows\":[" << jsonQuoted(v.hudRows[0]) << ',' << jsonQuoted(v.hudRows[1]) << ','
     << jsonQuoted(v.hudRows[2]) << "],";

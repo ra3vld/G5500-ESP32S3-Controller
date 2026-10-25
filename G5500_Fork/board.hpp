@@ -113,6 +113,12 @@ inline constexpr int activePins[] = {
  PIN_TFT_MOSI, PIN_TFT_SCK, PIN_TFT_MISO, PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_RST, PIN_TOUCH_CS, PIN_TOUCH_IRQ,
 #elif DISPLAY_KIND == DISPLAY_LCD1602
  PIN_LCD_RS, PIN_LCD_E, PIN_LCD_D4, PIN_LCD_D5, PIN_LCD_D6, PIN_LCD_D7,
+#elif DISPLAY_KIND == DISPLAY_GC9A01
+ PIN_PANEL_MOSI, PIN_PANEL_SCK, PIN_PANEL_CS, PIN_PANEL_DC, PIN_BACKLIGHT,
+ PIN_I2C_SDA, PIN_I2C_SCL, PIN_CST_RST, PIN_CST_IRQ,
+#elif DISPLAY_KIND == DISPLAY_ST7796
+ PIN_PANEL_MOSI, PIN_PANEL_MISO, PIN_PANEL_SCK, PIN_PANEL_CS, PIN_PANEL_DC, PIN_BACKLIGHT,
+ PIN_I2C_SDA, PIN_I2C_SCL, PIN_GT_RST, PIN_GT_IRQ,
 #elif DISPLAY_KIND == DISPLAY_CROWPANEL_21
  PIN_I2C_SDA, PIN_I2C_SCL, PIN_ENCODER_A, PIN_ENCODER_B, PIN_BACKLIGHT,
  16, 2, 1, 40, 7, 15, 41, 46, 3, 8, 18, 17, 14, 13, 12, 11, 10, 9, 5, 45, 48, 47, 21,
@@ -151,11 +157,11 @@ static_assert(PIN_CONFIRM == -1 || (gpio(PIN_CONFIRM) && (!USER_BUTTON_PULLUP ||
 #if CROWPANEL_LOCAL_DRIVE
 static_assert(adc(PIN_AZ_ADC) && output(PIN_LEFT) && output(PIN_RIGHT) && output(PIN_SPEED), "CrowPanel local AZ requires ADC1 and three native outputs");
 #endif
-#if SELECTED_BOARD != BOARD_CROWPANEL_21 && !FORK_C3
+#if SELECTED_BOARD != BOARD_CROWPANEL_21 && !FORK_OPTIONAL_DRIVE
 static_assert(adc(PIN_AZ_ADC) && adc(PIN_EL_ADC), "Feedback must use ADC1 GPIO");
 static_assert(output(PIN_LEFT) && output(PIN_RIGHT) && output(PIN_UP) && output(PIN_DOWN) && output(PIN_SPEED) && (PIN_UART_TX<0 || output(PIN_UART_TX)), "Invalid output GPIO");
 #endif
-#if DRIVE_INTERFACE != DRIVE_YAESU && !CROWPANEL_LOCAL_DRIVE && !FORK_C3
+#if DRIVE_INTERFACE != DRIVE_YAESU && !CROWPANEL_LOCAL_DRIVE && !FORK_OPTIONAL_DRIVE
 static_assert(output(PIN_EL_SPEED), "Independent drive requires two speed/enable outputs");
 #endif
 #if defined(SOC_LEDC_CHANNEL_NUM)
@@ -176,6 +182,17 @@ inline const char *fixedPinOwner(int n) {
   if(n>=0 && n==PIN_BACKLIGHT) return "crowpanel.backlight";
   for(int pin:{16,2,1,40,7,15,41,46,3,8,18,17,14,13,12,11,10,9,5,45,48,47,21})
     if(n==pin) return "crowpanel.display";
+#elif DISPLAY_KIND == DISPLAY_GC9A01
+  if(n==PIN_I2C_SDA || n==PIN_I2C_SCL || n==PIN_CST_RST || n==PIN_CST_IRQ) return "panel.touch";
+  if(n==PIN_PANEL_MOSI || n==PIN_PANEL_SCK || n==PIN_PANEL_CS || n==PIN_PANEL_DC || n==PIN_BACKLIGHT) return "panel.display";
+#elif DISPLAY_KIND == DISPLAY_ST7796
+  if(n==1 || n==3) return "usb.uart";
+  if(n==PIN_I2C_SDA || n==PIN_I2C_SCL || n==PIN_GT_RST || n==PIN_GT_IRQ) return "panel.touch";
+  if(n==PIN_PANEL_MOSI || n==PIN_PANEL_MISO || n==PIN_PANEL_SCK || n==PIN_PANEL_CS || n==PIN_PANEL_DC || n==PIN_BACKLIGHT) return "panel.display";
+  if(n==4 || n==16 || n==17) return "panel.led";
+  if(n==26) return "panel.audio";
+  if(n==34) return "panel.light";
+  if(n==5 || n==18 || n==19 || n==23) return "panel.sd";
 #else
   (void)n;
 #endif
@@ -198,7 +215,7 @@ struct HardwareValidation {
 inline bool pinActive(const HardwareConfig &c,const PinDefinition &d) {
   switch(d.group) {
   case PinGroup::Drive:
-    if(FORK_C3) {
+    if(FORK_OPTIONAL_DRIVE) {
       const bool el=d.member==&PinMap::elAdc || d.member==&PinMap::elNegative ||
           d.member==&PinMap::elPositive || d.member==&PinMap::elSpeedEnable;
       if(!c.localAxisConfigured(el?1:0)) return false;
@@ -225,6 +242,20 @@ inline bool pinActive(const HardwareConfig &c,const PinDefinition &d) {
   }
   return false;
 }
+inline bool pinOptional(const HardwareConfig &c,const PinDefinition &d) {
+  return d.optional || (c.drive==DRIVE_BTS7960 &&
+      (d.member==&PinMap::azSpeedEnable || d.member==&PinMap::elSpeedEnable));
+}
+inline bool sharedPanelSensorBus(const HardwareConfig &c,const PinDefinition &d) {
+#if DISPLAY_KIND == DISPLAY_GC9A01
+  const bool el=d.group==PinGroup::SensorEl;
+  return (el || d.group==PinGroup::SensorAz) &&
+      (el?c.pins.elSensorSda:c.pins.azSensorSda)==PIN_I2C_SDA &&
+      (el?c.pins.elSensorScl:c.pins.azSensorScl)==PIN_I2C_SCL;
+#else
+  (void)c;(void)d;return false;
+#endif
+}
 inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool hudUart=false) {
   for(unsigned i=0;i<2;++i) {
     const auto at=i*3;
@@ -233,13 +264,22 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
         (c.sensorType(i) && c.sensorZero(i)>=sensorCounts(c.sensorType(i))))
       return {"invalid_position_sensor",sensorSettingNames[at]};
   }
+#if DISPLAY_KIND == DISPLAY_GC9A01
+  // C3 has one I2C controller, already used by CST816. Encoders share that bus.
+  for(unsigned i=0;i<2;++i) if(c.sensorType(i) && (i==0 || !c.pins.singleAxis())) {
+    if(c.sensorAddress(i)==0x15) return {"sensor_address_conflict",i?"elSensorAddress":"azSensorAddress"};
+    if((i?c.pins.elSensorSda:c.pins.azSensorSda)!=PIN_I2C_SDA ||
+       (i?c.pins.elSensorScl:c.pins.azSensorScl)!=PIN_I2C_SCL)
+      return {"sensor_bus_unavailable",i?"elSensor":"azSensor"};
+  }
+#endif
   const bool sharedSensors=c.sensorType(0) && c.sensorType(1) && !c.pins.singleAxis() &&
       c.pins.azSensorSda==c.pins.elSensorSda && c.pins.azSensorScl==c.pins.elSensorScl;
   if(sharedSensors && c.sensorAddress(0)==c.sensorAddress(1))
     return {"sensor_address_conflict","elSensorAddress"};
   if(DISPLAY_KIND==DISPLAY_CROWPANEL_21 && c.sensorType(0) && c.sensorType(1) &&
       !c.pins.singleAxis() && !sharedSensors) return {"sensor_bus_unavailable","elSensor"};
-  if(FORK_C3 && c.sensorType(0) && c.sensorType(1) &&
+  if((FORK_C3 || DISPLAY_KIND==DISPLAY_ST7796) && c.sensorType(0) && c.sensorType(1) &&
       !c.pins.singleAxis() && !sharedSensors) return {"sensor_bus_unavailable","elSensor"};
   if(!BLUETOOTH_SUPPORT && c.bluetooth) return {"bluetooth_not_supported","bluetoothEnabled"};
   if(c.drive>DRIVE_BTS7960 || c.bluetoothMode<BT_HC05 || c.bluetoothMode>BT_AUTO ||
@@ -274,14 +314,14 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
       return {"invalid_joystick_calibration",localSettingNames[at]};
   }
   const char *owners[49]{};
-  auto add=[&](int pin,const char *field,PinKind kind,bool required,bool needsPullup=false)->HardwareValidation {
+  auto add=[&](int pin,const char *field,PinKind kind,bool required,bool needsPullup=false,bool sharedPanel=false)->HardwareValidation {
     if(pin < -1 || pin>48) return {"invalid_gpio",field,"",pin};
     if(pin<0) return required?HardwareValidation{"missing_pin",field,"",pin}:HardwareValidation{};
     if(!gpio(pin)) return {"invalid_gpio",field,unavailablePinOwner(pin),pin};
     if(kind==PinKind::Adc && !adc(pin)) return {"invalid_adc_gpio",field,"",pin};
     if(kind==PinKind::Output && !output(pin)) return {"input_only_gpio",field,"",pin};
     if(needsPullup && !pullup(pin)) return {"invalid_pullup",field,"",pin};
-    if(const auto *owner=fixedPinOwner(pin)) return {"gpio_conflict",field,owner,pin};
+    if(const auto *owner=fixedPinOwner(pin);owner && !sharedPanel) return {"gpio_conflict",field,owner,pin};
     if(owners[pin]) return {"gpio_conflict",field,owners[pin],pin};
     owners[pin]=field; return {};
   };
@@ -294,12 +334,12 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
       if(!gpio(pin)) return {"invalid_gpio",d.field,unavailablePinOwner(pin),pin};
       if(d.kind==PinKind::Adc && !adc(pin)) return {"invalid_adc_gpio",d.field,"",pin};
       if(d.kind==PinKind::Output && !output(pin)) return {"input_only_gpio",d.field,"",pin};
-      if(const auto *owner=fixedPinOwner(pin)) return {"gpio_conflict",d.field,owner,pin};
+      if(const auto *owner=fixedPinOwner(pin);owner && !sharedPanelSensorBus(c,d)) return {"gpio_conflict",d.field,owner,pin};
     }
     if(!pinActive(c,d)) continue;
     // Both axes may use one physical bus, provided their addresses differ.
     if(sharedSensors && d.group==PinGroup::SensorEl) continue;
-    if(auto error=add(pin,d.field,d.kind,!d.optional,d.group==PinGroup::Buttons)) return error;
+    if(auto error=add(pin,d.field,d.kind,!pinOptional(c,d),d.group==PinGroup::Buttons,sharedPanelSensorBus(c,d))) return error;
   }
   if(auto error=add(c.buttonGpio,"buttonGpio",PinKind::Input,false,c.buttonPullup)) return error;
   return {};

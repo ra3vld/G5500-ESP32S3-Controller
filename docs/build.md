@@ -12,18 +12,23 @@
 |---|---|---|
 | Arduino-ESP32 | 3.3.11 | всегда |
 | pioarduino espressif32 | 55.03.311 | PlatformIO |
-| Adafruit GFX | 1.12.1 | TFT |
+| Adafruit GFX | 1.12.1 | ILI9341 и GC9A01 |
 | Adafruit ILI9341 | 1.6.2 | TFT |
-| Adafruit BusIO | 1.17.2 | TFT |
+| Adafruit GC9A01A | 1.1.0 | ESP32-2424S012C; также нужны GFX и BusIO |
+| Adafruit BusIO | 1.17.2 | ILI9341 и GC9A01 |
 | XPT2046_Touchscreen | официальный tag v1.4 | TFT/touch |
 | LiquidCrystal | 1.0.7 | параллельный LCD1602 |
-| LVGL | 9.6.0 | CrowPanel 2.1 |
+| LVGL | 9.6.0 | CrowPanel 2.1, ILI9341 и GC9A01 |
 
 NONE не требует экранных библиотек. LCD требует только LiquidCrystal; TFT не требует LiquidCrystal. Для Bluetooth дополнительные библиотеки не нужны: на ESP32 доступны встроенный SPP и внешний HC-05, на S2/S3 — HC-05. Выберите транспорт после сборки в веб-настройках оборудования; Bluetooth по умолчанию выключен.
 
 Для [ESP32-C3 без дисплея](boards/esp32-c3.md) используйте `pio run -e esp32c3_4mb` или `./tools/build_arduino.sh esp32-c3`. Профиль рассчитан на Flash 4 МиБ, включает веб-интерфейс и native USB, использует один раздел приложения 3 МиБ без OTA. GPIO привода назначаются при первой настройке; библиотеки дисплея не нужны.
 
 CrowPanel 2.1 (DHE03921D): `pio run -e crowpanel_21` или `./tools/build_arduino.sh crowpanel`. Для переделанной платы с локальным AZ используйте `pio run -e crowpanel_21_az` по [инструкции подключения](boards/crowpanel-az.md). Обычный `crowpanel_21` — профиль экрана/энкодера/сети без привода; конфигурация, библиотека LVGL и ограничения описаны в [crowpanel-21.md](boards/crowpanel-21.md).
+
+Для [ESP32-2424S012C-Y(B)](boards/esp32-2424s012c.md) на ESP32-C3 используйте `pio run -e esp32_2424s012c` или `./tools/build_arduino.sh esp32-2424s012c`. Это сенсорная плата GC9A01/CST816 с назначением местного оборудования на свободные GPIO, ролью HUD по умолчанию и обновлением через USB. В Arduino IDE выберите **ESP32C3 Dev Module**, Flash 4 MB, Flash Mode DIO, **USB CDC On Boot: Enabled**, Partition Scheme **Huge APP (3MB No OTA/1MB SPIFFS)**; в `build_config.hpp` задайте `BOARD_ESP32_2424S012C` и `DISPLAY_GC9A01`.
+
+Для [ESP32-3248S035C со ST7796/GT911](boards/esp32-3248s035c.md) используйте `pio run -e esp32_3248s035c` или `./tools/build_arduino.sh esp32-3248s035c`. Профиль использует общий LVGL-интерфейс 480×320, один раздел приложения 3 МиБ и обновление через USB.
 
 ## Arduino IDE 2.x
 
@@ -42,9 +47,11 @@ CrowPanel 2.1 (DHE03921D): `pio run -e crowpanel_21` или `./tools/build_ardui
 
 Arduino-ESP32 генерирует бинарную таблицу из выбранной схемы. На ESP32 выбирайте слот приложения 3 МБ: встроенный SPP включён в образ независимо от положения веб-переключателя. Flash Size должен совпадать с физической памятью платы. Если используете старую копию скетча с `partitions.csv`, этот файл по-прежнему имеет приоритет перед меню; для сборки по меню удалите его из той копии. NVS у перечисленных схем остаётся на `0x9000`. Для [обновления по Wi-Fi](maintenance/ota.md) нужны два подходящих раздела приложения: Huge APP OTA не поддерживает.
 
-Для отдельной Arduino-копии с таблицей разделов проекта используйте `tools/prepare_sketch.py --target esp32|s3|s2-mini|s2` и откройте подготовленную копию. Скрипт копирует выбранный CSV под именем `partitions.csv`: ESP32 — `partitions_esp32.csv` (3 МБ), S3 — `partitions_s3.csv` (6 553 600 байт на слот), S2 — `partitions_s2.csv` (1 966 080 байт на слот). В подготовленной копии `partitions.csv` имеет приоритет над меню Partition Scheme. PlatformIO и CLI-скрипты также используют таблицы проекта.
+Для отдельной Arduino-копии с таблицей разделов проекта используйте `tools/prepare_sketch.py --target esp32|s3|s2-mini|s2` и откройте подготовленную копию. Скрипт копирует выбранный CSV под именем `partitions.csv`: ESP32 и S2 Mini — `partitions_esp32.csv` (один раздел 3 МиБ), S3 — `partitions_s3.csv` (6 553 600 байт на слот), прежняя S2 — `partitions_s2.csv` (два раздела по 1 966 080 байт). В подготовленной копии `partitions.csv` имеет приоритет над меню Partition Scheme. PlatformIO и CLI-скрипты также используют таблицы проекта.
 
-Для S2 с TFT и OTA используйте Arduino CLI через `build_arduino.sh` либо PlatformIO: эти способы включают оптимизацию LTO, необходимую для размещения приложения в OTA-разделе. При собственной команде Arduino CLI добавьте `-flto` в `compiler.c.extra_flags`, `compiler.cpp.extra_flags` и `compiler.c.elf.extra_flags`.
+Для графических экранов используйте Arduino CLI через `build_arduino.sh` либо PlatformIO: они передают путь к `lv_conf.h` в компиляторы C и C++. Для классического ESP32 с ILI9341 и для S2 они также включают оптимизацию LTO. При собственной команде Arduino CLI добавьте `-flto` в `compiler.c.extra_flags`, `compiler.cpp.extra_flags` и `compiler.c.elf.extra_flags`.
+
+**ESP32-S2 Mini:** все варианты `esp32s2_mini`, включая `_tft`, используют один раздел приложения 3 МиБ. Он вмещает общий интерфейс LVGL с веб-интерфейсом; обновление выполняется через USB. При переходе с прежней OTA-разметки запишите через USB полный комплект сборки с таблицей разделов. NVS остаётся на `0x9000`; стирать всю Flash для этого не требуется.
 
 Нажмите **Verify**; COM-порт для этого не нужен. При сборке в Arduino IDE из исходной папки завершите PlatformIO и удалите оставшийся `G5500_Fork.ino.cpp`, если IDE сообщает о повторных `setup()/loop()`. Для отдельной копии используйте `prepare_sketch.py`: он исключает этот временный файл.
 
@@ -55,7 +62,7 @@ arduino-cli core update-index --additional-urls https://espressif.github.io/ardu
 arduino-cli core install esp32:esp32@3.3.11 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 # Только выбранный дисплей:
 arduino-cli lib install 'LiquidCrystal@1.0.7'
-# либо TFT: GFX@1.12.1, ILI9341@1.6.2, BusIO@1.17.2 и официальный ZIP XPT2046 v1.4
+# либо ILI9341: lvgl@9.6.0, GFX@1.12.1, ILI9341@1.6.2, BusIO@1.17.2 и официальный ZIP XPT2046 v1.4
 
 ./tools/build_arduino.sh s3
 ./tools/build_arduino.sh s2
@@ -63,7 +70,7 @@ DISPLAY_KIND=2 ./tools/build_arduino.sh s2-mini
 DISPLAY_KIND=1 ./tools/build_arduino.sh s2-mini
 ```
 
-`DISPLAY_KIND`: 0 NONE, 1 TFT, 2 LCD. Старый `DISPLAY_ENABLED=0/1` остаётся алиасом NONE/TFT; несовместимые флаги отклоняются. Привод, Bluetooth и кнопка выбираются в вебе после сборки. Скрипт допускает `ARDUINO_CLI`, `ARDUINO_CONFIG_FILE`, `FQBN`, `BUILD_JOBS`; исходники и результаты изолированы в `build/arduino-<target>` и `artifacts/arduino-<target>`. Прежние аппаратные `-D` задают только начальные значения нового устройства; сохранённая конфигурация имеет приоритет.
+`DISPLAY_KIND`: 0 NONE, 1 ILI9341, 2 LCD1602, 3 CrowPanel, 4 GC9A01. CrowPanel и GC9A01 требуют соответствующего профиля платы. Старый `DISPLAY_ENABLED=0/1` остаётся алиасом NONE/TFT; несовместимые флаги отклоняются. Привод, Bluetooth и кнопка выбираются в вебе после сборки. Скрипт допускает `ARDUINO_CLI`, `ARDUINO_CONFIG_FILE`, `FQBN`, `BUILD_JOBS`; исходники и результаты изолированы в `build/arduino-<target>` и `artifacts/arduino-<target>`. Прежние аппаратные `-D` задают только начальные значения нового устройства; сохранённая конфигурация имеет приоритет.
 
 ## PlatformIO
 

@@ -5,7 +5,7 @@
 #include <Wire.h>
 namespace forkrot {
 class PositionSensors {
-  TwoWire first_{DISPLAY_KIND==DISPLAY_CROWPANEL_21?1:0}, second_{FORK_C3?0:1};
+  TwoWire first_{DISPLAY_KIND==DISPLAY_CROWPANEL_21?1:0}, second_{FORK_C3 || DISPLAY_KIND==DISPLAY_ST7796?0:1};
   TwoWire *axes_[2]{};
   int raw_[2]{-1,-1};
   int previous_[2]{-1,-1};
@@ -17,6 +17,11 @@ public:
       if(!c.sensorType(i) || (i && c.pins.singleAxis())) continue;
       const int sda=i?c.pins.elSensorSda:c.pins.azSensorSda;
       const int scl=i?c.pins.elSensorScl:c.pins.azSensorScl;
+#if DISPLAY_KIND == DISPLAY_GC9A01
+      // The panel initializes Wire once. Do not remap/restart its touch bus.
+      if(sda==board::PIN_I2C_SDA && scl==board::PIN_I2C_SCL) axes_[i]=&Wire;
+      continue;
+#endif
       if(i && axes_[0] && sda==c.pins.azSensorSda && scl==c.pins.azSensorScl) {
         axes_[i]=axes_[0];continue;
       }

@@ -52,7 +52,7 @@ def _host_timestamp(value: object) -> bool:
 
 
 def _touch_action(value: object) -> bool:
-    return _uint(value, 8) and value <= 6
+    return _uint(value, 8) and value <= 9
 
 
 def validate_record(record: object) -> bool:

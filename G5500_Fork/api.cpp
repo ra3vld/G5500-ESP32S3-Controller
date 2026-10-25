@@ -140,7 +140,9 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
          << '}';
   }
   json << "],\"build\":{\"board\":" << jsonQuoted(board::NAME) << ",\"display\":"
-       << jsonQuoted(DISPLAY_KIND == DISPLAY_CROWPANEL_21 ? "CROWPANEL_21"
+       << jsonQuoted(DISPLAY_KIND == DISPLAY_ST7796 ? "ST7796"
+                     : DISPLAY_KIND == DISPLAY_GC9A01 ? "GC9A01"
+                     : DISPLAY_KIND == DISPLAY_CROWPANEL_21 ? "CROWPANEL_21"
                      : DISPLAY_KIND == DISPLAY_ILI9341    ? "ILI9341"
                      : DISPLAY_KIND == DISPLAY_LCD1602    ? "LCD1602"
                                                           : "NONE")

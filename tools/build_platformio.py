@@ -13,7 +13,7 @@ import subprocess
 ROOT=Path(__file__).resolve().parents[1]
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--env',default='esp32s3_n16r8')
-p.add_argument('--display',choices=['none','tft','lcd','crowpanel'])
+p.add_argument('--display',choices=['none','tft','lcd','crowpanel','gc9a01','st7796'])
 p.add_argument('--bluetooth',choices=['0','1'])
 p.add_argument('--bluetooth-mode',choices=['auto','hc05','spp'])
 p.add_argument('--simulation',choices=['0','1'],help='Virtual drive on any board; disables motor GPIO/PWM and feedback ADC')
@@ -58,8 +58,8 @@ display=macros.get('DISPLAY_KIND')
 if display is None:
     if 'TFT_DISPLAY_ENABLED' in macros:display=macros['TFT_DISPLAY_ENABLED']
     else:display=next((v for v in values if v!='TFT_DISPLAY_ENABLED'),'DISPLAY_NONE')
-kind={'DISPLAY_NONE':0,'DISPLAY_ILI9341':1,'DISPLAY_LCD1602':2,'DISPLAY_CROWPANEL_21':3,'0':0,'1':1,'2':2,'3':3}.get(display)
-if a.display:kind={'none':0,'tft':1,'lcd':2,'crowpanel':3}[a.display]
+kind={'DISPLAY_NONE':0,'DISPLAY_ILI9341':1,'DISPLAY_LCD1602':2,'DISPLAY_CROWPANEL_21':3,'DISPLAY_GC9A01':4,'DISPLAY_ST7796':5,'0':0,'1':1,'2':2,'3':3,'4':4,'5':5}.get(display)
+if a.display:kind={'none':0,'tft':1,'lcd':2,'crowpanel':3,'gc9a01':4,'st7796':5}[a.display]
 if kind is None:p.error('Cannot resolve DISPLAY_KIND; use --display')
 # Replace display flags atomically, retaining the legacy alias only when consistent.
 flags=[f for f in flags if not f.startswith(('-DDISPLAY_KIND=','-DTFT_DISPLAY_ENABLED='))]
@@ -81,11 +81,23 @@ if a.pwm_inverted is not None:
 if a.motion_hz is not None:
     flags=[f for f in flags if not f.startswith('-DMOTION_CONTROL_PERIOD_MS=')]
     flags.append('-DMOTION_CONTROL_PERIOD_MS='+str(1000//a.motion_hz))
-deps='' if kind==0 else 'lvgl/lvgl @ 9.6.0' if kind==3 else 'arduino-libraries/LiquidCrystal @ 1.0.7' if kind==2 else option('display_tft','lib_deps')
+deps=option('env:esp32_3248s035c','lib_deps') if kind==5 else option('env:esp32_2424s012c','lib_deps') if kind==4 else '' if kind==0 else 'lvgl/lvgl @ 9.6.0' if kind==3 else 'arduino-libraries/LiquidCrystal @ 1.0.7' if kind==2 else option('display_tft','lib_deps')
+if kind in (1,3,4,5):
+    flags += ["-DLV_CONF_INCLUDE_SIMPLE", "-I"+str(ROOT/"G5500_Fork")]
+# The 3 MiB classic-ESP32 application also needs LTO with the shared LVGL UI.
+lto_override = kind == 1 and macros.get('BOARD_PROFILE') in ('BOARD_ESP32', '4')
+if lto_override and '-flto' not in flags:
+    flags.append('-flto')
 # Classic SPP uses IDF directly; no additional Bluetooth library is needed.
 work=ROOT/'build/platformio-config';work.mkdir(parents=True,exist_ok=True)
 path=work/(a.env+'.ini')
-path.write_text(f'[platformio]\nextra_configs = {ROOT}/platformio.ini\nsrc_dir = {ROOT}/G5500_Fork\n[env:selected]\nextends = {section}\nbuild_flags = '+ ' '.join(flags)+'\nlib_deps =\n'+''.join(' '+line+'\n' for line in deps.splitlines() if line.strip()))
+scripts = option(section, 'extra_scripts').split()
+if lto_override and 'post:tools/platformio_lto.py' not in scripts:
+    scripts.append('post:tools/platformio_lto.py')
+if kind in (1, 3, 4, 5) and 'post:tools/platformio_image_size.py' not in scripts:
+    scripts.append('post:tools/platformio_image_size.py')
+script_config = '\nextra_scripts = ' + ' '.join(scripts) if scripts else ''
+path.write_text(f'[platformio]\nextra_configs = {ROOT}/platformio.ini\nsrc_dir = {ROOT}/G5500_Fork\n[env:selected]\nextends = {section}\nbuild_flags = '+ ' '.join(flags)+script_config+('\nlib_ldf_mode = chain' if kind in (1,3,4,5) else '')+'\nlib_deps =\n'+''.join(' '+line+'\n' for line in deps.splitlines() if line.strip()))
 cmd=[a.pio,'run','-c',str(path),'-e','selected','-j',str(a.jobs)]
 print(shlex.join(cmd),flush=True)
 if not a.dry_run:raise SystemExit(subprocess.call(cmd,cwd=ROOT))

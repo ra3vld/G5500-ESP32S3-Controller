@@ -114,6 +114,7 @@ void field(forkrot::CrowPanelView &v, const std::string &key, const std::string 
 #define UINT(name) if (key == #name) { const auto n = natural(value); if (n > UINT32_MAX) throw std::runtime_error("unsigned overflow"); v.name = unsigned(n); return; }
 #define REAL(name) if (key == #name) { v.name = real(value); return; }
 #define TEXT(name) if (key == #name) { stringValue(v.name, value); return; }
+  BOOL(movingNow) BOOL(settingsAvailable) BOOL(enabled)
   BOOL(hud) BOOL(hudSelector) TEXT(hudName) TEXT(hudAddress)
   TEXT(hudRows[0]) TEXT(hudRows[1]) TEXT(hudRows[2])
   BOOL(dualAxis) BOOL(speedScreen)
@@ -139,7 +140,7 @@ void field(forkrot::CrowPanelView &v, const std::string &key, const std::string 
 }
 void pressed(const std::string &value) {
   const int action = integer(value);
-  if (action < 0 || action > int(forkrot::crowpanel::TouchAction::SpeedValue))
+  if (action < 0 || action > int(forkrot::crowpanel::TouchAction::Settings))
     throw std::runtime_error("invalid pressed action");
   ui.setPressed(static_cast<forkrot::crowpanel::TouchAction>(action));
 }

@@ -58,8 +58,8 @@ def build(tool,board,display,bt,drive):
     flags=f'-DBOARD_PROFILE={dict(s3=1,s2=2,**{"s2-mini":3,"esp32":4,"wt32-eth01":6})[board]} -DDISPLAY_KIND={display} -DTFT_DISPLAY_ENABLED={int(display==1)} -DBLUETOOTH_ENABLED={bt} -DDRIVE_INTERFACE={drive}'
     if board in ('s2', 's2-mini'): flags += ' -flto'
     if a.simulation is not None: flags += ' -DDRIVE_SIMULATION='+a.simulation
-    app_size = 0x640000 if board=='s3' else 0x300000 if board in ('esp32','wt32-eth01') else 0x1e0000
-    partition_file = 'partitions_s3.csv' if board=='s3' else 'partitions_esp32.csv' if board in ('esp32','wt32-eth01') else 'partitions_s2.csv'
+    app_size = 0x640000 if board=='s3' else 0x300000 if board in ('esp32','wt32-eth01','s2-mini') else 0x1e0000
+    partition_file = 'partitions_s3.csv' if board=='s3' else 'partitions_esp32.csv' if board in ('esp32','wt32-eth01','s2-mini') else 'partitions_s2.csv'
     if tool=='arduino':
         sketch=work/'G5500_Fork';sketch.mkdir(exist_ok=True)
         for f in source.iterdir():
