@@ -15,6 +15,14 @@
 namespace forkrot {
 // HTTPD owns sockets; the Arduino loop alone owns Controller/Hud.
 class LiveServer {
+  static constexpr size_t ControlCapacity=256;
+  struct StateBuffer {
+    std::array<char,LIVE_STATE_CAPACITY+4> bytes{};
+    size_t size=0;
+    uint32_t revision=0;
+    unsigned users=0;
+    uint32_t unusedAt=0;
+  };
   struct Message { char data[LIVE_INPUT_CAPACITY+1]{}; size_t size=0; };
   struct Reply { char data[192]{}; size_t size=0; };
   struct Pending { uint32_t cid=0, request=0; };
@@ -26,7 +34,8 @@ class LiveServer {
   };
   struct ClientBuffers {
     Message command, stop;
-    LiveFrame<LIVE_STATE_CAPACITY> outgoing;
+    LiveFrame<ControlCapacity> outgoing;
+    StateBuffer *snapshot=nullptr;
     char pong[125]{}; size_t pongSize=0; bool pongPending=false;
     SpeedRequest speeds[2];
     Reply replies[4]; unsigned head=0, count=0;
@@ -48,7 +57,10 @@ class LiveServer {
   httpd_handle_t server_=nullptr;
   StaticSemaphore_t mutexStorage_;
   SemaphoreHandle_t mutex_=nullptr;
-  std::unique_ptr<std::array<char,LIVE_STATE_CAPACITY>> state_;
+  // A slow peer pins its frame; other peers can share the newest snapshot.
+  // At most one retained snapshot per client, allocated only when needed.
+  std::array<std::unique_ptr<StateBuffer>,4> states_;
+  unsigned stateIndex_=0;
   size_t stateSize_=0;
   uint32_t revision_=0, publishedAt_=0, hash_=0, controlHash_=0, wakeAt_=0;
   uint32_t workRuns_=0, framesSent_=0, queueErrors_=0, sendErrors_=0, sendDeferred_=0;
@@ -70,6 +82,10 @@ class LiveServer {
   static int sendSocket(httpd_handle_t,int,const char *,size_t,int);
   static void closed(httpd_handle_t,int);
   static void sendWork(void *);
+  static void releaseSnapshot(ClientBuffers &b, uint32_t now) {
+    if(b.snapshot){if(!--b.snapshot->users)b.snapshot->unusedAt=now;b.snapshot=nullptr;}
+  }
+  StateBuffer *writableState(unsigned &index);
   void reply(Client &,uint32_t,const char *);
   void cancelTarget(Client &,uint32_t);
   void speedCommands(uint32_t now);

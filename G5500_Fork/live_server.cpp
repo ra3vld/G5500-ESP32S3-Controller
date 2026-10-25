@@ -14,8 +14,7 @@ namespace forkrot {
 namespace { struct Guard { SemaphoreHandle_t m; explicit Guard(SemaphoreHandle_t v):m(v){xSemaphoreTake(m,portMAX_DELAY);} ~Guard(){xSemaphoreGive(m);} }; }
 bool LiveServer::begin() {
   clients_.reset(new(std::nothrow) Clients{});
-  state_.reset(new(std::nothrow) std::array<char,LIVE_STATE_CAPACITY>{});
-  if(!clients_ || !state_){clients_.reset();state_.reset();return false;}
+  if(!clients_)return false;
   liveBootText(boot_,runtime_.hud.boot);
   selection_=runtime_.hud.selectionEpoch;
   ingressRange_[0]=runtime_.controller.azRange;ingressRange_[1]=runtime_.controller.elRange;ingressEl_=runtime_.controller.model==Model::G5500;
@@ -33,11 +32,11 @@ bool LiveServer::begin() {
   cfg.max_open_sockets=clients_->size()+1;cfg.backlog_conn=1;
   cfg.stack_size=6144; cfg.recv_wait_timeout=1;cfg.send_wait_timeout=1;
   cfg.open_fn=opened;cfg.close_fn=closed;cfg.global_user_ctx=this;
-  if(httpd_start(&server_,&cfg)!=ESP_OK){server_=nullptr;clients_.reset();state_.reset();return false;}
+  if(httpd_start(&server_,&cfg)!=ESP_OK){server_=nullptr;clients_.reset();return false;}
   httpd_uri_t uri{};uri.uri="/api/live";uri.method=HTTP_GET;uri.handler=handler;uri.user_ctx=this;uri.is_websocket=true;uri.handle_ws_control_frames=true;
-  if(httpd_register_uri_handler(server_,&uri)!=ESP_OK){httpd_stop(server_);server_=nullptr;clients_.reset();state_.reset();return false;}
+  if(httpd_register_uri_handler(server_,&uri)!=ESP_OK){httpd_stop(server_);server_=nullptr;clients_.reset();return false;}
   uri.uri="/api/control";
-  if(httpd_register_uri_handler(server_,&uri)!=ESP_OK){httpd_stop(server_);server_=nullptr;clients_.reset();state_.reset();return false;}
+  if(httpd_register_uri_handler(server_,&uri)!=ESP_OK){httpd_stop(server_);server_=nullptr;clients_.reset();return false;}
   return true;
 }
 esp_err_t LiveServer::opened(httpd_handle_t server,int fd) {
@@ -57,8 +56,9 @@ esp_err_t LiveServer::opened(httpd_handle_t server,int fd) {
   for(auto &c:*self.clients_)if(c.fd<0){
     // Decline a new browser before it eats the control/recovery headroom.
     // Existing clients, including their STOP queue, keep their buffers.
-    if(heapFreeBytes()<sizeof(ClientBuffers)+MemoryGuard::HealthyFree ||
-       heapMaxBlockBytes()<sizeof(ClientBuffers)+MemoryGuard::HealthyBlock)return ESP_FAIL;
+    const size_t needed=sizeof(ClientBuffers)+(self.stateSize_?0:sizeof(StateBuffer));
+    if(heapFreeBytes()<needed+MemoryGuard::HealthyFree ||
+       heapMaxBlockBytes()<needed+MemoryGuard::HealthyBlock)return ESP_FAIL;
     std::unique_ptr<ClientBuffers> buffers(new(std::nothrow) ClientBuffers{});
     if(!buffers)return ESP_FAIL;
     const auto gen=c.generation+1;c=Client{};c.buffers=std::move(buffers);
@@ -91,8 +91,31 @@ int LiveServer::sendSocket(httpd_handle_t server,int fd,const char *data,size_t 
 }
 void LiveServer::closed(httpd_handle_t server,int fd) {
   auto &self=*static_cast<LiveServer *>(httpd_get_global_user_ctx(server));
-  { Guard lock(self.mutex_); for(auto &c:*self.clients_)if(c.fd==fd){const auto generation=c.generation+1;c=Client{};c.generation=generation;} }
+  { Guard lock(self.mutex_);
+    bool any=false;
+    for(auto &c:*self.clients_){
+      if(c.fd==fd){releaseSnapshot(*c.buffers,uint32_t(esp_timer_get_time()/1000));const auto generation=c.generation+1;c=Client{};c.generation=generation;}
+      any|=c.fd>=0;
+    }
+    if(!any){for(auto &state:self.states_)state.reset();self.stateSize_=0;}
+  }
   ::close(fd);
+}
+LiveServer::StateBuffer *LiveServer::writableState(unsigned &index) {
+  bool any=false;for(const auto &client:*clients_)any|=client.fd>=0;
+  if(!any)return nullptr;
+  // Called with mutex_: only zero-user frames may be overwritten. Prefer
+  // reusing the latest one, so fast/idle links need just one shared buffer.
+  if(states_[stateIndex_] && !states_[stateIndex_]->users){index=stateIndex_;return states_[index].get();}
+  for(unsigned i=0;i<states_.size();++i)if(states_[i]&&!states_[i]->users){index=i;return states_[i].get();}
+  for(unsigned i=0;i<states_.size();++i)if(!states_[i]){
+    if(heapFreeBytes()<sizeof(StateBuffer)+MemoryGuard::HealthyFree ||
+       heapMaxBlockBytes()<sizeof(StateBuffer)+MemoryGuard::HealthyBlock)return nullptr;
+    states_[i].reset(new(std::nothrow) StateBuffer{});index=i;return states_[i].get();
+  }
+  // All clients are still transmitting. Retain the current publication until
+  // one of them releases a frame; commands/STOP and pending sends keep running.
+  return nullptr;
 }
 void LiveServer::reply(Client &c,uint32_t id,const char *body) {
   if(c.buffers->count==4){c.closing=true;return;}
@@ -274,7 +297,8 @@ void LiveServer::commands(uint32_t now) {
 }
 void LiveServer::publish(uint32_t now) {
   if(!server_)return;
-  bool any=false;{Guard lock(mutex_);
+  bool any=false,missingState=false;{Guard lock(mutex_);
+    for(unsigned i=0;i<states_.size();++i)if(i!=stateIndex_&&states_[i]&&!states_[i]->users&&uint32_t(now-states_[i]->unusedAt)>=1000)states_[i].reset();
     selection_=runtime_.hud.selectionEpoch;
     ingressRange_[0]=runtime_.controller.azRange;ingressRange_[1]=runtime_.controller.elRange;ingressEl_=runtime_.controller.model==Model::G5500;
     for(unsigned i=0;i<2;++i) {
@@ -282,20 +306,29 @@ void LiveServer::publish(uint32_t now) {
         (!runtime_.controller.variableSpeed(i) || runtime_.controller.motionSettings[i].ready);
       ingressSpeedLimit_[i]=runtime_.controller.runtimeSpeedLimit(i);
     }
-    for(auto &c:*clients_)any|=c.fd>=0;}
+    for(auto &c:*clients_)any|=c.fd>=0;
+    missingState=!stateSize_;}
   if(!any)return;
   const uint32_t critical=liveControlFingerprint(runtime_.controller,runtime_.hud);
-  if(critical!=controlHash_ || uint32_t(now-publishedAt_)>=WebPositionIntervalMs) {
-    controlHash_=critical;
+  if(missingState || critical!=controlHash_ || uint32_t(now-publishedAt_)>=WebPositionIntervalMs) {
     char data[LIVE_STATE_CAPACITY];JsonWriter j(data,sizeof data);writeLiveState(j,runtime_.controller,runtime_.hud,now);
     if(j.good()) {
       const uint32_t hash=hudCrc(reinterpret_cast<const uint8_t *>(j.data()),j.size());
       Guard lock(mutex_);
-      if(hash!=hash_||uint32_t(now-publishedAt_)>=250){
-        hash_=hash;publishedAt_=now;++revision_;char boot[17];liveBootText(boot,runtime_.hud.boot);
-        JsonWriter out(state_->data(),state_->size());out<<"{\"v\":1,\"type\":\"state\",\"boot\":"<<jsonQuoted(boot)<<",\"revision\":"<<revision_<<",\"state\":"<<std::string_view(j.data(),j.size())<<'}';
-        stateSize_=out.good()?out.size():0;
-      }
+      if(!stateSize_||hash!=hash_||uint32_t(now-publishedAt_)>=250){
+        unsigned index=stateIndex_;auto *state=writableState(index);
+        if(state){
+          const auto revision=revision_+1;char boot[17];liveBootText(boot,runtime_.hud.boot);
+          JsonWriter out(state->bytes.data()+4,LIVE_STATE_CAPACITY);out<<"{\"v\":1,\"type\":\"state\",\"boot\":"<<jsonQuoted(boot)<<",\"revision\":"<<revision<<",\"state\":"<<std::string_view(j.data(),j.size())<<'}';
+          if(out.good()){
+            state->size=out.size();state->revision=revision;state->unusedAt=now;
+            writeLiveFrameHeader(state->bytes.data(),state->size,HTTPD_WS_TYPE_TEXT);
+            hash_=hash;publishedAt_=now;revision_=revision;stateIndex_=index;stateSize_=state->size;controlHash_=critical;
+          }else{
+            state->size=0;if(index==stateIndex_)stateSize_=0;
+          }
+        }
+      }else controlHash_=critical;
     }
   }
   bool queue=false;
@@ -310,7 +343,9 @@ void LiveServer::writeDiagnostics(JsonWriter &j) {
   if(!server_)return;
   Guard lock(mutex_);unsigned clients=0;
   for(const auto &c:*clients_)clients+=c.fd>=0;
+  unsigned states=0;for(const auto &state:states_)states+=bool(state);
   j<<",\"liveControlChannel\":true,\"liveHeartbeat\":true,\"liveClients\":"<<clients<<",\"liveRevision\":"<<revision_<<",\"liveStateBytes\":"<<stateSize_
+   <<",\"liveStateBuffers\":"<<states<<",\"liveBufferBytes\":"<<(sizeof(Clients)+clients*sizeof(ClientBuffers)+states*sizeof(StateBuffer))
    <<",\"liveWorkRuns\":"<<workRuns_<<",\"liveFrames\":"<<framesSent_
    <<",\"liveSendDeferred\":"<<sendDeferred_<<",\"liveQueueErrors\":"<<queueErrors_<<",\"liveSendErrors\":"<<sendErrors_
    <<",\"liveMemoryDeferred\":"<<memoryDeferred_<<",\"liveSocketDeferred\":"<<socketDeferred_
@@ -347,16 +382,21 @@ void LiveServer::sendWork(void *context) {
         size_t n=0;uint8_t opcode=HTTPD_WS_TYPE_TEXT;char *data=out.payload();
         if(b.pongPending){n=b.pongSize;std::memcpy(data,b.pong,n);b.pongPending=false;opcode=HTTPD_WS_TYPE_PONG;}
         else if(b.cancelledFrom){
-          const int size=std::snprintf(data,LIVE_STATE_CAPACITY,"{\"v\":1,\"type\":\"result\",\"boot\":\"%s\",\"id\":%lu,\"cancelledFrom\":%lu,\"cancelledThrough\":%lu,\"result\":{\"ok\":false,\"result\":\"cancelled\",\"superseded\":true}}",self.boot_,(unsigned long)b.cancelledThrough,(unsigned long)b.cancelledFrom,(unsigned long)b.cancelledThrough);
-          if(size>0&&size_t(size)<LIVE_STATE_CAPACITY)n=size_t(size);
+          const int size=std::snprintf(data,ControlCapacity,"{\"v\":1,\"type\":\"result\",\"boot\":\"%s\",\"id\":%lu,\"cancelledFrom\":%lu,\"cancelledThrough\":%lu,\"result\":{\"ok\":false,\"result\":\"cancelled\",\"superseded\":true}}",self.boot_,(unsigned long)b.cancelledThrough,(unsigned long)b.cancelledFrom,(unsigned long)b.cancelledThrough);
+          if(size>0&&size_t(size)<ControlCapacity)n=size_t(size);
           b.cancelledFrom=b.cancelledThrough=0;
         }
         else if(b.count){auto &r=b.replies[b.head];n=r.size;std::memcpy(data,r.data,n);b.head=(b.head+1)%4;--b.count;}
         else if(client.revision!=self.revision_&&self.stateSize_&&!waitingSpace){
           if(client.controlOnly) {
-            const int size=std::snprintf(data,LIVE_STATE_CAPACITY,"{\"v\":1,\"type\":\"control\",\"boot\":\"%s\",\"selection\":%lu}",self.boot_,(unsigned long)self.selection_);
-            if(size>0&&size_t(size)<LIVE_STATE_CAPACITY)n=size_t(size);
-          } else {n=self.stateSize_;std::memcpy(data,self.state_->data(),n);}
+            const int size=std::snprintf(data,ControlCapacity,"{\"v\":1,\"type\":\"control\",\"boot\":\"%s\",\"selection\":%lu}",self.boot_,(unsigned long)self.selection_);
+            if(size>0&&size_t(size)<ControlCapacity)n=size_t(size);
+          } else {
+            auto &state=*self.states_[self.stateIndex_];
+            if(out.borrow(state.bytes.data(),state.size,uint32_t(esp_timer_get_time()/1000))){
+              ++state.users;b.snapshot=&state;b.memoryWaits=0;
+            }
+          }
           client.revision=self.revision_;
           client.ackWaiting=false;
         }
@@ -387,8 +427,8 @@ void LiveServer::sendWork(void *context) {
         self.sendDeferred_+=out.retries-retries;
         if(memoryWait){++self.memoryDeferred_;++client.buffers->memoryWaits;}
         else self.socketDeferred_+=out.retries-retries;
-        if(step==LiveFrame<LIVE_STATE_CAPACITY>::Step::Complete){++self.framesSent_;out.clear();}
-        else if(step==LiveFrame<LIVE_STATE_CAPACITY>::Step::Failed){
+        if(step==LiveFrame<ControlCapacity>::Step::Complete){++self.framesSent_;out.clear();releaseSnapshot(*client.buffers,now);}
+        else if(step==LiveFrame<ControlCapacity>::Step::Failed){
           ++self.sendErrors_;self.sendErrno_=error;self.sendRetryErrno_=out.retryError;
           self.sendRetryErrors_=out.retries;self.sendElapsedMs_=now-out.started;
           self.sendWritten_=out.written();self.sendRequested_=out.requested();

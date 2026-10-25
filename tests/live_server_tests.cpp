@@ -37,7 +37,12 @@ int main(){
  MotionTestRuntime runtime;runtime.hud.begin(1,10);runtime.controller.feedback(20,30,true,true);
  LiveServer server(runtime);const auto beforeBegin=allocatedBytes;
  assert(server.begin());assert(fakeServer.registrations==std::vector<std::string>({"/api/live","/api/control"}));assert(fakeServer.cfg.max_open_sockets==5&&fakeServer.cfg.backlog_conn==1);assert(fakeServer.uri.handle_ws_control_frames);
- assert(allocatedBytes-beforeBegin<=4096); // idle server holds no per-client queues
+ const auto bufferMetric=[&](const char *name){
+   char text[2048];JsonWriter j(text,sizeof text);server.writeDiagnostics(j);assert(j.good());
+   const std::string json(j.data(),j.size()),key=std::string("\"")+name+"\":";
+   const auto at=json.find(key);assert(at!=std::string::npos);return std::stoul(json.substr(at+key.size()));
+ };
+ assert(allocatedBytes-beforeBegin<=512); // idle server has no queues or full-state buffer
  const auto beforeLowHeap=allocationCalls;
  fakeHeapFree=MemoryGuard::CriticalFree;
  assert(connect(999)==ESP_FAIL && allocationCalls==beforeLowHeap);
@@ -51,7 +56,7 @@ int main(){
  for(unsigned i=0;i<10000;++i) {
    const auto allocations=allocationCalls, releases=releasedCalls, bytes=allocatedBytes;
    assert(fakeServer.cfg.open_fn(&fakeServer,999)==ESP_OK);
-   assert(allocationCalls==allocations+1 && allocatedBytes-bytes<=6144);
+   assert(allocationCalls==allocations+1 && allocatedBytes-bytes<=3072);
    fakeServer.cfg.close_fn(&fakeServer,999);
    assert(releasedCalls==releases+1);
  }
@@ -62,6 +67,7 @@ int main(){
  httpd_req_t legacy{fakeServer.uri.user_ctx,HTTP_GET,999,{}};assert(fakeServer.uri.handler(&legacy)==ESP_OK);
  httpd_sess_trigger_close(&fakeServer,999);fakeServer.sent.clear();
  for(int fd=1000;fd<1004;++fd)assert(connect(fd)==ESP_OK);
+ server.publish(14);pumpLive(); // allocate the shared snapshot before inducing pressure
  // Radio allocations happen after send() returns: defer bulk frames while
  // either byte or contiguous headroom is low, retaining their exact offset.
  for(bool fragmented:{false,true}) {
@@ -375,10 +381,29 @@ int main(){
  fakeTcpCapacity=size_t(-1);publishAt(50220);
  assert(fakeServer.sent.size()==1&&fakeServer.sent[0].second.find("longer fault text")!=std::string::npos);
  c.fault="";
+ // Four peers can pin different publications. A fast peer keeps receiving
+ // new state while the other three retain their exact older frame bytes.
+ for(int fd=1000;fd<1004;++fd)if(fakeServer.websocketFds.count(fd))httpd_sess_trigger_close(&fakeServer,fd);
+ const auto idleBytes=bufferMetric("liveBufferBytes");assert(bufferMetric("liveStateBuffers")==0);
+ for(int fd=1000;fd<1004;++fd)assert(connect(fd)==ESP_OK);
+ fakeServer.sent.clear();
+ for(unsigned i=0;i<4;++i){
+   fakeServer.blockedFds.insert(1000+int(i));c.axes[0].current=30+float(i);publishAt(60000+i*200);
+   assert(bufferMetric("liveStateBuffers")==i+1);
+ }
+ c.axes[0].current=44;publishAt(60800);assert(bufferMetric("liveStateBuffers")==4);
+ fakeServer.blockedFds.erase(1003);publishAt(60805);publishAt(61000);
+ bool newest=false;for(const auto &message:fakeServer.sent)newest|=message.first==1003&&message.second.find("\"az\":44")!=std::string::npos;
+ assert(newest&&bufferMetric("liveStateBuffers")==4);
+ fakeServer.blockedFds.clear();publishAt(61005);publishAt(62010);
+ assert(bufferMetric("liveStateBuffers")==1); // transient older frames are released
+ for(int fd=1000;fd<1004;++fd)httpd_sess_trigger_close(&fakeServer,fd);
+ assert(bufferMetric("liveStateBuffers")==0&&bufferMetric("liveBufferBytes")==idleBytes);
  fakeEspTimeUs=-1;
+ std::cout<<"PASS: shared immutable state, four pinned revisions, independent fast peer, bounded pool, idle trim and last-client release\n";
  std::cout<<"PASS: TCP ACK pacing coalesces snapshots, preserves peers/STOP/PONG and partial frames, expires stalled peers and resets on reconnect\n";
  std::cout<<"PASS: separate compact manual stream, lease renewal/STOP ACKs across 1.5s telemetry backpressure, context changes and partial upgrade\n";
  std::cout<<"PASS: partial frames resume after 1.5s, independent STOP/peers, PONG and ACK ordering, latest state and bounded stalled-client timeout\n";
  std::cout<<"PASS: actual HTTPD adapter: four clients, loop ownership, STOP priority, duplicate IDs, bounded backpressure, reconnect\n";
- std::cout<<"PASS: idle live storage <=4 KiB, 10000 queue allocations/releases (<=6 KiB/client), low-memory admission and existing STOP\n";
+ std::cout<<"PASS: idle live storage <=512 B, 10000 queue allocations/releases (<=3 KiB/client), low-memory admission and existing STOP\n";
 }

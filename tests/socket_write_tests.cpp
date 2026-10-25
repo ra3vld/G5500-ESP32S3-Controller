@@ -3,6 +3,7 @@
 #include <cassert>
 #include <iostream>
 #include <string>
+#include <type_traits>
 using forkrot::boundedSocketWrite;
 int main() {
   const std::string input="a WebSocket header and payload must never be repeated";
@@ -55,6 +56,27 @@ int main() {
     assert(static_cast<unsigned char>(wire[1])==(length<=125?length:126));
     if(header==4)assert(size_t((static_cast<unsigned char>(wire[2])<<8)|static_cast<unsigned char>(wire[3]))==length);
     assert(wire.substr(header)==body);frame.clear();assert(!frame.active());
+    // Two independent short-write cursors share one immutable large frame.
+    assert(frame.begin(length,1,0));
+    forkrot::LiveFrame<32> first,second;
+    assert(first.borrow(frame.bytes.data(),length,0));
+    assert(second.borrow(frame.bytes.data(),length,0));
+    assert(!first.borrow(frame.bytes.data(),length,0));
+    std::string firstWire,secondWire;
+    auto drain=[](auto &cursor,std::string &out,size_t chunk){
+      using Frame=std::remove_reference_t<decltype(cursor)>;
+      auto result=Frame::Step::Pending;
+      while(result==decltype(result)::Pending)result=cursor.pump(cursor.started+1,[&](const char *p,size_t n){
+        const auto take=std::min(n,chunk);out.append(p,take);return int(take);
+      });
+      assert(result==decltype(result)::Complete);
+    };
+    assert(first.pump(0,[&](const char *p,size_t n){const auto take=std::min(n,size_t(1));firstWire.append(p,take);return int(take);})==decltype(first)::Step::Pending);
+    drain(second,secondWire,17);drain(first,firstWire,7);
+    assert(firstWire==wire&&secondWire==wire);
+    first.clear();second.clear();assert(!first.borrow(nullptr,length,0));
+    assert(first.begin(0,10,2));std::string pong;drain(first,pong,2);
+    assert(pong==std::string("\x8a\x00",2));
   }
   forkrot::LiveFrame<10> stalled;assert(stalled.begin(10,1,0));
   assert(stalled.pump(0,[](const char *,size_t){return 3;})==decltype(stalled)::Step::Pending);

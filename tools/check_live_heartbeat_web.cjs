@@ -24,7 +24,7 @@ const sample=JSON.parse(execFileSync(path.join(root,'build/simulator'),{input:'s
   const snapshot=revision=>page.evaluate(([state,revision])=>live.socket.onmessage({data:JSON.stringify({v:1,type:'state',boot:'abc',revision,state})}),[state,revision]);
   await snapshot(1);await page.evaluate(()=>live.socket.sent=[]);await page.waitForTimeout(150);
   assert.equal(await page.evaluate(()=>live.socket.sent.length),0,'fresh telemetry needs no probes');
-  const staleAt=await page.evaluate(()=>{live.last=Date.now()-900;live.probeAt=0;return live.last});
+  const staleAt=await page.evaluate(()=>{live.last=Date.now()-1200;live.probeAt=0;return live.last});
   await page.waitForFunction(()=>live.socket.sent.length>0);
   assert.deepEqual(await page.evaluate(()=>live.socket.sent),['v=1&ping=1']);
   assert.equal(await page.evaluate(()=>live.last),staleAt,'sending a probe must not refresh stale state');
