@@ -218,7 +218,7 @@ void DeviceApi::writeSetup(JsonWriter &j) const {
     << ",\"separateDrive\":" << (CROWPANEL_LOCAL_DRIVE?"false":"true")
     << ",\"simulation\":" << ((s.drive<0?runtime_.controller.hardware.simulation:s.simulation)?"true":"false")
     << ",\"manualOnly\":" << (runtime_.controller.hardware.manualWithoutFeedback()?"true":"false")
-    << ",\"token\":" << runtime_.setupLease << ",\"storageOk\":" << (runtime_.setupStorageOk?"true":"false")
+    << ",\"testToken\":" << runtime_.setupTestToken << ",\"token\":" << runtime_.setupLease << ",\"storageOk\":" << (runtime_.setupStorageOk?"true":"false")
     << ",\"restartRequired\":" << (runtime_.setupRestartRequired?"true":"false") << ",\"pendingNext\":" << (s.pendingNext?"true":"false") << '}';
 }
 void DeviceApi::configurationRestart() {
@@ -233,8 +233,8 @@ void DeviceApi::serviceSetup(uint32_t now) {
     if(storage_.saveSetup(next))runtime_.setup=next;
     else {runtime_.setupStorageOk=false;runtime_.controller.stopNow(-1,now);}
   }
-  if(!runtime_.setup.required || !runtime_.setupLease || uint32_t(now-runtime_.setupRenewed)<=1500)return;
-  runtime_.setupLease=0;
+  if(!runtime_.setup.required || !runtime_.setupTestToken || uint32_t(now-runtime_.setupRenewed)<=Runtime::SetupTestTimeoutMs)return;
+  runtime_.setupTestToken=0;
   auto &c=runtime_.controller;c.cancelCoast(now);c.cancelAutoTune(now);c.stopNow(-1,now);hardware_.applyOutputs();
 }
 void DeviceApi::invalidateSetup(SetupStep step) {
@@ -264,11 +264,13 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
   // A commissioning lease permits only explicit HTTP tests. Every other source
   // still enters Controller with setupAccess=false, including WebSocket/HUD.
   struct SetupAccess { Controller &c; ~SetupAccess(){c.setupAccess=false;} } setupAccess{runtime_.controller};
-  uint32_t lease=0;
-  if(!command && hardwareUnsigned(web_.value("setupToken"),lease) && lease && lease==runtime_.setupLease &&
-      runtime_.setup.required && runtime_.setupStorageOk && !runtime_.setup.paused && uint32_t(millis()-runtime_.setupRenewed)<=1500 &&
-      (runtime_.setup.step==SetupStep::Calibration || runtime_.setup.step==SetupStep::Tuning || runtime_.setup.step==SetupStep::Review ||
-       (runtime_.setup.step==SetupStep::Programs && path=="/api/mode" && web_.value("mode")=="manual")))
+  uint32_t lease=0,testToken=0;
+  const bool setupSession=!command && hardwareUnsigned(web_.value("setupToken"),lease) && lease && lease==runtime_.setupLease &&
+      runtime_.setup.required && runtime_.setupStorageOk && !runtime_.setup.paused;
+  const bool testFresh=hardwareUnsigned(web_.value("setupTestToken"),testToken) && testToken && testToken==runtime_.setupTestToken &&
+      uint32_t(millis()-runtime_.setupRenewed)<=Runtime::SetupTestTimeoutMs;
+  if(setupSession && ((testFresh && (runtime_.setup.step==SetupStep::Calibration || runtime_.setup.step==SetupStep::Tuning || runtime_.setup.step==SetupStep::Review)) ||
+      (runtime_.setup.step==SetupStep::Programs && path=="/api/mode" && web_.value("mode")=="manual")))
     runtime_.controller.setupAccess=true;
   // Keep the general API's temporary buffers off recovery and hardware paths.
   if(hardwarePath)executeHardware(method,path,arguments,output,status,type,command);
@@ -385,13 +387,26 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     if(method=="GET"){writeSetup(output);return;}
     if(method!="POST" || command){reply(405,"method_not_allowed");return;}
     const auto action=web_.value("action");
-    if(action=="renew") {
-      if(!lease || lease!=runtime_.setupLease || runtime_.setup.paused){reply(409,"setup_lease_expired");return;}
-      runtime_.setupRenewed=millis();reply(200,"");return;
+    if(action=="arm" || action=="renew") {
+      if(!lease || lease!=runtime_.setupLease || !runtime_.setup.required || runtime_.setup.paused){reply(409,"setup_lease_expired");return;}
+      if(runtime_.setup.step!=SetupStep::Calibration && runtime_.setup.step!=SetupStep::Tuning && runtime_.setup.step!=SetupStep::Review){reply(409,"setup_step_not_ready");return;}
+      uint32_t testToken=0;
+      if(action=="renew" && (!hardwareUnsigned(web_.value("setupTestToken"),testToken) || !testToken || testToken!=runtime_.setupTestToken)) {
+        reply(409,"setup_test_expired");return;
+      }
+      if(!runtime_.setupTestToken) {
+        if(!++runtime_.setupTestEpoch)++runtime_.setupTestEpoch;
+        runtime_.setupTestToken=runtime_.setupTestEpoch;
+      }
+      runtime_.setupRenewed=millis();
+      if(action=="arm")writeSetup(output);else reply(200,"");
+      return;
     }
     if(action=="begin_save" || action=="end_save") {
       if(!lease || lease!=runtime_.setupLease || runtime_.setup.paused){reply(409,"setup_lease_expired");return;}
-      runtime_.setupSaving=action=="begin_save";writeSetup(output);return;
+      runtime_.setupSaving=action=="begin_save";
+      if(runtime_.setupSaving){runtime_.setupTestToken=0;runtime_.controller.cancelCoast(millis());runtime_.controller.cancelAutoTune(millis());runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();}
+      writeSetup(output);return;
     }
     auto next=runtime_.setup;
     if(action=="drive") {
@@ -407,7 +422,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       if(!next.required) {next.required=true;next.equipment=runtime_.hardwareRecord.hasConfirmed;next.checked=0;next.step=SetupStep::Network;}
       next.paused=false;
     } else if(action=="pause") {
-      next.paused=true;next.pendingNext=false;runtime_.setupLease=0;
+      next.paused=true;next.pendingNext=false;runtime_.setupLease=0;runtime_.setupTestToken=0;
       runtime_.controller.cancelCoast(millis());runtime_.controller.cancelAutoTune(millis());runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
     } else if(action=="back") {
       if(!next.required){reply(409,"setup_inactive");return;}
@@ -429,8 +444,9 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       const bool finished=next.step==SetupStep::Review;
       next.step=next.next(runtime_.hud.isHud(),runtime_.controller.hardware.simulation || runtime_.controller.hardware.manualWithoutFeedback());
       next.pendingNext=false;
-      if(finished){next.required=false;next.paused=false;next.fresh=false;next.drive=-1;next.simulation=false;runtime_.setupLease=0;runtime_.controller.stopNow(-1,millis());}
+      if(finished){next.required=false;next.paused=false;next.fresh=false;next.drive=-1;next.simulation=false;runtime_.setupLease=0;runtime_.setupTestToken=0;runtime_.controller.stopNow(-1,millis());}
     } else {reply(400,"invalid_setup_action");return;}
+    runtime_.setupTestToken=0;
     runtime_.controller.cancelCoast(millis());runtime_.controller.cancelAutoTune(millis());runtime_.controller.stopNow(-1,millis());
     hardware_.applyOutputs();
     ++runtime_.hud.selectionEpoch;runtime_.protocol.resetSession();network_.selectionChanged();

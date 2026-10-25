@@ -11,7 +11,9 @@ struct Runtime {
   Controller controller;
   SetupState setup;
   bool setupStorageOk = true;
-  uint32_t setupLease = 0, setupRenewed = 0;
+  // Editing survives network delays; only an explicitly armed motion test expires.
+  static constexpr uint32_t SetupTestTimeoutMs = 1500;
+  uint32_t setupLease = 0, setupRenewed = 0, setupTestToken = 0, setupTestEpoch = 0;
   bool setupSaving = false, setupRestartRequired = false;
   ModbusConfig modbus;
   ModbusStatus modbusStatus;

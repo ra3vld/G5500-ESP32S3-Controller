@@ -46,7 +46,7 @@ function equipmentSized(step){
    page.setDefaultTimeout(15000);page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR:',e.message);});
    const status=structuredClone(initial);status.deviceRole=role;status.hudOnline=true;status.selectedCalOk=true;status.hudWifi=0;status.hudName='Антенна';status.hudSelected='0000000000001234';status.hudHost='192.168.1.30';status.hudUart=true;status.configurationLocked=false;
    const sequence=role==='hud'?[0,1,3,4,8,7,9]:[0,1,2,3,4,5,6,7,9];
-   let forceRecovery=false,failSave=false;let state={version:1,required:true,paused:false,step:0,checked:0,generation:1,equipment:true,ready:true,role,driveInterface:0,simulation:false,token:777,storageOk:true};
+   let forceRecovery=false,failSave=false;let state={version:1,required:true,paused:false,step:0,checked:0,generation:1,equipment:true,ready:true,role,driveInterface:0,simulation:false,token:777,testToken:0,storageOk:true};
    const config={driveInterface:role==='controller'?2:0,simulation:0,bluetoothEnabled:0,bluetoothMode:3,forceApSta:0,buttonGpio:fixture.buttonGpio,buttonActiveLow:1,buttonPullup:1,pwmInverted:0,pins:fixture.pins};
    const hw={role,token:11,generation:1,recovery:false,trial:false,ready:true,hasConfirmed:true,configured:config,effective:config,confirmed:config,heapFree:60000,heapMaxBlock:30000,sppSupported:true,classicEsp32:true,backend:'NONE'};
    await page.route('http://setup.test/**',async route=>{
@@ -56,13 +56,15 @@ function equipmentSized(step){
     if(req.method()==='POST')posts.push({path:u.pathname,body});
     if(u.pathname==='/api/setup'){if(forceRecovery)return route.fulfill({status:409,json:{ok:false,error:'recovery_only'}});
      if(req.method()==='POST'){
+      if(body.action==='arm')state.testToken=state.testToken+1||1;
+      if(body.action==='begin_save')state.testToken=0;
       if(body.action==='drive'){state.driveInterface=Number(body.driveInterface);state.simulation=body.simulation==='1';}
       if(body.action==='advance')state.step=sequence[sequence.indexOf(state.step)+1];
       if(body.action==='back')state.step=sequence[Math.max(0,sequence.indexOf(state.step)-1)];
       if(body.action==='pause')state.paused=true;
       if(body.action==='resume')state.paused=false;
       if(body.action==='complete')state.required=false;
-      if(!['renew','begin_save','end_save'].includes(body.action))state.generation++;if(body.action==='apply'){state.pendingNext=true;}
+      if(!['arm','renew','begin_save','end_save'].includes(body.action))state.generation++;if(body.action==='apply'){state.pendingNext=true;}
      }
      return json(state);
     }

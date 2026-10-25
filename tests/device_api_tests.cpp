@@ -64,7 +64,47 @@ struct Fixture {
     api.execute(method,path,form.view(),out,status,type,wire);assert(out.good());return {status,{data,out.size()}};
   }
 };
+static void rs485DiscoveryApiTests() {
+  {
+    Fixture scan;scan.runtime.hud.config.role=DeviceRole::Hud;scan.runtime.hud.config.uart=true;scan.runtime.hud.begin(1,0x1234);scan.runtime.hud.begin(1,0x1234);
+    assert(scan.call("POST","/api/hud/discover","transport=rs485").status==400);
+    scan.runtime.modbus.bus=1;
+    assert(scan.call("POST","/api/hud/discover","transport=rs485&first=3&last=7").status==200);
+    assert(scan.call("GET","/api/hud/peers","discovered=1").body.find("\"scanActive\":true")!=std::string::npos);
+    for(auto bad:{"first=0","first=248","first=8&last=7","last=-1","last=999","first=no"})
+      assert(scan.call("POST","/api/hud/discover",std::string("transport=rs485&")+bad).status==400);
+    assert(scan.runtime.hud.add(100,{3,4534,true},"RS485 three"));
+    assert(scan.runtime.hud.add(101,{7,4534,true},"RS485 seven"));
+    assert(scan.storage.saveHudPeers(scan.runtime.hud));
+    assert(scan.runtime.hud.select(101)&&scan.storage.saveHudConfig(scan.runtime.hud.config));
+    Runtime restored;scan.storage.loadHud(restored);
+    assert(restored.hud.peer(100)->endpoint.address==3&&restored.hud.peer(101)->endpoint.address==7);
+    assert(restored.hud.config.selected==101);
+  }
+}
 int main(int argc,char **argv) {
+  rs485DiscoveryApiTests();
+  if(argc==2 && std::string(argv[1])=="--rs485-check") {std::cout<<"PASS: RS485 discovery API, ranges, saved addresses and selection reload\n";return 0;}
+  if(argc==2 && std::string(argv[1])=="--serve-http") {
+    Fixture f;f.runtime.setup.required=true;f.runtime.setup.equipment=true;f.runtime.setup.step=SetupStep::Role;
+    f.runtime.controller.setupRequired=true;WiFi.connectionStatus=WL_CONNECTED;
+    std::string line;
+    while(std::getline(std::cin,line)) {
+      const auto a=line.find('\t'),b=line.find('\t',a+1),c=line.find('\t',b+1);
+      if(a==line.npos||b==line.npos||c==line.npos)return 2;
+      fakeHardware.now=uint32_t(std::stoul(line.substr(0,a)));
+      const auto method=line.substr(a+1,b-a-1),path=line.substr(b+1,c-b-1),body=line.substr(c+1);
+      Response reply;
+      if(path=="/__fixture/step") {
+        f.runtime.setup.step=SetupStep(std::stoul(body));f.runtime.setup.pendingNext=false;
+        reply={200,"{}"};
+      } else reply=f.call(method.c_str(),path.c_str(),body,false);
+      std::cout << "{\"status\":" << reply.status << ",\"body\":" << reply.body
+        << ",\"moving\":" << (f.runtime.controller.moving()?"true":"false")
+        << ",\"testToken\":" << f.runtime.setupTestToken << "}\n" << std::flush;
+    }
+    return 0;
+  }
   {
     Fixture f;f.runtime.setup.required=false;
     auto &n=f.network.credentials().network;n.choice=NetworkChoice::Wifi;
@@ -113,7 +153,10 @@ int main(int argc,char **argv) {
     assert(setup.call("POST","/api/setup","action=advance&generation="+std::to_string(r.setup.generation),false).status==200);
     assert(r.setup.step==SetupStep::Role);
     r.setup.step=SetupStep::Review;
-    const auto token=std::to_string(r.setupLease);
+    const auto session=r.setupLease;
+    assert(setup.call("POST","/api/setup","action=arm&setupToken="+std::to_string(session),false).status==200);
+    const auto permit=r.setupTestToken;
+    const auto token=std::to_string(session)+"&setupTestToken="+std::to_string(permit);
     assert(setup.call("POST","/api/move","d=R",false).status==503);
     assert(setup.call("POST","/api/move","d=R&setupToken="+token,true).status==503);
     assert(setup.call("POST","/api/move","d=R&setupToken="+token,false).status==200);
@@ -130,10 +173,24 @@ int main(int argc,char **argv) {
     assert(setup.call("POST","/api/mode","mode=manual&setupToken="+token,false).status==200&&sink.modes==1);
     assert(setup.call("POST","/api/mode","mode=auto&setupToken="+token,false).status==503);
     c.remote=nullptr;r.setup.step=SetupStep::Review;
-    fakeHardware.now+=1501;setup.api.serviceSetup(fakeHardware.now);assert(!c.moving()&&!r.setupLease);
+    fakeHardware.now+=1501;setup.api.serviceSetup(fakeHardware.now);assert(!c.moving()&&r.setupLease==session&&!r.setupTestToken);
     assert(setup.call("POST","/api/setup","action=renew&setupToken="+token,false).status==409);
     assert(setup.call("POST","/api/move","d=S",false).status==200);
-    assert(setup.call("POST","/api/setup","action=pause",false).status==200&&r.setup.paused&&c.setupRequired);
+    assert(setup.call("POST","/api/setup","action=begin_save&setupToken="+std::to_string(session),false).status==200);
+    fakeHardware.now+=60000;setup.api.serviceSetup(fakeHardware.now);
+    assert(r.setupLease==session && !r.setupTestToken && r.setupSaving);
+    assert(setup.call("POST","/api/settings","rotorName=AfterDelay&setupToken="+std::to_string(session),false).status==200);
+    assert(setup.call("POST","/api/setup","action=end_save&setupToken="+std::to_string(session),false).status==200);
+    assert(setup.call("POST","/api/setup","action=arm&setupToken="+std::to_string(session),false).status==200);
+    assert(r.setupTestToken && r.setupTestToken!=permit);
+    assert(setup.call("POST","/api/move","d=R&setupToken="+token,false).status==503 && !c.moving());
+    const auto current=std::to_string(session)+"&setupTestToken="+std::to_string(r.setupTestToken);
+    assert(setup.call("POST","/api/move","d=R&setupToken="+current,false).status==200);
+    fakeHardware.now+=Runtime::SetupTestTimeoutMs+1;setup.api.serviceSetup(fakeHardware.now);
+    assert(!c.moving() && !r.setupTestToken && r.setupLease==session);
+    assert(setup.call("POST","/api/setup","action=renew&setupToken="+current,false).status==409);
+    assert(setup.call("POST","/api/move","d=R&setupToken="+current,false).status==503 && !c.moving());
+    assert(setup.call("POST","/api/setup","action=pause",false).status==200&&r.setup.paused&&c.setupRequired&&!r.setupLease&&!r.setupTestToken);
     Preferences::failedBytesKey="state1";assert(setup.call("POST","/api/setup","action=resume",false).status==503);
     Preferences::failedBytesKey.clear();
   }
@@ -143,7 +200,11 @@ int main(int argc,char **argv) {
     r.setup.step=SetupStep::Role;const auto token="&setupToken="+std::to_string(r.setupLease);
     assert(draft.call("POST","/api/setup","action=begin_save",false).status==409);
     assert(draft.call("POST","/api/setup","action=begin_save"+token,false).status==200);
+    const auto generation=r.setup.generation;
+    fakeHardware.now+=9000;draft.api.serviceSetup(fakeHardware.now);
+    assert(r.setupLease && !r.setupTestToken && r.setup.generation==generation);
     assert(draft.call("POST","/api/settings","rotorName=NewName"+token,false).status==200);
+    fakeHardware.now+=9000;draft.api.serviceSetup(fakeHardware.now);
     assert(!draft.restart.pending()&&!r.setupRestartRequired);
     assert(draft.call("POST","/api/device","role=controller&wifi=existing&uart=0&port=4534"+token,false).status==200);
     assert(!draft.restart.pending()&&!r.setupRestartRequired); // unchanged role/link is live
@@ -285,22 +346,6 @@ int main(int argc,char **argv) {
     auto bytes=encodeModbus(mb.runtime.modbus);ModbusConfig decoded;assert(decodeModbus(bytes,decoded)&&decoded==mb.runtime.modbus);
     for(unsigned i=0;i<bytes.size();++i){auto bad=bytes;bad[i]^=1;assert(!decodeModbus(bad,decoded));}
     Preferences::database["modbus"]["config1"]=Preferences::Bytes(15,0);assert(!mb.storage.loadModbus(mb.runtime));
-  }
-  {
-    Fixture scan;scan.runtime.hud.config.role=DeviceRole::Hud;scan.runtime.hud.config.uart=true;scan.runtime.hud.begin(1,0x1234);scan.runtime.hud.begin(1,0x1234);
-    assert(scan.call("POST","/api/hud/discover","transport=rs485").status==400);
-    scan.runtime.modbus.bus=1;
-    assert(scan.call("POST","/api/hud/discover","transport=rs485&first=3&last=7").status==200);
-    assert(scan.call("GET","/api/hud/peers","discovered=1").body.find("\"scanActive\":true")!=std::string::npos);
-    for(auto bad:{"first=0","first=248","first=8&last=7","last=-1","last=999","first=no"})
-      assert(scan.call("POST","/api/hud/discover",std::string("transport=rs485&")+bad).status==400);
-    assert(scan.runtime.hud.add(100,{3,4534,true},"RS485 three"));
-    assert(scan.runtime.hud.add(101,{7,4534,true},"RS485 seven"));
-    assert(scan.storage.saveHudPeers(scan.runtime.hud));
-    assert(scan.runtime.hud.select(101)&&scan.storage.saveHudConfig(scan.runtime.hud.config));
-    Runtime restored;scan.storage.loadHud(restored);
-    assert(restored.hud.peer(100)->endpoint.address==3&&restored.hud.peer(101)->endpoint.address==7);
-    assert(restored.hud.config.selected==101);
   }
   {
     Fixture ports;
