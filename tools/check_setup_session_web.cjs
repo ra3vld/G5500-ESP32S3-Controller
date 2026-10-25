@@ -1,4 +1,4 @@
-// Browser/production DeviceApi contract, including slow saves and expired motion permits.
+// Browser/production DeviceApi contract: saves, tuning-step transitions and motion permits.
 const {chromium}=require(process.env.PLAYWRIGHT_PATH||'playwright');
 const {spawn}=require('node:child_process'),readline=require('node:readline');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
@@ -35,6 +35,27 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
    await page.goto('http://setup-session.test/setup');
    await page.waitForFunction(()=>wizard.active&&wizard.state?.token&&wizard.state.step===1);
    const session=await page.evaluate(()=>wizard.state.token);
+   if(process.env.SETUP_SESSION_SCENARIO==='tuning'){
+    await rpc('POST','/__fixture/tuning');await page.evaluate(()=>pollSetup());
+    await page.waitForFunction(()=>wizard.state?.step===6&&!wizard.polling);await page.evaluate(async()=>{await upd(true);await loadMotionSettings();});
+    assert.equal(await page.locator('#controlHz').inputValue(),'50');
+    await page.locator('#controlHz').selectOption('100');
+    await page.locator('[name=azMotionVelocityKp]').fill('1.23');await page.locator('[name=elMotionVelocityKp]').fill('1.34');
+    if(process.env.ARTIFACT_DIR){await page.locator('#controlFrequencyForm').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`tuning-6-${width}.png`)});}
+    await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===7,{},{timeout:10000});
+    const motion=await rpc('GET','/api/motion'),setup=await rpc('GET','/api/setup');
+    assert.equal(motion.body.controlPeriodMs,10);assert.equal(motion.body.axes[0].VelocityKp,1.23);assert.equal(motion.body.axes[1].VelocityKp,1.34);
+    assert(!setup.moving&&!setup.testToken&&setup.body.required&&setup.body.step===7);
+    if(process.env.ARTIFACT_DIR){await page.locator('#setupTitle').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`tuning-7-${width}.png`)});}
+    assert.equal(trace.filter(r=>r.body.action==='arm').length,0,'Saving regulators must not acquire motion access');
+    const blocked=await rpc('POST','/api/move',new URLSearchParams({d:'R',setupToken:session}).toString());assert.equal(blocked.status,503);
+    await page.locator('#setupBack').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===6);
+    await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===7);
+    assert(!trace.some(r=>r.path==='/api/settings'&&r.status!==200));assert.deepEqual(errors,[]);
+    if(process.env.ARTIFACT_DIR)fs.writeFileSync(path.join(process.env.ARTIFACT_DIR,`tuning-${width}.json`),JSON.stringify(trace,null,2));
+    console.log(`PASS: ${width}px, BTS7960 setup with production DeviceApi: implicit frequency/PID save, Next to programs, revisit without edits, motion remains blocked`);
+    continue;
+   }
    await wait(1800);
    assert.equal(trace.filter(r=>r.body.action==='renew').length,0,'Editing must not send motion heartbeats');
    await page.locator('#setupDeviceName').fill('Slow save');saveDelay=2300;

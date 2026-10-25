@@ -338,7 +338,8 @@ void Controller::motionFault(unsigned i, MotionError error, uint32_t now) {
   fault = std::string(i ? "el_" : "az_") + motionErrorName(error);
 }
 Result Controller::setControlFrequency(unsigned hz, uint32_t now) {
-  if(remote || movementBlocked())return Result::Unavailable;
+  // Saving the sampling rate stops outputs and needs no setup motion permit.
+  if(remote || configurationLocked)return Result::Unavailable;
   if(!validMotionHz(hz))return Result::Invalid;
   if(autoTune.active())return Result::Busy;
   if(controlPeriodMs_==1000/hz)return Result::Ok;

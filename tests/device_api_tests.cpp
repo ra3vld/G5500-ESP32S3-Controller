@@ -95,7 +95,12 @@ int main(int argc,char **argv) {
       fakeHardware.now=uint32_t(std::stoul(line.substr(0,a)));
       const auto method=line.substr(a+1,b-a-1),path=line.substr(b+1,c-b-1),body=line.substr(c+1);
       Response reply;
-      if(path=="/__fixture/step") {
+      if(path=="/__fixture/tuning") {
+        auto &c=f.runtime.controller;auto config=c.hardware;config.simulation=false;config.drive=DRIVE_BTS7960;
+        c.configureHardware(config);c.feedback(90,45,true,true);
+        for(unsigned i=0;i<2;++i){auto m=c.motionSettings[i];m.mode=RegulatorMode::Cascade;m.ready=true;assert(c.configureMotion(i,m,fakeHardware.now));}
+        f.runtime.setup.step=SetupStep::Tuning;reply={200,"{}"};
+      } else if(path=="/__fixture/step") {
         f.runtime.setup.step=SetupStep(std::stoul(body));f.runtime.setup.pendingNext=false;
         reply={200,"{}"};
       } else reply=f.call(method.c_str(),path.c_str(),body,false);
@@ -193,6 +198,31 @@ int main(int argc,char **argv) {
     assert(setup.call("POST","/api/setup","action=pause",false).status==200&&r.setup.paused&&c.setupRequired&&!r.setupLease&&!r.setupTestToken);
     Preferences::failedBytesKey="state1";assert(setup.call("POST","/api/setup","action=resume",false).status==503);
     Preferences::failedBytesKey.clear();
+  }
+  {
+    Fixture tuningStep;auto &r=tuningStep.runtime;auto &c=r.controller;
+    auto config=c.hardware;config.simulation=false;config.drive=DRIVE_BTS7960;c.configureHardware(config);c.feedback(90,45,true,true);
+    for(unsigned i=0;i<2;++i){auto m=c.motionSettings[i];m.mode=RegulatorMode::Cascade;m.ready=true;assert(c.configureMotion(i,m,fakeHardware.now));}
+    assert(tuningStep.call("POST","/api/setup","action=start",false).status==200);r.setup.step=SetupStep::Tuning;
+    const auto token="&setupToken="+std::to_string(r.setupLease);
+    assert(tuningStep.call("GET","/api/setup","",false).body.find("\"ready\":true")!=std::string::npos);
+    assert(tuningStep.call("POST","/api/setup","action=begin_save"+token,false).status==200);
+    assert(!r.setupTestToken && !c.setupAccess);
+    assert(tuningStep.call("POST","/api/settings","controlHz=100"+token,false).status==200);
+    assert(c.controlPeriodMs()==10 && !c.moving() && !c.setupAccess && !r.setupTestToken);
+    assert(tuningStep.call("POST","/api/settings","azMotionVelocityKp=1.23&elMotionVelocityKp=1.34"+token,false).status==200);
+    assert(tuningStep.call("POST","/api/setup","action=end_save"+token,false).status==200);
+    assert(tuningStep.call("POST","/api/setup","action=advance&generation="+std::to_string(r.setup.generation)+token,false).status==200);
+    assert(r.setup.step==SetupStep::Programs && c.motionSettings[0].velocityKp==1.23f && c.motionSettings[1].velocityKp==1.34f);
+    Runtime restored;restored.controller.hardware=c.hardware;tuningStep.storage.loadForkSettings(restored);
+    assert(restored.controller.controlPeriodMs()==10 && restored.controller.motionSettings[0].velocityKp==1.23f && restored.controller.motionSettings[1].velocityKp==1.34f);
+    assert(tuningStep.call("POST","/api/move","d=R"+token,false).status==503);
+    assert(tuningStep.call("POST","/api/target","az=100"+token,false).status==503);
+    r.setup.step=SetupStep::Tuning;
+    assert(tuningStep.call("POST","/api/motion/autotune","action=start&axis=az&mode=cascade&id=0&travel=10&outputLimit=20"+token,false).status==503);
+    c.configurationLocked=true;
+    assert(tuningStep.call("POST","/api/settings","controlHz=200"+token,false).status==503 && c.controlPeriodMs()==10);
+    assert(!c.moving() && !c.setupAccess && !r.setupTestToken);
   }
   {
     Fixture draft;auto &r=draft.runtime;
