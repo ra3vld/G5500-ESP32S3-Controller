@@ -210,7 +210,7 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <a href="/resetdiag">RESET DIAG</a>
 <a href="/diaglog">DIAG CONSOLE</a>
 </nav>
-<div class="hardware-notice hide" id="hardwareTrialNotice" role="status"><strong>Управление заблокировано на время применения оборудования.</strong><p>После выхода из восстановления или изменения оборудования откройте его настройки. Во время пробного запуска нажмите «Подтвердить и перезапустить» вверху страницы.</p><a href="/hardware">Открыть подтверждение оборудования →</a></div>
+<div class="hardware-notice hide" id="hardwareTrialNotice" role="status"><strong>Управление заблокировано на время применения оборудования.</strong><p>Новая аппаратная конфигурация проходит пробный запуск. Откройте настройки оборудования и нажмите «Подтвердить и перезапустить» вверху страницы.</p><a href="/hardware">Открыть подтверждение оборудования →</a></div>
 <div id="forkMessage" role="status" aria-live="polite"></div>
 <main id="controlPanel" role="tabpanel" aria-labelledby="controlTab">
 <div id="selectedRotor" class="hint hide" role="status"></div>

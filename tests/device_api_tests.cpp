@@ -679,6 +679,22 @@ int main(int argc,char **argv) {
     assert(wifi.network.wifiConnecting() && wifi.network.apAlwaysOn() && !wifi.restart.pending());
     assert(wifi.call("GET","/api/status","",false).body.find("\"wifiConnecting\":true")!=std::string::npos);
   }
+  // Recovery retries of the confirmed map use one restart; real edits keep a trial.
+  for(const char *path:{"/api/hardware","/api/hardware/rollback"}) {
+    Fixture retry;auto &r=retry.runtime;
+    const auto good=r.hardwareRecord.good;
+    assert(retry.storage.enterRecovery(r,RecoveryReason::Requested));retry.storage.loadHardware(r);
+    assert(r.recovery && r.controller.configurationLocked);
+    r.setup.required=true;r.setup.equipment=false;r.controller.setupRequired=true;assert(retry.storage.saveSetup(r.setup));
+    const auto fields=std::string("token=11&generation=1")+(std::string(path)=="/api/hardware"?"&buttonGpio="+std::to_string(good.buttonGpio):"");
+    const auto response=retry.call("POST",path,fields,false);
+    assert(response.status==200 && response.body.find("\"confirmationRequired\":false")!=std::string::npos);
+    assert(retry.restart.pending() && r.controller.configurationLocked && !r.controller.moving());
+    retry.storage.loadHardware(r);assert(!r.recovery && !r.hardwareTrial && !r.controller.configurationLocked);
+    assert(r.controller.hardware==good && !r.controller.moving());
+    assert(retry.call("POST","/api/hardware/confirm","token=11&generation=2",false).status==409);
+    assert(r.setup.equipment);assert(retry.storage.loadSetup(r) && r.setup.equipment);
+  }
   {
     Fixture migration;HardwareRecord legacy;
     legacy.hasConfirmed=true;legacy.phase=ConfigPhase::Confirmed;
@@ -700,7 +716,8 @@ int main(int argc,char **argv) {
     Fixture pins;
     const auto original=pins.runtime.hardwareRecord.good;
     pins.runtime.controller.configureHardware(original);
-    assert(pins.call("POST","/api/hardware","token=11&generation=1&pin.azAdc=36",false).status==200);
+    const auto changed=pins.call("POST","/api/hardware","token=11&generation=1&pin.azAdc=36",false);
+    assert(changed.status==200 && changed.body.find("\"confirmationRequired\":true")!=std::string::npos);
     assert(pins.runtime.hardwareRecord.good==original);
     assert(pins.runtime.hardwareRecord.candidate.pins.azAdc==36);
     assert(pins.runtime.controller.hardware.pins.azAdc==original.pins.azAdc);
@@ -905,6 +922,12 @@ int main(int argc,char **argv) {
     "&driveInterface=2&simulation=1&bluetoothEnabled=0&bluetoothMode=3&forceApSta=0&buttonGpio=-1&buttonActiveLow=1&buttonPullup=0&pwmInverted=1";
   assert(f.call("POST","/api/hardware",fields).status==200);
   f.storage.loadHardware(r);assert(r.hardwareTrial && !r.recovery);f.ready();
+  for(uint32_t elapsed:{120000u,299999u,300000u}) {
+    fakeHardware.now=elapsed;
+    const auto status=f.call("GET","/api/hardware","",false);
+    assert(status.body.find("\"remainingMs\":"+std::to_string(300000u-elapsed))!=std::string::npos);
+  }
+  f.ready();
   const std::string stamp="token=11&generation="+std::to_string(r.hardwareRecord.generation);
   assert(f.call("POST","/api/hardware/confirm",stamp).status==409);
   Preferences::failedBytesKey="config1";

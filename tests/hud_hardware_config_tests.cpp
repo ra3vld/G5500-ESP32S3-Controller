@@ -39,7 +39,7 @@ int main() {
     for(const auto &event:fakeHardware.events)assert(!savedWiring || event.pin!=1);
     assert(storage.finishHardwareBoot(boot) && storage.stageHardware(boot,config));
     MotionTestRuntime trial;storage.loadHud(trial,false);storage.loadHardware(trial);
-    assert(trial.hardwareTrial && storage.confirmHardware(trial));
+    assert(!trial.hardwareTrial && !trial.recovery && storage.finishHardwareBoot(trial));
     assert(storage.enterRecovery(trial,RecoveryReason::Requested));
     MotionTestRuntime recovery;storage.loadHud(recovery,false);storage.loadHardware(recovery);
     assert(recovery.recovery && recovery.hardwareHudRole && recovery.hardwareRecord.hasConfirmed);
@@ -61,7 +61,7 @@ int main() {
       assert(restored.recovery && restored.hardwareRecord.hasConfirmed);
       assert(storage.stageHardware(restored,config));
       MotionTestRuntime repaired;storage.loadHud(repaired,false);storage.loadHardware(repaired);
-      assert(repaired.hardwareTrial && storage.confirmHardware(repaired));
+      assert(!repaired.hardwareTrial && !repaired.recovery && storage.finishHardwareBoot(repaired));
       storage.loadHud(restored,false);storage.loadHardware(restored);
       assert(!restored.recovery && restored.hardwareRecord.hasConfirmed && restored.controller.hardware==config);
     }

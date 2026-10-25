@@ -294,7 +294,10 @@ bool Storage::stageHardware(Runtime &runtime, const HardwareConfig &config) {
   if (validateHardware(config, runtime.hardwareHudUart,runtime.configuredAsHud())) return false;
   auto next = runtime.hardwareRecord;
   next.candidate = config; next.candidate.releaseSimulationPins();
-  next.phase = ConfigPhase::Pending; next.reason = RecoveryReason::None;
+  // Retrying the exact confirmed map is already authorized. Only an untested
+  // configuration needs a locked trial and a second confirmation/reboot.
+  next.phase = next.hasConfirmed && next.candidate == next.good ? ConfigPhase::Confirmed : ConfigPhase::Pending;
+  next.reason = RecoveryReason::None;
   if (!++next.generation) ++next.generation;
   // An explicit retry from recovery starts a new series. Ordinary settings
   // edits and successful short boots do not erase accumulated runtime faults.

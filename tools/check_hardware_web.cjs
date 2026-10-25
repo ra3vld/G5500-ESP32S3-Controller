@@ -9,7 +9,7 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
   for(const profile of (process.env.HARDWARE_PROFILES?.split(',')||['1','2','3','4','5','az',...['1','2','3','4'].flatMap(board=>[board+'-d1',board+'-d2'])])) for(const mobile of [false,true]){
    const fixture=JSON.parse(fs.readFileSync(path.join(root,`build/pin-map-${profile}.json`),'utf8'));
    const config={driveInterface:0,simulation:1,bluetoothEnabled:0,bluetoothMode:3,forceApSta:0,buttonGpio:fixture.buttonGpio,buttonActiveLow:1,buttonPullup:1,pwmInverted:0,pins:{...fixture.pins}};
-   let state={token:123,generation:2,recovery:true,trial:false,ready:false,reason:'low_memory',failureCount:2,failureLimit:3,failureResetMs:1800000,remainingMs:120000,heapFree:3000,heapMaxBlock:512,backend:'NONE',sppSupported:!!fixture.classicEsp32,classicEsp32:!!fixture.classicEsp32,crowpanel:!!fixture.crowpanel,crowpanelLocalDrive:profile==='az',separateDrive:profile!=='az',btsDrive:true,hasConfirmed:true,configured:config},probeFails=false;
+   let state={token:123,generation:2,recovery:true,trial:false,ready:false,reason:'low_memory',failureCount:2,failureLimit:3,failureResetMs:1800000,remainingMs:300000,heapFree:3000,heapMaxBlock:512,backend:'NONE',sppSupported:!!fixture.classicEsp32,classicEsp32:!!fixture.classicEsp32,crowpanel:!!fixture.crowpanel,crowpanelLocalDrive:profile==='az',separateDrive:profile!=='az',btsDrive:true,hasConfirmed:true,configured:config},probeFails=false;
    const requests=[],errors=[];const mbState={pc:0,bus:0,address:1,node:201,first:201,count:1,owner:0,uart0Baud:9600,uart0Parity:0,uart0StopBits:1,uart1Baud:115200,uart1Parity:0,uart1StopBits:1};
    const page=await browser.newPage({viewport:{width:mobile?360:1100,height:900},locale:'ru-RU'});
    page.on('pageerror',e=>errors.push(e.message));
@@ -168,6 +168,7 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    await page.waitForFunction(()=>!document.getElementById('confirm').disabled);
    assert(!(await page.locator('#confirm').isDisabled()));
    assert(await page.locator('#confirm').isVisible());
+   assert.match(await page.locator('#state').textContent(),/До отката: 300 с/);
    assert(await page.locator('#confirm').evaluate(el=>el.closest('#hardware-status')!==null));
    await page.evaluate(()=>window.scrollTo(0,0));
    assert(await page.locator('#confirm').evaluate(el=>el.getBoundingClientRect().bottom<=innerHeight),'Trial confirmation is visible without scrolling through GPIO settings');

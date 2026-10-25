@@ -54,7 +54,7 @@ int main() {
     assert(storage.stageHardware(runtime,config));
     assert(runtime.hardwareRecord.candidate==released);
     MotionTestRuntime trial;trial.hud.config.role=DeviceRole::Controller;storage.loadHardware(trial);
-    assert(trial.hardwareTrial && storage.confirmHardware(trial));
+    assert(!trial.hardwareTrial && !trial.recovery && storage.finishHardwareBoot(trial));
     MotionTestRuntime confirmed;confirmed.hud.config.role=DeviceRole::Controller;storage.loadHardware(confirmed);
     assert(!confirmed.recovery && confirmed.controller.hardware==released);
     Hardware hw(confirmed);fakeHardware={};

@@ -6,6 +6,40 @@
 #include <iostream>
 #include <vector>
 using namespace forkrot;
+static void confirmedRetryNeedsNoTrial() {
+  Storage storage;Preferences::database.clear();Preferences::failedBytesKey.clear();
+  MotionTestRuntime boot;storage.loadHardware(boot);assert(storage.finishHardwareBoot(boot));
+  const auto good=boot.hardwareRecord.good;
+  // Saving confirmed hardware or returning from recovery needs only one reboot.
+  for(auto reason:{RecoveryReason::Requested,RecoveryReason::LowMemory,RecoveryReason::Invalid}) {
+    assert(storage.enterRecovery(boot,reason));
+    if(reason==RecoveryReason::LowMemory) {
+      assert(storage.enterRecovery(boot,reason));assert(storage.enterRecovery(boot,reason));
+    }
+    storage.loadHardware(boot);assert(boot.recovery);
+    assert(storage.stageHardware(boot,good));
+    MotionTestRuntime resumed;storage.loadHardware(resumed);
+    assert(!resumed.recovery && !resumed.hardwareTrial && !resumed.controller.configurationLocked);
+    assert(resumed.controller.hardware==good && !resumed.controller.moving());
+    assert(!resumed.recoveryHistory.failures && !storage.confirmHardware(resumed));
+    assert(storage.finishHardwareBoot(resumed));storage.loadHardware(boot);assert(storage.finishHardwareBoot(boot));
+  }
+  // A real hardware edit still requires a locked trial and can roll back.
+  auto changed=good;changed.buttonLow=!good.buttonLow;
+  assert(storage.enterRecovery(boot,RecoveryReason::Requested));storage.loadHardware(boot);
+  assert(storage.stageHardware(boot,changed));
+  MotionTestRuntime trial;storage.loadHardware(trial);
+  assert(trial.hardwareTrial && trial.controller.configurationLocked && trial.controller.hardware==changed);
+  MotionTestRuntime rolledBack;storage.loadHardware(rolledBack);
+  assert(!rolledBack.recovery && !rolledBack.hardwareTrial && rolledBack.controller.hardware==good);
+  assert(storage.finishHardwareBoot(rolledBack));
+  // A failed write cannot turn a recovery retry into a normal boot.
+  assert(storage.enterRecovery(rolledBack,RecoveryReason::Requested));storage.loadHardware(boot);
+  Preferences::failedBytesKey="config1";
+  assert(!storage.stageHardware(boot,good));Preferences::failedBytesKey.clear();
+  storage.loadHardware(boot);assert(boot.recovery && boot.controller.configurationLocked);
+  Preferences::database.clear();
+}
 static void recoveryPolicy() {
   Storage s;Preferences::database.clear();Preferences::failedBytesKey.clear();
   MotionTestRuntime boot;s.loadHardware(boot);assert(s.finishHardwareBoot(boot));
@@ -23,7 +57,7 @@ static void recoveryPolicy() {
   assert(s.finishHardwareBoot(latched,RecoveryHistory::StableMs));assert(latched.recoveryHistory.failures==3);
   // Explicit retry starts a new series; ordinary short successful boots do not.
   assert(s.stageHardware(latched,good));assert(!latched.recoveryHistory.failures);
-  MotionTestRuntime trial;s.loadHardware(trial);assert(trial.hardwareTrial && s.confirmHardware(trial));
+  MotionTestRuntime trial;s.loadHardware(trial);assert(!trial.hardwareTrial && !trial.recovery && s.finishHardwareBoot(trial));
   s.loadHardware(boot);assert(s.finishHardwareBoot(boot));
   assert(s.enterRecovery(boot,RecoveryReason::LowMemory));s.loadHardware(boot);
   assert(boot.recoveryHistory.failures==1 && !boot.recovery);
@@ -97,7 +131,7 @@ static void confirmedRecoveryPreservesRecord() {
   storage.loadHardware(recovery);assert(recovery.hardwareRecord.hasConfirmed);
   assert(storage.stageHardware(recovery,good));
   MotionTestRuntime retry;storage.loadHardware(retry);
-  assert(retry.hardwareTrial && retry.hardwareRecord.hasConfirmed && storage.confirmHardware(retry));
+  assert(!retry.hardwareTrial && !retry.recovery && retry.hardwareRecord.hasConfirmed && storage.finishHardwareBoot(retry));
 
   // A previously confirmed map may become incompatible after a role/image change.
   // Keep it for inspection, allow a corrected candidate, and reject an unsafe fallback.
@@ -256,7 +290,7 @@ static void directionPwm() {
   assert(storage.confirmHardware(trial));storage.loadHardware(boot);assert(boot.controller.hardware==cfg&&!boot.recovery);
 }
 int main() {
-  confirmedRecoveryPreservesRecord();recoveryPolicy();directionPwm();optionalPwmEnable();
+  confirmedRetryNeedsNoTrial();confirmedRecoveryPreservesRecord();recoveryPolicy();directionPwm();optionalPwmEnable();
   // Each runtime driver/simulation combination is exercised in this one binary.
   for (unsigned drive=0; drive<4; ++drive) for (bool simulation : {false,true}) {
     HardwareConfig cfg; cfg.drive=drive; cfg.simulation=simulation;
@@ -297,7 +331,7 @@ int main() {
   assert(s.finishHardwareBoot(first));
   assert(s.stageHardware(first,first.controller.hardware));
   MotionTestRuntime initialTrial; s.loadHardware(initialTrial);
-  assert(initialTrial.hardwareTrial && s.confirmHardware(initialTrial));
+  assert(!initialTrial.hardwareTrial && !initialTrial.recovery && s.finishHardwareBoot(initialTrial));
   s.loadHardware(first); assert(s.finishHardwareBoot(first));
   HardwareConfig candidate=first.controller.hardware;
   candidate.drive=DRIVE_BTS7960; candidate.pwmInverted=true;
@@ -363,6 +397,13 @@ int main() {
   assert(guard.sample(8001,40000,2048,0,true)==RecoveryReason::LowMemory);
   guard.begin(0,0);
   assert(guard.sample(1,50000,20000,1,false)==RecoveryReason::Allocation);
+  guard.begin(0,0);
+  assert(guard.sample(120000,50000,20000,0,true)==RecoveryReason::None);
+  assert(guard.sample(299999,50000,20000,0,true)==RecoveryReason::None);
+  assert(guard.sample(300000,50000,20000,0,true)==RecoveryReason::Unconfirmed);
+  const uint32_t trialStart=UINT32_MAX-1000;guard.begin(trialStart,0);
+  assert(guard.sample(trialStart+299999u,50000,20000,0,true)==RecoveryReason::None);
+  assert(guard.sample(trialStart+300000u,50000,20000,0,true)==RecoveryReason::Unconfirmed);
   guard.begin(0,0);
   assert(guard.sample(MemoryGuard::TrialMs,50000,20000,0,true)==RecoveryReason::Unconfirmed);
   assert(guard.sample(MemoryGuard::TrialMs,50000,20000,0,false)==RecoveryReason::None);

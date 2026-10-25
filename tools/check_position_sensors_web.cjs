@@ -13,7 +13,7 @@ const packed=Buffer.from([...asset.matchAll(/0x([0-9a-f]{2})/g)].map(m=>parseInt
   for(const width of [1100,390]) {
    const fixture=JSON.parse(fs.readFileSync(path.join(root,'build/pin-map-4.json'),'utf8'));
    const config={driveInterface:0,simulation:0,bluetoothEnabled:0,bluetoothMode:3,forceApSta:0,buttonGpio:0,buttonActiveLow:1,buttonPullup:1,pwmInverted:0,localInputMode:0,localAzInvert:0,localElInvert:0,localAzMin:0,localAzCenter:2048,localAzMax:4095,localElMin:0,localElCenter:2048,localElMax:4095,localDeadzone:200,localHysteresis:50,azSensor:0,azSensorAddress:6,azSensorZero:0,elSensor:0,elSensorAddress:6,elSensorZero:0,azSensorInverted:0,elSensorInverted:0,pins:{...fixture.pins}};
-   const state={token:123,generation:2,recovery:false,trial:false,ready:true,reason:'none',remainingMs:120000,heapFree:100000,heapMaxBlock:40000,backend:'NONE',sppSupported:true,classicEsp32:true,hasConfirmed:true,configured:config};
+   const state={token:123,generation:2,recovery:false,trial:false,ready:true,reason:'none',remainingMs:300000,heapFree:100000,heapMaxBlock:40000,backend:'NONE',sppSupported:true,classicEsp32:true,hasConfirmed:true,configured:config};
    let diagnostic={hasEl:true,azSensor:'MT6701',elSensor:'ADC',azRaw:16383,azMv:null,azValue:16383,elRaw:2048,elMv:1550,elValue:1550};
    const errors=[],requests=[];const page=await browser.newPage({viewport:{width,height:950},locale:'ru-RU'});
    page.on('pageerror',e=>errors.push(e.message));

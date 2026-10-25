@@ -230,7 +230,7 @@ template<size_t N> inline bool decodeHardware(const std::array<uint8_t,N> &b,Har
 struct MemoryGuard {
   static constexpr uint32_t HealthyFree = 32768, HealthyBlock = 12288;
   static constexpr uint32_t CriticalFree = 16384, CriticalBlock = 6144;
-  static constexpr uint32_t TrialMs = 120000, HealthyMs = 10000, LowMs = 2000;
+  static constexpr uint32_t TrialMs = 300000, HealthyMs = 10000, LowMs = 2000;
   uint32_t started = 0, healthyAt = 0, lowAt = 0, failures = 0;
   bool healthy = false, low = false;
   void begin(uint32_t now, uint32_t allocFailures) { *this = {}; started=now; failures=allocFailures; }

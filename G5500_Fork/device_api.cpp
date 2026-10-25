@@ -387,8 +387,15 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
     stopForConfiguration(); saved=storage_.enterRecovery(runtime_,RecoveryReason::Requested);
   }
   else { reply(404,"not_found"); return; }
+  if(saved && (path=="/api/hardware" || path=="/api/hardware/rollback") &&
+      runtime_.hardwareRecord.phase==ConfigPhase::Confirmed && runtime_.setup.required && !runtime_.setup.equipment) {
+    auto next=runtime_.setup;next.equipment=true;++next.generation;
+    saved=storage_.saveSetup(next);if(saved)runtime_.setup=next;
+  }
   if(!saved) { reply(503,"storage_failed"); return; }
-  reply(200,""); configurationRestart(); return;
+  output << "{\"ok\":true,\"error\":\"\",\"confirmationRequired\":"
+    << (runtime_.hardwareRecord.phase==ConfigPhase::Pending?"true":"false") << '}';
+  configurationRestart(); return;
 }
 
 void DeviceApi::executeGeneral(std::string_view method, std::string_view path, FormView arguments,
