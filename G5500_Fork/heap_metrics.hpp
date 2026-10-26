@@ -4,7 +4,11 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
+#include "memory_pressure.hpp"
 namespace forkrot {
+inline MemoryPressure networkPressure;
+inline std::atomic<bool> networkMemoryLimited{false};
 // HTTP and radio buffers need byte-addressable internal RAM. Arduino's
 // ESP.getFreeHeap/getMaxAllocHeap also count internal 32-bit-only regions.
 inline uint32_t heapFreeBytes() {
@@ -16,6 +20,11 @@ inline uint32_t heapMinBytes() {
 inline uint32_t heapMaxBlockBytes() {
   return heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 }
+inline void sampleNetworkMemory(uint32_t now) {
+  networkPressure.sample(now, heapFreeBytes(), heapMaxBlockBytes());
+  networkMemoryLimited.store(networkPressure.limited, std::memory_order_relaxed);
+}
+inline bool networkLowMemory() { return networkMemoryLimited.load(std::memory_order_relaxed); }
 // A successful socket write still queues later lwIP/Wi-Fi allocations on
 // another task. Stop feeding bulk traffic before those bursts consume the
 // control/recovery reserve, including on a fragmented heap.

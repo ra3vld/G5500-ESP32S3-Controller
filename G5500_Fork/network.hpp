@@ -68,6 +68,9 @@ public:
         hud!=pst && hud!=pst+1 && hud!=report;
   }
   void handleRotctldTcp();
+  void closeRotctld();
+  uint32_t udpDropped() const { return udpDropped_; }
+  uint32_t tcpAborts() const { return tcpAborts_; }
   bool startWifi();
   void connectWifi(const String &ssid, const String &password);
   bool ethernetStarted() const { return ethernet_.started(); }
@@ -136,6 +139,8 @@ private:
   WiFiServer tcpServer_{board::TCP_PORT};
   WiFiClient rotctldClient_;
   SelectionApiLineBuffer tcpReceiver_;
+  uint32_t tcpLineAt_=0,tcpAborts_=0;
+  bool tcpLinePending_=false;
   std::unique_ptr<CommandServer> commandApi_;
   DatagramSocket commandUdp_;
   char commandReply_[COMMAND_REPLY_MAX + 5]{};
@@ -151,6 +156,8 @@ private:
   bool compactWifi_ = false;
   bool bufferedWifi_ = false;
   DatagramSocket n1mmUdp, pstUdp;
+  uint8_t loggerRx_[DatagramSocket::MAX_PACKET]{};
+  uint32_t udpDropped_=0;
   enum GsReplyPort : uint8_t { GS_REPLY_USB = 0, GS_REPLY_BLUETOOTH = 1, GS_REPLY_NATIVE_USB = 2 };
   GsReplyPort gsReplyPort = GS_REPLY_USB;
   WifiFallback wifiFallback_;

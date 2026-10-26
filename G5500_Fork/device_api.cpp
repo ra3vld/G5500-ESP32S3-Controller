@@ -7,10 +7,23 @@
 #include "runtime_metrics.hpp"
 #include "panel_metrics.hpp"
 #include "tcp_memory.hpp"
+#include "network_timing.hpp"
 #include <esp_timer.h>
 namespace forkrot {
 using namespace board;
 namespace {
+void writePreviousAllocation(JsonWriter &j,unsigned index) {
+  const auto &r=runtimeMetrics.previousFailures[index];
+  j << "{\"ready\":" << (allocationRecordValid(r)?"true":"false");
+  if(allocationRecordValid(r)) {
+    char elf[65];for(unsigned i=0;i<32;++i)std::snprintf(elf+i*2,sizeof elf-i*2,"%02x",unsigned(r.elf[i]));
+    j << ",\"size\":" << r.size << ",\"caps\":" << r.caps << ",\"free\":" << r.freeBytes
+      << ",\"largestBlock\":" << r.largestBlock << ",\"task\":" << jsonQuoted(r.task)
+      << ",\"function\":" << jsonQuoted(r.function) << ",\"elf\":" << jsonQuoted(elf) << ",\"pc\":[";
+    for(unsigned n=0;n<8;++n){if(n)j << ',';j << r.pc[n];}j << ']';
+  }
+  j << '}';
+}
 // Compatibility surface for the existing API bodies; never registers handlers
 // or owns request/response buffers. The caller owns all transport memory.
 class ApiContext {
@@ -392,7 +405,8 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
     output << "{\"current\":{\"reason\":" << jsonQuoted(diagnostics_.bootReasonText().c_str())
       << ",\"code\":" << diagnostics_.bootReasonCode() << "},\"recoveryReason\":"
       << jsonQuoted(recoveryReasonName(runtime_.recoveryReason)) << ",\"history\":";
-    storage_.writeResetHistoryJson(output);output << '}';return;
+    storage_.writeResetHistoryJson(output);output << ",\"previousAllocations\":[";
+    writePreviousAllocation(output,0);output << ',';writePreviousAllocation(output,1);output << "]}";return;
   }
   if(method!="POST") { reply(405,"method_not_allowed"); return; }
   HardwareForm form;
@@ -669,6 +683,10 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     output << "]}";return;
   }
   if(path=="/api/diagnostics" && method=="GET") {
+    if(web_.hasArg("previousFailure")) {
+      unsigned i;if(!integerArg(web_.arg("previousFailure"),i,1)){reply(400,"invalid_failure");return;}
+      writePreviousAllocation(output,i);return;
+    }
     if(web_.hasArg("failure")) {
       unsigned i; if(!integerArg(web_.arg("failure"),i,1)) {reply(400,"invalid_failure");return;}
       const auto &f=runtimeMetrics.failures[i];
@@ -702,6 +720,8 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     output << "{\"uptimeMs\":" << millis() << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMin\":" << heapMinBytes()
       << ",\"heapMaxBlock\":" << heapMaxBlockBytes() << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load()
       << ",\"maxFailedAllocation\":" << runtimeMetrics.largestFailedAllocation.load()
+      << ",\"networkMemoryLimited\":" << (networkLowMemory()?"true":"false")
+      << ",\"udpDropped\":" << network_.udpDropped() << ",\"tcpAborts\":" << network_.tcpAborts()
       << ",\"loopMaxUs\":" << runtimeMetrics.loopMaxUs << ",\"loopsOver20ms\":" << runtimeMetrics.loopsOver20ms
       << ",\"webEnabled\":" << (WEB_INTERFACE_ENABLED?"true":"false") << ",\"bluetoothSupported\":" << (BLUETOOTH_SUPPORT?"true":"false")
       << ",\"psramBytes\":" << heap_caps_get_total_size(MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT)
@@ -1130,6 +1150,9 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     j << ",\"tcpStatsAvailable\":" << (tcp.available ? "true" : "false")
       << ",\"tcpActive\":" << tcp.active << ",\"tcpClosing\":" << tcp.closing << ",\"tcpTimeWait\":" << tcp.timewait;
     j << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load()
+      << ",\"networkMemoryLimited\":" << (networkLowMemory()?"true":"false")
+      << ",\"telemetryIntervalMs\":" << (networkLowMemory()?500:WebPositionIntervalMs)
+      << ",\"udpDropped\":" << network_.udpDropped() << ",\"tcpAborts\":" << network_.tcpAborts()
       << ",\"maxFailedAllocation\":" << runtimeMetrics.largestFailedAllocation.load()
       << ",\"loopMaxUs\":" << runtimeMetrics.loopMaxUs << ",\"loopsOver20ms\":" << runtimeMetrics.loopsOver20ms;
     const uint32_t feedbackNow = millis();

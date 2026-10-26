@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdint>
 #include <esp_heap_caps.h>
+#include "allocation_record.hpp"
 #ifdef ARDUINO_ARCH_ESP32
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -36,15 +37,26 @@ struct RuntimeMetrics {
   bool hookReady = false;
   uint32_t loopMaxUs = 0, loopsOver20ms = 0; // main-loop access only
   AllocationFailure failures[2]; // first <1024B and first >=1024B failure
+  AllocationRecord previousFailures[2]{};
+  AllocationRecord *persistentFailures=nullptr;
+  uint8_t elf[32]{};
   void recordLoop(uint32_t elapsedUs) {
     if (elapsedUs > loopMaxUs) loopMaxUs = elapsedUs;
     if (elapsedUs > 20000) ++loopsOver20ms;
   }
 };
 inline RuntimeMetrics runtimeMetrics;
-inline void beginRuntimeMetrics(uint32_t *recoveryWord = nullptr, uint32_t recoveryCookie = 0) {
+inline void beginRuntimeMetrics(uint32_t *recoveryWord = nullptr, uint32_t recoveryCookie = 0,
+    AllocationRecord *records=nullptr,const uint8_t *elf=nullptr,bool retain=false) {
   runtimeMetrics.recoveryWord = recoveryWord;
   runtimeMetrics.recoveryCookie = recoveryCookie;
+  runtimeMetrics.persistentFailures=records;
+  for(unsigned i=0;i<32;++i)runtimeMetrics.elf[i]=elf?elf[i]:0;
+  for(unsigned i=0;records&&i<2;++i) {
+    runtimeMetrics.previousFailures[i]={};
+    if(retain&&allocationRecordValid(records[i]))runtimeMetrics.previousFailures[i]=records[i];
+    __atomic_store_n(&records[i].magic,0,__ATOMIC_RELEASE);
+  }
   runtimeMetrics.hookReady = heap_caps_register_failed_alloc_callback(
       [](size_t size, uint32_t caps, const char *function) {
         auto &m = runtimeMetrics;
@@ -72,6 +84,7 @@ inline void beginRuntimeMetrics(uint32_t *recoveryWord = nullptr, uint32_t recov
         }
 #endif
 #endif
+        if(m.persistentFailures)captureAllocationRecord(m.persistentFailures[size>=1024?1:0],failure,m.elf);
         failure.publish();
       }) == ESP_OK;
 }

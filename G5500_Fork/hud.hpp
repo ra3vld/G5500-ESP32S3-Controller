@@ -121,9 +121,11 @@ public:
   uint32_t received = 0, rejected = 0, duplicates = 0, timeouts = 0, busy = 0, sent = 0,
            sendErrors = 0;
   int sendErrno = 0;
+  uint32_t commandAttempts = 0, commandSendFailures = 0;
   bool settingsDirty = false, presetsDirty = false, selectionDirty = false, catalogError = false;
   void begin(uint64_t node, uint64_t session);
   void setTransport(HudTransport *transport) { transport_ = transport; }
+  void setMemoryLimited(bool value) { memoryLimited_ = value; }
   bool isHud() const { return config.role == DeviceRole::Hud; }
   bool available() const override;
   uint32_t requestId() const override { return lastRequest_; }
@@ -223,6 +225,8 @@ private:
   Result lastResult_ = Result::Ok;
   uint32_t scanSerial_ = 0;
   bool scanning_ = false;
+  bool memoryLimited_ = false;
+  uint8_t scanAttempts_ = 0;
   uint16_t scanNext_=0,scanLast_=0;
   uint8_t scanMasterFirst_=0,scanMasterCount_=0;
   bool scanAnswered_=false;

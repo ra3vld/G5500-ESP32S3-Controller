@@ -24,12 +24,14 @@
 #include "runtime_metrics.hpp"
 #include <new>
 #include <esp_log.h>
+#include <esp_app_desc.h>
 namespace forkrot {
 using namespace board;
 namespace {
 // Unlike initialized RTC data, noinit survives software resets/panics without
 // relying on a successful NVS write. Ignore its undefined power-on contents.
 RTC_NOINIT_ATTR uint32_t recoveryLatch;
+RTC_NOINIT_ATTR AllocationRecord allocationRecords[2];
 constexpr uint32_t RecoveryCookie = 0x52335648;
 }
 void Application::failConfiguration(RecoveryReason reason) {
@@ -45,6 +47,8 @@ void Application::failConfiguration(RecoveryReason reason) {
   ESP.restart();
 }
 void Application::serviceConfigurationSafety() {
+  sampleNetworkMemory(millis());
+  runtime_.hud.setMemoryLimited(networkLowMemory());
   if (runtime_.recovery) return;
   const auto reason = runtime_.memoryGuard.sample(millis(), heapFreeBytes(), heapMaxBlockBytes(),
       runtimeMetrics.allocationFailures.load(), runtime_.hardwareTrial);
@@ -55,7 +59,8 @@ void Application::serviceConfigurationSafety() {
 }
 
 void Application::controllerSetup() {
-  beginRuntimeMetrics(&recoveryLatch, RecoveryCookie);
+  beginRuntimeMetrics(&recoveryLatch, RecoveryCookie,allocationRecords,
+      esp_app_get_description()->app_elf_sha256,esp_reset_reason()!=ESP_RST_POWERON);
   diagnostics_.readBootReason();
   diagnostics_.addResetHistoryEntry();
 

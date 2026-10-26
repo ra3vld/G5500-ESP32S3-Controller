@@ -42,12 +42,12 @@ void Network::setupCommandUdp() {
     // Reply on the old port before applying a port change.
     commandRebindAt_=millis();commandRebind_=true;return;
   }
-  if(!commandUdp_.begin(runtime_.loggerSettings.commandPort))runtime_.controller.fault="command_udp_bind_failed";
+  if(!commandUdp_.begin(runtime_.loggerSettings.commandPort,2048))runtime_.controller.fault="command_udp_bind_failed";
 }
 void Network::serviceCommandUdp() {
   if(commandRebind_ && uint32_t(millis()-commandRebindAt_)>=1500) {
     commandRebind_=false;
-    if(!commandUdp_.begin(runtime_.loggerSettings.commandPort))runtime_.controller.fault="command_udp_bind_failed";
+    if(!commandUdp_.begin(runtime_.loggerSettings.commandPort,2048))runtime_.controller.fault="command_udp_bind_failed";
   }
   // The radio and dispatcher are serviced by one loop; this scratch buffer
   // need not occupy the nested settings/calibration call stack.
@@ -83,6 +83,7 @@ bool Network::processCommandApi(std::string_view input,uint8_t port) {
 void Network::serviceCommandReplies() {
   if(!commandReplySize_)return;
   if(uint32_t(millis()-commandReplyAt_)>=5000) {
+    if(commandReplyPort_==3&&commandReplySession_==tcpSession_){closeRotctld();return;}
     if(commandReplySent_)commandInterruptedPorts_|=uint8_t(1u<<commandReplyPort_);
     commandReplySize_=0;return;
   }
@@ -99,7 +100,7 @@ void Network::serviceCommandReplies() {
     const int n=::send(rotctldClient_.fd(),data,count,MSG_DONTWAIT);
     if(n>0)sent=size_t(n);
     else if(n<0 && errno!=EAGAIN && errno!=EWOULDBLOCK && errno!=EINTR && errno!=ENOMEM && errno!=ENOBUFS) {
-      rotctldClient_.stop();commandReplySize_=0;return;
+      closeRotctld();return;
     }
   }
   commandReplySent_+=sent;

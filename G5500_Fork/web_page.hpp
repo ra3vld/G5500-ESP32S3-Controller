@@ -498,6 +498,56 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 </footer></div>
 <div id="settingsFeedback" class="action-feedback" hidden><div role="status" aria-live="polite" aria-atomic="true"><strong id="settingsFeedbackTitle"></strong><span id="settingsFeedbackText"></span></div><button type="button" aria-label="Закрыть уведомление" onclick="this.parentElement.hidden=true">×</button></div>
 <script>
+/* BEGIN BOUNDED POLLING */
+// Embedded by generate_web_assets.py. Control/STOP requests bypass this pool.
+const background=(()=>{
+ const entries=new Map();let active=0,limited=false;
+ const visible=()=>!document.hidden&&(!window.frameElement||!!window.frameElement.getClientRects().length);
+ const entry=key=>{if(!entries.has(key))entries.set(key,{next:0,failures:0,pending:null,controller:null,shown:()=>true});return entries.get(key);};
+ const deferred=()=>Object.assign(new Error('Обновление отложено'),{name:'PollingDeferred'});
+ const allowed=e=>visible()&&e.shown()&&navigator.onLine!==false;
+ async function read(key,url,kind='json',shown=()=>true,controller=null){
+  const e=entry(key);e.shown=shown;
+  if(e.pending)return e.pending;
+  if(!allowed(e)||Date.now()<e.next||active>=2)throw deferred();
+  const abort=controller||new AbortController();e.controller=abort;++active;
+  const timer=setTimeout(()=>abort.abort(),5000);
+  e.pending=Promise.resolve().then(async()=>{
+   try{
+    const response=await fetch(url,{cache:'no-store',signal:abort.signal});
+    const data=await response[kind==='reply'?'text':kind]();
+    if(!response.ok&&kind!=='reply')throw Error('HTTP '+response.status);
+    if(data&&typeof data==='object'&&typeof data.networkMemoryLimited==='boolean')limited=data.networkMemoryLimited;
+    if(response.ok){e.failures=0;e.next=Date.now()+(limited?500:0);}
+    else e.next=Date.now()+[1000,2000,4000,8000,15000][Math.min(e.failures++,4)];
+    return kind==='reply'?{ok:response.ok,status:response.status,text:async()=>data,json:async()=>JSON.parse(data)}:data;
+   }catch(error){
+    if(allowed(e)){const delay=[1000,2000,4000,8000,15000][Math.min(e.failures++,4)];e.next=Date.now()+Math.round(delay*(0.9+Math.random()*0.2));}
+    throw error;
+   }finally{clearTimeout(timer);--active;e.pending=null;e.controller=null;}
+  });
+  return e.pending;
+ }
+ function poll(key,load,interval,shown=()=>true){
+  const e=entry(key);e.shown=shown;let pending=null,timer=null;
+  const run=()=>{
+   if(pending)return pending;clearTimeout(timer);
+   pending=Promise.resolve().then(()=>{if(allowed(e))return load();}).catch(()=>{}).finally(()=>{
+    pending=null;timer=setTimeout(run,Math.max(interval,limited?500:0,e.next-Date.now()));
+   });return pending;
+  };
+  e.run=run;run();return run;
+ }
+ function visibility(){
+  for(const e of entries.values())if(!allowed(e))e.controller?.abort();else if(e.run)e.run();
+ }
+ document.addEventListener('visibilitychange',visibility);
+ document.addEventListener('toggle',()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort();},true);
+ document.addEventListener('click',()=>queueMicrotask(()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort();}),true);
+ window.addEventListener('offline',visibility);window.addEventListener('online',visibility);
+ return {read,poll,visible,cancel:key=>entry(key).controller?.abort(),limited:()=>limited,setLimited:value=>{limited=!!value;}};
+})();
+/* END BOUNDED POLLING */
 function setText(node,value){const text=String(value??'');if(node.textContent!==text)node.textContent=text;}
 let settingsActionSequence=0,settingsFeedbackTimer;
 const settingsRequests=new Set();
@@ -520,12 +570,27 @@ function beginSettingsAction(message,key){
   finish(ok,text){settingsRequests.delete(key);if(button){button.disabled=wasDisabled;button.removeAttribute('aria-busy');}if(sequence===settingsActionSequence)settingsFeedback(text,ok?'success':'error');}
  };
 }
-async function settingsRequest(path,options={}){
- const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+async function settingsRequest(path,options={},timeoutMs=12000){
+ if(!options.method&&/^\/api\/(azcal|elcal)(\?|$)/.test(path)){const r=await background.read('calibration:'+path,path,'reply',document.querySelector('#calibrationSettings details').open?()=>!document.getElementById('settingsPanel').hidden&&document.querySelector('#calibrationSettings details').open:()=>true);const text=await r.text();return {ok:r.ok,status:r.status,text,json:()=>JSON.parse(text)};}
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+ const cancel=()=>controller.abort();if(options.signal?.aborted)cancel();else options.signal?.addEventListener('abort',cancel,{once:true});
  try{const response=await fetch(path,{cache:'no-store',...options,signal:controller.signal});const text=await response.text();return {ok:response.ok,status:response.status,text,json:()=>JSON.parse(text)};}
- finally{clearTimeout(timer);}
+ finally{clearTimeout(timer);options.signal?.removeEventListener('abort',cancel);}
 }
 
+
+const controlHttp={pending:0,stops:new Map()};
+function controlRequest(path,options={}){
+ const stop=path.startsWith('/api/move?')?new URL(path,location.origin).searchParams.get('d'):null;
+ const urgent=['S','A','E'].includes(stop);
+ const previous=controlHttp.stops.get(stop);
+ if(urgent&&previous){if(previous.path===path)return previous.task;previous.abort.abort();}
+ if(!urgent&&controlHttp.pending>=4)return Promise.resolve({ok:false,status:503,text:'',json:()=>({ok:false,result:'busy'})});
+ ++controlHttp.pending;
+ const abort=urgent?new AbortController():null;
+ const task=settingsRequest(path,abort?{...options,signal:abort.signal}:options,urgent?1000:5000).finally(()=>{--controlHttp.pending;if(urgent&&controlHttp.stops.get(stop)?.task===task)controlHttp.stops.delete(stop);});
+ if(urgent)controlHttp.stops.set(stop,{path,task,abort});return task;
+}
 
 const pageTabs=['control','settings','history'];
 const cameraView={state:null,timer:0,timeout:0,loading:false,generation:0};
@@ -715,13 +780,13 @@ function queueLiveRender(){if(!liveFrame)liveFrame=requestAnimationFrame(renderL
 function connectLive(port){
  if(port!==0)connectControlLive(port);
  if(port===0||live.socket||live.retry||window.G5500_HTTP_ONLY)return;
- const socket=new WebSocket('ws://'+location.hostname+':'+(port||81)+'/api/live');live.socket=socket;live.last=Date.now();live.probeAt=0;
+ const socket=new WebSocket('ws://'+location.hostname+':'+(port||81)+'/api/live');live.socket=socket;live.last=Date.now();live.probeAt=0;live.stableAt=0;
  socket.onmessage=event=>{
   if(live.socket!==socket)return;
   let message;try{message=JSON.parse(event.data)}catch(e){socket.close();return}
   if(message.v!==1||!message.boot)return;
   if(message.type==='state'){
-   live.last=Date.now();
+   background.setLimited(message.state?.networkMemoryLimited);live.last=Date.now();if(!live.stableAt)live.stableAt=live.last;
    if(live.boot&&message.boot!==live.boot){releaseKeyboardAxes();for(const p of live.pending.values()){clearTimeout(p.timer);p.reject(new Error('restarted'))}live.pending.clear();live.revision=0;live.state=null;}
    if(live.ready&&message.boot===live.boot&&message.revision<=live.revision)return;
    const changed=live.state&&live.state.hudSelectionEpoch!==message.state.hudSelectionEpoch;
@@ -748,7 +813,7 @@ function resolveLiveReply(channel,message){
 function connectControlLive(port){
  const c=controlLive;
  if(window.G5500_HTTP_ONLY||!httpState?.liveControlChannel||c.socket||c.retry)return;
- const socket=new WebSocket('ws://'+location.hostname+':'+(port||81)+'/api/control');c.socket=socket;c.last=Date.now();
+ const socket=new WebSocket('ws://'+location.hostname+':'+(port||81)+'/api/control');c.socket=socket;c.last=Date.now();c.stableAt=0;
  socket.onopen=()=>{if(c.socket===socket)socket.send('v=1&control=1');};
  socket.onmessage=event=>{
   if(c.socket!==socket)return;
@@ -759,17 +824,22 @@ function connectControlLive(port){
     c.ready=false;releaseKeyboardAxes();
     for(const p of c.pending.values()){clearTimeout(p.timer);p.reject(new Error('context changed'));}c.pending.clear();
    }
-   c.boot=message.boot;c.selection=message.selection;c.last=Date.now();c.ready=true;
+   c.memoryLimited=!!message.memoryLimited;background.setLimited(c.memoryLimited);c.boot=message.boot;c.selection=message.selection;c.last=Date.now();if(!c.stableAt)c.stableAt=c.last;c.ready=true;
   }else if(message.type==='result')resolveLiveReply(c,message);
  };
  socket.onclose=()=>disconnectControlLive(socket,port);
  socket.onerror=()=>socket.close();
 }
+function reconnectLive(channel,connect,port){
+ if(channel.stableAt&&Date.now()-channel.stableAt>=10000)channel.failures=0;channel.stableAt=0;
+ const delay=[1000,2000,4000,8000,15000][Math.min(channel.failures||0,4)];channel.failures=(channel.failures||0)+1;
+ channel.retry=setTimeout(()=>{channel.retry=null;if(navigator.onLine===false){reconnectLive(channel,connect,port);return;}connect(port);},Math.round(delay*(0.9+Math.random()*0.2)));
+}
 function disconnectControlLive(socket,port){
  const c=controlLive;if(c.socket!==socket)return;
  c.socket=null;c.ready=false;
  for(const p of c.pending.values()){clearTimeout(p.timer);p.reject(new Error('disconnected'));}c.pending.clear();
- c.retry=setTimeout(()=>{c.retry=null;connectControlLive(port);},1000);socket.close();
+ reconnectLive(c,connectControlLive,port);socket.close();
 }
 function disconnectLive(socket,port){
  if(live.socket!==socket)return;
@@ -778,7 +848,7 @@ function disconnectLive(socket,port){
  live.socket=null;live.ready=false;live.state=null;live.revision=0;
  connection.state=httpState;queueLiveRender();updateConnection();
  for(const p of live.pending.values()){clearTimeout(p.timer);p.reject(new Error('disconnected'))}live.pending.clear();
- live.retry=setTimeout(()=>{live.retry=null;connectLive(port)},1000);
+ reconnectLive(live,connectLive,port);
  socket.close();upd(true);
 }
 function sendLive(path,body,timeoutMs=liveTimeoutMs,channel=live,acceptDeferred=false){
@@ -796,10 +866,10 @@ setInterval(()=>{
  const now=Date.now(),socket=live.socket;
  // A small bidirectional exchange refreshes TCP ACKs on a lossy link. Keep
  // state freshness tied to real telemetry; a PONG never masks stale data.
- if(httpState?.liveHeartbeat&&socket?.readyState===WebSocket.OPEN&&now-live.last>=400&&now-(live.probeAt||0)>=250&&!socket.bufferedAmount){
+ if(httpState?.liveHeartbeat&&socket?.readyState===WebSocket.OPEN&&now-live.last>=Math.max(400,2*(live.state?.telemetryIntervalMs||httpState?.telemetryIntervalMs||0))&&now-(live.probeAt||0)>=(background.limited()?500:250)&&!socket.bufferedAmount){
   try{socket.send('v=1&ping=1');live.probeAt=now}catch(e){socket.close()}
  }
- if(live.socket&&now-live.last>liveTimeoutMs)disconnectLive(live.socket,window._forkState?.livePort);
+ if(live.socket&&now-live.last>liveTimeoutMs&&!(controlLive.ready&&controlLive.memoryLimited&&now-controlLive.last<=liveTimeoutMs))disconnectLive(live.socket,window._forkState?.livePort);
  if(controlLive.socket&&now-controlLive.last>liveTimeoutMs)disconnectControlLive(controlLive.socket,window._forkState?.livePort);
  updateConnection();
 },250);
@@ -814,13 +884,13 @@ async function forkPost(path,body){
   if(livePaths.has(path)&&window._forkState?.azRangeRevision!==undefined)body={...body,rangeRevision:window._forkState.azRangeRevision};
   const fastStop=path==='/api/move'&&['S','A','E'].includes(body.d);
   const usingLive=!window.setupCommissioning&&live.ready&&livePaths.has(path);
-  const request=notice?settingsRequest:fetch;
+  const request=notice?settingsRequest:controlRequest;
   const r=usingLive?await sendLive(path,body):await request(fastStop?path+'?d='+body.d+(body.selection===undefined?'':'&selection='+body.selection):path,fastStop?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
   let j=await r.json();
   if(r.status===202&&j.requestId){
     document.getElementById('forkMessage').textContent='Ожидаем подтверждение поворотки…';notice?.update('Ожидаем подтверждение поворотки…');
     const started=Date.now();
-    while(j.result==='deferred'&&Date.now()-started<3000){await new Promise(resolve=>setTimeout(resolve,100));j=await (await request('/api/hud/command?id='+j.requestId,{cache:'no-store'})).json();}
+    while(j.result==='deferred'&&Date.now()-started<3000){await new Promise(resolve=>setTimeout(resolve,100));j=await (await settingsRequest('/api/hud/command?id='+j.requestId,{cache:'no-store'},Math.max(1,Math.min(1000,3000-(Date.now()-started))))).json();}
     if(j.result==='deferred')j={ok:false,result:'timeout'};
   }
   const missingCalibration=path==='/api/target'?['az','el'].filter((axis,i)=>body[axis]!==undefined&&window._forkState?.axes?.[i]?.calibrated===false).map(axis=>axis.toUpperCase()):[];
@@ -879,7 +949,7 @@ async function saveControlFrequency(e){
 document.getElementById('controlFrequencyForm').addEventListener('change',e=>e.currentTarget.dataset.dirty='1');
 async function loadMotionSettings(){
  if(window._forkState?.deviceRole==='hud')return;
- try{const r=await fetch('/api/motion',{cache:'no-store'});if(!r.ok)return;const config=await r.json();
+ try{const config=await background.read('motion','/api/motion');
   const frequency=document.getElementById('controlFrequencyForm');if(!frequency.dataset.dirty)frequency.elements.controlHz.value=String(1000/config.controlPeriodMs);
   for(const [i,axis] of ['az','el'].entries()){
    const f=document.getElementById(axis+'MotionForm'),m=config.axes[i];if(!m||f.dataset.dirty)continue;
@@ -1011,7 +1081,7 @@ function renderAutoTune(j){
  const detailKey=String(t.id)+':'+t.phase;
  if(['complete','failed'].includes(t.phase)&&autoTuneResultKey!==detailKey){
   autoTuneResultKey=detailKey;
-  fetch('/api/motion/autotune?full=1',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error();return r.json()}).then(details=>{if(details.id!==window._forkState?.autotune?.id||details.phase!==t.phase||window._forkState?.autotune?.phase!==t.phase)return;autoTuneDetails=details;renderAutoTune(window._forkState)}).catch(()=>{autoTuneResultKey='';settingsFeedback('Не удалось прочитать подробности автотюна.')});
+  background.read('autotune','/api/motion/autotune?full=1').then(details=>{if(details.id!==window._forkState?.autotune?.id||details.phase!==t.phase||window._forkState?.autotune?.phase!==t.phase)return;autoTuneDetails=details;renderAutoTune(window._forkState)}).catch(()=>{autoTuneResultKey='';settingsFeedback('Не удалось прочитать подробности автотюна.')});
  }
 }
 function autoTuneTrackingFailureSummary(t){
@@ -1194,7 +1264,7 @@ function updateFork(j){
  renderAutoTune(j);
 }
 
-async function q(u){try{if((live.ready||window._forkState?.deviceRole==='hud')&&(u.startsWith('/api/move?')||u.startsWith('/api/target?'))){const url=new URL(u,location.origin);await forkPost(url.pathname,Object.fromEntries(url.searchParams));return ''}return await (await fetch(u,{cache:'no-store'})).text()}catch(e){return''}}
+async function q(u){try{if((live.ready||window._forkState?.deviceRole==='hud')&&(u.startsWith('/api/move?')||u.startsWith('/api/target?'))){const url=new URL(u,location.origin);await forkPost(url.pathname,Object.fromEntries(url.searchParams));return ''}return (await controlRequest(u,{cache:'no-store'})).text}catch(e){return''}}
 async function st(){releaseKeyboardAxes();await q('/api/move?d=S')}
 async function go(){
  const body={},g800=window._forkState?.model!=='G5500';
@@ -1456,12 +1526,12 @@ async function saveAp(){
 function pct(v,m){v=Math.max(0,Math.min(m,v));return(v/m*100).toFixed(1)+'%'}
 let statusPending=false,statusRefreshQueued=false,statusController=null;
 async function upd(force=false){
-if(otaBusy||keyboardHeld())return;
+if(otaBusy||keyboardHeld()||!background.visible())return;
 if(liveFresh()&&!force)return;
 if(statusPending){if(force)statusRefreshQueued=true;return;}
 statusPending=true;
 const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5000);statusController=controller;
-try{const response=await fetch('/api/status',{cache:'no-store',signal:controller.signal});if(!response.ok)throw new Error('status unavailable');const j=await response.json();if(!j||typeof j!=='object'||!['controller','hud'].includes(j.deviceRole))throw new Error('invalid status');
+try{const j=await background.read('status','/api/status','json',()=>true,controller);if(!j||typeof j!=='object'||!['controller','hud'].includes(j.deviceRole))throw new Error('invalid status');
 connection.httpOnline=true;connection.httpLast=Date.now();connection.state=liveFresh()&&live.state?{...j,...live.state}:j;updateConnection();
 httpState=j;connectLive(j.livePort);queueLiveRender();
 if(document.querySelector('#calibrationSettings details').open){loadAzCalibration();loadElCalibration();}
@@ -1527,7 +1597,7 @@ function drawRssi(j){
  setText(rmin,j.min===null?'-':j.min+' dBm');setText(rmax,j.max===null?'-':j.max+' dBm');setText(ravg,j.avg===null?'-':j.avg+' dBm');setText(rcount,j.count||0);
 }
 new ResizeObserver(()=>{if(rssiData)drawRssi(rssiData);}).observe(document.getElementById('rchart'));
-async function loadRssi(){if(otaBusy||document.getElementById('settingsPanel').hidden)return;try{let j=await (await fetch('/api/rssi?range='+rrange,{cache:'no-store'})).json();drawRssi(j)}catch(e){}}
+async function loadRssi(){if(otaBusy||document.getElementById('settingsPanel').hidden||!document.querySelector('#signalSettings details').open)return;try{let j=await background.read('rssi','/api/rssi?range='+rrange,'json',()=>!document.getElementById('settingsPanel').hidden&&document.querySelector('#signalSettings details').open);drawRssi(j)}catch(e){}}
 document.querySelectorAll('.rbtn').forEach(b=>b.addEventListener('click',()=>{rrange=b.dataset.r;document.querySelectorAll('.rbtn').forEach(q=>q.classList.remove('active'));b.classList.add('active');loadRssi();}));
 window.addEventListener('hashchange',()=>selectTab(location.hash.slice(1),false));
 document.querySelectorAll('[role=tab]').forEach(tab=>tab.addEventListener('keydown',event=>{
@@ -1603,7 +1673,7 @@ function hudRow(peer,discovered,manage=false){
 }
 async function loadHudPeers(){
  if(otaBusy||hudPollBusy)return;hudPollBusy=true;
- try{const data=await (await fetch('/api/hud/peers?offset='+hudOffset,{cache:'no-store'})).json();hudTotal=data.total;
+ try{const data=await background.read('peers','/api/hud/peers?offset='+hudOffset);hudTotal=data.total;
  const box=document.getElementById('hudPeers');box.replaceChildren(...data.items.map(p=>hudRow(p,false)));
  const settings=document.getElementById('hudPeerSettings');
  if(!hudBackgroundSaving&&!settings.querySelector('.hud-background select:focus'))settings.replaceChildren(...data.items.map(p=>hudRow(p,false,true)));
@@ -1614,7 +1684,7 @@ async function loadHudPeers(){
  }catch(e){}finally{hudPollBusy=false;hudLastPoll=Date.now()}
 }
 let hudScanTimer;
-async function loadHudDiscovery(){if(otaBusy)return;try{const data=await (await fetch('/api/hud/peers?discovered=1&offset='+hudDiscoveredOffset,{cache:'no-store'})).json();hudDiscoveryTotal=data.total;document.getElementById('hudDiscovered').replaceChildren(...data.items.map(p=>hudRow(p,true)));document.getElementById('hudBusProgress').textContent=data.scanActive?'Поиск RS‑485: адрес '+data.scanAddress+' / '+data.scanLast:'';document.getElementById('hudDiscoveryInfo').textContent='Найдено: '+data.total;clearTimeout(hudScanTimer);if(data.scanActive)hudScanTimer=setTimeout(loadHudDiscovery,1000)}catch(e){}}
+async function loadHudDiscovery(){if(otaBusy)return;try{const data=await background.read('discovery','/api/hud/peers?discovered=1&offset='+hudDiscoveredOffset,'json',()=>!document.getElementById('settingsPanel').hidden);hudDiscoveryTotal=data.total;document.getElementById('hudDiscovered').replaceChildren(...data.items.map(p=>hudRow(p,true)));document.getElementById('hudBusProgress').textContent=data.scanActive?'Поиск RS‑485: адрес '+data.scanAddress+' / '+data.scanLast:'';document.getElementById('hudDiscoveryInfo').textContent='Найдено: '+data.total;clearTimeout(hudScanTimer);if(data.scanActive)hudScanTimer=setTimeout(loadHudDiscovery,1000)}catch(e){}}
 async function hudSearchRs485(){if(Number(document.getElementById('hudBusFirst').value)>Number(document.getElementById('hudBusLast').value)){alert('Первый адрес должен быть не больше последнего');return;}if(await forkPost('/api/hud/discover',{transport:'rs485',first:document.getElementById('hudBusFirst').value,last:document.getElementById('hudBusLast').value})){hudDiscoveredOffset=0;await loadHudDiscovery();}}
 async function hudSearch(uart=false,manual=false){
  await forkPost('/api/hud/discover',{transport:uart?'uart':'wifi',address:manual?document.getElementById('hudAddress').value:'',port:manual?document.getElementById('hudPeerPort').value:window._forkState?.hudPort||4534});
@@ -1795,7 +1865,7 @@ window.fetch=async(input,options={})=>{
  }
  return originalFetch(input,options);
 };
-async function setupRequest(path,body){const options=body?{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(Object.entries(body).filter(([,v])=>v!==undefined))}:{cache:'no-store'};const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);try{const response=await fetch(path,{...options,signal:controller.signal});const result=await response.json();if(result.error==='recovery_only'){location.replace('/recovery');throw new Error('Устройство в режиме восстановления.');}if(!response.ok||result.ok===false)throw new Error(({setup_step_not_ready:'Завершите настройку и проверку текущего шага.',stale_setup:'Настройки изменились. Обновляем этап.',setup_lease_expired:'Сессия настройки изменилась. Обновляем состояние.',setup_test_expired:'Проверка остановлена из-за задержки связи. Запустите её повторно.',not_calibrated:'Сначала откалибруйте ось.',unavailable:'Проверьте готовность, калибровку и ошибки оси.',invalid:'Проверьте значения и свободный ход.',invalid_address:'Укажите допустимый адрес узла в своей подсети.',invalid_dns:'Проверьте адрес DNS.',invalid_network_choice:'Выберите поддерживаемое сетевое подключение.',invalid_ipv4:'Проверьте запись IPv4-адреса.',invalid_netmask:'Проверьте маску подсети.',invalid_gateway:'Шлюз должен находиться в той же подсети.',network_storage_failed:'Не удалось сохранить сеть.',storage_failed:'Не удалось записать настройки. Повторите сохранение.',setup_storage_failed:'Не удалось записать этап настройки.',invalid_range:'Проверьте начало и полный ход оси.',invalid_or_port_conflict:'Проверьте режим связи и конфликты портов.'})[result.error||result.result]||result.error||result.result||'Ошибка запроса');return result;}finally{clearTimeout(timeout);}}
+async function setupRequest(path,body){const options=body?{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(Object.entries(body).filter(([,v])=>v!==undefined))}:{cache:'no-store'};const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);try{const response=body?await fetch(path,{...options,signal:controller.signal}):await background.read('setup:'+path,path,'reply',path==='/api/network'&&networkConfigVisible()?networkConfigVisible:()=>true);const result=await response.json();if(result.error==='recovery_only'){location.replace('/recovery');throw new Error('Устройство в режиме восстановления.');}if(!response.ok||result.ok===false)throw new Error(({setup_step_not_ready:'Завершите настройку и проверку текущего шага.',stale_setup:'Настройки изменились. Обновляем этап.',setup_lease_expired:'Сессия настройки изменилась. Обновляем состояние.',setup_test_expired:'Проверка остановлена из-за задержки связи. Запустите её повторно.',not_calibrated:'Сначала откалибруйте ось.',unavailable:'Проверьте готовность, калибровку и ошибки оси.',invalid:'Проверьте значения и свободный ход.',invalid_address:'Укажите допустимый адрес узла в своей подсети.',invalid_dns:'Проверьте адрес DNS.',invalid_network_choice:'Выберите поддерживаемое сетевое подключение.',invalid_ipv4:'Проверьте запись IPv4-адреса.',invalid_netmask:'Проверьте маску подсети.',invalid_gateway:'Шлюз должен находиться в той же подсети.',network_storage_failed:'Не удалось сохранить сеть.',storage_failed:'Не удалось записать настройки. Повторите сохранение.',setup_storage_failed:'Не удалось записать этап настройки.',invalid_range:'Проверьте начало и полный ход оси.',invalid_or_port_conflict:'Проверьте режим связи и конфликты портов.'})[result.error||result.result]||result.error||result.result||'Ошибка запроса');return result;}finally{clearTimeout(timeout);}}
 let networkConfigRequest=null;
 function loadNetworkConfig(){
  if(!networkConfigRequest)networkConfigRequest=readNetworkConfig().finally(()=>networkConfigRequest=null);

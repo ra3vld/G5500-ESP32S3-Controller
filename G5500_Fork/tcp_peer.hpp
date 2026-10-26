@@ -61,6 +61,34 @@ inline bool abortTcpSocket(int fd) {
      !tcpSocketEndpoint(local,request.local,request.localPort))return false;
   return tcpip_api_call(abortTcpPeer,&request.call)==ERR_OK && request.aborted;
 }
+struct TcpPendingRequest {
+  tcpip_api_call_data call{};
+  ip_addr_t peer{},local{};
+  uint16_t peerPort=0,localPort=0;
+  size_t bytes=0;
+};
+inline err_t readTcpPending(tcpip_api_call_data *call) {
+  auto &r=*reinterpret_cast<TcpPendingRequest *>(call);
+  for(auto *pcb=tcp_active_pcbs;pcb;pcb=pcb->next) {
+    if(pcb->local_port!=r.localPort||pcb->remote_port!=r.peerPort||
+        !ip_addr_cmp(&pcb->remote_ip,&r.peer)||!ip_addr_cmp(&pcb->local_ip,&r.local))continue;
+    for(auto *seg=pcb->unsent;seg;seg=seg->next)r.bytes+=seg->len;
+    for(auto *seg=pcb->unacked;seg;seg=seg->next)r.bytes+=seg->len;
+    break;
+  }
+  return ERR_OK;
+}
+// Payload retained by lwIP, not merely the application's remaining bytes.
+// Never call while holding a mutex also used by a TCP/IP callback.
+inline size_t tcpPeerPendingBytes(int fd) {
+  if(fd<0)return 0;
+  sockaddr_storage peer{},local{};socklen_t pn=sizeof peer,ln=sizeof local;
+  TcpPendingRequest r;
+  if(getpeername(fd,reinterpret_cast<sockaddr *>(&peer),&pn)!=0 ||
+     getsockname(fd,reinterpret_cast<sockaddr *>(&local),&ln)!=0)return 0;
+  if(!tcpSocketEndpoint(peer,r.peer,r.peerPort)||!tcpSocketEndpoint(local,r.local,r.localPort))return size_t(-1);
+  return tcpip_api_call(readTcpPending,&r.call)==ERR_OK?r.bytes:size_t(-1);
+}
 // send() accepting a frame only means lwIP copied it. Admit a new telemetry
 // frame only when the entire frame fits. Waiting for every ACK also stalls a
 // peer with ample free buffer and prevents subsequent data from eliciting a

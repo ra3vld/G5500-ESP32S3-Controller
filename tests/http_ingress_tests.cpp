@@ -426,6 +426,21 @@ int main() {
   };
   const auto slow=transferTime(16384),fast=transferTime(65536);
   assert(slow>=fast+100);
+  // A local memory pause is not evidence that the client stopped reading.
+  connect(request);fakeHeapFree=20000;fakeHeapBlock=8192;
+  testSocket.handler=[&]{web.sendBuffer(200,"application/json",WEB_PAGE,4096);};
+  web.handleClient();const auto held=testSocket.output.size();
+  fakeHardware.now+=10000;web.handleClient();assert(testSocket.open&&!testSocket.reset&&testSocket.output.size()==held);
+  fakeHeapFree=65536;fakeHeapBlock=32768;fakeHardware.now+=20;web.handleClient();assert(!testSocket.open&&!testSocket.reset);
+  // send() consumed the body, but its transport copy still awaits an ACK.
+  connect(request);fakeTcpPendingBytes=1024;
+  testSocket.handler=[&]{web.sendBuffer(200,"application/json","{}",2);};
+  web.handleClient();assert(testSocket.open&&!testSocket.reset);
+  fakeHardware.now+=3500;fakeTcpPendingBytes=512;web.handleClient();assert(testSocket.open);
+  fakeHardware.now+=3500;fakeTcpPendingBytes=0;web.handleClient();assert(!testSocket.open&&!testSocket.reset);
+  connect(request);fakeTcpPendingBytes=1024;web.handleClient();assert(testSocket.open);
+  fakeHardware.now+=4000;web.handleClient();assert(!testSocket.open&&testSocket.reset);
+  assert(std::string(web.diagnostics().writeCause)=="ack");fakeTcpPendingBytes=0;
   std::cout<<"PASS: recovery POST remains writable with free=3000/max=512 while normal settings require larger blocks\n";
   std::cout<<"PASS: 10000 parser-free status polls at free=3000/max=512; bulk waits below control reserve, bounded nonblocking 4KB bursts\n";
   std::cout<<"PASS: complete current page over slow socket after low-heap admission, per-loop control progress, transfer deadlines and recovery\n";

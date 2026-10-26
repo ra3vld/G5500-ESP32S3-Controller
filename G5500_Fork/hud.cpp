@@ -995,6 +995,7 @@ bool Hud::discover(HudEndpoint e) {
 bool Hud::discoverRs485(uint8_t first,uint8_t last,uint8_t masterFirst,uint8_t masterCount) {
   if(!isHud()||!config.uart||!first||last>247||first>last)return false;
   scanNext_=first;scanLast_=last;scanMasterFirst_=masterFirst;scanMasterCount_=masterCount;
+  scanAttempts_=0;
   scanning_=false;scanAnswered_=false;
   return true;
 }
@@ -1028,10 +1029,15 @@ bool Hud::sendJob(Job &j) {
   header(w, {j.live ? Kind::LiveCommand : Kind::Command, id, j.peer, boot, j.boot, j.id, j.ticket, j.wireVersion, j.rangeRevision});
   command(w, j.command);
   auto n = w.finish();
-  if (!transport_ || !n || !transport_->sendHud(j.endpoint, tx_, n))
-    return false;
+  // A failed local send is an attempt too. Otherwise ENOBUFS retries on every
+  // service() call, starving other peers and allocating more network buffers.
   j.sent = now;
   ++j.attempts;
+  ++commandAttempts;
+  if (!transport_ || !n || !transport_->sendHud(j.endpoint, tx_, n)) {
+    ++commandSendFailures;
+    return false;
+  }
   return true;
 }
 void Hud::sendRenew(unsigned axis) {
@@ -1051,8 +1057,8 @@ void Hud::sendRenew(unsigned axis) {
   header(w, {Kind::Renew, id, h.peer, boot, h.boot, h.command, p->remoteTick, p->wireVersion, p->state.rangeRevision});
   w.u8(uint8_t(axis));
   auto n = w.finish();
-  if (transport_ && n && transport_->sendHud(h.endpoint, tx_, n))
-    h.sent = now;
+  h.sent = now;
+  if (transport_ && n) transport_->sendHud(h.endpoint, tx_, n);
 }
 Result Hud::execute(const ControlCommand &c, uint64_t source, uint64_t session, uint32_t seq,
                     Controller *local) {
@@ -1483,12 +1489,14 @@ void Hud::publishLive() {
   fingerprint = {tx_, sizeof tx_};
   state(fingerprint, control, true, true, true, true, true, true);
   const uint32_t controlHash = hudCrc(tx_, fingerprint.size);
-  if (hash != liveHash_ && (controlHash != controlHash_ || uint32_t(now - liveChangedAt_) >= HudPositionIntervalMs)) {
+  if (hash != liveHash_ && (memoryLimited_ ? uint32_t(now-liveChangedAt_)>=500 :
+      controlHash != controlHash_ || uint32_t(now - liveChangedAt_) >= HudPositionIntervalMs)) {
     liveHash_ = hash; controlHash_ = controlHash; liveChangedAt_ = now; ++liveRevision_;
   }
   for (auto &sub : subscriptions_) {
     if ((sub.wireVersion == 1 && controller_.azProfile == AZ_CUSTOM) || (sub.wireVersion < 3 && controller_.elProfile == EL_CUSTOM)) { sub.used=false; continue; }
     if (!sub.used || (sub.revision == liveRevision_ && uint32_t(now - sub.sent) < 250)) continue;
+    if (memoryLimited_ && uint32_t(now-sub.sent)<500) continue;
     if (sub.retryDelayMs && uint32_t(now - sub.sent) < sub.retryDelayMs) continue;
     Writer w{tx_, sizeof tx_};
     header(w, {sub.extended ? Kind::ExtendedTelemetry : Kind::Telemetry, id, sub.source, boot,
@@ -1527,8 +1535,7 @@ void Hud::service(uint32_t at, bool advanceSimulation) {
     if(scanNext_>scanLast_) {scanNext_=0;scanning_=false;}
     else {
       scanEndpoint_={scanNext_,config.port,true};scanAt_=now;scanAnswered_=false;scanning_=true;
-      if(sendQuery(scanEndpoint_,0,true))++scanNext_;
-      else scanning_=false;
+      if(sendQuery(scanEndpoint_,0,true) || ++scanAttempts_>=3) { ++scanNext_;scanAttempts_=0; }
     }
   }
   if (!isHud()) {
@@ -1601,7 +1608,7 @@ void Hud::service(uint32_t at, bool advanceSimulation) {
   if (uint32_t(now - lastPoll_) < 50)
     return;
   auto *p = active();
-  if (p && p->saved && !p->simulated() && uint32_t(now - selectedPoll_) >= (paced(p->endpoint)?config.link.intervalMs:p->live && uint32_t(now - p->liveAt) < 1000 ? 1000u : 100u)) {
+  if (p && p->saved && !p->simulated() && uint32_t(now - selectedPoll_) >= (paced(p->endpoint)?std::max<uint32_t>(config.link.intervalMs,memoryLimited_?500:0):p->live && uint32_t(now - p->liveAt) < 1000 ? 1000u : memoryLimited_?500u:100u)) {
     sendQuery(p->endpoint, p->id);
     p->lastPoll = selectedPoll_ = lastPoll_ = now;
     return;
@@ -1670,6 +1677,8 @@ bool Hud::writePeers(JsonWriter &j, size_t offset, size_t limit, bool discovered
   return j.good();
 }
 void Hud::writeStatus(JsonWriter &j, bool live) const {
+  if(live)j << ",\"networkMemoryLimited\":" << (memoryLimited_?"true":"false")
+    << ",\"telemetryIntervalMs\":" << (memoryLimited_?500:WebPositionIntervalMs);
   char node[17], selected[17];
   idText(node, id);
   idText(selected, config.selected);
@@ -1708,6 +1717,7 @@ void Hud::writeStatus(JsonWriter &j, bool live) const {
   j << ",\"hudCatalogError\":" << (catalogError ? "true" : "false")
     << ",\"hudRejected\":" << rejected << ",\"hudTimeouts\":" << timeouts << ",\"hudBusy\":" << busy
     << ",\"hudReceived\":" << received << ",\"hudSent\":" << sent
-    << ",\"hudSendErrors\":" << sendErrors << ",\"hudSendErrno\":" << sendErrno;
+    << ",\"hudSendErrors\":" << sendErrors << ",\"hudSendErrno\":" << sendErrno
+    << ",\"hudCommandAttempts\":" << commandAttempts << ",\"hudCommandSendFailures\":" << commandSendFailures;
 }
 } // namespace forkrot

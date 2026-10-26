@@ -59,12 +59,20 @@ esp_err_t LiveServer::opened(httpd_handle_t server,int fd) {
     const size_t needed=sizeof(ClientBuffers)+(self.stateSize_?0:sizeof(StateBuffer));
     if(heapFreeBytes()<needed+MemoryGuard::HealthyFree ||
        heapMaxBlockBytes()<needed+MemoryGuard::HealthyBlock)return ESP_FAIL;
-    std::unique_ptr<ClientBuffers> buffers(new(std::nothrow) ClientBuffers{});
-    if(!buffers)return ESP_FAIL;
-    const auto gen=c.generation+1;c=Client{};c.buffers=std::move(buffers);
-    c.fd=fd;c.generation=gen;return ESP_OK;
+    const auto gen=c.generation+1;c=Client{};
+    c.fd=fd;c.generation=gen;c.acceptedAt=uint32_t(esp_timer_get_time()/1000);return ESP_OK;
   }
   return ESP_FAIL;
+}
+bool LiveServer::activate(Client &c) {
+  if(c.buffers)return true;
+  const size_t needed=sizeof(ClientBuffers)+(stateSize_?0:sizeof(StateBuffer));
+  if(heapFreeBytes()<needed+MemoryGuard::HealthyFree || heapMaxBlockBytes()<needed+MemoryGuard::HealthyBlock) {
+    ++admissionRejected_;c.closing=true;return false;
+  }
+  c.buffers.reset(new(std::nothrow) ClientBuffers{});
+  if(!c.buffers){++admissionRejected_;c.closing=true;return false;}
+  return true;
 }
 int LiveServer::sendSocket(httpd_handle_t server,int fd,const char *data,size_t size,int flags) {
   const auto now=[] {return uint32_t(esp_timer_get_time()/1000);};
@@ -94,8 +102,8 @@ void LiveServer::closed(httpd_handle_t server,int fd) {
   { Guard lock(self.mutex_);
     bool any=false;
     for(auto &c:*self.clients_){
-      if(c.fd==fd){releaseSnapshot(*c.buffers,uint32_t(esp_timer_get_time()/1000));const auto generation=c.generation+1;c=Client{};c.generation=generation;}
-      any|=c.fd>=0;
+      if(c.fd==fd){if(c.buffers)releaseSnapshot(*c.buffers,uint32_t(esp_timer_get_time()/1000));const auto generation=c.generation+1;c=Client{};c.generation=generation;}
+      any|=c.fd>=0&&bool(c.buffers);
     }
     if(!any){for(auto &state:self.states_)state.reset();self.stateSize_=0;}
   }
@@ -107,7 +115,7 @@ void LiveServer::closed(httpd_handle_t server,int fd) {
   ::close(fd);
 }
 LiveServer::StateBuffer *LiveServer::writableState(unsigned &index) {
-  bool any=false;for(const auto &client:*clients_)any|=client.fd>=0;
+  bool any=false;for(const auto &client:*clients_)any|=client.fd>=0&&bool(client.buffers);
   if(!any)return nullptr;
   // Called with mutex_: only zero-user frames may be overwritten. Prefer
   // reusing the latest one, so fast/idle links need just one shared buffer.
@@ -137,6 +145,12 @@ void LiveServer::cancelTarget(Client &c,uint32_t id) {
 }
 esp_err_t LiveServer::handler(httpd_req_t *req) {
   auto &self=*static_cast<LiveServer *>(req->user_ctx); const int fd=httpd_req_to_sockfd(req);
+  {Guard lock(self.mutex_);
+    bool found=false;for(auto &c:*self.clients_)if(c.fd==fd){
+      found=httpd_ws_get_fd_info(self.server_,fd)==HTTPD_WS_CLIENT_WEBSOCKET&&self.activate(c);break;
+    }
+    if(!found)return ESP_FAIL;
+  }
   if(req->method==HTTP_GET) {
     // Older IDF versions also invoke this handler after upgrading. Ordinary
     // HTTP requests to this endpoint must not occupy a live slot indefinitely.
@@ -243,7 +257,7 @@ void LiveServer::speedCommands(uint32_t now) {
   // of full websocket buffers. HTTPD queues; only the control loop executes.
   for(auto &client:*clients_)for(unsigned axis=0;axis<2;++axis) {
     SpeedRequest input;uint32_t generation;int fd;
-    { Guard lock(mutex_);if(client.fd<0||client.closing)continue;
+    { Guard lock(mutex_);if(client.fd<0||client.closing||!client.buffers)continue;
       auto &slot=client.buffers->speeds[axis];if(!slot.cid)continue;
       input=slot;slot={};generation=client.generation;fd=client.fd;
     }
@@ -268,7 +282,7 @@ void LiveServer::commands(uint32_t now) {
     if(pass)speedCommands(now);
     for(auto &client:*clients_) {
       Message input;uint32_t generation;int fd;
-      { Guard lock(mutex_); if(client.fd<0||(client.closing&&(pass||!client.buffers->stop.size)))continue;
+      { Guard lock(mutex_); if(client.fd<0||!client.buffers||(client.closing&&(pass||!client.buffers->stop.size)))continue;
         auto &slot=pass?client.buffers->command:client.buffers->stop;if(!slot.size)continue;
         input=slot;slot.size=0;generation=client.generation;fd=client.fd;
         if(!pass){LiveRequest stop;
@@ -296,7 +310,7 @@ void LiveServer::commands(uint32_t now) {
     }
   }
   for(auto &client:*clients_) {
-    Guard lock(mutex_);if(client.fd<0||client.closing)continue;
+    Guard lock(mutex_);if(client.fd<0||client.closing||!client.buffers)continue;
     for(auto &p:client.buffers->pending)if(p.cid){const auto result=runtime_.hud.result(p.request).result;if(result!=Result::Deferred){
       char body[80];std::snprintf(body,sizeof body,"{\"ok\":%s,\"result\":\"%s\"}",result==Result::Ok||result==Result::Pending?"true":"false",Controller::resultName(result));
       reply(client,p.cid,body);p={};
@@ -314,11 +328,12 @@ void LiveServer::publish(uint32_t now) {
         (!runtime_.controller.variableSpeed(i) || runtime_.controller.motionSettings[i].ready);
       ingressSpeedLimit_[i]=runtime_.controller.runtimeSpeedLimit(i);
     }
-    for(auto &c:*clients_)any|=c.fd>=0;
+    for(auto &c:*clients_)any|=c.fd>=0&&bool(c.buffers);
     missingState=!stateSize_;}
-  if(!any)return;
+  // Schedule handshake activation/expiry even when no upgraded client exists.
   const uint32_t critical=liveControlFingerprint(runtime_.controller,runtime_.hud);
-  if(missingState || critical!=controlHash_ || uint32_t(now-publishedAt_)>=WebPositionIntervalMs) {
+  if(any && (missingState || (networkLowMemory()?uint32_t(now-publishedAt_)>=500:
+      critical!=controlHash_ || uint32_t(now-publishedAt_)>=WebPositionIntervalMs))) {
     char data[LIVE_STATE_CAPACITY];JsonWriter j(data,sizeof data);writeLiveState(j,runtime_.controller,runtime_.hud,now);
     if(j.good()) {
       const uint32_t hash=hudCrc(reinterpret_cast<const uint8_t *>(j.data()),j.size());
@@ -341,7 +356,8 @@ void LiveServer::publish(uint32_t now) {
   }
   bool queue=false;
   {Guard lock(mutex_);
-    bool needed=false;for(const auto &c:*clients_)needed|=c.fd>=0&&(c.closing||c.buffers->outgoing.active()||c.buffers->pongPending||c.buffers->count||c.buffers->cancelledFrom||
+    bool needed=false;for(const auto &c:*clients_)needed|=c.fd>=0&&(c.closing||!c.buffers||c.buffers->outgoing.active()||c.buffers->pongPending||c.buffers->count||c.buffers->cancelledFrom||
+        (c.controlOnly&&uint32_t(now-c.controlSentAt)>=500)||
         (c.revision!=revision_&&(!c.ackWaiting||uint32_t(now-c.ackCheckedAt)>=20)));
     if(needed&&!workPending_&&uint32_t(now-wakeAt_)>=5){workPending_=true;wakeAt_=now;queue=true;}
   }
@@ -349,11 +365,13 @@ void LiveServer::publish(uint32_t now) {
 }
 void LiveServer::writeDiagnostics(JsonWriter &j) {
   if(!server_)return;
-  Guard lock(mutex_);unsigned clients=0;
-  for(const auto &c:*clients_)clients+=c.fd>=0;
+  Guard lock(mutex_);unsigned clients=0,buffers=0;
+  for(const auto &c:*clients_){clients+=c.fd>=0;buffers+=bool(c.buffers);}
   unsigned states=0;for(const auto &state:states_)states+=bool(state);
   j<<",\"liveControlChannel\":true,\"liveHeartbeat\":true,\"liveClients\":"<<clients<<",\"liveRevision\":"<<revision_<<",\"liveStateBytes\":"<<stateSize_
-   <<",\"liveStateBuffers\":"<<states<<",\"liveBufferBytes\":"<<(sizeof(Clients)+clients*sizeof(ClientBuffers)+states*sizeof(StateBuffer))
+   <<",\"liveStateBuffers\":"<<states<<",\"liveBufferBytes\":"<<(sizeof(Clients)+buffers*sizeof(ClientBuffers)+states*sizeof(StateBuffer))
+   <<",\"liveHandshakeTimeouts\":"<<handshakeTimeouts_<<",\"liveAdmissionRejected\":"<<admissionRejected_
+   <<",\"networkMemoryLimited\":"<<(networkLowMemory()?"true":"false")<<",\"telemetryIntervalMs\":"<<(networkLowMemory()?500:WebPositionIntervalMs)
    <<",\"liveWorkRuns\":"<<workRuns_<<",\"liveFrames\":"<<framesSent_
    <<",\"liveSendDeferred\":"<<sendDeferred_<<",\"liveQueueErrors\":"<<queueErrors_<<",\"liveSendErrors\":"<<sendErrors_
    <<",\"liveMemoryDeferred\":"<<memoryDeferred_<<",\"liveSocketDeferred\":"<<socketDeferred_
@@ -373,10 +391,17 @@ void LiveServer::sendWork(void *context) {
     // Only HTTPD closes/replaces client buffers. Runtime only queues commands
     // and results under the mutex; the outgoing frame remains HTTPD-owned.
     {Guard lock(self.mutex_);fd=client.fd;if(fd<0)continue;
-      if(httpd_ws_get_fd_info(self.server_,fd)!=HTTPD_WS_CLIENT_WEBSOCKET)continue;
+      if(httpd_ws_get_fd_info(self.server_,fd)!=HTTPD_WS_CLIENT_WEBSOCKET) {
+        if(uint32_t(uint32_t(esp_timer_get_time()/1000)-client.acceptedAt)<5000)continue;
+        ++self.handshakeTimeouts_;close=true;
+      } else if(!self.activate(client))close=true;
+      if(close){client.closing=true;}
+      else {
       const auto &b=*client.buffers;
       checkSpace=!client.closing&&!client.controlOnly&&!b.outgoing.active()&&!b.pongPending&&!b.cancelledFrom&&!b.count;
+      }
     }
+    if(close){httpd_sess_trigger_close(self.server_,fd);continue;}
     // Never take lwIP's core lock while holding the controller/HTTPD mutex.
     const size_t capacity=checkSpace?tcpPeerFrameCapacity(fd):size_t(-1);
     {Guard lock(self.mutex_);
@@ -395,10 +420,12 @@ void LiveServer::sendWork(void *context) {
           b.cancelledFrom=b.cancelledThrough=0;
         }
         else if(b.count){auto &r=b.replies[b.head];n=r.size;std::memcpy(data,r.data,n);b.head=(b.head+1)%4;--b.count;}
-        else if(client.revision!=self.revision_&&self.stateSize_&&!waitingSpace){
+        else if((client.controlOnly&&(client.revision!=self.revision_||uint32_t(uint32_t(esp_timer_get_time()/1000)-client.controlSentAt)>=500))||
+            (!client.controlOnly&&client.revision!=self.revision_&&self.stateSize_&&!waitingSpace)){
           if(client.controlOnly) {
-            const int size=std::snprintf(data,ControlCapacity,"{\"v\":1,\"type\":\"control\",\"boot\":\"%s\",\"selection\":%lu}",self.boot_,(unsigned long)self.selection_);
+            const int size=std::snprintf(data,ControlCapacity,"{\"v\":1,\"type\":\"control\",\"boot\":\"%s\",\"selection\":%lu,\"memoryLimited\":%s}",self.boot_,(unsigned long)self.selection_,networkLowMemory()?"true":"false");
             if(size>0&&size_t(size)<ControlCapacity)n=size_t(size);
+            client.controlSentAt=uint32_t(esp_timer_get_time()/1000);
           } else {
             auto &state=*self.states_[self.stateIndex_];
             if(out.borrow(state.bytes.data(),state.size,uint32_t(esp_timer_get_time()/1000))){
@@ -425,6 +452,9 @@ void LiveServer::sendWork(void *context) {
     auto &out=client.buffers->outgoing;
     if(!close&&out.active()) {
       const uint32_t now=uint32_t(esp_timer_get_time()/1000);const auto retries=out.retries;
+      if(out.borrowed&&out.requested()-out.written()>256&&!networkBulkTxBudget(out.requested()-out.written())&&tcpPeerFrameCapacity(fd)!=0) {
+        out.pause(now);Guard lock(self.mutex_);++self.memoryDeferred_;++client.buffers->memoryWaits;continue;
+      }
       bool memoryWait=false;
       const auto step=out.pump(now,[=,&memoryWait](const char *data,size_t size)->int{
         if(size>256){

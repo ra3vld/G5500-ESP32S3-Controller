@@ -45,6 +45,7 @@ class LiveServer {
   };
   struct Client {
     int fd=-1; uint32_t generation=0, lastId=0, revision=0;
+    uint32_t acceptedAt=0,controlSentAt=0;
     uint32_t ackCheckedAt=0, ackStartedAt=0;
     bool closing=false, controlOnly=false;
     bool ackWaiting=false;
@@ -65,6 +66,7 @@ class LiveServer {
   uint32_t revision_=0, publishedAt_=0, hash_=0, controlHash_=0, wakeAt_=0;
   uint32_t workRuns_=0, framesSent_=0, queueErrors_=0, sendErrors_=0, sendDeferred_=0;
   uint32_t memoryDeferred_=0, socketDeferred_=0, sendMemoryRetries_=0, ackDeferred_=0, ackTimeouts_=0;
+  uint32_t handshakeTimeouts_=0, admissionRejected_=0;
   // Preserve the last failed socket write: the HTTPD return code alone loses
   // errno and whether a frame was cut short by the bounded retry deadline.
   uint32_t sendTimeouts_=0, sendRetryErrors_=0, sendElapsedMs_=0;
@@ -86,6 +88,7 @@ class LiveServer {
     if(b.snapshot){if(!--b.snapshot->users)b.snapshot->unusedAt=now;b.snapshot=nullptr;}
   }
   StateBuffer *writableState(unsigned &index);
+  bool activate(Client &); // mutex held; called only after successful upgrade
   void reply(Client &,uint32_t,const char *);
   void cancelTarget(Client &,uint32_t);
   void speedCommands(uint32_t now);

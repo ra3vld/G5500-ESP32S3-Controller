@@ -35,10 +35,15 @@ public:
   DatagramSocket(const DatagramSocket &) = delete;
   DatagramSocket &operator=(const DatagramSocket &) = delete;
   ~DatagramSocket() { stop(); }
-  bool begin(uint16_t port) {
+  bool begin(uint16_t port, int receiveBudget = 8192) {
     stop();
     fd_ = ::socket(AF_INET, SOCK_DGRAM, 0);
     if (fd_ < 0) return false;
+    // Bound queued UDP payload as well as the fixed application receive buffer.
+    // Do not silently run an unbounded queue when an SDK rejects the option.
+    if(receiveBudget<=0 || ::setsockopt(fd_,SOL_SOCKET,SO_RCVBUF,&receiveBudget,sizeof receiveBudget)<0) {
+      stop();return false;
+    }
     const int yes = 1;
     ::setsockopt(fd_, SOL_SOCKET, SO_BROADCAST, &yes, sizeof yes);
     sockaddr_in local{};

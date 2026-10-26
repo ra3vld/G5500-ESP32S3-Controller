@@ -10,8 +10,8 @@ namespace forkrot {
 void WebInterface::sendHtml(const char *raw, size_t rawSize, const unsigned char *gzip, size_t gzipSize) {
   const String encoding = web_.header("Accept-Encoding");
   web_.sendHeader("Vary", "Accept-Encoding");
-#if !FORK_S3 && !FORK_CLASSIC_ESP32
-  // Keep both I2C feedback and TFT support within the S2's existing OTA slots.
+#if (!FORK_S3 && !FORK_CLASSIC_ESP32) || SELECTED_BOARD == BOARD_ESP32_3248S035C
+  // Keep graphics and the complete UI within the existing application slots.
   // LTO can discard the uncompressed HTML when this profile only serves gzip.
   (void)raw; (void)rawSize;
   if (!encoding.length() || acceptsGzip(encoding.c_str())) {

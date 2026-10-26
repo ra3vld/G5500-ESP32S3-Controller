@@ -102,6 +102,19 @@ int main() {
   assert(receive(n1mm, packet) == DatagramResult::Dropped);
   assert(logger.send(loopback, n1mm.localPort(), "recovered"));
   assert(receive(n1mm, packet) == DatagramResult::Ready && packet.text() == "recovered");
+  // Production loggers share one fixed 4KB scratch buffer. Even a failed
+  // allocator cannot affect receive/truncation/empty-packet queue progress.
+  uint8_t scratch[4096];uint32_t address;uint16_t port;
+  const auto fixedBefore=allocations;failAllocation=true;
+  assert(logger.send(loopback,n1mm.localPort(),target));
+  assert(n1mm.receiveInto(scratch,sizeof scratch,address,port)==int(target.size()));
+  assert(std::string_view(reinterpret_cast<char *>(scratch),target.size())==target&&address==loopback);
+  assert(::sendto(raw,boundary.data(),boundary.size(),0,reinterpret_cast<sockaddr *>(&destination),sizeof destination)==ssize_t(boundary.size()));
+  assert(n1mm.receiveInto(scratch,sizeof scratch,address,port)==-2);
+  assert(logger.send(loopback,n1mm.localPort(),""));assert(n1mm.receiveInto(scratch,sizeof scratch,address,port)==-2);
+  assert(logger.send(loopback,n1mm.localPort(),"ok"));assert(n1mm.receiveInto(scratch,sizeof scratch,address,port)==2);
+  assert(allocations==fixedBefore);failAllocation=false;
+  DatagramSocket invalid;assert(!invalid.begin(0,0)&&!invalid.localPort());
 
   int error = 0;
   assert(!logger.send(loopback, n1mm.localPort(), boundary, &error) && error == EMSGSIZE);

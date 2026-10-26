@@ -2,6 +2,7 @@
 #include <lwip/tcpip.h>
 #include <lwip/sockets.h>
 inline constexpr unsigned TCP_SND_QUEUELEN=8;
+struct tcp_seg { tcp_seg *next=nullptr;uint16_t len=0; };
 struct tcp_pcb {
   tcp_pcb *next=nullptr;
   ip_addr_t local_ip{},remote_ip{};
@@ -11,6 +12,7 @@ struct tcp_pcb {
   int fd=-1;
   tcp_pcb **netconn=nullptr;
   bool aborted=false;
+  tcp_seg *unsent=nullptr,*unacked=nullptr;
 };
 inline tcp_pcb *tcp_active_pcbs=nullptr;
 inline unsigned fakeRawAborts=0;

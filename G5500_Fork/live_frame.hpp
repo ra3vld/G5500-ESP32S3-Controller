@@ -19,7 +19,7 @@ template<size_t Capacity> struct LiveFrame {
   static_assert(Capacity < 65536, "16-bit WebSocket length");
   std::array<char, Capacity + 4> bytes{};
   size_t first=0, offset=0, size=0;
-  uint32_t started=0, retries=0;
+  uint32_t started=0, retries=0, servicedAt=0;
   int retryError=0;
   const char *borrowed=nullptr;
   enum class Step {Pending, Complete, Failed};
@@ -32,17 +32,18 @@ template<size_t Capacity> struct LiveFrame {
   bool borrow(const char *frame, size_t payloadSize, uint32_t now) {
     if(active()||!frame||payloadSize>=65536)return false;
     first=offset=liveFrameFirst(payloadSize);size=payloadSize+4;
-    started=now;retries=0;retryError=0;borrowed=frame;
+    servicedAt=started=now;retries=0;retryError=0;borrowed=frame;
     return true;
   }
   bool begin(size_t n, uint8_t opcode, uint32_t now) {
     if(active()||n>Capacity)return false;
-    first=offset=liveFrameFirst(n);size=n+4;started=now;retries=0;retryError=0;borrowed=nullptr;
+    first=offset=liveFrameFirst(n);size=n+4;servicedAt=started=now;retries=0;retryError=0;borrowed=nullptr;
     writeLiveFrameHeader(bytes.data(),n,opcode);
     return true;
   }
   template<class Send> Step pump(uint32_t now, Send send) {
     if(!active())return Step::Complete;
+    servicedAt=now;
     if(uint32_t(now-started)>=LiveFrameTimeoutMs){errno=ETIMEDOUT;return Step::Failed;}
     const int n=send((borrowed?borrowed:bytes.data())+offset,size-offset);
     if(n>0) {
@@ -55,6 +56,8 @@ template<size_t Capacity> struct LiveFrame {
     if(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR||errno==ENOBUFS||errno==ENOMEM)return Step::Pending;
     return Step::Failed;
   }
+  // Local memory admission is not proof that the peer stopped reading.
+  void pause(uint32_t now) { started+=uint32_t(now-servicedAt);servicedAt=now; }
   void clear() {first=offset=size=0;borrowed=nullptr;}
 };
 }

@@ -25,6 +25,8 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork/src/ruckig tests/
 ./build/ruckig_workspace_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/socket_write_tests.cpp -o build/socket_write_tests
 ./build/socket_write_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/device_fakes -I G5500_Fork tests/memory_pressure_tests.cpp -o build/memory_pressure_tests
+./build/memory_pressure_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/tcp_fakes -I G5500_Fork tests/tcp_peer_tests.cpp -o build/tcp_peer_tests
 ./build/tcp_peer_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DLWIP_TCPIP_CORE_LOCKING=0 -I tests/tcp_fakes -I G5500_Fork tests/tcp_peer_tests.cpp -o build/tcp_peer_no_core_lock_tests

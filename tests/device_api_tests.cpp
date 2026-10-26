@@ -957,6 +957,15 @@ int main(int argc,char **argv) {
   assert(feedbackDiagnostics.body.find("\"feedbackInvalid\":")!=std::string::npos);
   assert(feedbackDiagnostics.body.find("\"rejectedIntervalMs\":")!=std::string::npos);
   assert(feedbackDiagnostics.body.find("\"lastGoodPosition\":")!=std::string::npos);
+  AllocationFailure previous;previous.size=4096;previous.caps=3;previous.freeBytes=22000;previous.largestBlock=4000;
+  previous.function="malloc";previous.pc[0]=0x12345678;allocationRecordText(previous.task,sizeof previous.task,"tcpip_task");
+  uint8_t previousElf[32]{};previousElf[0]=0xab;
+  captureAllocationRecord(runtimeMetrics.previousFailures[1],previous,previousElf);
+  const auto persisted=f.call("GET","/api/diagnostics","previousFailure=1");
+  assert(persisted.status==200&&persisted.body.size()<=COMMAND_PAGE_MAX);
+  assert(persisted.body.find("\"size\":4096")!=std::string::npos&&persisted.body.find("\"elf\":\"ab00")!=std::string::npos);
+  assert(f.call("GET","/api/hardware/reboots").body.find("\"previousAllocations\":[{\"ready\":false},{\"ready\":true")!=std::string::npos);
+  runtimeMetrics.previousFailures[1]={};assert(f.call("GET","/api/diagnostics","previousFailure=2").status==400);
   for(const auto *axis:{"az","el"}) {
     const auto one=f.call("GET","/api/diagnostics",std::string("axis=")+axis);
     assert(one.status==200 && one.body.size()<=COMMAND_PAGE_MAX);

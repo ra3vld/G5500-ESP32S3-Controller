@@ -13,6 +13,8 @@ struct Bus {
   std::deque<WirePacket> queue;
   std::vector<uint32_t> failures;
   unsigned healthyTelemetry = 0;
+  bool failCommands=false,failRenewals=false,failQueries=false;
+  std::vector<uint32_t> commands,renewals,queries;
   void tick(uint32_t at);
 };
 struct Node : HudTransport {
@@ -29,6 +31,9 @@ struct Node : HudTransport {
     bus.nodes.push_back(this);
   }
   bool sendHud(const HudEndpoint &to, const uint8_t *data, size_t size) override {
+    if(endpoint.address==2&&(data[4]==4||data[4]==9)&&bus.failCommands){bus.commands.push_back(bus.now);return false;}
+    if(endpoint.address==2&&data[4]==6&&bus.failRenewals){bus.renewals.push_back(bus.now);return false;}
+    if(endpoint.address==2&&(data[4]==1||data[4]==2)&&bus.failQueries){bus.queries.push_back(bus.now);return false;}
     const bool telemetry = data[4] == 8 || data[4] == 14;
     if (endpoint.address == 1 && telemetry && to.address == bus.blocked) {
       bus.failures.push_back(bus.now);
@@ -86,5 +91,25 @@ int main() {
   rotor.c.setMode(Mode::Auto, 2805);
   bus.tick(2805);
   assert(bus.healthyTelemetry == healthyBeforeMode + 1); // Control changes bypass position coalescing.
+  bus.failCommands=true;bus.now=2810;blocked.c.setMode(Mode::Auto,2810);const auto failed=blocked.h.requestId();
+  for(uint32_t t=2810;t<=3820;t+=5)bus.tick(t);
+  assert(bus.commands.size()==3&&bus.commands[1]-bus.commands[0]>=150&&bus.commands[2]-bus.commands[1]>=150);
+  assert(blocked.h.result(failed).result==Result::Timeout&&healthy.h.available());bus.failCommands=false;
+  // Legacy held input must not spin on a failed renewal either.
+  ControlCommand jog;jog.op=ControlOp::Jog;jog.axis=0;jog.direction=1;
+  bus.now=3830;assert(blocked.h.submitAt(jog,3830)==Result::Deferred);bus.tick(3830);bus.tick(3835);
+  bus.failRenewals=true;
+  for(uint32_t t=3840;t<4800;t+=5)bus.tick(t);
+  assert(!bus.renewals.empty()&&bus.renewals.size()<=4);
+  for(size_t i=1;i<bus.renewals.size();++i)assert(bus.renewals[i]-bus.renewals[i-1]>=250);
+  rotor.h.setMemoryLimited(true);const auto telemetry=bus.healthyTelemetry;
+  for(uint32_t t=4800;t<6800;t+=5){rotor.c.feedback(float(t)/100,30,true,true);bus.tick(t);}
+  assert(bus.healthyTelemetry-telemetry>=3&&bus.healthyTelemetry-telemetry<=4&&healthy.h.available());
+  // A permanently failed RS485 discovery attempt advances after three tries.
+  Bus scan;Node scanner(scan,2,true);scanner.h.config.uart=true;scan.failQueries=true;
+  assert(scanner.h.discoverRs485(40,40,200,1));
+  for(uint32_t t=0;t<=4000;t+=5)scan.tick(t);
+  assert(scan.queries.size()==3);
+  for(size_t i=1;i<scan.queries.size();++i)assert(scan.queries[i]-scan.queries[i-1]>=1000);
   std::cout << "PASS: bounded telemetry failure retries across renewals, independent peer progress, latest-state recovery and immediate STOP ACK\n";
 }

@@ -54,6 +54,56 @@ body.embedded #display-settings{display:none!important}
 <p id="message" role="status" aria-live="polite"></p><button id="save" type="submit" form="hardware" disabled>Сохранить и перезапустить</button>
 <p><a href="/recovery">Страница восстановления</a> · <a href="/">Основной интерфейс</a></p></main>
 <script>'use strict';
+/* BEGIN BOUNDED POLLING */
+// Embedded by generate_web_assets.py. Control/STOP requests bypass this pool.
+const background=(()=>{
+ const entries=new Map();let active=0,limited=false;
+ const visible=()=>!document.hidden&&(!window.frameElement||!!window.frameElement.getClientRects().length);
+ const entry=key=>{if(!entries.has(key))entries.set(key,{next:0,failures:0,pending:null,controller:null,shown:()=>true});return entries.get(key);};
+ const deferred=()=>Object.assign(new Error('Обновление отложено'),{name:'PollingDeferred'});
+ const allowed=e=>visible()&&e.shown()&&navigator.onLine!==false;
+ async function read(key,url,kind='json',shown=()=>true,controller=null){
+  const e=entry(key);e.shown=shown;
+  if(e.pending)return e.pending;
+  if(!allowed(e)||Date.now()<e.next||active>=2)throw deferred();
+  const abort=controller||new AbortController();e.controller=abort;++active;
+  const timer=setTimeout(()=>abort.abort(),5000);
+  e.pending=Promise.resolve().then(async()=>{
+   try{
+    const response=await fetch(url,{cache:'no-store',signal:abort.signal});
+    const data=await response[kind==='reply'?'text':kind]();
+    if(!response.ok&&kind!=='reply')throw Error('HTTP '+response.status);
+    if(data&&typeof data==='object'&&typeof data.networkMemoryLimited==='boolean')limited=data.networkMemoryLimited;
+    if(response.ok){e.failures=0;e.next=Date.now()+(limited?500:0);}
+    else e.next=Date.now()+[1000,2000,4000,8000,15000][Math.min(e.failures++,4)];
+    return kind==='reply'?{ok:response.ok,status:response.status,text:async()=>data,json:async()=>JSON.parse(data)}:data;
+   }catch(error){
+    if(allowed(e)){const delay=[1000,2000,4000,8000,15000][Math.min(e.failures++,4)];e.next=Date.now()+Math.round(delay*(0.9+Math.random()*0.2));}
+    throw error;
+   }finally{clearTimeout(timer);--active;e.pending=null;e.controller=null;}
+  });
+  return e.pending;
+ }
+ function poll(key,load,interval,shown=()=>true){
+  const e=entry(key);e.shown=shown;let pending=null,timer=null;
+  const run=()=>{
+   if(pending)return pending;clearTimeout(timer);
+   pending=Promise.resolve().then(()=>{if(allowed(e))return load();}).catch(()=>{}).finally(()=>{
+    pending=null;timer=setTimeout(run,Math.max(interval,limited?500:0,e.next-Date.now()));
+   });return pending;
+  };
+  e.run=run;run();return run;
+ }
+ function visibility(){
+  for(const e of entries.values())if(!allowed(e))e.controller?.abort();else if(e.run)e.run();
+ }
+ document.addEventListener('visibilitychange',visibility);
+ document.addEventListener('toggle',()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort();},true);
+ document.addEventListener('click',()=>queueMicrotask(()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort();}),true);
+ window.addEventListener('offline',visibility);window.addEventListener('online',visibility);
+ return {read,poll,visible,cancel:key=>entry(key).controller?.abort(),limited:()=>limited,setLimited:value=>{limited=!!value;}};
+})();
+/* END BOUNDED POLLING */
 let state,metadata,formStamp,dirty=false,busy=false,probe=false,pinError;
 let rebootsLoaded=false;
 const form=document.getElementById('hardware'),msg=document.getElementById('message');
@@ -89,7 +139,7 @@ const errors={invalid_uart_settings:'Проверьте скорость, чёт
 const fieldLabel=field=>labels[field.replace(/^pin\./,'')]||field;
 const ownerLabel=owner=>owners[owner]||fieldLabel(owner);
 function errorText(e){return (e.field?fieldLabel(e.field)+': ':'')+(errors[e.error]||e.error||'Запрос отклонён')+(e.gpio>=0?' GPIO'+e.gpio+'.':'')+(e.owner?' Занят: '+ownerLabel(e.owner)+'.':'');}
-async function request(path,body){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);try{const r=await fetch(path,{cache:'no-store',signal:controller.signal,...(body?{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)}:{})});const j=await r.json();if(!r.ok)throw Error(errorText(j));return j;}finally{clearTimeout(timer);}}
+async function request(path,body){if(!body)return background.read(path,path);const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);try{const r=await fetch(path,{cache:'no-store',signal:controller.signal,...(body?{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)}:{})});const j=await r.json();if(!r.ok)throw Error(errorText(j));return j;}finally{clearTimeout(timer);}}
 const credentials=()=>({token:state.token,generation:state.generation});
 function failureSummary(){document.getElementById('failures').textContent=state&&state.failureCount!==undefined?'Сбои: '+state.failureCount+' / '+state.failureLimit+'. Счётчик сбрасывается после 30 минут нормальной работы.':'';}
 const singleAxis=c=>['elAdc','elPositive',...(c.driveInterface===2?[]:['elSpeedEnable']),...(c.driveInterface===3?[]:['elNegative'])].every(name=>c.pins[name]<0);
@@ -149,12 +199,12 @@ document.getElementById('joystick-center').onclick=()=>{if(capture&&capture.raw.
 document.getElementById('joystick-finish').onclick=async()=>{if(!capture?.center){calibrationStatus.textContent='Сначала запомните центр.';return;}const result=capture;for(let i=0;i<2;i++)if(result.raw[i]>=0){const axis=i?'El':'Az',center=result.center[i],span=Math.min(center-result.min[i],result.max[i]-center),margin=Number(form.elements.localDeadzone.value)+Number(form.elements.localHysteresis.value);if(span<=margin){calibrationStatus.textContent='Недостаточный диапазон '+axis.toUpperCase()+'. Проведите ручку до обоих краёв.';return;}}await cancelCapture();for(let i=0;i<2;i++)if(result.raw[i]>=0){const axis=i?'El':'Az';for(const [part,value] of [['Min',result.min[i]],['Center',result.center[i]],['Max',result.max[i]]])form.elements['local'+axis+part].value=value;}dirty=true;updatePins();calibrationStatus.textContent='Измерения перенесены в форму. Верните ручку в центр; сохраните и подтвердите настройки.';};
 document.getElementById('joystick-cancel').onclick=async()=>{await cancelCapture();calibrationStatus.textContent='Измерения отменены.';};
 document.getElementById('reset-pins').onclick=()=>{for(const d of metadata.roles){const el=form.elements['pin.'+d.name];if(el)setPinValue(el,d.default);}form.elements.buttonGpio.value=metadata.buttonDefault;dirty=true;updatePins();};
-document.getElementById('confirm').onclick=()=>apply('/api/hardware/confirm',{});document.getElementById('rollback').onclick=()=>apply('/api/hardware/rollback',{});document.getElementById('recover').onclick=()=>apply('/api/hardware/recovery',{});refresh();setInterval(refresh,2000);
+document.getElementById('confirm').onclick=()=>apply('/api/hardware/confirm',{});document.getElementById('rollback').onclick=()=>apply('/api/hardware/rollback',{});document.getElementById('recover').onclick=()=>apply('/api/hardware/recovery',{});background.poll('/api/hardware?view=form',refresh,2000);
 const mbForm=document.getElementById('modbus'),mbNames=['pc','bus','address','node','first','count','uart0Baud','uart0Parity','uart0StopBits','uart1Baud','uart1Parity','uart1StopBits'];let mbDirty=false;
 mbForm.addEventListener('input',()=>{mbDirty=true;});
 const refreshModbus=singlePoll(async()=>{if(document.hidden||(window.frameElement&&!window.frameElement.getClientRects().length))return;try{const c=await request('/api/hardware/modbus');if(!mbDirty)for(const n of mbNames)mbForm.elements[n].value=c[n]??({address:1,node:201,first:201,count:1,uart0Baud:9600,uart0StopBits:1,uart1Baud:115200,uart1StopBits:1}[n]??0);document.getElementById('modbus-status').textContent=(c.fault?'Ошибка: параметры кольца не совпадают. ':'')+'Владелец линии: '+(c.owner||'ожидание')+'. Принято: '+(c.received||0)+', отклонено: '+(c.rejected||0)+', таймаутов: '+(c.timeouts||0)+'.';}catch(e){document.getElementById('modbus-status').textContent=e.message;}});
 mbForm.addEventListener('submit',e=>{e.preventDefault();const c={};for(const n of mbNames)c[n]=Number(mbForm.elements[n].value);if(c.address>=c.first&&c.address<c.first+c.count||c.node<c.first||c.node>=c.first+c.count||c.first+c.count>248){msg.textContent='Адрес контроллера должен быть вне диапазона ведущих, а адрес HUD — внутри него.';return;}apply('/api/hardware/modbus',c);});
-refreshModbus();setInterval(refreshModbus,2000);
+background.poll('/api/hardware/modbus',refreshModbus,2000);
 Object.assign(errors,{setup_motion_not_ready:'Сначала сохраните и подтвердите оборудование. Остановите движение и дождитесь окончания перезапуска.',setup_storage_failed:'Разрешение не сохранено. Проверьте запись настроек.',stale_setup:'Состояние мастера изменилось. Обновите страницу.'});
 document.getElementById('setup-motion-confirm').onchange=motionButtons;
 document.getElementById('setup-motion-save').onclick=async()=>{

@@ -49,12 +49,13 @@ public:
     if (!size) return;
     page_ = data; pageSize_ = size; pageSent_ = 0;
     htmlTransfer_ = type && std::strncmp(type, "text/html", 9) == 0;
-    pageStartedMs_ = pageProgressMs_ = millis();
+    pageServicedMs_ = pageStartedMs_ = pageProgressMs_ = millis();
     pageAttemptMs_ = pageStartedMs_ - 20;
     pageRetryErrno_ = 0;
   }
   void handleClient() override {
     started_ = failed_ = false;
+    if (draining_) { serviceDrain(); return; }
     if (page_) { servicePage(); return; }
     if (_currentStatus == HC_NONE) {
       if (heapFreeBytes() < 2048 || heapMaxBlockBytes() < 256) return;
@@ -65,6 +66,7 @@ public:
       _currentStatus = HC_WAIT_READ;
       _statusChange = millis();
       requestUsed_ = 0;
+      pageStartedMs_=0;htmlTransfer_=false;
       persistentCandidate_ = keepAliveResponse_ = idlePersistent_ = false;
     }
     if (_currentStatus == HC_WAIT_READ) {
@@ -130,7 +132,7 @@ public:
                           n, body);
         if (length > 0 && size_t(length) < sizeof reply)
           _currentClientWrite(reply, size_t(length));
-        releaseClient();
+        finishResponse();
         return;
       }
       if (requestHandler_) {
@@ -243,6 +245,11 @@ private:
   }
   void servicePage() {
     const uint32_t now = millis();
+    const uint32_t elapsed=now-pageServicedMs_;pageServicedMs_=now;
+    if(pageSize_-pageSent_>256&&!networkBulkTxBudget(pageSize_-pageSent_)&&tcpPeerFrameCapacity(client().fd())!=0) {
+      // Do not classify our own memory throttle as an unresponsive reader.
+      pageStartedMs_+=elapsed;pageProgressMs_+=elapsed;return;
+    }
     // Allow the initial 3s TCP retransmission for both pages and JSON. Closing
     // JSON after 2s dropped its tail before a lost packet could be retried.
     const uint32_t idleLimit = htmlTransfer_ ? 10000 : 4000;
@@ -298,6 +305,7 @@ private:
     failed_ = true; abortClient();
   }
   void releaseClient() {
+    draining_=false;
     clearArguments();
     page_ = nullptr;
     persistentCandidate_ = keepAliveResponse_ = idlePersistent_ = false;
@@ -314,7 +322,25 @@ private:
     _currentArgCount = 0;
   }
   void finishResponse() {
-    if (!keepAliveResponse_ || failed_) { releaseClient(); return; }
+    if(failed_){releaseClient();return;}
+    page_=nullptr;draining_=true;
+    drainAt_=drainProgressAt_=millis();drainBytes_=size_t(-1);
+    if(!pageStartedMs_)pageStartedMs_=drainAt_;
+    serviceDrain();
+  }
+  void serviceDrain() {
+    const uint32_t now=millis();
+    const size_t pending=tcpPeerPendingBytes(client().fd());
+    if(pending) {
+      if(pending<drainBytes_){drainBytes_=pending;drainProgressAt_=now;}
+      if(uint32_t(now-pageStartedMs_)>=(htmlTransfer_?30000u:15000u) ||
+         uint32_t(now-drainProgressAt_)>=(htmlTransfer_?10000u:4000u)) {
+        failWrite("ack",ETIMEDOUT,pageSent_,pageSize_);releaseClient();
+      }
+      return;
+    }
+    draining_=false;
+    if(!keepAliveResponse_){releaseClient();return;}
     page_ = nullptr;
     requestUsed_ = 0;
     persistentCandidate_ = keepAliveResponse_ = false;
@@ -372,11 +398,14 @@ private:
   size_t lowMemoryPathCount_ = 0;
   const char *page_ = nullptr;
   size_t pageSize_ = 0, pageSent_ = 0;
-  uint32_t pageStartedMs_ = 0, pageProgressMs_ = 0, pageAttemptMs_ = 0;
+  uint32_t pageStartedMs_ = 0, pageProgressMs_ = 0, pageAttemptMs_ = 0, pageServicedMs_=0;
   int pageRetryErrno_ = 0;
   bool persistentCandidate_ = false, keepAliveResponse_ = false, idlePersistent_ = false;
   bool htmlTransfer_ = false;
   bool transferConnection_ = false;
+  bool draining_=false;
+  uint32_t drainAt_=0,drainProgressAt_=0;
+  size_t drainBytes_=0;
   StopHandler stopHandler_ = nullptr;
   void *stopContext_ = nullptr;
   RequestHandler requestHandler_ = nullptr;

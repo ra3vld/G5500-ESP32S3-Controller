@@ -3,6 +3,7 @@
 #include "network_addresses.hpp"
 #include "wifi_memory.hpp"
 #include "tcp_memory.hpp"
+#include <tcp_peer.hpp>
 #include "runtime_metrics.hpp"
 #include "crowpanel_board.hpp"
 #include <esp_app_desc.h>
@@ -129,26 +130,30 @@ int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
   }
   case 6:
     return std::snprintf(reply, capacity,
-        "RUNTIME allocHook=%s allocFailures=%lu maxFailed=%lu loopMaxUs=%lu loopsOver20ms=%lu stackMin=%lu btRxDropped=%lu\r\n",
+        "RUNTIME allocHook=%s allocFailures=%lu maxFailed=%lu loopMaxUs=%lu loopsOver20ms=%lu stackMin=%lu btRxDropped=%lu limited=%u udpDrop=%lu tcpAbort=%lu\r\n",
         runtimeMetrics.hookReady ? "OK" : "unavailable",
         static_cast<unsigned long>(runtimeMetrics.allocationFailures.load()),
         static_cast<unsigned long>(runtimeMetrics.largestFailedAllocation.load()),
         static_cast<unsigned long>(runtimeMetrics.loopMaxUs),
         static_cast<unsigned long>(runtimeMetrics.loopsOver20ms),
         static_cast<unsigned long>(uxTaskGetStackHighWaterMark(nullptr)),
-        static_cast<unsigned long>(bluetooth_.droppedCommands()));
+        static_cast<unsigned long>(bluetooth_.droppedCommands()), unsigned(networkLowMemory()),
+        (unsigned long)udpDropped_,(unsigned long)tcpAborts_);
   case 7: case 8: {
-    const auto &failure = runtimeMetrics.failures[page - 7];
-    if (!failure.ready()) return 0;
-    return std::snprintf(reply, capacity,
-        "OOM size=%lu caps=%lx free=%lu max=%lu task=%s fn=%s pc=%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%08lx\r\n",
-        static_cast<unsigned long>(failure.size), static_cast<unsigned long>(failure.caps),
-        static_cast<unsigned long>(failure.freeBytes), static_cast<unsigned long>(failure.largestBlock),
-        failure.task, failure.function,
-        static_cast<unsigned long>(failure.pc[0]), static_cast<unsigned long>(failure.pc[1]),
-        static_cast<unsigned long>(failure.pc[2]), static_cast<unsigned long>(failure.pc[3]),
-        static_cast<unsigned long>(failure.pc[4]), static_cast<unsigned long>(failure.pc[5]),
-        static_cast<unsigned long>(failure.pc[6]), static_cast<unsigned long>(failure.pc[7]));
+    const unsigned index=page-7;
+    const auto format=[&](const auto &f,bool previous,const uint8_t *sha) {
+      char elf[13];for(unsigned i=0;i<6;++i)std::snprintf(elf+i*2,sizeof elf-i*2,"%02x",unsigned(sha[i]));
+      return std::snprintf(reply,capacity,
+          "%sOOM size=%lu caps=%lx free=%lu max=%lu task=%s fn=%s elf=%s pc=%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%08lx\r\n",
+          previous?"PREVIOUS ":"",(unsigned long)f.size,(unsigned long)f.caps,
+          (unsigned long)f.freeBytes,(unsigned long)f.largestBlock,f.task,f.function,elf,
+          (unsigned long)f.pc[0],(unsigned long)f.pc[1],(unsigned long)f.pc[2],(unsigned long)f.pc[3],
+          (unsigned long)f.pc[4],(unsigned long)f.pc[5],(unsigned long)f.pc[6],(unsigned long)f.pc[7]);
+    };
+    const auto &failure=runtimeMetrics.failures[index];
+    if(failure.ready())return format(failure,false,runtimeMetrics.elf);
+    const auto &previous=runtimeMetrics.previousFailures[index];
+    return allocationRecordValid(previous)?format(previous,true,previous.elf):0;
   }
   default: {
     constexpr uint32_t psramCaps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
@@ -355,7 +360,7 @@ void Network::rotctldSend(const String &s) {
         }, [] { return millis(); }, [] { delay(1); });
     sent = written == s.length();
     if (sent) hardware_.flashTx();
-    else rotctldClient_.stop(); // no partial reply carried into the next session
+    else closeRotctld(); // no partial reply carried into the next session
   }
 #if FORK_NATIVE_USB
   if (sent) {
@@ -477,15 +482,18 @@ void Network::processRotctldCommand(std::string_view input) {
 void Network::handleRotctldTcp() {
   // Accept a client if none is currently connected.
   if (!rotctldClient_ || !rotctldClient_.connected()) {
+    closeRotctld(); // clean old replies even when connected() already became false
     WiFiClient c = tcpServer_.accept();
     if (c) {
-      if (rotctldClient_) {
-        rotctldClient_.stop();
-      }
       rotctldClient_ = c;
       rotctldClient_.setNoDelay(true);
+      const int fd=rotctldClient_.fd(),yes=1,idle=15,interval=5,count=3;
+      ::setsockopt(fd,SOL_SOCKET,SO_KEEPALIVE,&yes,sizeof yes);
+      ::setsockopt(fd,IPPROTO_TCP,TCP_KEEPIDLE,&idle,sizeof idle);
+      ::setsockopt(fd,IPPROTO_TCP,TCP_KEEPINTVL,&interval,sizeof interval);
+      ::setsockopt(fd,IPPROTO_TCP,TCP_KEEPCNT,&count,sizeof count);
       ++tcpSession_;
-      tcpReceiver_.clear();
+      tcpReceiver_.clear();tcpLinePending_=false;
 #if FORK_NATIVE_USB
       diagnostics_.dbgPrintln("[TCP] Look4Sat/rotctld client connected");
 #endif
@@ -494,6 +502,10 @@ void Network::handleRotctldTcp() {
     }
   }
 
+  // Reject extra accepted peers without leaving a listener backlog of buffers.
+  if(tcpServer_.hasClient()) { auto extra=tcpServer_.accept();if(extra){abortTcpSocket(extra.fd());extra.stop();} }
+  if(tcpLinePending_&&uint32_t(millis()-tcpLineAt_)>=1000){closeRotctld();return;}
+
   std::string_view command;
   const uint32_t started = millis();
   unsigned commands = 0;
@@ -501,11 +513,21 @@ void Network::handleRotctldTcp() {
     char byte;
     const int count = ::recv(rotctldClient_.fd(), &byte, 1, MSG_DONTWAIT);
     if (count != 1) {
-      if (count == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) rotctldClient_.stop();
+      if (count == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR && errno != ENOMEM && errno != ENOBUFS)) closeRotctld();
       break;
     }
+    if(byte!='\r'&&byte!='\n'&&!tcpLinePending_){tcpLinePending_=true;tcpLineAt_=millis();}
     if (tcpReceiver_.feed(byte, command)) { ++commands; processRotctldCommand(command); }
+    if(byte=='\r'||byte=='\n')tcpLinePending_=false;
   }
+}
+void Network::closeRotctld() {
+  const int fd=rotctldClient_.fd();
+  if(fd>=0){abortTcpSocket(fd);++tcpAborts_;++tcpSession_;}
+  rotctldClient_.stop();tcpReceiver_.clear();tcpLinePending_=false;
+  commandInterruptedPorts_&=uint8_t(~(1u<<3));
+  if(commandReplyPort_==3)commandReplySize_=commandReplySent_=0;
+  for(auto &reply:deferred_)if(reply.port==3)reply.used=false;
 }
 
 bool Network::configureStation() {
@@ -559,7 +581,7 @@ bool Network::startWifi() {
   if (!runtime_.recovery) {
   if (!hudPortValid(runtime_.hud.config.port, runtime_.loggerSettings.n1mmPort,
                     runtime_.loggerSettings.pstPort, runtime_.loggerSettings.reportPort) ||
-      !hudUdp_.begin(runtime_.hud.config.port))
+      !hudUdp_.begin(runtime_.hud.config.port,4*HUD_FRAME_MAX))
     diagnostics_.dbgPrintln("[HUD] UDP port unavailable");
   else if (!hudUdp_.setIpPrecedence(4))
     diagnostics_.dbgPrintln("[HUD] UDP priority unavailable; using default queue");
@@ -691,12 +713,12 @@ void Network::serviceLoggerUdp() {
   const uint32_t started = millis();
   for (DatagramSocket *socket : {&n1mmUdp, &pstUdp}) {
     for (unsigned count = 0; count < 2 && uint32_t(millis() - started) < 2; ++count) {
-      Datagram received;
-      const auto result = socket->receive(received);
-      if (result == DatagramResult::Empty) break;
-      if (result == DatagramResult::Dropped) continue;
-      const IPAddress sender(received.address);
-      const auto text = received.text();
+      uint32_t address=0;uint16_t port=0;
+      const int size=socket->receiveInto(loggerRx_,sizeof loggerRx_,address,port);
+      if(size==-1)break;
+      if(size<=0){++udpDropped_;continue;}
+      const IPAddress sender(address);
+      const std::string_view text(reinterpret_cast<const char *>(loggerRx_),size_t(size));
       auto packet = runtime_.protocol.datagram(text, millis());
       if (packet.result == forkrot::Result::Invalid) {
         diagnostics_.dbgPrintln("[UDP] rejected invalid packet");
@@ -906,7 +928,7 @@ void Network::resetHudInputs() {
   bluetooth_.discardInput();
   int queued = 0;
   if (rotctldClient_ && ::ioctl(rotctldClient_.fd(), FIONREAD, &queued) < 0)
-    rotctldClient_.stop(); // A failed socket cannot provide a safe input boundary.
+    closeRotctld(); // A failed socket cannot provide a safe input boundary.
   tcpReceiver_.select(queued > 0 ? size_t(queued) : 0);
   // Keep the TCP session identity: replies to accepted commands still belong
   // to this logger, including commands acknowledged after the selection changed.

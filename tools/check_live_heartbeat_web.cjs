@@ -37,7 +37,27 @@ const sample=JSON.parse(execFileSync(path.join(root,'build/simulator'),{input:'s
   await page.waitForTimeout(150);assert.equal(await page.evaluate(()=>live.socket.sent.length),count,'a fresh snapshot stops probes');
   await page.evaluate(()=>{live.socket.close();live.last=Date.now()-900});
   await page.waitForTimeout(400);assert.equal(await page.evaluate(()=>live.socket.sent.length),count,'closed sockets receive no probes');
+  state.telemetryIntervalMs=500;state.networkMemoryLimited=true;
+  await page.evaluate(()=>{live.socket.readyState=1;live.socket.sent=[];});await snapshot(3);
+  await page.evaluate(()=>{live.last=Date.now()-550;live.probeAt=0;});await page.waitForTimeout(200);
+  assert.equal(await page.evaluate(()=>live.socket.sent.length),0,'2Hz telemetry must not cause extra heartbeat traffic');
+  await page.evaluate(()=>{
+   controlLive.socket=new WebSocket('ws://heartbeat.test:81/api/control');controlLive.ready=true;controlLive.memoryLimited=true;controlLive.last=Date.now();
+   window.retainedTelemetry=live.socket;live.last=Date.now()-6000;
+  });await page.waitForTimeout(350);
+  assert(await page.evaluate(()=>live.socket===retainedTelemetry&&!liveFresh()),'local RAM throttling keeps the socket while coordinates remain stale');
+  await page.clock.install();
+  await page.evaluate(()=>{controlLive.socket=null;controlLive.ready=false;live.failures=0;live.stableAt=0;disconnectLive(live.socket,81);});
+  for(const delay of [1000,2000,4000,8000,15000]){
+   const opened=await page.evaluate(()=>testSockets.length);
+   await page.clock.runFor(delay*0.8);assert.equal(await page.evaluate(()=>testSockets.length),opened);
+   await page.clock.runFor(delay*0.4);assert.equal(await page.evaluate(()=>testSockets.length),opened+1);
+   if(delay!==15000)await page.evaluate(()=>disconnectLive(live.socket,81));
+  }
+  const opened=await page.evaluate(()=>testSockets.length);
+  await page.evaluate(()=>{live.stableAt=Date.now()-11000;disconnectLive(live.socket,81);});
+  await page.clock.runFor(1200);assert.equal(await page.evaluate(()=>testSockets.length),opened+1,'stable connection resets retry backoff');
   assert.deepEqual(errors,[]);
-  console.log('PASS: negotiated stale-only heartbeat, real data freshness, pending-byte bound, old firmware compatibility and closed sockets');
+  console.log('PASS: negotiated heartbeat/freshness, 2Hz RAM throttle, healthy control channel, retry backoff/reset and old firmware compatibility');
  }finally{await browser.close()}
 })().catch(error=>{console.error(error);process.exit(1)});

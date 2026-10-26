@@ -11,6 +11,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <esp_heap_caps.h>
+#include "heap_metrics.hpp"
 #include <esp_timer.h>
 #include <tcp_peer.hpp>
 static size_t allocationCalls=0, releasedCalls=0, allocatedBytes=0;
@@ -31,10 +32,11 @@ void operator delete(void *p,const std::nothrow_t &) noexcept {::operator delete
 void operator delete[](void *p,const std::nothrow_t &) noexcept {::operator delete(p);}
 using namespace forkrot;
 // IDF 5.5.5 performs the handshake without invoking the URI handler.
-static int connect(int fd){const int rc=fakeServer.cfg.open_fn(&fakeServer,fd);if(rc==ESP_OK)fakeServer.websocketFds.insert(fd);return rc;}
+static int connect(int fd){const int rc=fakeServer.cfg.open_fn(&fakeServer,fd);if(rc==ESP_OK){fakeServer.websocketFds.insert(fd);httpd_req_t req{fakeServer.uri.user_ctx,HTTP_GET,fd,{}};return fakeServer.uri.handler(&req);}return rc;}
 static int command(int fd,const std::string &data){httpd_req_t r{fakeServer.uri.user_ctx,HTTP_POST,fd,data};return fakeServer.uri.handler(&r);}
 static std::string packet(unsigned id,const char *path,const char *args=""){return "v=1&boot=a&selection=0&cid="+std::to_string(id)+"&path="+path+args;}
 int main(){
+ fakeEspTimeUs=0;
  MotionTestRuntime runtime;runtime.hud.begin(1,10);runtime.controller.feedback(20,30,true,true);
  LiveServer server(runtime);const auto beforeBegin=allocatedBytes;
  assert(server.begin());assert(fakeServer.registrations==std::vector<std::string>({"/api/live","/api/control"}));assert(fakeServer.cfg.max_open_sockets==5&&fakeServer.cfg.backlog_conn==1);assert(fakeServer.uri.handle_ws_control_frames);
@@ -58,19 +60,27 @@ int main(){
    const auto allocations=allocationCalls, releases=releasedCalls, bytes=allocatedBytes;
    const auto aborts=fakeAbortiveCloses;
    assert(fakeServer.cfg.open_fn(&fakeServer,999)==ESP_OK);
-   assert(allocationCalls==allocations+1 && allocatedBytes-bytes<=3072);
+   assert(allocationCalls==allocations && allocatedBytes==bytes);
    fakeServer.cfg.close_fn(&fakeServer,999);
-   assert(releasedCalls==releases+1);
+   assert(releasedCalls==releases);
    assert(fakeAbortiveCloses==aborts+1 && fakeAbortiveCloseFd==999);
  }
+ // Accepted but silent sockets consume no per-client queues or state snapshot.
+ assert(fakeServer.cfg.open_fn(&fakeServer,998)==ESP_OK);
+ const auto handshakeIdleBytes=bufferMetric("liveBufferBytes");
+ fakeEspTimeUs=4999000;server.publish(4999);pumpLive();assert(bufferMetric("liveClients")==1);
+ fakeEspTimeUs=5004000;server.publish(5004);pumpLive();
+ assert(bufferMetric("liveClients")==0&&bufferMetric("liveBufferBytes")==handshakeIdleBytes);
+ assert(bufferMetric("liveHandshakeTimeouts")==1);fakeEspTimeUs=-1;
  assert(fakeServer.cfg.open_fn(&fakeServer,999)==ESP_OK);
  server.publish(5);pumpLive();assert(fakeServer.sent.empty()); // no frame before upgrade
  fakeServer.websocketFds.insert(999);server.publish(10);pumpLive();
+ server.publish(15);pumpLive(); // IDF upgraded without calling our URI handler.
  assert(fakeServer.sent.size()==1&&fakeServer.sent.back().second.find("\"type\":\"state\"")!=std::string::npos);
  httpd_req_t legacy{fakeServer.uri.user_ctx,HTTP_GET,999,{}};assert(fakeServer.uri.handler(&legacy)==ESP_OK);
  httpd_sess_trigger_close(&fakeServer,999);fakeServer.sent.clear();
  for(int fd=1000;fd<1004;++fd)assert(connect(fd)==ESP_OK);
- server.publish(14);pumpLive(); // allocate the shared snapshot before inducing pressure
+ server.publish(20);pumpLive(); // allocate the shared snapshot before inducing pressure
  // Radio allocations happen after send() returns: defer bulk frames while
  // either byte or contiguous headroom is low, retaining their exact offset.
  for(bool fragmented:{false,true}) {
@@ -485,6 +495,28 @@ int main(){
  }
  assert(modeReplies==2);
  httpd_sess_trigger_close(&fakeServer,1000);
+ // Local RAM throttling may last longer than a peer timeout. Keep the healthy
+ // telemetry socket and its independent compact control heartbeat alive.
+ fakeHeapFree=65536;fakeHeapBlock=32768;fakeServer.sent.clear();fakeEspTimeUs=70000000;
+ assert(connect(1000)==ESP_OK&&connect(1001)==ESP_OK);
+ assert(command(1001,"v=1&control=1")==ESP_OK);
+ networkMemoryLimited=true;runtime.hud.setMemoryLimited(true);fakeServer.maxWrite=7;
+ publishAt(70000);fakeServer.maxWrite=SIZE_MAX;fakeHeapFree=20000;fakeHeapBlock=8192;
+ for(unsigned t=70005;t<=80000;t+=5)publishAt(t);
+ assert(fakeServer.websocketFds.count(1000)&&fakeServer.websocketFds.count(1001));
+ unsigned heartbeats=0;for(const auto &m:fakeServer.sent)if(m.first==1001&&m.second.find("\"type\":\"control\"")!=std::string::npos){++heartbeats;assert(m.second.find("\"memoryLimited\":true")!=std::string::npos);}
+ assert(heartbeats>=19);
+ // A genuinely full TCP queue still expires while local RAM is constrained.
+ fakeTcpPending.insert(1000);
+ for(unsigned t=80005;t<=85010;t+=5)publishAt(t);
+ assert(!fakeServer.websocketFds.count(1000)&&fakeServer.websocketFds.count(1001));fakeTcpPending.clear();
+ fakeHeapFree=65536;fakeHeapBlock=32768;assert(connect(1000)==ESP_OK);fakeServer.sent.clear();
+ publishAt(85020);fakeServer.sent.clear(); // initial cached snapshot is immediate
+ for(unsigned t=85025;t<87020;t+=5){c.axes[0].current=float(t)/1000;publishAt(t);}
+ unsigned slowStates=0;for(const auto &m:fakeServer.sent)slowStates+=m.first==1000&&m.second.find("\"type\":\"state\"")!=std::string::npos;
+ assert(slowStates>=3&&slowStates<=4);
+ networkMemoryLimited=false;runtime.hud.setMemoryLimited(false);
+ httpd_sess_trigger_close(&fakeServer,1000);httpd_sess_trigger_close(&fakeServer,1001);
  fakeEspTimeUs=-1;
  std::cout<<"PASS: HUD manual renewals and release receive one deferred admission without false completion errors\n";
  std::cout<<"PASS: shared immutable state, four pinned revisions, independent fast peer, bounded pool, idle trim and last-client release\n";
@@ -492,5 +524,6 @@ int main(){
  std::cout<<"PASS: separate compact manual stream, lease renewal/STOP ACKs across 1.5s telemetry backpressure, context changes and partial upgrade\n";
  std::cout<<"PASS: partial frames resume after 1.5s, independent STOP/peers, PONG and ACK ordering, latest state and bounded stalled-client timeout\n";
  std::cout<<"PASS: actual HTTPD adapter: four clients, loop ownership, STOP priority, duplicate IDs, bounded backpressure, reconnect\n";
- std::cout<<"PASS: idle live storage <=512 B, 10000 queue allocations/releases (<=3 KiB/client), low-memory admission and existing STOP\n";
+ std::cout<<"PASS: idle live storage <=512 B, 10000 unupgraded sockets without queue allocation, handshake expiry, low-memory admission and existing STOP\n";
+ std::cout<<"PASS: 10s local memory pause preserves healthy peers/control heartbeats; stalled TCP expires; telemetry resumes at 2Hz\n";
 }

@@ -44,6 +44,11 @@ int main(){
   ++wrongPort.remote_port;++wrongRemote.remote_ip.v6.addr[0];++wrongLocal.local_ip.v6.addr[0];
   innocent.next=&wrongPort;wrongPort.next=&wrongRemote;wrongRemote.next=&wrongLocal;wrongLocal.next=&wanted;
   tcp_active_pcbs=&innocent;tcp_pcb *netconn=&wanted;wanted.netconn=&netconn;
+  tcp_seg tail{nullptr,100},head{&tail,900},acked{nullptr,250};
+  wanted.unsent=&head;wanted.unacked=&acked;
+  assert(tcpPeerPendingBytes(target.server)==1250);
+  head.len=200;assert(tcpPeerPendingBytes(target.server)==550);
+  wanted.unsent=wanted.unacked=nullptr;assert(tcpPeerPendingBytes(target.server)==0);
 #if LWIP_TCPIP_CORE_LOCKING
   wanted.snd_buf=1500;wanted.snd_queuelen=7;assert(tcpPeerFrameCapacity(target.server)==1436);
   assert(!fakeCoreLocked);
@@ -54,7 +59,7 @@ int main(){
   const auto before=allocations;
   assert(abortTcpSocket(target.server));
   assert(allocations==before && !fakeCoreLocked);
-  assert(fakeLingerRequests==1 && fakeTcpApiCalls==1 && fakeRawAborts==1);
+  assert(fakeLingerRequests==1 && fakeTcpApiCalls==4 && fakeRawAborts==1);
   assert(wanted.aborted && wanted.queuedBytes==0 && netconn==nullptr);
   assert(!innocent.aborted&&!wrongPort.aborted&&!wrongRemote.aborted&&!wrongLocal.aborted);
   target.expectReset();
