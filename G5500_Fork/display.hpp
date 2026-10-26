@@ -80,7 +80,11 @@ class Display {
   void serviceTrace(uint32_t now);
 #endif
 #else
+#if DISPLAY_KIND == DISPLAY_ST7796
+  static constexpr unsigned StripeRows=8;
+#else
   static constexpr unsigned StripeRows=16;
+#endif
   alignas(4) std::array<uint16_t,PanelWidth*StripeRows> pixels_{};
 #if DISPLAY_KIND == DISPLAY_GC9A01
   std::optional<Adafruit_GC9A01A> panel_;
