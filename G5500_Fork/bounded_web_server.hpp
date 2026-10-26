@@ -195,7 +195,7 @@ public:
         _currentClientWrite(header, size_t(count)) != size_t(count)) return;
     page_ = data; pageSize_ = size; pageSent_ = 0;
     htmlTransfer_ = std::strncmp(type,"text/html",9) == 0;
-    pageStartedMs_ = pageProgressMs_ = millis(); pageAttemptMs_ = pageStartedMs_-20;
+    pageServicedMs_ = pageStartedMs_ = pageProgressMs_ = millis(); pageAttemptMs_ = pageStartedMs_-20;
     pageRetryErrno_ = 0;
   }
 protected:

@@ -432,6 +432,23 @@ int main() {
   web.handleClient();const auto held=testSocket.output.size();
   fakeHardware.now+=10000;web.handleClient();assert(testSocket.open&&!testSocket.reset&&testSocket.output.size()==held);
   fakeHeapFree=65536;fakeHeapBlock=32768;fakeHardware.now+=20;web.handleClient();assert(!testSocket.open&&!testSocket.reset);
+  // Fixed status replies start their pause clock at this response, including
+  // after a long idle period and across the millis() rollover.
+  web.setRequestHandler([](void *context,std::string_view) {
+    static_cast<BoundedWebServer *>(context)->sendFixed(200,"application/json",WEB_PAGE,4096);
+    return true;
+  },&web);
+  for(const uint32_t started:{uint32_t(fakeHardware.now+120000),UINT32_MAX-500u}) {
+    fakeHardware.now=started;
+    connect(request);fakeHeapFree=20000;fakeHeapBlock=8192;
+    web.handleClient();const auto headerBytes=testSocket.output.size();
+    fakeHardware.now+=10000;web.handleClient();
+    assert(testSocket.open&&!testSocket.reset&&testSocket.output.size()==headerBytes);
+    fakeHeapFree=65536;fakeHeapBlock=32768;fakeHardware.now+=20;web.handleClient();
+    assert(!testSocket.open&&!testSocket.reset&&!web.writeFailed());
+    assert(testSocket.output.substr(headerBytes)==std::string(WEB_PAGE,4096));
+  }
+  web.setRequestHandler(nullptr,nullptr);
   // send() consumed the body, but its transport copy still awaits an ACK.
   connect(request);fakeTcpPendingBytes=1024;
   testSocket.handler=[&]{web.sendBuffer(200,"application/json","{}",2);};
