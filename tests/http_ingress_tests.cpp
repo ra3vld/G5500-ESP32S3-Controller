@@ -267,12 +267,18 @@ int main() {
   }
   assert(testSocket.reset && web.writeFailed());
   assert(std::string(web.diagnostics().writeCause)=="total");
-  // JSON polling still fails promptly instead of occupying the HTTP slot for
-  // the longer HTML deadline.
+  // JSON allows the initial TCP retry at 3s, retaining a shorter bound than
+  // HTML and never waiting inside the control loop.
   connect(request);testSocket.sendQuota=512;
   testSocket.handler=[&] { web.sendBuffer(200,"application/json",WEB_PAGE,1500); };
   web.handleClient();testSocket.blockWrites=true;
-  fakeHardware.now+=1999;web.handleClient();assert(!testSocket.reset);
+  fakeHardware.now+=3500;web.handleClient();assert(!testSocket.reset && !web.writeFailed());
+  testSocket.blockWrites=false;testSocket.sendQuota=size_t(-1);fakeHardware.now+=5;web.handleClient();
+  assert(!web.writeFailed() && testSocket.output.substr(testSocket.output.find("\r\n\r\n")+4)==std::string(WEB_PAGE,1500));
+  connect(request);testSocket.sendQuota=512;
+  testSocket.handler=[&] { web.sendBuffer(200,"application/json",WEB_PAGE,1500); };
+  web.handleClient();testSocket.blockWrites=true;
+  fakeHardware.now+=3999;web.handleClient();assert(!testSocket.reset);
   ++fakeHardware.now;web.handleClient();assert(testSocket.reset && web.writeFailed());
   assert(std::string(web.diagnostics().writeCause)=="idle" && web.diagnostics().writeSize==1500);
   for(unsigned i=0;i<10000;++i) {
@@ -426,5 +432,5 @@ int main() {
   std::cout<<"PASS: gzip bytes through 1KB queue with repeated ENOMEM/ACKs, paced JSON, encoding negotiation and failure diagnostics\n";
   std::cout<<"PASS: HTTP fragments, complete POST body, low heap, timeouts, socket failures and 10000 requests without NetworkClient RX allocations\n";
   std::cout<<"PASS: 10000 status requests on one connection, HTTP/1.0/close/pipeline fallback, idle/peer-close cleanup and second-client fairness\n";
-  std::cout<<"PASS: gzip resumes after a 9s stall at byte 5571; HTML 10s idle/30s total deadlines, JSON 2s idle, nonblocking control-loop progress\n";
+  std::cout<<"PASS: gzip resumes after a 9s stall at byte 5571; HTML 10s idle/30s total, JSON resumes after 3.5s and expires at 4s, nonblocking control-loop progress\n";
 }

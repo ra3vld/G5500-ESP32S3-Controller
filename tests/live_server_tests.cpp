@@ -14,7 +14,7 @@
 #include <esp_timer.h>
 #include <tcp_peer.hpp>
 static size_t allocationCalls=0, releasedCalls=0, allocatedBytes=0;
-void *operator new(size_t size) {
+[[gnu::noinline]] void *operator new(size_t size) {
   if(void *p=std::malloc(size?size:1)){++allocationCalls;allocatedBytes+=size;return p;}
   throw std::bad_alloc();
 }
@@ -23,7 +23,7 @@ void *operator new(size_t size,const std::nothrow_t &) noexcept {
   try {return ::operator new(size);} catch(...) {return nullptr;}
 }
 void *operator new[](size_t size,const std::nothrow_t &tag) noexcept {return ::operator new(size,tag);}
-void operator delete(void *p) noexcept {if(p)++releasedCalls;std::free(p);}
+[[gnu::noinline]] void operator delete(void *p) noexcept {if(p)++releasedCalls;std::free(p);}
 void operator delete[](void *p) noexcept {::operator delete(p);}
 void operator delete(void *p,size_t) noexcept {::operator delete(p);}
 void operator delete[](void *p,size_t) noexcept {::operator delete(p);}

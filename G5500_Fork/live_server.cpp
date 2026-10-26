@@ -103,8 +103,7 @@ void LiveServer::closed(httpd_handle_t server,int fd) {
   // unacknowledged telemetry in lwIP while the browser opens a replacement.
   // Release those queues before reconnects consume the control headroom.
   // Do not take lwIP's core lock while holding mutex_.
-  linger reset{1,0};
-  ::setsockopt(fd,SOL_SOCKET,SO_LINGER,&reset,sizeof reset);
+  abortTcpSocket(fd);
   ::close(fd);
 }
 LiveServer::StateBuffer *LiveServer::writableState(unsigned &index) {

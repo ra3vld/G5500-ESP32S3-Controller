@@ -49,7 +49,11 @@ inline esp_err_t initControllerWifi() {
   cfg.static_tx_buf_num = 0;
   cfg.dynamic_tx_buf_num = 8;
   cfg.cache_tx_buf_num = 4;
-  cfg.rx_ba_win = 4; // no larger than either RX buffer pool
+  // Tiny pools prioritize command/ACK latency over aggregated bursts. Avoid
+  // A-MPDU reorder/window state with the minimum 4 RX / 8 dynamic buffers.
+  cfg.ampdu_rx_enable = 0;
+  cfg.ampdu_tx_enable = 0;
+  cfg.rx_ba_win = 0;
   cfg.amsdu_tx_enable = 0;
   return esp_wifi_init(&cfg);
 }

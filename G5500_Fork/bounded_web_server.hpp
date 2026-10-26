@@ -2,6 +2,8 @@
 #pragma once
 #include <WebServer.h>
 #include <lwip/sockets.h>
+#include <lwip/tcp.h>
+#include <tcp_peer.hpp>
 #include <cerrno>
 #include <cstring>
 #include <cstdio>
@@ -241,10 +243,9 @@ private:
   }
   void servicePage() {
     const uint32_t now = millis();
-    // ESP32's initial TCP RTO is 3s. A 2s HTML deadline can abort before
-    // retransmission gets a chance, especially with shared Wi-Fi/BT radio time.
-    // Polling JSON keeps its shorter deadline; every send remains nonblocking.
-    const uint32_t idleLimit = htmlTransfer_ ? 10000 : 2000;
+    // Allow the initial 3s TCP retransmission for both pages and JSON. Closing
+    // JSON after 2s dropped its tail before a lost packet could be retried.
+    const uint32_t idleLimit = htmlTransfer_ ? 10000 : 4000;
     const uint32_t totalLimit = htmlTransfer_ ? 30000 : 15000;
     if (uint32_t(now - pageStartedMs_) >= totalLimit || uint32_t(now - pageProgressMs_) >= idleLimit) {
       failWrite(uint32_t(now - pageStartedMs_) >= totalLimit ? "total" : "idle",
@@ -256,17 +257,20 @@ private:
     const uint32_t interval = networkBulkTxReady() ? 5 : 20;
     if (uint32_t(now - pageAttemptMs_) < interval) return;
     pageAttemptMs_ = now;
-    // A display refresh can delay the next loop. One 512-byte send per loop
-    // otherwise leaves large HTML incomplete at its total deadline. Drain up
-    // to 4KB of available TCP space, without waiting or bypassing the reserve.
-    for(unsigned attempt=0;attempt<8;++attempt) {
-      size_t chunk = std::min(pageSize_ - pageSent_, size_t(512));
+    // MSS-sized writes avoid a queue of tiny TCP_NODELAY packets competing
+    // with telemetry for the small Wi-Fi TX pool. Retain the 4KB turn budget
+    // and 512-byte progress under memory pressure or a small transport queue.
+    size_t budget=4096;
+    for(unsigned attempt=0;attempt<8 && budget;++attempt) {
+      size_t chunk = std::min({pageSize_ - pageSent_, budget, size_t(TCP_MSS)});
+      if(pageRetryErrno_==ENOMEM || pageRetryErrno_==ENOBUFS)chunk=std::min(chunk,size_t(512));
       // Small control/recovery replies remain writable below the bulk reserve.
       if(pageSize_-pageSent_>256)chunk=networkBulkTxBudget(chunk);
       if(!chunk)break;
       const int count = ::send(client().fd(), page_ + pageSent_, chunk, MSG_DONTWAIT);
       if (count > 0) {
         pageSent_ += size_t(count);
+        budget -= size_t(count);
         pageProgressMs_ = now;
         pageRetryErrno_ = 0;
         if (pageSent_ == pageSize_) { finishResponse(); break; }
@@ -356,8 +360,7 @@ private:
     const int socket = client().fd();
     if (socket >= 0) {
       // Drop unprocessable connections without retaining TCP send queues.
-      linger reset{1, 0};
-      ::setsockopt(socket, SOL_SOCKET, SO_LINGER, &reset, sizeof reset);
+      abortTcpSocket(socket);
     }
     client().stop();
   }

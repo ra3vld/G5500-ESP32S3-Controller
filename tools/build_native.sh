@@ -25,6 +25,12 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork/src/ruckig tests/
 ./build/ruckig_workspace_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/socket_write_tests.cpp -o build/socket_write_tests
 ./build/socket_write_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/tcp_fakes -I G5500_Fork tests/tcp_peer_tests.cpp -o build/tcp_peer_tests
+./build/tcp_peer_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DLWIP_TCPIP_CORE_LOCKING=0 -I tests/tcp_fakes -I G5500_Fork tests/tcp_peer_tests.cpp -o build/tcp_peer_no_core_lock_tests
+./build/tcp_peer_no_core_lock_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DLWIP_IPV6=0 -I tests/tcp_fakes -I G5500_Fork tests/tcp_peer_tests.cpp -o build/tcp_peer_ipv4_tests
+./build/tcp_peer_ipv4_tests
 MOTION_SOURCES="G5500_Fork/motion.cpp build/motion/libruckig.a"
 CORE_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp"
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork $CORE_SOURCES tests/coast_measurement_tests.cpp -o build/coast_measurement_tests

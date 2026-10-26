@@ -9,6 +9,7 @@ int main() {
   assert(controller.static_rx_buf_num*1600<=6400);
   assert((controller.dynamic_rx_buf_num+controller.dynamic_tx_buf_num)*1600<=25600);
   assert(controller.rx_ba_win<=controller.static_rx_buf_num && controller.rx_ba_win<=controller.dynamic_rx_buf_num);
+  assert(!controller.ampdu_rx_enable && !controller.ampdu_tx_enable && !controller.rx_ba_win);
   assert(initCompactWifi()==ESP_OK);
   assert(fakeWifiConfig.static_rx_buf_num<=controller.static_rx_buf_num);
   assert(fakeWifiConfig.dynamic_rx_buf_num+fakeWifiConfig.dynamic_tx_buf_num<=
