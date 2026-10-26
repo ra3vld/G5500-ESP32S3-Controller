@@ -7,6 +7,26 @@ static void restartDuringWriteback() {
     assert(started == observed->dma_restart_links[0]);
 }
 int main() {
+    {
+        esp_rgb_panel_t p;p.num_fbs=2;p.fb_size=32;p.bb_size=16;p.timings.h_res=p.timings.v_res=4;
+        std::vector<uint16_t> image(16),back(16,99),output(8);
+        for(unsigned i=0;i<16;++i)image[i]=i;
+        p.fbs[0]=reinterpret_cast<uint8_t *>(image.data());p.fbs[1]=reinterpret_cast<uint8_t *>(back.data());
+        p.cur_fb_index=1;p.flags.fb_behind_cache=false;
+        assert(crowpanel_rgb_set_source_pose(nullptr,1)==ESP_ERR_INVALID_ARG);
+        assert(crowpanel_rgb_set_source_pose(&p.base,16)==ESP_ERR_INVALID_ARG);
+        assert(crowpanel_rgb_set_source_pose(&p.base,1)==ESP_OK);
+        const uint16_t expected[]={12,8,4,0,13,9,5,1,14,10,6,2,15,11,7,3};
+        lcd_rgb_panel_fill_bounce_buffer(&p,reinterpret_cast<uint8_t *>(output.data()));
+        for(unsigned i=0;i<8;++i)assert(output[i]==expected[i]);
+        assert(p.bb_fb_index==0&&p.bounce_pos_px==8);
+        lcd_rgb_panel_fill_bounce_buffer(&p,reinterpret_cast<uint8_t *>(output.data()));
+        for(unsigned i=0;i<8;++i)assert(output[i]==expected[8+i]);
+        assert(p.bb_fb_index==1&&p.bounce_pos_px==0);
+        for(unsigned i=0;i<16;++i)assert(image[i]==i&&back[i]==99);
+        p.bb_size=0;assert(crowpanel_rgb_set_source_pose(&p.base,0)==ESP_ERR_NOT_SUPPORTED);
+    }
+
     std::vector<uint8_t> storage[3];
     for (auto &fb : storage) fb.resize(480 * 480 * 2);
     for (size_t alignment : {size_t(4), size_t(32), size_t(64)}) {

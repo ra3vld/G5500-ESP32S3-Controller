@@ -39,9 +39,64 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     }finally{if(slow)--pendingPolls[key];}
    });
    if(['hud-role','hud-hardware','hud-review'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/hud');
+   if(['simulation','motion','optional-drive'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/controller');
    await page.goto('http://setup-session.test/setup');
    await page.waitForFunction(()=>wizard.active&&wizard.state?.token&&wizard.state.step===1);
    const session=await page.evaluate(()=>wizard.state.token);
+   if(process.env.SETUP_SESSION_SCENARIO==='optional-drive'){
+    await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===2);
+    await page.locator('#setupDriveKind').selectOption('G800DXA');
+    await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===3);
+    const frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
+    await frame.waitForFunction(()=>typeof state!=='undefined'&&!!state&&typeof metadata!=='undefined'&&!!metadata);await page.waitForFunction(()=>wizard.hardwareCanApply,{},{timeout:5000});
+    assert.equal(await frame.locator('#pin-validation').textContent(),'');assert(await page.locator('#setupNext').isEnabled());
+    await frame.evaluate(()=>{setPinValue(form.elements['pin.led'],form.elements.buttonGpio.value);updatePins();});
+    await page.waitForFunction(()=>!wizard.hardwareCanApply&&wizard.hardwareError.includes('GPIO'));
+    assert.match(await page.locator('#setupMessage').textContent(),/GPIO/);
+    assert.deepEqual(errors,[]);console.log(`PASS: ${width}px, optional drive GPIO stay disconnected; active GPIO errors reach the wizard footer`);continue;
+   }
+   if(process.env.SETUP_SESSION_SCENARIO==='motion'){
+    await rpc('POST','/__fixture/step','3');await page.evaluate(()=>pollSetup());
+    const frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
+    await frame.waitForFunction(()=>typeof state!=='undefined'&&!!state&&typeof metadata!=='undefined'&&!!metadata);await frame.locator('#setup-motion').waitFor();
+    const allow=frame.locator('#setup-motion-save');assert(await allow.isDisabled());
+    await frame.locator('#setup-motion-confirm').check();await allow.click();
+    await frame.waitForFunction(()=>state.setupMotionConfirmed);await page.evaluate(()=>pollSetup());
+    assert(await page.locator('#setupPause').textContent()==='Сохранить и перейти к управлению');
+    if(process.env.ARTIFACT_DIR){await frame.locator('#setup-motion').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`physical-motion-${width}.png`)});}
+    await page.locator('#setupPause').click();await page.waitForFunction(()=>location.pathname==='/');
+    let state=await rpc('GET','/api/setup');assert(state.body.required&&state.body.paused&&state.body.motionConfirmed&&state.body.motionAllowed);
+    assert.equal((await rpc('POST','/api/move','d=R')).status,200);assert((await rpc('GET','/api/setup')).moving);
+    assert.equal((await rpc('POST','/api/move','d=S')).status,200);assert(!(await rpc('GET','/api/setup')).moving);
+    await page.goto('http://setup-session.test/hardware');await page.waitForFunction(()=>state?.setupMotionConfirmed);
+    await page.locator('#setup-motion-save').click();await page.waitForFunction(()=>state&&!state.setupMotionConfirmed);
+    state=await rpc('GET','/api/setup');assert(state.body.required&&!state.body.motionConfirmed&&!state.body.motionAllowed);
+    assert.equal((await rpc('POST','/api/move','d=R')).status,503);assert.deepEqual(errors,[]);
+    console.log(`PASS: ${width}px, physical motion requires checkbox, persists with paused wizard, moves/stops, and revokes without completing setup`);continue;
+   }
+   if(process.env.SETUP_SESSION_SCENARIO==='simulation'){
+    await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===2);
+    await page.locator('#setupDriveKind').selectOption('SIMULATION');
+    await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===3);
+    const frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
+    await frame.waitForFunction(()=>typeof state!=='undefined'&&!!state&&typeof metadata!=='undefined'&&!!metadata);
+    await page.waitForFunction(()=>wizard.hardwareCanApply,{},{timeout:5000});
+    assert.equal(await frame.locator('[name=simulation]').inputValue(),'1');
+    assert.equal(await frame.locator('#pin-validation').textContent(),'');
+    for(let attempt=0;attempt<3&&await page.evaluate(()=>wizard.state.step===3);++attempt){
+     await page.locator('#setupNext').click({timeout:5000});await page.waitForFunction(()=>!wizard.busy);
+     if(await page.evaluate(()=>wizard.waiting)){
+      await rpc('POST','/__fixture/reboot');await page.evaluate(()=>pollSetup());await page.waitForFunction(()=>!wizard.waiting);
+     }
+    }
+    await page.waitForFunction(()=>wizard.state.step===4,{},{timeout:5000});
+    await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===7);
+    assert(await page.evaluate(()=>wizard.state.required&&wizard.state.motionAllowed&&!wizard.state.motionConfirmed));
+    await page.locator('#setupPause').click();await page.waitForFunction(()=>location.pathname==='/');
+    assert.equal((await rpc('POST','/api/move','d=R')).status,200);assert((await rpc('GET','/api/setup')).moving);
+    assert.equal((await rpc('POST','/api/move','d=S')).status,200);assert(!(await rpc('GET','/api/setup')).moving);
+    assert.deepEqual(errors,[]);console.log(`PASS: ${width}px, simulation equipment saves, reboots and advances through inputs to programs`);continue;
+   }
    if(process.env.SETUP_SESSION_SCENARIO==='hud-review'){
     await page.waitForFunction(()=>!!window._forkState?.build?.board);
     await rpc('POST','/__fixture/step','9');await page.evaluate(async()=>{await upd(true);await pollSetup();});
@@ -61,7 +116,7 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
    if(process.env.SETUP_SESSION_SCENARIO==='hud-hardware'){
     await rpc('POST','/__fixture/step','3');await page.evaluate(async()=>{await upd(true);await pollSetup();});
     let frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
-    await frame.waitForFunction(()=>!!state&&!!metadata);await frame.locator('[name=forceApSta]').selectOption('1');
+    await frame.waitForFunction(()=>typeof state!=='undefined'&&!!state&&typeof metadata!=='undefined'&&!!metadata);await frame.locator('[name=forceApSta]').selectOption('1');
     await page.locator('#setupNext').click();await page.waitForFunction(()=>wizard.waiting);
     await rpc('POST','/__fixture/reboot');await page.evaluate(()=>pollSetup());await page.waitForFunction(()=>!wizard.waiting);
     frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
@@ -90,7 +145,7 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
    if(hardwarePolling){
     await rpc('POST','/__fixture/tuning');await rpc('POST','/__fixture/step','3');await page.evaluate(async()=>{await upd(true);await pollSetup();});
     const frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
-    await frame.waitForFunction(()=>!!state&&!!metadata);await wait(4500);
+    await frame.waitForFunction(()=>typeof state!=='undefined'&&!!state&&typeof metadata!=='undefined'&&!!metadata);await wait(4500);
     assert.equal(maxPolls['/api/hardware'],1,'Hardware polling must coalesce slow requests');
     assert.equal(maxPolls['/api/hardware/modbus'],1,'Modbus polling must coalesce slow requests');
     assert.equal(maxPolls['/api/hardware/pins'],1,'GPIO metadata must load once while hardware polling waits');

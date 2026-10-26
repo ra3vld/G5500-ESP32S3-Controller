@@ -5,6 +5,7 @@
 #include "hardware.hpp"
 #include "storage.hpp"
 #include "device_actions.hpp"
+#include <algorithm>
 namespace forkrot {
 using namespace board;
 namespace {
@@ -12,15 +13,18 @@ lv_color_t from565(uint16_t value) {
   return lv_color_make(((value>>11)&31)*255/31,((value>>5)&63)*255/63,(value&31)*255/31);
 }
 lv_obj_t *calBox(lv_obj_t *parent,int x,int y,int w,int h,uint16_t fill,uint16_t border) {
-  auto *box=lv_obj_create(parent);lv_obj_remove_style_all(box);lv_obj_set_pos(box,x,y);lv_obj_set_size(box,w,h);
+  const int width=lv_display_get_horizontal_resolution(lv_obj_get_display(parent));
+  const int height=lv_display_get_vertical_resolution(lv_obj_get_display(parent));
+  auto *box=lv_obj_create(parent);lv_obj_remove_style_all(box);
+  lv_obj_set_pos(box,x*width/320,y*height/240);lv_obj_set_size(box,std::max(1,w*width/320),std::max(1,h*height/240));
   lv_obj_set_style_bg_opa(box,LV_OPA_COVER,0);lv_obj_set_style_bg_color(box,from565(fill),0);
   lv_obj_set_style_border_width(box,1,0);lv_obj_set_style_border_color(box,from565(border),0);
   lv_obj_set_scrollable(box,false);return box;
 }
 }
 void Display::tftText(int16_t x,int16_t y,uint8_t size,uint16_t fg,uint16_t,const String &text) {
-  auto *label=lv_label_create(calScreen_);lv_obj_set_pos(label,x,y);
-  lv_obj_set_style_text_font(label,size>1?&panel_font_14:&crowpanel_font_11,0);
+  auto *label=lv_label_create(calScreen_);lv_obj_set_pos(label,x*int(screenWidth())/320,y*int(screenHeight())/240);
+  lv_obj_set_style_text_font(label,size>1&&screenWidth()>=320?&panel_font_14:&crowpanel_font_11,0);
   lv_obj_set_style_text_color(label,from565(fg),0);lv_label_set_text(label,text.c_str());
 }
 void Display::tftButton(int x,int y,int w,int h,const String &text,bool active,bool saved) {
@@ -181,29 +185,7 @@ bool Display::readTouchRawAverage(int &rx, int &ry) {
 }
 
 void Display::finishTouchCalibration() {
-  long horizDX = labs(touchCalRawX[1] - touchCalRawX[0]) + labs(touchCalRawX[2] - touchCalRawX[3]);
-  long horizDY = labs(touchCalRawY[1] - touchCalRawY[0]) + labs(touchCalRawY[2] - touchCalRawY[3]);
-
-  touchCalibration_.touchSwapXY = (horizDY > horizDX);
-
-  int sx0 = touchCalibration_.touchSwapXY ? touchCalRawY[0] : touchCalRawX[0];
-  int sx1 = touchCalibration_.touchSwapXY ? touchCalRawY[1] : touchCalRawX[1];
-  int sx2 = touchCalibration_.touchSwapXY ? touchCalRawY[2] : touchCalRawX[2];
-  int sx3 = touchCalibration_.touchSwapXY ? touchCalRawY[3] : touchCalRawX[3];
-
-  int sy0 = touchCalibration_.touchSwapXY ? touchCalRawX[0] : touchCalRawY[0];
-  int sy1 = touchCalibration_.touchSwapXY ? touchCalRawX[1] : touchCalRawY[1];
-  int sy2 = touchCalibration_.touchSwapXY ? touchCalRawX[2] : touchCalRawY[2];
-  int sy3 = touchCalibration_.touchSwapXY ? touchCalRawX[3] : touchCalRawY[3];
-
-  touchCalibration_.touchX0Raw = (sx0 + sx3) / 2;
-  touchCalibration_.touchX1Raw = (sx1 + sx2) / 2;
-  touchCalibration_.touchY0Raw = (sy0 + sy1) / 2;
-  touchCalibration_.touchY1Raw = (sy2 + sy3) / 2;
-
-  touchCalibration_.touchCalValid =
-      (abs(touchCalibration_.touchX1Raw - touchCalibration_.touchX0Raw) > 500 &&
-       abs(touchCalibration_.touchY1Raw - touchCalibration_.touchY0Raw) > 500);
+  touchCalibration_.touchCalValid=fitTouchCalibration(touchCalibration_,touchCalRawX,touchCalRawY,runtime_.displaySettings);
   saveTouchCalibration();
 }
 
@@ -234,7 +216,7 @@ void Display::serviceTouchCalibration() {
     }
 
     int x, y;
-    if (readTouchXY(x, y) && hit(x, y, 45, 145, 230, 68)) {
+    if (readCalibrationXY(x, y) && hit(x, y, 45, 145, 230, 68)) {
       tftPage = TFT_PAGE_DASH;
       tftNeedsRedraw = true;
       drawTftPage();
@@ -296,6 +278,12 @@ bool Display::readTouchXY(int &x, int &y) {
   x = constrain((int)sx, 0, 319);
   y = constrain((int)sy, 0, 239);
   return true;
+}
+
+bool Display::readCalibrationXY(int &x,int &y) {
+  if(!readTouchXY(x,y))return false;
+  const auto p=runtime_.displaySettings.correctedTouch(x,y,320,240);
+  x=p.x*319/int(screenWidth()-1);y=p.y*239/int(screenHeight()-1);return true;
 }
 
 void Display::resetTouchCalAxis(bool az) {
@@ -394,7 +382,7 @@ void Display::serviceCalibrationTouch() {
   if(tftPage==TFT_PAGE_TOUCH_CAL) {serviceTouchCalibration();return;}
   if(!touch->touched()) {touchWaitRelease=false;return;}
   if(touchWaitRelease) return;
-  int x,y;if(!readTouchXY(x,y)) return;
+  int x,y;if(!readCalibrationXY(x,y)) return;
   touchWaitRelease=true;
   if(hit(x,y,235,0,85,40)) {
     tftPage=tftPage==TFT_PAGE_CAL_HOME?TFT_PAGE_DASH:TFT_PAGE_CAL_HOME;

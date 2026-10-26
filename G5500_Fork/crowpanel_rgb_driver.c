@@ -53,6 +53,7 @@
 #include "hal/cache_hal.h"
 #include "hal/cache_ll.h"
 #include "crowpanel_rgb_rotation.h"
+#include "panel_pose.h"
 #include "esp_private/sleep_retention.h"
 
 #if SOC_AXI_GDMA_SUPPORTED
@@ -138,6 +139,7 @@ struct esp_rgb_panel_t {
     uint32_t frame_submitted, frame_presented; // protected by spinlock
     uint8_t cur_fb_index;  // Current frame buffer index
     uint8_t bb_fb_index;  // Current frame buffer index which used by bounce buffer
+    uint8_t source_pose; // Boot-time orientation of the logical LVGL framebuffer
     size_t int_mem_align;  // DMA buffer alignment for internal memory
     size_t ext_mem_align;  // DMA buffer alignment for external memory
     int hsync_gpio_num;    // GPIO used for HSYNC signal
@@ -457,6 +459,15 @@ esp_err_t esp_lcd_rgb_panel_register_event_callbacks(esp_lcd_panel_handle_t pane
     rgb_panel->on_frame_buf_complete = callbacks->on_frame_buf_complete;
     rgb_panel->on_bounce_empty = callbacks->on_bounce_empty;
     rgb_panel->user_ctx = user_ctx;
+    return ESP_OK;
+}
+
+esp_err_t crowpanel_rgb_set_source_pose(esp_lcd_panel_handle_t panel, uint8_t pose)
+{
+    ESP_RETURN_ON_FALSE(panel && pose<16,ESP_ERR_INVALID_ARG,TAG,"invalid source pose");
+    esp_rgb_panel_t *rgb=__containerof(panel,esp_rgb_panel_t,base);
+    ESP_RETURN_ON_FALSE(rgb->bb_size && rgb->num_fbs && rgb->fb_bits_per_pixel==16,ESP_ERR_NOT_SUPPORTED,TAG,"orientation needs RGB565 bounce buffers");
+    __atomic_store_n(&rgb->source_pose,pose,__ATOMIC_RELAXED);
     return ESP_OK;
 }
 
@@ -963,7 +974,10 @@ static IRAM_ATTR bool lcd_rgb_panel_fill_bounce_buffer(esp_rgb_panel_t *panel, u
     } else {
         // copy partial frame buffer to the bounce buffer
         // Note: if the frame buffer is behind a cache, and the cache is disabled, crash would happen here when auto write back happens
-        memcpy(buffer, &panel->fbs[panel->bb_fb_index][panel->bounce_pos_px * bytes_per_pixel], panel->bb_size);
+        const unsigned pose=__atomic_load_n(&panel->source_pose,__ATOMIC_RELAXED);
+        if(pose)panel_copy_rgb565((uint16_t *)buffer,(const uint16_t *)panel->fbs[panel->bb_fb_index],
+            panel->bounce_pos_px,panel->bb_size/2,panel->timings.h_res,panel->timings.v_res,pose);
+        else memcpy(buffer, &panel->fbs[panel->bb_fb_index][panel->bounce_pos_px * bytes_per_pixel], panel->bb_size);
     }
     // do memory sync if the bounce buffer is behind the cache
     if (panel->flags.bb_behind_cache) {
@@ -989,7 +1003,7 @@ static IRAM_ATTR bool lcd_rgb_panel_fill_bounce_buffer(esp_rgb_panel_t *panel, u
     }
 
     // Preload the next bit of buffer to the cache memory, this can improve the performance
-    if (panel->num_fbs > 0 && panel->flags.fb_behind_cache) {
+    if (panel->num_fbs > 0 && panel->flags.fb_behind_cache && !panel->source_pose) {
 #if CONFIG_IDF_TARGET_ESP32S3
         Cache_Start_DCache_Preload((uint32_t)&panel->fbs[panel->bb_fb_index][panel->bounce_pos_px * bytes_per_pixel],
                                    panel->bb_size, 0);

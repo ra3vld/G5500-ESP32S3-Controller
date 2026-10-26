@@ -6,10 +6,11 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
+#include "../G5500_Fork/panel_pose.h"
 using esp_err_t = int;
 using gdma_channel_handle_t = int;
 struct gdma_event_data_t {};
-constexpr int ESP_OK = 0, ESP_ERR_NOT_SUPPORTED = -1, ESP_ERR_NO_MEM = -2;
+constexpr int ESP_OK = 0, ESP_ERR_NOT_SUPPORTED = -1, ESP_ERR_NO_MEM = -2, ESP_ERR_INVALID_ARG = -3;
 #define IRAM_ATTR
 #define CONFIG_IDF_TARGET_ESP32S3 1
 #define unlikely(x) (x)
@@ -40,6 +41,7 @@ static unsigned lockDepth;
 #define portENTER_CRITICAL_SAFE(lock) (++lockDepth)
 #define portEXIT_CRITICAL_SAFE(lock) (--lockDepth)
 struct esp_lcd_panel_t {};
+using esp_lcd_panel_handle_t=esp_lcd_panel_t *;
 using esp_lcd_rgb_panel_draw_buf_complete_cb_t = bool (*)(esp_lcd_panel_t*, void*, void*);
 using esp_lcd_rgb_panel_frame_buf_complete_cb_t = bool (*)(esp_lcd_panel_t*, void*, void*);
 struct Link { uint8_t *buffer{}; size_t length{}, items{}; Link *next{}; int next_item{}; };
@@ -57,6 +59,7 @@ struct esp_rgb_panel_t {
     Link *dma_fb_links[3]{}, *dma_restart_links[3]{}, *dma_bb_link{}, *dma_restart_link{};
     size_t fb_size{}, bb_size{}, fb_bits_per_pixel{16}, int_mem_align{4}, ext_mem_align{64};
     uint8_t cur_fb_index{}, bb_fb_index{};
+    uint8_t source_pose{};
     int bounce_pos_px{}, bb_eof_count{}, expect_eof_count{}, spinlock{}, dma_chan{}, rotate_mask{}, x_gap{}, y_gap{};
     struct { int dev; } hal{};
     struct { int h_res{480}, v_res{480}; } timings;

@@ -151,6 +151,11 @@ int main(int argc,char **argv) {
       if(path=="/__fixture/hud") {
         f.runtime.hud.config.role=DeviceRole::Hud;f.runtime.controller.remote=&f.runtime.hud;
         reply={200,"{}"};
+      } else if(path=="/__fixture/controller") {
+        f.runtime.hud.config.role=DeviceRole::Controller;f.runtime.controller.remote=nullptr;
+        f.runtime.controller.driveFault=false;f.runtime.controller.fault.clear();
+        f.runtime.controller.configureHardware(f.runtime.hardwareRecord.good);
+        reply={200,"{}"};
       } else if(path=="/__fixture/reboot") {
         auto &r=f.runtime;
         assert(f.restart.pending());f.restart=RestartDelay{};
@@ -209,6 +214,7 @@ int main(int argc,char **argv) {
   }
   {
     Fixture setup;assert(setup.storage.loadSetup(setup.runtime)&&!setup.runtime.setup.required);
+    auto physical=setup.runtime.hardwareRecord.good;physical.simulation=false;setup.runtime.controller.configureHardware(physical);
     assert(setup.call("POST","/api/setup","action=start",true).status==405);
     auto result=setup.call("POST","/api/setup","action=start",false);assert(result.status==200);
     auto &r=setup.runtime;auto &c=r.controller;assert(c.setupRequired && r.setup.required && r.setupLease);

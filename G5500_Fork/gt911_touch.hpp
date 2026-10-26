@@ -54,7 +54,7 @@ public:
       uint8_t point[8];complete=read(0x814f,point,sizeof point);
       if(complete) {
         const unsigned x=point[1]|(unsigned(point[2])<<8),y=point[3]|(unsigned(point[4])<<8);
-        // Landscape MADCTL=MY|MX|MV: raw 320x480 -> logical 480x320.
+        // Rotate the GT911's raw 320x480 coordinates into logical 480x320.
         sample.healthy=x<320 && y<480;
         if(sample.healthy) {sample.x=479-y;sample.y=x;sample.down=true;}
       }

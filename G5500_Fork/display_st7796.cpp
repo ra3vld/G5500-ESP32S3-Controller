@@ -43,10 +43,11 @@ void Display::initLocalDisplay() {
   // Do not drive INT: stock revisions may connect it to ground.
   touchBus_.setTimeOut(3);touchHealthy_=touchBus_.begin(board::PIN_I2C_SDA,board::PIN_I2C_SCL,100000) && touch_.begin();
   lv_init();lv_tick_set_cb([]()->uint32_t{return millis();});lv_delay_set_cb([](uint32_t ms){delay(ms);});
-  display_=lv_st7796_create(PanelWidth,PanelHeight,LV_LCD_FLAG_NONE,sendPanelCommand,sendPanelPixels);
+  display_=lv_st7796_create(screenWidth(),screenHeight(),LV_LCD_FLAG_NONE,sendPanelCommand,sendPanelPixels);
   if(!display_) {displayFailed_=true;diagnostics_.dbgPrintln("[Display] ST7796 allocation failed");return;}
   lv_display_set_user_data(display_,this);lv_display_set_color_format(display_,LV_COLOR_FORMAT_RGB565);
-  lv_lcd_generic_mipi_set_address_mode(display_,true,true,true,false);
+  const auto address=runtime_.displaySettings.madctl(0xa0);
+  lv_lcd_generic_mipi_set_address_mode(display_,address&0x40,address&0x80,address&0x20,false);
   lv_st7796_set_invert(display_,false);
   lv_display_set_buffers(display_,pixels_.data(),nullptr,sizeof pixels_,LV_DISPLAY_RENDER_MODE_PARTIAL);
   ui_.create(false);ui_.update(PanelView{});
@@ -60,6 +61,6 @@ void Display::serviceKnob() {
   if(runtime_.hud.isHud()) hudKnob_.sample(true,false,0,now,runtime_.loggerSettings.encoderInverted);
   else knob_.sample(true,false,0,now,runtime_.loggerSettings.encoderInverted);
 }
-TouchSample Display::readTouch() {return touch_.poll(millis());}
+TouchSample Display::readTouch() {return orientTouch(touch_.poll(millis()));}
 }
 #endif

@@ -480,7 +480,7 @@ void HudState::capture(const Controller &c, const Protocol &p, uint32_t now) {
   targetKnown = c.targetKnown;
   presetSlot = c.presetSlot;
   speedEnabled = c.speedEnabled;
-  driveFault = c.driveFault || c.setupRequired || c.configurationLocked;
+  driveFault = c.driveFault || c.setupMovementBlocked() || c.configurationLocked;
   stopEpoch = c.stopEpoch;
   remaining = c.remaining(now);
   sequenceIndex = uint8_t(c.sequenceIndex());
@@ -488,7 +488,7 @@ void HudState::capture(const Controller &c, const Protocol &p, uint32_t now) {
   drive = c.hardware.simulation ? 3 : SELECTED_BOARD == BOARD_CROWPANEL_21 ? 4 : c.hardware.drive;
   board = SELECTED_BOARD;
   std::snprintf(name, sizeof name, "%s", p.rotorName.c_str());
-  std::snprintf(fault, sizeof fault, "%s", c.setupRequired?"setup_incomplete":c.configurationLocked?"configuration_locked":c.fault.c_str());
+  std::snprintf(fault, sizeof fault, "%s", c.setupMovementBlocked()?"setup_incomplete":c.configurationLocked?"configuration_locked":c.fault.c_str());
   for (unsigned i = 0; i < 2; ++i) {
     axes[i] = c.axes[i];
     speeds[i] = c.speeds[i];

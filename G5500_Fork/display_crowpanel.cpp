@@ -87,6 +87,9 @@ void Display::initLocalDisplay() {
   crowpanel::beginEncoder();
   panel_ = crowpanel::beginPanel();
   if (!panel_) { diagnostics_.dbgPrintln("[CrowPanel] LCD/PSRAM/PCF8574 initialization failed"); return; }
+  if(crowpanel_rgb_set_source_pose(panel_,runtime_.displaySettings.screen)!=ESP_OK) {
+    diagnostics_.dbgPrintln("[CrowPanel] orientation setup failed");return;
+  }
   constexpr size_t bytes = 480 * 480 * sizeof(uint16_t);
   void *front = nullptr, *back = nullptr;
   esp_lcd_rgb_panel_event_callbacks_t callbacks{};
@@ -151,7 +154,7 @@ void Display::serviceKnob() {
   hardware_.controlRotator(); // Apply STOP immediately, including while awaiting VSYNC.
 }
 TouchSample Display::readTouch() {
-  TouchSample sample;sample.sampledAt=millis();sample.down=crowpanel::readTouch(sample.x,sample.y,&sample.healthy);return sample;
+  TouchSample sample;sample.sampledAt=millis();sample.down=crowpanel::readTouch(sample.x,sample.y,&sample.healthy);return orientTouch(sample);
 }
 bool Display::serviceFrame() {
   if (flushPending_) {

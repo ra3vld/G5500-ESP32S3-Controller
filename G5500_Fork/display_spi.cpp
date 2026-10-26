@@ -20,7 +20,7 @@ void Display::initLocalDisplay() {
   pinMode(board::PIN_BACKLIGHT,OUTPUT);digitalWrite(board::PIN_BACKLIGHT,LOW);
   SPI.begin(board::PIN_PANEL_SCK,-1,board::PIN_PANEL_MOSI,board::PIN_PANEL_CS);
   panel_.emplace(&SPI,board::PIN_PANEL_DC,board::PIN_PANEL_CS,-1);
-  panel_->begin(40000000);panel_->setRotation(0);panel_->invertDisplay(true);
+  panel_->begin(40000000);panel_->setRotation(runtime_.displaySettings.screen&3);panel_->invertDisplay(true);
   pinMode(board::PIN_CST_IRQ,INPUT_PULLUP);pinMode(board::PIN_CST_RST,OUTPUT);
   digitalWrite(board::PIN_CST_RST,LOW);delay(10);digitalWrite(board::PIN_CST_RST,HIGH);delay(100);
   touchHealthy_=Wire.begin(board::PIN_I2C_SDA,board::PIN_I2C_SCL,400000);
@@ -32,12 +32,14 @@ void Display::initLocalDisplay() {
   pinMode(pins.tftCs,OUTPUT);digitalWrite(pins.tftCs,HIGH);
   pinMode(pins.touchCs,OUTPUT);digitalWrite(pins.touchCs,HIGH);
   SPI.begin(pins.tftSck,pins.tftMiso,pins.tftMosi,pins.tftCs);
-  panel_->begin();panel_->setRotation(1);touch->begin(SPI);touch->setRotation(1);
+  panel_->begin();panel_->setRotation((1+(runtime_.displaySettings.screen&3))%4);touch->begin(SPI);touch->setRotation(1);
 #endif
+  uint8_t address=runtime_.displaySettings.madctl(DISPLAY_KIND==DISPLAY_GC9A01?0x48:0x28);
+  panel_->sendCommand(0x36,&address,1);
   panel_->fillScreen(0);
   lv_init();lv_tick_set_cb([]()->uint32_t{return millis();});
   lv_delay_set_cb([](uint32_t ms){delay(ms);});
-  display_=lv_display_create(PanelWidth,PanelHeight);
+  display_=lv_display_create(screenWidth(),screenHeight());
   if(!display_) {displayFailed_=true;diagnostics_.dbgPrintln("[Display] LVGL allocation failed");return;}
   lv_display_set_color_format(display_,LV_COLOR_FORMAT_RGB565);
   lv_display_set_user_data(display_,this);
@@ -82,7 +84,7 @@ TouchSample Display::readTouch() {
 #else
   int x=0,y=0;sample.healthy=true;sample.down=readTouchXY(x,y);sample.x=x;sample.y=y;
 #endif
-  return sample;
+  return orientTouch(sample);
 }
 }
 #endif

@@ -26,7 +26,7 @@ bool Storage::loadSetup(Runtime &r) {
     // A damaged progress record must not strand an otherwise repairable board.
     // Restart commissioning with outputs uninitialized; retain all real settings.
     state.required=WEB_INTERFACE_ENABLED;state.step=state.required?SetupStep::Network:SetupStep::Done;state.generation=1;
-    r.setup=state;r.controller.setupRequired=state.required;return saveSetup(state);
+    r.setup=state;r.controller.setupRequired=state.required;r.controller.setupMotionConfirmed=false;return saveSetup(state);
   }
   if(!found) {
     // Detect legacy use before loadHardware()/loadPrefs() create default records.
@@ -49,7 +49,7 @@ bool Storage::loadSetup(Runtime &r) {
   // image behind a browser workflow it cannot serve.
   r.setup.required=false;r.setup.paused=false;r.setup.step=SetupStep::Done;
 #endif
-  r.controller.setupRequired=r.setup.required;return true;
+  r.controller.setupRequired=r.setup.required;r.controller.setupMotionConfirmed=r.setup.motionConfirmed&&r.setup.equipment;return true;
 }
 bool Storage::saveNetwork(const NetworkConfig &config) {
   if(config.wifi.validate()||config.ethernet.validate())return false;
@@ -67,6 +67,27 @@ bool Storage::loadNetwork(NetworkConfig &config) {
 }
 
 using namespace board;
+namespace {
+const char *displayKey() {
+  return DISPLAY_KIND==1?"pose1":DISPLAY_KIND==3?"pose3":DISPLAY_KIND==4?"pose4":"pose5";
+}
+}
+bool Storage::loadDisplay(Runtime &runtime) {
+  runtime.displaySettings={};
+  if(!GRAPHICAL_DISPLAY)return runtime.displayStorageOk=true;
+  if(!prefs_.begin("panel",false)){prefs_.end();return runtime.displayStorageOk=false;}
+  DisplayBytes b{};
+  const bool ok=!prefs_.isKey(displayKey()) ||
+      (prefs_.getBytesLength(displayKey())==b.size() && prefs_.getBytes(displayKey(),b.data(),b.size())==b.size() && decodeDisplay(b,runtime.displaySettings));
+  prefs_.end();return runtime.displayStorageOk=ok;
+}
+bool Storage::saveDisplay(const DisplaySettings &settings) {
+  if(!GRAPHICAL_DISPLAY || !settings.valid() || !prefs_.begin("panel",false)){prefs_.end();return false;}
+  const auto bytes=encodeDisplay(settings);DisplayBytes check{};
+  const bool ok=prefs_.putBytes(displayKey(),bytes.data(),bytes.size())==bytes.size() &&
+      prefs_.getBytesLength(displayKey())==bytes.size() && prefs_.getBytes(displayKey(),check.data(),check.size())==check.size() && check==bytes;
+  prefs_.end();return ok;
+}
 namespace {
 using RuntimeSpeedRecord = std::array<uint8_t, RuntimeSpeeds::Count * sizeof(float) + 4>;
 uint32_t runtimeSpeedChecksum(const RuntimeSpeedRecord &record) {

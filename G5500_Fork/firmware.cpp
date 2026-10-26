@@ -61,6 +61,7 @@ void Application::controllerSetup() {
 
   runtime_.setupStorageOk=storage_.loadSetup(runtime_);
   runtime_.controller.setupRequired=runtime_.setup.required;
+  runtime_.controller.setupMotionConfirmed=runtime_.setup.motionConfirmed&&runtime_.setup.equipment;
   storage_.loadHud(runtime_, false);
   const auto reset = esp_reset_reason();
   const bool unexpected = reset == ESP_RST_PANIC || reset == ESP_RST_INT_WDT ||
@@ -122,6 +123,7 @@ void Application::controllerSetup() {
   if (runtime_.recovery || !WEB_INTERFACE_ENABLED) network_.beginCommandApi();
   if (!runtime_.recovery) hardware_.beginAdc();
 
+  storage_.loadDisplay(runtime_);
   if (!runtime_.recovery) display_.initLocalDisplay();
   if (runtime_.recovery) storage_.loadPrefs(runtime_, calibration_, network_.credentials(), true);
   else { storage_.loadForkSettings(runtime_); loadPrefs(); }

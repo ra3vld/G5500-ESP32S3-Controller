@@ -28,7 +28,7 @@ class CrowPanelRgbTests(unittest.TestCase):
         configuration = re.search(r'^#define CONFIG_LCD_RGB_RESTART_IN_VSYNC [01]$', source, re.M).group()
         code = '#include "crowpanel_rgb_fakes.hpp"\n' + configuration + '\n'
         code += '#define CROWPANEL_HAS_FRAME_STATUS ' + str(int('crowpanel_rgb_frame_status(' in source)) + '\n'
-        for name in ('lcd_rgb_panel_init_trans_link', 'lcd_rgb_panel_writeback', 'rgb_panel_draw_bitmap', 'lcd_rgb_panel_fill_bounce_buffer', 'lcd_rgb_panel_eof_handler', 'lcd_rgb_panel_try_restart_transmission'):
+        for name in ('crowpanel_rgb_set_source_pose', 'lcd_rgb_panel_init_trans_link', 'lcd_rgb_panel_writeback', 'rgb_panel_draw_bitmap', 'lcd_rgb_panel_fill_bounce_buffer', 'lcd_rgb_panel_eof_handler', 'lcd_rgb_panel_try_restart_transmission'):
             # C's nested designator needs braces when compiled by the C++ host harness.
             code += function(source, name).replace(
                 '.flags.bypass_buffer_align_check = true,',
