@@ -43,7 +43,7 @@ Controller::Controller(const Controller &other) : Controller() { *this = other; 
 Controller &Controller::operator=(const Controller &other) {
   hardware = other.hardware;
   configurationLocked = other.configurationLocked;
-  setupRequired = other.setupRequired; setupAccess = false;
+  setupRequired = other.setupRequired; setupAccess = false; setupMotionConfirmed = other.setupMotionConfirmed;
   coast=other.coast;
   remote = other.remote;
   for (unsigned i = 0; i < 2; ++i) {

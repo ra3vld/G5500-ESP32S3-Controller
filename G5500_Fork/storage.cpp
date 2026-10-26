@@ -26,7 +26,7 @@ bool Storage::loadSetup(Runtime &r) {
     // A damaged progress record must not strand an otherwise repairable board.
     // Restart commissioning with outputs uninitialized; retain all real settings.
     state.required=WEB_INTERFACE_ENABLED;state.step=state.required?SetupStep::Network:SetupStep::Done;state.generation=1;
-    r.setup=state;r.controller.setupRequired=state.required;return saveSetup(state);
+    r.setup=state;r.controller.setupRequired=state.required;r.controller.setupMotionConfirmed=false;return saveSetup(state);
   }
   if(!found) {
     // Detect legacy use before loadHardware()/loadPrefs() create default records.
@@ -49,7 +49,7 @@ bool Storage::loadSetup(Runtime &r) {
   // image behind a browser workflow it cannot serve.
   r.setup.required=false;r.setup.paused=false;r.setup.step=SetupStep::Done;
 #endif
-  r.controller.setupRequired=r.setup.required;return true;
+  r.controller.setupRequired=r.setup.required;r.controller.setupMotionConfirmed=r.setup.motionConfirmed&&r.setup.equipment;return true;
 }
 bool Storage::saveNetwork(const NetworkConfig &config) {
   if(config.wifi.validate()||config.ethernet.validate())return false;

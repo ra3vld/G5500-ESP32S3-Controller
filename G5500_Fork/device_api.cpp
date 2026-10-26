@@ -107,6 +107,11 @@ void DeviceApi::writeHardwareStatus(JsonWriter &j, bool compact, std::string_vie
     << ",\"crowpanelLocalDrive\":" << (CROWPANEL_LOCAL_DRIVE ? "true" : "false")
     << ",\"separateDrive\":" << (CROWPANEL_LOCAL_DRIVE?"false":"true")
     << ",\"btsDrive\":true,\"independentDrive\":true"
+    << ",\"setupRequired\":" << (runtime_.setup.required?"true":"false")
+    << ",\"setupGeneration\":" << runtime_.setup.generation
+    << ",\"setupMotionConfirmed\":" << (runtime_.setup.motionConfirmed?"true":"false")
+    << ",\"setupMotionAllowed\":" << (setupMotionAllowed()?"true":"false")
+    << ",\"setupMotionCanConfirm\":" << (setupMotionConfirmReady()?"true":"false")
     << ",\"configured\":"; config(configured);
   if(view!="form") {
     j << ",\"effective\":"; config(runtime_.controller.hardware);
@@ -212,11 +217,25 @@ bool DeviceApi::setupReady(SetupStep step) const {
     default:return true;
   }
 }
+bool DeviceApi::setupMotionAllowed() const {
+  const auto &c=runtime_.controller;
+  return !runtime_.recovery && !runtime_.hardwareTrial && !c.movementBlocked() &&
+      (!runtime_.setup.required || (c.hardware.simulation && !runtime_.configuredAsHud()) || runtime_.setup.equipment);
+}
+bool DeviceApi::setupMotionConfirmReady() const {
+  const auto &c=runtime_.controller;
+  return runtime_.setup.required && !runtime_.configuredAsHud() && !c.hardware.simulation &&
+      setupReady(SetupStep::Equipment) && !runtime_.setupSaving && !runtime_.setupRestartRequired && !restart_.pending() && !c.moving() &&
+      !board::validateHardware(c.hardware,runtime_.hardwareHudUart,false);
+}
 void DeviceApi::writeSetup(JsonWriter &j) const {
   const auto &s=runtime_.setup;
   j << "{\"version\":1,\"required\":" << (s.required?"true":"false") << ",\"paused\":" << (s.paused?"true":"false")
     << ",\"step\":" << unsigned(s.step) << ",\"checked\":" << s.checked << ",\"generation\":" << s.generation
     << ",\"equipment\":" << (s.equipment?"true":"false") << ",\"ready\":" << (setupReady(s.step)?"true":"false")
+    << ",\"motionConfirmed\":" << (s.motionConfirmed?"true":"false")
+    << ",\"motionAllowed\":" << (setupMotionAllowed()?"true":"false")
+    << ",\"motionCanConfirm\":" << (setupMotionConfirmReady()?"true":"false")
     << ",\"role\":" << jsonQuoted(runtime_.hud.isHud()?"hud":"controller")
     << ",\"driveInterface\":" << unsigned(s.drive<0?runtime_.controller.hardware.drive:s.drive)
     << ",\"separateDrive\":" << (CROWPANEL_LOCAL_DRIVE?"false":"true")
@@ -246,10 +265,13 @@ void DeviceApi::invalidateSetup(SetupStep step) {
   auto next=runtime_.setup;
   next.pendingNext=false;
   if(step==SetupStep::Role || step==SetupStep::Equipment)next.equipment=false;
+  if(step==SetupStep::Role || step==SetupStep::Model || step==SetupStep::Equipment || step==SetupStep::Calibration){
+    next.motionConfirmed=false;runtime_.controller.setupMotionConfirmed=false;runtime_.controller.stopNow(-1,millis());
+  }
   if(step==SetupStep::Equipment && !runtime_.setupSaving){next.drive=-1;next.simulation=false;}
   if(unsigned(next.step)>unsigned(step))next.step=step;
   next.checked&=uint16_t((1u<<unsigned(step))-1);++next.generation;
-  if(!storage_.saveSetup(next)){runtime_.setupStorageOk=false;runtime_.controller.stopNow(-1,millis());}
+  if(!storage_.saveSetup(next)){runtime_.setupStorageOk=false;runtime_.controller.setupMotionConfirmed=false;runtime_.controller.stopNow(-1,millis());}
   else runtime_.setup=next;
 }
 
@@ -273,6 +295,7 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
       runtime_.setup.required && runtime_.setupStorageOk && !runtime_.setup.paused;
   const bool testFresh=hardwareUnsigned(web_.value("setupTestToken"),testToken) && testToken && testToken==runtime_.setupTestToken &&
       uint32_t(millis()-runtime_.setupRenewed)<=Runtime::SetupTestTimeoutMs;
+  if(!stop && path!="/api/setup" && web_.hasArg("setupTestToken") && (!setupSession || !testFresh)){reply(503,"setup_test_expired");return;}
   if(setupSession && ((testFresh && (runtime_.setup.step==SetupStep::Calibration || runtime_.setup.step==SetupStep::Tuning || runtime_.setup.step==SetupStep::Review)) ||
       (runtime_.setup.step==SetupStep::Programs && path=="/api/mode" && web_.value("mode")=="manual")))
     runtime_.controller.setupAccess=true;
@@ -409,6 +432,18 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     if(method=="GET"){writeSetup(output);return;}
     if(method!="POST" || command){reply(405,"method_not_allowed");return;}
     const auto action=web_.value("action");
+    if(action=="motion") {
+      uint32_t generation=0,confirmed=0;
+      if(!hardwareUnsigned(web_.value("confirmed"),confirmed)||confirmed>1){reply(400,"invalid_form");return;}
+      if(!hardwareUnsigned(web_.value("generation"),generation)||generation!=runtime_.setup.generation){reply(409,"stale_setup");return;}
+      if(!runtime_.setup.required || runtime_.configuredAsHud() || (confirmed && !setupMotionConfirmReady())){reply(409,"setup_motion_not_ready");return;}
+      auto next=runtime_.setup;next.motionConfirmed=confirmed;++next.generation;
+      auto &c=runtime_.controller;c.cancelCoast(millis());c.cancelAutoTune(millis());c.stopNow(-1,millis());hardware_.applyOutputs();
+      runtime_.setupTestToken=0;
+      if(!storage_.saveSetup(next)){runtime_.setupStorageOk=false;c.setupMotionConfirmed=false;reply(503,"setup_storage_failed");return;}
+      runtime_.setup=next;runtime_.setupStorageOk=true;c.setupMotionConfirmed=next.motionConfirmed;
+      writeSetup(output);return;
+    }
     if(action=="arm" || action=="renew") {
       if(!lease || lease!=runtime_.setupLease || !runtime_.setup.required || runtime_.setup.paused){reply(409,"setup_lease_expired");return;}
       if(runtime_.setup.step!=SetupStep::Calibration && runtime_.setup.step!=SetupStep::Tuning && runtime_.setup.step!=SetupStep::Review){reply(409,"setup_step_not_ready");return;}
@@ -438,10 +473,10 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       if(!hardwareUnsigned(web_.value("driveInterface"),drive)||drive>DRIVE_DIR_PWM ||
           !hardwareUnsigned(web_.value("simulation"),simulation)||simulation>1 || (CROWPANEL_LOCAL_DRIVE && (drive==DRIVE_SEPARATE_PWM || drive==DRIVE_DIR_PWM))) {reply(400,"invalid_hardware");return;}
       next.drive=int8_t(drive);next.simulation=simulation;
-      if(drive!=runtime_.controller.hardware.drive || bool(simulation)!=runtime_.controller.hardware.simulation)next.equipment=false;
+      if(drive!=runtime_.controller.hardware.drive || bool(simulation)!=runtime_.controller.hardware.simulation){next.equipment=false;next.motionConfirmed=false;}
     } else if(action=="start" || action=="resume") {
       runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
-      if(!next.required) {next.required=true;next.equipment=runtime_.hardwareRecord.hasConfirmed;next.checked=0;next.step=SetupStep::Network;}
+      if(!next.required) {next.required=true;next.motionConfirmed=false;next.equipment=runtime_.hardwareRecord.hasConfirmed;next.checked=0;next.step=SetupStep::Network;}
       next.paused=false;
     } else if(action=="pause") {
       next.paused=true;next.pendingNext=false;runtime_.setupLease=0;runtime_.setupTestToken=0;
@@ -473,8 +508,8 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     hardware_.applyOutputs();
     ++runtime_.hud.selectionEpoch;runtime_.protocol.resetSession();network_.selectionChanged();
     ++next.generation;
-    if(!storage_.saveSetup(next)){runtime_.setupStorageOk=false;runtime_.controller.setupRequired=true;reply(503,"setup_storage_failed");return;}
-    runtime_.setupStorageOk=true;runtime_.setup=next;runtime_.controller.setupRequired=next.required;
+    if(!storage_.saveSetup(next)){runtime_.setupStorageOk=false;runtime_.controller.setupRequired=true;runtime_.controller.setupMotionConfirmed=false;reply(503,"setup_storage_failed");return;}
+    runtime_.setupStorageOk=true;runtime_.setup=next;runtime_.controller.setupRequired=next.required;runtime_.controller.setupMotionConfirmed=next.motionConfirmed&&next.equipment;
     if(action=="start"||action=="resume") {
       runtime_.setupLease=(runtime_.hardwareToken^(next.generation*2654435761u))|1u;runtime_.setupRenewed=millis();
     }

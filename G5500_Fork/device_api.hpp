@@ -20,6 +20,8 @@ private:
   void executeGeneral(std::string_view method, std::string_view path, FormView arguments,
                       JsonWriter &output, int &status, const char *&type, bool command, uint32_t lease);
   bool setupReady(SetupStep step) const;
+  bool setupMotionAllowed() const;
+  bool setupMotionConfirmReady() const;
   void writeSetup(JsonWriter &) const;
   void invalidateSetup(SetupStep step);
   void configurationRestart();

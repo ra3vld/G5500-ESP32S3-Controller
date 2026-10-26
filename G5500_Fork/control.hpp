@@ -234,8 +234,9 @@ class Controller {
 public:
   HardwareConfig hardware;
   bool configurationLocked = false;
-  bool setupRequired = false, setupAccess = false;
-  bool movementBlocked() const { return configurationLocked || (setupRequired && !setupAccess && !autoTune.internal); }
+  bool setupRequired = false, setupAccess = false, setupMotionConfirmed = false;
+  bool setupMovementBlocked() const { return setupRequired && !(hardware.simulation && !remote) && !setupMotionConfirmed && !setupAccess && !autoTune.internal; }
+  bool movementBlocked() const { return configurationLocked || setupMovementBlocked(); }
   void configureHardware(const HardwareConfig &config);
   CommandSink *remote = nullptr; // Non-owning. A mirror must never run tick()/feedback().
   uint32_t motionEpoch[2] = {};
