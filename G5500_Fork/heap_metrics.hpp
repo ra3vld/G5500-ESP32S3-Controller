@@ -1,6 +1,8 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
 #include <esp_heap_caps.h>
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 namespace forkrot {
 // HTTP and radio buffers need byte-addressable internal RAM. Arduino's
@@ -19,5 +21,15 @@ inline uint32_t heapMaxBlockBytes() {
 // control/recovery reserve, including on a fragmented heap.
 inline bool networkBulkTxReady() {
   return heapFreeBytes() >= 32768 && heapMaxBlockBytes() >= 12288;
+}
+// The normal reserve limits bursts, not whether an established connection can
+// make progress at all. Otherwise a page/status response below 32 KiB waits
+// until its deadline and live telemetry repeatedly disconnects. A single small
+// write can drain between turns; admit it only above 24 KiB/8 KiB of headroom.
+inline size_t networkBulkTxBudget(size_t requested) {
+  const auto free=heapFreeBytes(),block=heapMaxBlockBytes();
+  if(free>=32768 && block>=12288)return requested;
+  if(free>=24576 && block>=8192)return std::min(requested,size_t(512));
+  return 0;
 }
 } // namespace forkrot

@@ -8,6 +8,7 @@
 #include <thread>
 #include <chrono>
 #include <sys/socket.h>
+#include <netinet/in.h>
 #include <unistd.h>
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
@@ -55,10 +56,12 @@ int main(){
  fakeHeapBlock=32768;
  for(unsigned i=0;i<10000;++i) {
    const auto allocations=allocationCalls, releases=releasedCalls, bytes=allocatedBytes;
+   const auto aborts=fakeAbortiveCloses;
    assert(fakeServer.cfg.open_fn(&fakeServer,999)==ESP_OK);
    assert(allocationCalls==allocations+1 && allocatedBytes-bytes<=3072);
    fakeServer.cfg.close_fn(&fakeServer,999);
    assert(releasedCalls==releases+1);
+   assert(fakeAbortiveCloses==aborts+1 && fakeAbortiveCloseFd==999);
  }
  assert(fakeServer.cfg.open_fn(&fakeServer,999)==ESP_OK);
  server.publish(5);pumpLive();assert(fakeServer.sent.empty()); // no frame before upgrade
@@ -73,7 +76,7 @@ int main(){
  for(bool fragmented:{false,true}) {
    const auto sent=fakeServer.sent.size();
    runtime.controller.axes[0].target+=1;
-   fakeHeapFree=fragmented?65536:32767;fakeHeapBlock=fragmented?12287:32768;
+   fakeHeapFree=fragmented?65536:24575;fakeHeapBlock=fragmented?8191:32768;
    server.publish(fragmented?25:15);pumpLive();
    assert(fakeServer.sent.size()==sent);
    fakeHeapFree=65536;fakeHeapBlock=32768;
@@ -84,6 +87,27 @@ int main(){
  const std::string pressureDetails(pressure.data(),pressure.size());
  assert(pressureDetails.find("\"liveMemoryDeferred\":8")!=std::string::npos);
  assert(pressureDetails.find("\"liveSocketDeferred\":0")!=std::string::npos);
+ // An established peer below the burst reserve must keep receiving complete
+ // frames, including when pressure starts midway through a frame. Retain
+ // independent byte offsets and cap each peer's write to 512 bytes per turn.
+ for(bool fragmented:{false,true}) {
+   const auto sentBefore=fakeServer.sent.size(),errorsBefore=bufferMetric("liveSendErrors");
+   runtime.controller.axes[0].target+=1;
+   fakeServer.maxWrite=113;
+   server.publish(fragmented?70:40);pumpLive();
+   fakeServer.maxWrite=SIZE_MAX;
+   fakeHeapFree=fragmented?65536:28672;fakeHeapBlock=fragmented?10240:32768;
+   for(unsigned i=0;i<12 && fakeServer.sent.size()<sentBefore+4;++i) {
+     size_t bytes[4];for(unsigned peer=0;peer<4;++peer)bytes[peer]=fakeServer.wire.at(1000+peer).size();
+     const auto before=fakeEspTimeUs;
+     server.publish((fragmented?75:45)+i*5);pumpLive();
+     assert(fakeEspTimeUs==before);
+     for(unsigned peer=0;peer<4;++peer)assert(fakeServer.wire.at(1000+peer).size()-bytes[peer]<=512);
+   }
+   assert(fakeServer.sent.size()==sentBefore+4 && bufferMetric("liveSendErrors")==errorsBefore);
+   for(int peer=1000;peer<1004;++peer)assert(fakeServer.pendingWire.at(peer).empty());
+   fakeHeapFree=65536;fakeHeapBlock=32768;
+ }
  // Exercise the production send override with real short writes and a reader
  // paused longer than the previous 5 ms timeout. No radio or motors are used.
  assert(fakeSendOverride);
@@ -122,6 +146,25 @@ int main(){
  assert(fatalDetails.find("\"liveSendWritten\":0")!=std::string::npos);
  assert(fatalDetails.find("\"liveSendTimeouts\":1")!=std::string::npos);
 
+ // Retiring a real TCP session resets the transport instead of leaving a
+ // graceful close with queued data behind a replacement browser connection.
+ const int listener=socket(AF_INET,SOCK_STREAM,0);assert(listener>=0);
+ sockaddr_in address{};address.sin_family=AF_INET;address.sin_addr.s_addr=htonl(INADDR_LOOPBACK);
+ assert(bind(listener,reinterpret_cast<sockaddr *>(&address),sizeof address)==0);
+ assert(listen(listener,1)==0);socklen_t addressSize=sizeof address;
+ assert(getsockname(listener,reinterpret_cast<sockaddr *>(&address),&addressSize)==0);
+ const int peer=socket(AF_INET,SOCK_STREAM,0);assert(peer>=0);
+ assert(::connect(peer,reinterpret_cast<sockaddr *>(&address),sizeof address)==0);
+ const int retired=accept(listener,nullptr,nullptr);assert(retired>=0);
+ const timeval receiveDeadline{1,0};
+ assert(setsockopt(peer,SOL_SOCKET,SO_RCVTIMEO,&receiveDeadline,sizeof receiveDeadline)==0);
+ assert(send(retired,"retired telemetry",17,0)==17);
+ fakeServer.cfg.close_fn(&fakeServer,retired);
+ char discarded[128];int lastRead;
+ do{lastRead=recv(peer,discarded,sizeof discarded,0);}while(lastRead>0);
+ assert(lastRead<0 && errno==ECONNRESET);
+ close(peer);close(listener);
+
  const auto beforeExcess=allocationCalls;
  assert(connect(1004)==ESP_FAIL&&allocationCalls==beforeExcess);
  assert(command(1000,packet(1,"/api/target","&az=90"))==ESP_OK);
@@ -142,6 +185,7 @@ int main(){
  fakeServer.failedFd=1001;runtime.controller.axes[0].current=25;
  server.publish(250);pumpLive();
  assert(!fakeServer.closed.empty()&&fakeServer.closed.back()==1001);
+ assert(fakeAbortiveCloseFd==1001 && fakeServer.websocketFds.count(1000));
  assert(connect(1001)==ESP_OK);fakeServer.failedFd=-1;
  assert(command(1001,packet(1,"/api/target","&az=110"))==ESP_OK);
  server.commands(255);assert(runtime.controller.axes[0].target==110);
@@ -267,6 +311,7 @@ int main(){
  fakeServer.maxWrite=SIZE_MAX;fakeServer.blockedFd=1000;fakeEspTimeUs=20000000;
  server.publish(20000);pumpLive();fakeEspTimeUs=24999000;server.publish(24999);pumpLive();assert(fakeServer.websocketFds.count(1000));
  fakeEspTimeUs=25000000;server.publish(25004);pumpLive();assert(!fakeServer.websocketFds.count(1000)&&fakeServer.websocketFds.count(1001));
+ assert(fakeAbortiveCloseFd==1000);
  fakeServer.blockedFd=-1;
  // Peer CLOSE at a frame boundary can be echoed; after a partial write it
  // closes without injecting a control header into the unfinished payload.

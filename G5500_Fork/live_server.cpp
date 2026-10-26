@@ -99,6 +99,12 @@ void LiveServer::closed(httpd_handle_t server,int fd) {
     }
     if(!any){for(auto &state:self.states_)state.reset();self.stateSize_=0;}
   }
+  // This session has already ended. A graceful FIN can otherwise keep its
+  // unacknowledged telemetry in lwIP while the browser opens a replacement.
+  // Release those queues before reconnects consume the control headroom.
+  // Do not take lwIP's core lock while holding mutex_.
+  linger reset{1,0};
+  ::setsockopt(fd,SOL_SOCKET,SO_LINGER,&reset,sizeof reset);
   ::close(fd);
 }
 LiveServer::StateBuffer *LiveServer::writableState(unsigned &index) {
@@ -422,7 +428,10 @@ void LiveServer::sendWork(void *context) {
       const uint32_t now=uint32_t(esp_timer_get_time()/1000);const auto retries=out.retries;
       bool memoryWait=false;
       const auto step=out.pump(now,[=,&memoryWait](const char *data,size_t size)->int{
-        if(size>256&&!networkBulkTxReady()){memoryWait=true;errno=EAGAIN;return -1;}
+        if(size>256){
+          size=networkBulkTxBudget(size);
+          if(!size){memoryWait=true;errno=EAGAIN;return -1;}
+        }
         return ::send(fd,data,size,MSG_DONTWAIT);
       });
       const int error=errno;

@@ -22,6 +22,8 @@ struct httpd_uri_t {const char *uri=nullptr;int method=0;esp_err_t(*handler)(htt
 inline httpd_config_t HTTPD_DEFAULT_CONFIG(){return {};}
 struct FakeHttpd {httpd_config_t cfg;httpd_uri_t uri;std::vector<std::string> registrations;void(*work)(void*)=nullptr;void *context=nullptr;int failedFd=-1;std::vector<int> closed;std::vector<std::pair<int,std::string>> sent;std::set<int> websocketFds,blockedFds;int blockedFd=-1;size_t maxWrite=SIZE_MAX;std::map<int,std::string> wire,pendingWire;std::vector<std::pair<int,int>> opcodes;};
 inline FakeHttpd fakeServer;
+inline int fakeAbortiveCloseFd=-1;
+inline unsigned fakeAbortiveCloses=0;
 inline int(*fakeSendOverride)(httpd_handle_t,int,const char*,size_t,int)=nullptr;
 inline esp_err_t httpd_start(httpd_handle_t *p,const httpd_config_t *cfg){fakeServer={};fakeServer.cfg=*cfg;*p=&fakeServer;return ESP_OK;}
 inline esp_err_t httpd_stop(httpd_handle_t){return ESP_OK;}

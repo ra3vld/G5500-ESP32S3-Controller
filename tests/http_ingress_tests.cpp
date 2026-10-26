@@ -162,6 +162,46 @@ int main() {
   }
   assert(waiting>20 && web.diagnostics().writeFailures==failuresBefore);
   assert(testSocket.output.substr(gzipStart)==std::string(compressed,sizeof WEB_PAGE_GZIP));
+  // A stable 28 KiB heap (or a fragmented heap below the burst threshold)
+  // must still deliver a complete page. The former all-or-nothing gate sent
+  // its 200/Content-Length header, then no body until the idle deadline.
+  for(bool fragmented:{false,true}) {
+    connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
+    fakeHeapFree=fragmented?40000:28672;fakeHeapBlock=fragmented?10240:16384;
+    testSocket.queueCapacity=1024;
+    testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof WEB_PAGE_GZIP); };
+    const auto lowFailures=web.diagnostics().writeFailures;
+    const auto started=fakeHardware.now;
+    web.handleClient();
+    const auto lowStart=testSocket.output.find("\r\n\r\n")+4;
+    assert(testSocket.output.size()-lowStart<=512);
+    for(unsigned i=0;testSocket.open && i<1500;++i) {
+      fakeHardware.now+=20;
+      if(i%4==3)testSocket.outstanding=0;
+      const auto beforeLoop=fakeHardware.now;
+      const auto bytes=testSocket.output.size();
+      web.handleClient();
+      assert(fakeHardware.now==beforeLoop && !web.writeFailed());
+      assert(testSocket.output.size()-bytes<=512);
+    }
+    assert(!testSocket.open && !testSocket.reset && fakeHardware.now-started<30000);
+    assert(web.diagnostics().writeFailures==lowFailures);
+    assert(testSocket.output.substr(lowStart)==std::string(compressed,sizeof WEB_PAGE_GZIP));
+  }
+  // JSON fallback also makes progress below the burst reserve, including a
+  // temporary deeper dip after its first bytes. Never restart the response.
+  connect(request);fakeHeapFree=28672;fakeHeapBlock=10240;
+  testSocket.handler=[&] { web.sendBuffer(200,"application/json",WEB_PAGE,5564); };
+  web.handleClient();const auto lowStatusStart=testSocket.output.find("\r\n\r\n")+4;
+  assert(testSocket.output.size()-lowStatusStart==512);
+  fakeHeapFree=24575;fakeHardware.now+=20;web.handleClient();
+  assert(testSocket.output.size()-lowStatusStart==512 && !web.writeFailed());
+  fakeHeapFree=28672;fakeHeapBlock=8191;fakeHardware.now+=20;web.handleClient();
+  assert(testSocket.output.size()-lowStatusStart==512 && !web.writeFailed());
+  fakeHeapBlock=10240;
+  for(unsigned i=0;testSocket.open && i<20;++i){fakeHardware.now+=20;web.handleClient();}
+  assert(!testSocket.open && !testSocket.reset && !web.writeFailed());
+  assert(testSocket.output.substr(lowStatusStart)==std::string(WEB_PAGE,5564));
   // A busy small-screen renderer may return to HTTP only once a second.
   // Drain a bounded burst so the complete gzip arrives before HTML's deadline.
   connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");

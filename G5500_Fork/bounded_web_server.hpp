@@ -251,25 +251,26 @@ private:
                 pageRetryErrno_ ? pageRetryErrno_ : ETIMEDOUT, pageSent_, pageSize_);
       releaseClient(); return;
     }
-    // Small control/recovery replies must remain writable below the bulk reserve.
-    if (pageSize_-pageSent_>256 && !networkBulkTxReady()) return;
     // A healthy heap can drain at loop speed. Retain conservative pacing when
     // radio/BT traffic leaves little RAM, and never spin waiting for TCP space.
-    const uint32_t interval = heapFreeBytes() >= 32768 && heapMaxBlockBytes() >= 6144 ? 5 : 20;
+    const uint32_t interval = networkBulkTxReady() ? 5 : 20;
     if (uint32_t(now - pageAttemptMs_) < interval) return;
     pageAttemptMs_ = now;
     // A display refresh can delay the next loop. One 512-byte send per loop
     // otherwise leaves large HTML incomplete at its total deadline. Drain up
     // to 4KB of available TCP space, without waiting or bypassing the reserve.
     for(unsigned attempt=0;attempt<8;++attempt) {
-      if(pageSize_-pageSent_>256 && !networkBulkTxReady()) break;
-      const size_t chunk = std::min(pageSize_ - pageSent_, size_t(512));
+      size_t chunk = std::min(pageSize_ - pageSent_, size_t(512));
+      // Small control/recovery replies remain writable below the bulk reserve.
+      if(pageSize_-pageSent_>256)chunk=networkBulkTxBudget(chunk);
+      if(!chunk)break;
       const int count = ::send(client().fd(), page_ + pageSent_, chunk, MSG_DONTWAIT);
       if (count > 0) {
         pageSent_ += size_t(count);
         pageProgressMs_ = now;
         pageRetryErrno_ = 0;
         if (pageSent_ == pageSize_) { finishResponse(); break; }
+        if(!networkBulkTxReady())break; // one small write per turn under pressure
       } else {
         if(count<0) {
           pageRetryErrno_ = errno;
