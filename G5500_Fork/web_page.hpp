@@ -493,7 +493,7 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 </ol>
 </section>
 <footer class="page-footer">
-<span>G5500 Fork 1.0</span>
+<span id="firmwareIdentity">G5500 Fork</span>
 <div class="footer-links"><a href="https://github.com/ra3vld/G5500-ESP32S3-Controller" target="_blank" rel="noopener noreferrer">Репозиторий RA3VLD</a><a href="https://github.com/ua1cfm/G5500-ESP32S3-Controller" target="_blank" rel="noopener noreferrer">Оригинал UA1CFM</a></div>
 </footer></div>
 <div id="settingsFeedback" class="action-feedback" hidden><div role="status" aria-live="polite" aria-atomic="true"><strong id="settingsFeedbackTitle"></strong><span id="settingsFeedbackText"></span></div><button type="button" aria-label="Закрыть уведомление" onclick="this.parentElement.hidden=true">×</button></div>
@@ -1144,6 +1144,7 @@ function renderManualSpeeds(j){
  document.querySelector('.manual-drive').classList.toggle('has-speeds',!!visible);
 }
 function updateFork(j){
+ const build=j.build;setText(document.getElementById('firmwareIdentity'),'G5500 Fork'+(build?.version?' '+build.version.split('+')[0]:'')+(build?.commit?' · коммит '+build.commit:'')+(build?.dirty?' · изменённые исходники':''));
  const programMode=document.getElementById('programModeHelp');if(programMode)programMode.textContent='Текущий режим: '+(j.controlMode==='manual'?'ручной':'автоматический')+'. Подтверждение отдельных протоколов действует в ручном режиме; кнопка «Рекомендуемые режимы» включает его.';
  const first=!window._forkState;window._forkState=j;
  const g800=j.model!=='G5500';

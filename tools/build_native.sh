@@ -6,6 +6,7 @@ if [ "${1:-}" = "--quick" ]; then
   exec python3 tools/check_native.py "$@"
 fi
 mkdir -p build
+python3 tools/project_version.py
 python3 -m unittest discover -s tests -p test_check_native.py
 python3 tools/generate_web_assets.py --check
 python3 tools/generate_tft_image.py --check

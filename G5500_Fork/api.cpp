@@ -1,6 +1,7 @@
 #include "api.hpp"
 #include "motion_json.hpp"
 #include "board.hpp"
+#include "project_version.hpp"
 #include "http_request_gate.hpp"
 #include <array>
 #include <cmath>
@@ -139,7 +140,10 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
     json << ",\"valid\":" << (controller.valid(controller.presets[i].target) ? "true" : "false")
          << '}';
   }
-  json << "],\"build\":{\"board\":" << jsonQuoted(board::NAME) << ",\"display\":"
+  json << "],\"build\":{\"version\":" << jsonQuoted(firmware::VERSION)
+       << ",\"commit\":" << jsonQuoted(firmware::COMMIT)
+       << ",\"dirty\":" << (firmware::DIRTY ? "true" : "false")
+       << ",\"board\":" << jsonQuoted(board::NAME) << ",\"display\":"
        << jsonQuoted(DISPLAY_KIND == DISPLAY_ST7796 ? "ST7796"
                      : DISPLAY_KIND == DISPLAY_GC9A01 ? "GC9A01"
                      : DISPLAY_KIND == DISPLAY_CROWPANEL_21 ? "CROWPANEL_21"

@@ -4,6 +4,7 @@ from pathlib import Path
 import hashlib
 import subprocess
 import zipfile
+from project_version import resolve, render
 
 
 def main():
@@ -21,6 +22,7 @@ def main():
         raise SystemExit('No tracked files; add source files to Git first.')
 
     out = root / 'artifacts'
+    sources.append(('G5500_Fork/build_identity.hpp', render(resolve(root)).encode(), 0))
     out.mkdir(exist_ok=True)
     manifest = ''.join(
         hashlib.sha256(data).hexdigest() + '  ' + name + '\n'

@@ -44,7 +44,7 @@ JSON: `ok`, `result`; 200 успешно/ожидание, 400 неверно/н
 
 ### Параметры двух осей и аппаратная конфигурация
 
-`/api/status` содержит объект `build` (плата, дисплей, Bluetooth, силовой интерфейс, кнопка и основные GPIO), массив `axes` (положение, цель, калибровка, tracking/completed, направление, допуск, активность и выход скорости) и поля `azSpeedPercent`/`elSpeedPercent`, `azStartSpeedPercent`/`elStartSpeedPercent`, `azApproachSpeedPercent`/`elApproachSpeedPercent`, `azAccelerationMs`/`elAccelerationMs`, `azDecelerationMs`/`elDecelerationMs`, `azSlowdownDegrees`/`elSlowdownDegrees`, `azSpeedOutputPercent`/`elSpeedOutputPercent`.
+`/api/status` содержит объект `build` (версия `version` по SemVer, хеш коммита `commit`, признак изменённых исходников `dirty`, плата, дисплей, Bluetooth, силовой интерфейс, кнопка и основные GPIO), массив `axes` (положение, цель, калибровка, tracking/completed, направление, допуск, активность и выход скорости) и поля `azSpeedPercent`/`elSpeedPercent`, `azStartSpeedPercent`/`elStartSpeedPercent`, `azApproachSpeedPercent`/`elApproachSpeedPercent`, `azAccelerationMs`/`elAccelerationMs`, `azDecelerationMs`/`elDecelerationMs`, `azSlowdownDegrees`/`elSlowdownDegrees`, `azSpeedOutputPercent`/`elSpeedOutputPercent`.
 
 `azCoastDegrees`/`elCoastDegrees` — настроенный угол выбега; `azDecelerationFactor`/`elDecelerationFactor` — коэффициент торможения. Они доступны в `GET /api/status` и `POST /api/settings`. `coastDegrees` и `decelerationFactor` без префикса относятся к AZ. Фактический допуск находится в `axes[].stopToleranceDegrees`. Настройки выбега меняются на самом контроллере поворотки.
 

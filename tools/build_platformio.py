@@ -92,6 +92,8 @@ if lto_override and '-flto' not in flags:
 work=ROOT/'build/platformio-config';work.mkdir(parents=True,exist_ok=True)
 path=work/(a.env+'.ini')
 scripts = option(section, 'extra_scripts').split()
+if 'pre:tools/platformio_version.py' not in scripts:
+    scripts.insert(0, 'pre:tools/platformio_version.py')
 if lto_override and 'post:tools/platformio_lto.py' not in scripts:
     scripts.append('post:tools/platformio_lto.py')
 if kind in (1, 3, 4, 5) and 'post:tools/platformio_image_size.py' not in scripts:

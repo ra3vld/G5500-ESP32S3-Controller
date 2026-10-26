@@ -8,6 +8,7 @@ node_modules/
 __pycache__/
 *.py[cod]
 G5500_Fork/*.ino.cpp
+G5500_Fork/build_identity.hpp
 *.o
 *.a
 *.bin

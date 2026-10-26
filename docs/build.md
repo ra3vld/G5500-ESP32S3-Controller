@@ -32,6 +32,8 @@ CrowPanel 2.1 (DHE03921D): `pio run -e crowpanel_21` или `./tools/build_ardui
 
 ## Arduino IDE 2.x
 
+Перед сборкой из Git выполните `python3 tools/project_version.py`, чтобы обновить версию и хеш коммита в прошивке. Повторяйте команду после изменения исходников или переключения коммита. PlatformIO, `build_arduino.sh` и `prepare_sketch.py` делают это автоматически. В архиве исходников сохраняются сведения о версии на момент упаковки. Если ни Git, ни сохранённых сведений нет, версия получает суффикс `+unknown`, а коммит — значение `unknown`.
+
 Добавьте URL `https://espressif.github.io/arduino-esp32/package_esp32_index.json`, установите **esp32 by Espressif Systems 3.3.11** и только библиотеки выбранного дисплея. XPT2046: [официальный ZIP v1.4](https://github.com/PaulStoffregen/XPT2046_Touchscreen/archive/refs/tags/v1.4.zip).
 
 Откройте `G5500_Fork/G5500_Fork.ino`; измените значения в `build_config.hpp`. Все заголовки профилей должны остаться рядом со скетчем. `BOARD_AUTO` выбирает распиновку по плате IDE. При включённом Bluetooth `BT_AUTO` выбирает транспорт по чипу. Таблицу разделов выбирайте отдельно в **Tools → Partition Scheme**: в исходной папке нет `partitions.csv`, который перекрывал бы меню.

@@ -5,6 +5,7 @@ import pathlib
 import shutil
 import subprocess
 import sys
+from project_version import generate
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--target', choices=['s3', 's2', 's2-mini', 'esp32', 'esp32-8mb', 'esp32-c3', 'crowpanel', 'wt32-eth01', 'waveshare-s3-eth', 'esp32-2424s012c', 'esp32-3248s035c'], required=True)
@@ -29,6 +30,7 @@ for f in source.iterdir():
     if f.suffix in {'.ino', '.cpp', '.c', '.hpp', '.h'} and not f.name.endswith('.ino.cpp'):
         shutil.copy2(f, out / f.name)
 shutil.copytree(source / 'src', out / 'src', dirs_exist_ok=True)
+generate(ROOT, out / 'build_identity.hpp')
 partitions = 'partitions_esp32_8mb.csv' if a.target == 'esp32-8mb' else 'partitions_esp32.csv' if a.target in ('esp32','wt32-eth01','esp32-c3','esp32-2424s012c','esp32-3248s035c','s2-mini') else 'partitions_s3.csv' if a.target in ('s3', 'crowpanel', 'waveshare-s3-eth') else 'partitions_s2.csv'
 shutil.copy2(source / partitions, out / 'partitions.csv')
 print(out / 'G5500_Fork.ino')

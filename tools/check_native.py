@@ -175,6 +175,8 @@ def main():
     if 'simulator' in names and not args.build_only:
         parser.error('simulator requires --build-only; start it separately for browser checks')
     started = time.monotonic()
+    if (ROOT / 'G5500_Fork/project_version.hpp').exists():
+        subprocess.run([sys.executable, str(ROOT / 'tools/project_version.py')], check=True)
     cache = ROOT / 'build/native-fast'
     cache.mkdir(parents=True, exist_ok=True)
     # Keep concurrent invocations from overwriting shared objects or test binaries.

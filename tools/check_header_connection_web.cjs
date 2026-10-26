@@ -31,11 +31,17 @@ const out=process.env.ARTIFACT_DIR||path.resolve(__dirname,'../local-notes/heade
   assert(!(await page.locator('header').innerText()).includes('оригинал'));
   assert.equal(await page.locator('footer').count(),1);
   assert.match(await page.locator('footer').innerText(),/G5500 Fork \d/);
+  assert((await page.locator('#firmwareIdentity').innerText()).includes(sample.build.version.split('+')[0]));
+  assert((await page.locator('#firmwareIdentity').innerText()).includes('коммит '+sample.build.commit));
+  state={...state,build:{...sample.build,version:'2.3.4-dev.12+g1234567.dirty',commit:'1234567',dirty:true}};await refresh();
+  await page.waitForFunction(()=>firmwareIdentity.textContent.includes('2.3.4-dev.12'));
+  assert((await page.locator('#firmwareIdentity').innerText()).includes('изменённые исходники'));
   assert((await page.locator('footer').innerText()).includes('UA1CFM'));
   const links=await page.locator('footer a').evaluateAll(nodes=>nodes.map(n=>({href:n.href,rel:n.rel,target:n.target})));
   assert.deepEqual(links.map(l=>l.href),['https://github.com/ra3vld/G5500-ESP32S3-Controller','https://github.com/ua1cfm/G5500-ESP32S3-Controller']);
   assert(links.every(l=>l.target==='_blank'&&l.rel.includes('noopener')));
   state={...state,configurationLocked:true,setupRequired:false};await refresh();
+  await page.waitForFunction(()=>window._forkState?.configurationLocked===true&&!document.getElementById('hardwareTrialNotice').classList.contains('hide'));
   for(const width of [390,1100]){
    await page.setViewportSize({width,height:950});
    await page.evaluate(()=>selectTab('control'));

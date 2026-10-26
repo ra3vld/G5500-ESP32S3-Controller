@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import time
+from project_version import generate
 ROOT=Path(__file__).resolve().parents[1]
 PINNED_PLATFORM='https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip'
 p=argparse.ArgumentParser(description=__doc__)
@@ -41,6 +42,7 @@ for name in (['arduino','platformio'] if a.tool=='all' else [a.tool]):
     except BlockingIOError:raise SystemExit('Another '+name+' matrix is running; finish it first')
     locks.append(handle)
 source=ROOT/'G5500_Fork'
+generate(ROOT)
 source_hash=hashlib.sha256(b''.join(f.name.encode()+f.read_bytes() for f in sorted(source.iterdir()) if f.suffix in {'.ino','.c','.cpp','.hpp','.h','.csv'} and not f.name.endswith('.ino.cpp'))).hexdigest()
 frozen=ROOT/'build/matrix/sources'/source_hash/a.tool/'G5500_Fork'
 frozen.mkdir(parents=True,exist_ok=True)
