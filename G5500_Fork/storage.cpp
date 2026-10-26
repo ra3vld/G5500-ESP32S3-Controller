@@ -74,11 +74,12 @@ const char *displayKey() {
 }
 bool Storage::loadDisplay(Runtime &runtime) {
   runtime.displaySettings={};
+  runtime.displaySettings.visible=defaultDisplayFields(DISPLAY_KIND);
   if(!GRAPHICAL_DISPLAY)return runtime.displayStorageOk=true;
   if(!prefs_.begin("panel",false)){prefs_.end();return runtime.displayStorageOk=false;}
   DisplayBytes b{};
   const bool ok=!prefs_.isKey(displayKey()) ||
-      (prefs_.getBytesLength(displayKey())==b.size() && prefs_.getBytes(displayKey(),b.data(),b.size())==b.size() && decodeDisplay(b,runtime.displaySettings));
+      (prefs_.getBytesLength(displayKey())==b.size() && prefs_.getBytes(displayKey(),b.data(),b.size())==b.size() && decodeDisplay(b,runtime.displaySettings,defaultDisplayFields(DISPLAY_KIND)));
   prefs_.end();return runtime.displayStorageOk=ok;
 }
 bool Storage::saveDisplay(const DisplaySettings &settings) {

@@ -1,10 +1,39 @@
 #include "display_settings.hpp"
 #include "display_state.hpp"
+#include "network_addresses.hpp"
 #include <cassert>
 #include <vector>
 #include <cstdio>
 using namespace forkrot;
 int main() {
+  for(bool own:{false,true})for(bool ap:{false,true}) {
+    char addresses[80];formatNetworkAddresses(addresses,sizeof addresses,"192.168.3.10","192.168.4.1","  ","10.0.0.20",own,ap);
+    assert(bool(std::strstr(addresses,"192.168.3.10"))==own);
+    assert(bool(std::strstr(addresses,"10.0.0.20"))==own);
+    assert(bool(std::strstr(addresses,"192.168.4.1"))==ap);
+    if(!own&&!ap)assert(!addresses[0]);
+    struct {char before='a',text[4]{},after='b';} bounded;
+    formatNetworkAddresses(bounded.text,sizeof bounded.text,"192.168.3.10","192.168.4.1","  ","10.0.0.20",own,ap);
+    assert(bounded.before=='a'&&bounded.after=='b'&&bounded.text[3]==0);
+  }
+  for(unsigned visible=0;visible<=DisplayAllFields;++visible) {
+    DisplaySettings s;s.screen=5;s.touch=11;s.visible=visible;s.revision=123;
+    const auto bytes=encodeDisplay(s);DisplaySettings restored;
+    assert(bytes[2]==2 && decodeDisplay(bytes,restored) && restored.sameSettings(s) && restored.revision==123);
+    auto bad=bytes;bad[5]|=64;
+    const auto crc=displayChecksum(bad);for(unsigned i=0;i<4;++i)bad[12+i]=uint8_t(crc>>(8*i));
+    assert(!decodeDisplay(bad,restored) && restored.sameSettings(s));
+  }
+  {
+    auto legacy=encodeDisplay(DisplaySettings{});legacy[2]=1;legacy[3]=5;legacy[4]=11;legacy[5]=0;
+    const auto crc=displayChecksum(legacy);for(unsigned i=0;i<4;++i)legacy[12+i]=uint8_t(crc>>(8*i));
+    for(unsigned kind:{1,3,4,5}) {
+      DisplaySettings restored;restored.visible=0;
+      assert(decodeDisplay(legacy,restored,defaultDisplayFields(kind)));
+      assert(restored.screen==5 && restored.touch==11 && restored.visible==defaultDisplayFields(kind));
+      const auto migrated=encodeDisplay(restored);assert(migrated[2]==2 && migrated[5]==restored.visible);
+    }
+  }
   for(unsigned pose=0;pose<16;++pose)for(auto shape:{panel_point_t{3,2},{8,5},{32,32}}) {
     const int w=shape.x,h=shape.y,ow=pose&1?h:w,oh=pose&1?w:h;
     std::vector<uint16_t> source(w*h),expected(w*h),seen(w*h);

@@ -356,14 +356,14 @@ int main(int argc, char **argv) {
   settle(d);
   // Full mechanical angles determine which side of 0/450 is unavailable.
   view.target = 225;
-  view.current = 90;
+  view.current = 20;
   ui.update(view); settle(d);
   assert(redAt(350) && !redAt(10) && !redAt(100));
-  std::snprintf(path, sizeof path, "%s/lower-limit-90.ppm", argv[1]); save(path);
-  view.current = 350;
+  std::snprintf(path, sizeof path, "%s/lower-limit-20.ppm", argv[1]); save(path);
+  view.current = 430;
   ui.update(view); settle(d);
   assert(redAt(100) && !redAt(80) && !redAt(330));
-  std::snprintf(path, sizeof path, "%s/upper-limit-350.ppm", argv[1]); save(path);
+  std::snprintf(path, sizeof path, "%s/upper-limit-430.ppm", argv[1]); save(path);
   view.current = 450;
   ui.update(view); settle(d);
   assert(redAt(100));
@@ -371,13 +371,13 @@ int main(int argc, char **argv) {
   view.maximum = 360; view.current = 350;
   ui.update(view); settle(d);
   assert(redAt(10) && !redAt(330));
-  view.elevation = view.dualAxis = true; view.maximum = 180; view.current = 90; view.target = 120;
+  view.elevation = view.dualAxis = true; view.maximum = 80; view.current = 40; view.target = 60;
   ui.update(view); settle(d);
-  assert(redAt(350) && redAt(190));
+  assert(redAt(350) && redAt(90));
   std::snprintf(path, sizeof path, "%s/elevation-limits.ppm", argv[1]); save(path);
   view.feedback = false;
   ui.update(view); settle(d);
-  assert(!redAt(350) && !redAt(190));
+  assert(!redAt(350) && !redAt(90));
   // Goal warnings update while the measured position is stationary. Both
   // lanes stay visible at the same stop and old tails clear when only the
   // target, its validity, or the mechanical range changes.
@@ -385,17 +385,17 @@ int main(int argc, char **argv) {
   view.feedback = true; view.current = 225; view.target = 120;
   ui.update(view); settle(d);
   assert(!blueLimitAt(350) && !blueLimitAt(100));
-  view.target = 90;
+  view.target = 20;
   ui.update(view); settle(d);
   assert(blueLimitAt(350) && !blueLimitAt(100) && !redAt(350));
-  std::snprintf(path, sizeof path, "%s/target-lower-limit-90.ppm", argv[1]); save(path);
+  std::snprintf(path, sizeof path, "%s/target-lower-limit-20.ppm", argv[1]); save(path);
   view.target = 330;
   ui.update(view); settle(d);
   assert(!blueLimitAt(350) && !blueLimitAt(100));
-  view.target = 350;
+  view.target = 430;
   ui.update(view); settle(d);
   assert(!blueLimitAt(350) && blueLimitAt(100) && !redAt(100));
-  view.current = 90;
+  view.current = 20;
   ui.update(view); settle(d);
   assert(redAt(350) && blueLimitAt(100));
   std::snprintf(path, sizeof path, "%s/current-low-target-high.ppm", argv[1]); save(path);
@@ -403,44 +403,44 @@ int main(int argc, char **argv) {
   ui.update(view); settle(d);
   assert(redAt(100) && blueLimitAt(100));
   std::snprintf(path, sizeof path, "%s/current-target-upper-stop.ppm", argv[1]); save(path);
-  view.target = 90; // Same bearing as 450, but the opposite mechanical stop.
+  view.target = 90; // Same bearing as 450, but outside the lower warning range.
   ui.update(view); settle(d);
-  assert(blueLimitAt(350) && !blueLimitAt(100) && redAt(100));
+  assert(!blueLimitAt(350) && !blueLimitAt(100) && redAt(100));
   for (const float invalid : {NAN, -1.f, 451.f}) {
     view.target = invalid;
     ui.update(view); settle(d);
     assert(!blueLimitAt(350) && !blueLimitAt(100) && redAt(100));
   }
-  view.target = 350; view.targetValid = false;
+  view.target = 430; view.targetValid = false;
   ui.update(view); settle(d);
   assert(!blueLimitAt(100) && redAt(100));
-  view.targetValid = true; view.maximum = 360; view.current = 225;
+  view.targetValid = true; view.maximum = 360; view.current = 225; view.target = 350;
   ui.update(view); settle(d);
   assert(blueLimitAt(10) && !blueLimitAt(100) && !blueLimitAt(350));
-  view.elevation = view.dualAxis = true; view.maximum = 180;
-  view.current = view.target = 90;
+  view.elevation = view.dualAxis = true; view.maximum = 80;
+  view.current = view.target = 40;
   ui.update(view); settle(d);
-  assert(blueLimitAt(350) && blueLimitAt(190) && redAt(350) && redAt(190));
+  assert(blueLimitAt(350) && blueLimitAt(90) && redAt(350) && redAt(90));
   std::snprintf(path, sizeof path, "%s/current-target-elevation.ppm", argv[1]); save(path);
   view.feedback = false;
   ui.update(view); settle(d);
-  assert(blueLimitAt(350) && blueLimitAt(190) && !redAt(350) && !redAt(190));
+  assert(blueLimitAt(350) && blueLimitAt(90) && !redAt(350) && !redAt(90));
   view.maximum = NAN;
   ui.update(view); settle(d);
-  assert(!blueLimitAt(350) && !blueLimitAt(190));
+  assert(!blueLimitAt(350) && !blueLimitAt(90));
   // A stop's 3px line extends to both sides of its sector boundary. Exercise
   // fading and disappearance before the opposite warning can repaint it.
   for (bool targetOnly : {false, true}) {
     view = forkrot::CrowPanelView{};
     view.feedback = view.targetValid = true;
-    view.current = targetOnly ? 225 : 400; view.target = targetOnly ? 400 : 225;
+    view.current = targetOnly ? 225 : 430; view.target = targetOnly ? 430 : 225;
     ui.update(view); settle(d);
     lv_obj_invalidate(lv_screen_active()); lv_refr_now(d);
-    for (float angle : {380.f, 350.f, 331.f, 330.f, 225.f, 100.f, 120.f, 225.f}) {
+    for (float angle : {430.f, 410.f, 401.f, 400.f, 225.f, 20.f, 50.f, 225.f}) {
       if (targetOnly) view.target = angle; else view.current = angle;
       ui.update(view); settle(d);
       checkFullRedraw(d, argv[1]);
-      if (angle == 330.f) {
+      if (angle == 400.f) {
         std::snprintf(path, sizeof path, "%s/stop-cleared-%s.ppm", argv[1], targetOnly ? "target" : "current");
         save(path);
       }

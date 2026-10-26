@@ -65,12 +65,10 @@ int arcAngle(float bearing) {
 const lv_font_t *PanelUi::face(int size) const {
 #if !PANEL_COMPACT_FONTS
   if(diameter_>=320) {
-    if(size>=160) return &panel_font_144;
     if(size>=112) return &crowpanel_font_112;
     if(size>=80) return &crowpanel_font_80;
-    if(size>=48) return &panel_font_48;
     if(size>=36) return &crowpanel_font_36;
-    if(size>=28) return &panel_font_28;
+    if(size>=28) return &crowpanel_font_28;
     if(size>=22) return &crowpanel_font_22;
     return &crowpanel_font_11;
   }
@@ -392,7 +390,9 @@ void PanelUi::configureLayout(const PanelView &v) {
     lv_obj_update_layout(target_);lv_obj_update_layout(targetCaption_);lv_obj_update_layout(secondaryTarget_);
     if(confirm) {
       for(const auto *candidate:{face(112),face(80),face(48),face(36)}) {
-        if(v.statusFault && candidate->line_height>face(80)->line_height)continue;
+        const bool footer=v.shows(DisplayHeap) && (v.shows(DisplayLocalAddress)||v.shows(DisplayApAddress));
+        if((v.statusFault || footer) && candidate->line_height>face(80)->line_height)continue;
+        if(footer && v.status[0] && (!v.movingNow || v.statusFault) && candidate->line_height>face(48)->line_height)continue;
         goal=candidate;font(target_,goal);lv_obj_update_layout(target_);
         if(lv_obj_get_width(target_)<=width_-p(40))break;
       }
@@ -411,7 +411,7 @@ void PanelUi::configureLayout(const PanelView &v) {
     }
     lv_obj_set_y(status_,y(confirm?400:v.movingNow?394:354));lv_obj_set_width(status_,p(340));
     char addresses[sizeof v.ip];std::snprintf(addresses,sizeof addresses,"%s",v.ip);
-    if(auto *separator=confirm?nullptr:std::strstr(addresses,"  ")) { *separator='\n';std::memmove(separator+1,separator+2,std::strlen(separator+2)+1); }
+    if(auto *separator=confirm||v.shows(DisplayHeap)?nullptr:std::strstr(addresses,"  ")) { *separator='\n';std::memmove(separator+1,separator+2,std::strlen(separator+2)+1); }
     set(ip_,addresses);
     lv_obj_set_y(ip_,y(confirm?436:400));lv_obj_set_size(ip_,round_?p(270):width_-20,(confirm?1:2)*face(11)->line_height);
     lv_obj_set_hidden(status_,v.movingNow && !v.statusFault);
@@ -423,6 +423,13 @@ void PanelUi::configureLayout(const PanelView &v) {
     if(lv_label_get_long_mode(hudAddress_)!=LV_LABEL_LONG_DOT) lv_label_set_long_mode(hudAddress_,LV_LABEL_LONG_DOT);
     if(lv_label_get_long_mode(ip_)!=LV_LABEL_LONG_DOT) lv_label_set_long_mode(ip_,LV_LABEL_LONG_DOT);
     for(auto *obj:{bluetooth_,heap_,wifi_,wifiSlash_,wifiAp_}) lv_obj_set_hidden(obj,true);
+    if(v.shows(DisplayHeap)) {
+      if(v.shows(DisplayLocalAddress)||v.shows(DisplayApAddress)) {
+        lv_obj_set_y(status_,y(confirm?380:354));
+        lv_obj_set_y(ip_,y(confirm?408:400));lv_obj_set_height(ip_,face(11)->line_height);
+      }
+      lv_obj_set_y(heap_,y(v.shows(DisplayLocalAddress)||v.shows(DisplayApAddress)?(confirm?434:426):(confirm?436:400)));
+    }
     const auto current=bounds(angle_);const auto secondary=bounds(secondaryAngle_);
     const int leftCurrent=std::min(int(current.x),v.dualAxis?int(secondary.x):int(current.x));
     const int rightCurrent=std::max(int(current.x+current.width),v.dualAxis?int(secondary.x+secondary.width):0);
@@ -469,24 +476,29 @@ void PanelUi::configureLayout(const PanelView &v) {
     }
     compactArrowDirection_=direction;
   }
-  lv_obj_set_hidden(actionButton_,!v.movingNow);
-    lv_obj_set_pos(actionButton_,x(v.speedScreen?250:160),y(v.speedScreen?374:compact?334:360));
+  const bool showStop=compact && v.movingNow;
+  lv_obj_set_hidden(hudName_,!v.hud || !v.shows(DisplayName));
+  lv_obj_set_hidden(hudAddress_,!v.hud || !v.shows(DisplayControllerAddress));
+  lv_obj_set_hidden(ip_,!v.shows(DisplayLocalAddress) && !v.shows(DisplayApAddress));
+  lv_obj_set_hidden(heap_,!v.shows(DisplayHeap));
+  lv_obj_set_hidden(axis_,!v.shows(DisplayAxis));
+  lv_obj_set_hidden(actionButton_,!showStop);
+  lv_obj_set_pos(actionButton_,x(v.speedScreen?250:160),y(v.speedScreen?374:334));
   lv_obj_set_width(actionButton_,p(v.speedScreen?130:160));
-  lv_obj_set_pos(speedBack_,x(v.movingNow?100:160),y(374));
-  lv_obj_set_width(speedBack_,p(v.movingNow?130:160));
-  if(v.movingNow && !compact && !v.speedScreen) {
-    lv_obj_set_y(status_,y(408));lv_obj_set_hidden(bluetooth_,true);lv_obj_set_hidden(heap_,true);lv_obj_set_y(ip_,y(436));
-  } else if(!compact) { lv_obj_set_hidden(bluetooth_,false);lv_obj_set_hidden(heap_,false); }
+  lv_obj_set_pos(speedBack_,x(showStop?100:160),y(374));
+  lv_obj_set_width(speedBack_,p(showStop?130:160));
   lv_obj_set_hidden(settingsButton_,!v.settingsAvailable || v.hud || v.speedScreen || v.hudSelector);
-  touchLayout_.mode=bounds(modeButton_);touchLayout_.name=bounds(hudName_,p(4));
-  touchLayout_.axis=v.dualAxis?bounds(axis_,p(8)):panel::TouchRect{};
+  touchLayout_.mode=bounds(modeButton_);
+  touchLayout_.name=v.hud && v.shows(DisplayName)?bounds(hudName_,p(4)):
+      v.hud && v.shows(DisplayControllerAddress)?bounds(hudAddress_,p(4)):panel::TouchRect{};
+  touchLayout_.axis=v.dualAxis && v.shows(DisplayAxis)?bounds(axis_,p(8)):panel::TouchRect{};
   touchLayout_.peers=bounds(hudList_);
   for(unsigned i=0;i<3;++i) touchLayout_.rows[i]=bounds(hudRows_[i],p(4));
   touchLayout_.settings=v.settingsAvailable && !v.hud && !v.speedScreen && !v.hudSelector?bounds(settingsButton_):panel::TouchRect{};
-  touchLayout_.stopArea=bounds(actionButton_);
+  touchLayout_.stopArea=compact?bounds(actionButton_):panel::TouchRect{};
   touchLayout_.confirmAllowed=v.enabled && !v.movingNow && (v.targetValid || v.secondaryTargetValid || v.statusFault);
   touchLayout_.actionEpoch=actionEpoch_;
-  touchLayout_.stop=v.movingNow?bounds(actionButton_):panel::TouchRect{};
+  touchLayout_.stop=showStop?bounds(actionButton_):panel::TouchRect{};
   for(unsigned i=0;i<2;++i) {
     auto track=bounds(speedBars_[i]);const int pad=std::max(10,p(12));
     track.y-=pad;track.height+=2*pad;touchLayout_.speedTracks[i]=track;
@@ -537,7 +549,9 @@ void PanelUi::update(const PanelView &v) {
       !v.hudSelector && v.dualAxis ? (v.elevation ? "ЭЛЕВАЦИЯ · EL" : "АЗИМУТ · AZ") : "");
   const bool confirmation = !v.autoMode && ((v.targetValid && v.pending) ||
                                             (v.secondaryTargetValid && v.secondaryPending));
-  const bool idle=!v.movingNow && !v.statusFault && (!v.status[0] || !std::strcmp(v.status,"Имитация"));
+  // Enlarged idle readings belong to the compact layout only. The full layout
+  // keeps its original fonts and geometry when motion/status changes.
+  const bool idle=compact && !v.movingNow && !v.statusFault && (!v.status[0] || !std::strcmp(v.status,"Имитация"));
   const bool prominent=confirmation && !idle;
   const bool emphasize=prominent && !compact;
   const lv_font_t *mainFont = compact && confirmation ? face(80) : idle ? face(v.dualAxis?112:160) : emphasize ? face(36)
@@ -589,7 +603,7 @@ void PanelUi::update(const PanelView &v) {
   color(targetCaption_, confirmation ? 0xf0b85c : targetColor);
   color(target_, confirmation ? 0xf0b85c : targetColor);
   color(secondaryTarget_, confirmation ? 0xf0b85c : targetColor);
-  const int currentMaximumWidth=p(idle?(compact?360:392):330);
+  const int currentMaximumWidth=p(idle?360:330);
   if(compact && idle && !confirmation && v.dualAxis) {
     // A third digit on the other axis must not keep the selected angle at
     // its moving size after release. Fit the secondary reading first.
@@ -607,7 +621,9 @@ void PanelUi::update(const PanelView &v) {
   // Fit continuous multi-turn coordinates inside the ring, leaving room for jog arrows.
   auto fit = [&](lv_obj_t *primary, lv_obj_t *secondary, const lv_font_t *initial, int maximumWidth) {
     const lv_font_t *chosen = initial;
-    for (const auto *candidate : {face(160), face(112), face(80), face(48), face(36), face(28)}) {
+    for (int size : {160,112,80,48,36,28}) {
+      if(!compact && (size==160 || size==48)) continue;
+      const auto *candidate=face(size);
       if (candidate->line_height > initial->line_height) continue;
       font(primary, candidate);
       lv_obj_update_layout(primary); lv_obj_update_layout(secondary);
@@ -644,7 +660,7 @@ void PanelUi::update(const PanelView &v) {
   const int goalY = idle ? 344 : confirmation ? (v.dualAxis ? 300 : 250) : (v.dualAxis ? 316 : 282);
   lv_obj_update_layout(targetCaption_);
   const int captionWidth = lv_obj_get_width(targetCaption_);
-  const int goalX = compact ? 0 : row(target_, secondaryTarget_, goalFont, captionFont, goalY,
+  const int goalX = compact ? 0 : row(target_, secondaryTarget_, goalFont, face(22), goalY,
                         prominent ? 0 : captionWidth + p(12));
   if(!compact) lv_obj_set_pos(targetCaption_, prominent ? (width_ - captionWidth) / 2 : goalX,
                  prominent ? y(v.dualAxis ? 266 : 210)

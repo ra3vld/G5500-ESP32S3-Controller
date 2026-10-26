@@ -636,7 +636,7 @@ void Network::serviceApSubnet() {
   }
 }
 
-void Network::formatAddresses(char *text, size_t capacity, const char *separator) const {
+void Network::formatAddresses(char *text, size_t capacity, const char *separator, bool own, bool accessPoint) const {
   char sta[16]{}, ap[16]{}, eth[16]{};
   const auto address = [](char *out, const IPAddress &ip) {
     std::snprintf(out, 16, "%u.%u.%u.%u", unsigned(ip[0]), unsigned(ip[1]),
@@ -645,7 +645,7 @@ void Network::formatAddresses(char *text, size_t capacity, const char *separator
   if (WiFi.status() == WL_CONNECTED) address(sta, WiFi.localIP());
   if (WiFi.getMode() & WIFI_AP) address(ap, WiFi.softAPIP());
   if (ethernetConnected()) address(eth, ethernetIP());
-  formatNetworkAddresses(text, capacity, sta, ap, separator, eth);
+  formatNetworkAddresses(text, capacity, sta, ap, separator, eth, own, accessPoint);
 }
 
 void Network::connectWifi(const String &ssid, const String &password) {

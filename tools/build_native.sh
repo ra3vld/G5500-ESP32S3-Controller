@@ -84,6 +84,10 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFI
 ./build/device_api_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DDISPLAY_KIND=1 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_tests
 ./build/display_api_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=5 -DDISPLAY_KIND=3 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_crowpanel_tests
+./build/display_api_crowpanel_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=8 -DDISPLAY_KIND=4 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_round_tests
+./build/display_api_round_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/display_settings_tests.cpp -o build/display_settings_tests
 ./build/display_settings_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_unavailable_tests.cpp -o build/display_unavailable_tests

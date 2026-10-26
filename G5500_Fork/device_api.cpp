@@ -337,29 +337,35 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
       for(unsigned i=0;i<2;++i){const unsigned pose=i?current.touch:current.screen;const char *p=i?"touch":"screen";
         output << ",\"" << p << "Rotation\":" << (pose&3)*90 << ",\"" << p << "MirrorX\":" << unsigned(bool(pose&4))
           << ",\"" << p << "MirrorY\":" << unsigned(bool(pose&8));}
+      for(unsigned i=0;i<6;++i)output << ",\"" << DisplayFieldNames[i] << "\":" << unsigned(bool(current.visible&(1u<<i)));
+      output << ",\"defaultFields\":" << unsigned(defaultDisplayFields(DISPLAY_KIND));
       output << '}';return;
     }
     if(method!="POST"){reply(405,"method_not_allowed");return;}
     if(!GRAPHICAL_DISPLAY){reply(409,"display_unavailable");return;}
     if(runtime_.displayRestartPending){reply(409,"restarting");return;}
     DisplaySettings next=current;uint32_t token=0,revision=0;unsigned seen=0;
-    constexpr const char *fields[]={"token","revision","screenRotation","screenMirrorX","screenMirrorY","touchRotation","touchMirrorX","touchMirrorY"};
+    constexpr const char *fields[]={"token","revision","screenRotation","screenMirrorX","screenMirrorY","touchRotation","touchMirrorX","touchMirrorY",
+      "showName","showControllerAddress","showLocalAddress","showApAddress","showHeap","showAxis"};
     for(auto e:arguments) {
-      unsigned i=0;while(i<8&&e.first!=fields[i])++i;uint32_t value=0;
-      if(i==8 || (seen&(1u<<i)) || !hardwareUnsigned(e.second,value)){reply(400,"invalid_form");return;}
+      unsigned i=0;while(i<14&&e.first!=fields[i])++i;uint32_t value=0;
+      if(i==14 || (seen&(1u<<i)) || !hardwareUnsigned(e.second,value)){reply(400,"invalid_form");return;}
       seen|=1u<<i;
       if(i==0)token=value;
       else if(i==1)revision=value;
-      else {
+      else if(i>=8) {
+        if(value>1){reply(400,"invalid_visibility");return;}
+        const unsigned bit=1u<<(i-8);next.visible=uint8_t((next.visible&~bit)|(value?bit:0));
+      } else {
         auto &pose=i>=5?next.touch:next.screen;
         const unsigned part=(i-2)%3;
         if(!part){if(value>270||value%90){reply(400,"invalid_rotation");return;}pose=uint8_t((pose&12)|value/90);}
         else {if(value>1){reply(400,"invalid_mirror");return;}const unsigned bit=part==1?4:8;pose=uint8_t((pose&~bit)|(value?bit:0));}
       }
     }
-    if((seen&3)!=3 || !(seen&252)){reply(400,"invalid_form");return;}
+    if((seen&3)!=3 || !(seen&0x3ffc)){reply(400,"invalid_form");return;}
     if(token!=runtime_.hardwareToken || revision!=current.revision){reply(409,"stale_configuration");return;}
-    if(runtime_.displayStorageOk && next.samePose(current)){reply(200,"");return;}
+    if(runtime_.displayStorageOk && next.sameSettings(current)){reply(200,"");return;}
     hardware_.cancelJoystickCalibration();runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
     ++next.revision;
     if(!storage_.saveDisplay(next)){reply(503,"storage_failed");return;}

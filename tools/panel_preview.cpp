@@ -37,6 +37,7 @@ static panel::TouchEvent press(panel::TouchGesture &gesture,const panel::TouchLa
 }
 int main(int argc,char **argv) {
   assert(argc==5);width=std::atoi(argv[2]);height=std::atoi(argv[3]);roundPanel=std::atoi(argv[4]);
+  const bool compact=std::min(width,height)<320;
   lv_init();auto *d=lv_display_create(width,height);lv_display_set_color_format(d,LV_COLOR_FORMAT_RGB565);
   std::vector<uint16_t> buffer(width*16+8,0x5aa5);image.resize(width*height);
   lv_display_set_buffers(d,buffer.data()+4,nullptr,width*16*2,LV_DISPLAY_RENDER_MODE_PARTIAL);lv_display_set_flush_cb(d,flush);
@@ -46,11 +47,20 @@ int main(int argc,char **argv) {
   v.target=210;v.secondaryTarget=80;v.wifiConnected=true;v.wifiRssi=-55;
   std::strcpy(v.hudName,"Дача · G-5500");std::strcpy(v.hudAddress,"hud:192.168.3.234");
   std::strcpy(v.status,"");std::strcpy(v.ip,"192.168.3.234");std::strcpy(v.heap,"Heap: 123 КБ");
+  const auto findLabel=[&](auto &&self,lv_obj_t *object,const char *value)->lv_obj_t * {
+    if(lv_obj_check_type(object,&lv_label_class) && !std::strcmp(lv_label_get_text(object),value))return object;
+    for(uint32_t i=0;i<lv_obj_get_child_count(object);++i)if(auto *found=self(self,lv_obj_get_child(object,i),value))return found;
+    return nullptr;
+  };
   char path[512];
   const auto snapshot=[&](const char *name) {
     ui.update(v);settle(d);std::snprintf(path,sizeof path,"%s/%dx%d-%s.ppm",argv[1],width,height,name);save(path);
     const auto pixels=image;lv_obj_invalidate(lv_screen_active());lv_refr_now(d);assert(pixels==image);
     for(unsigned i=0;i<4;++i) assert(buffer[i]==0x5aa5 && buffer[buffer.size()-1-i]==0x5aa5);
+    if(!compact) {
+      assert(!ui.touchLayout().stop.width && !ui.touchLayout().stopArea.width);
+      assert(lv_obj_is_hidden(lv_obj_get_parent(findLabel(findLabel,ui.root(),"СТОП"))));
+    }
   };
   snapshot("dual");
   {
@@ -95,6 +105,37 @@ int main(int argc,char **argv) {
     return false;
   };
   assert(checkCaption(checkCaption,ui.root()));
+  {
+    const auto saved=v;
+    for(unsigned mask=0;mask<=DisplayAllFields;++mask) {
+      v.visible=mask;ui.update(v);settle(d);
+      assert(lv_obj_is_hidden(findLabel(findLabel,ui.root(),v.hudName))==!bool(mask&DisplayName));
+      assert(lv_obj_is_hidden(findLabel(findLabel,ui.root(),v.heap))==!bool(mask&DisplayHeap));
+      assert(lv_obj_is_hidden(findLabel(findLabel,ui.root(),v.ip))==!bool(mask&(DisplayLocalAddress|DisplayApAddress)));
+      assert(bool(ui.touchLayout().axis.width)==bool(mask&DisplayAxis));
+      assert(bool(ui.touchLayout().name.width)==bool(mask&(DisplayName|DisplayControllerAddress)));
+      auto *axis=findLabel(findLabel,ui.root(),compact?"AZ":"АЗИМУТ · AZ");assert(axis);
+      assert(lv_obj_is_hidden(axis)==!bool(mask&DisplayAxis));
+      auto *address=findLabel(findLabel,ui.root(),compact?v.hudAddress:"hud:192.168.3.234 · 0.0°..450.0°");assert(address);
+      assert(lv_obj_is_hidden(address)==!bool(mask&DisplayControllerAddress));
+      const auto pixels=image;lv_obj_invalidate(ui.root());lv_refr_now(d);assert(pixels==image);
+    }
+    v.visible=DisplayAllFields;snapshot("fields-all");
+    v.visible=0;snapshot("fields-none");
+    if(compact) {
+      v.visible=DisplayAllFields;v.autoMode=false;v.pending=true;
+      snapshot("fields-pending");
+      v.statusFault=true;std::strcpy(v.status,"Ошибка ввода");snapshot("fields-fault");
+      auto *goal=findLabel(findLabel,ui.root(),"EL 80.0°"),*status=findLabel(findLabel,ui.root(),v.status);
+      auto *ip=findLabel(findLabel,ui.root(),v.ip),*heap=findLabel(findLabel,ui.root(),v.heap);
+      assert(goal&&status&&ip&&heap);
+      assert(lv_obj_get_y(goal)+lv_obj_get_height(goal)<=lv_obj_get_y(status));
+      assert(lv_obj_get_y(status)+lv_obj_get_height(status)<=lv_obj_get_y(ip));
+      assert(lv_obj_get_y(ip)+lv_obj_get_height(ip)<=lv_obj_get_y(heap));
+      assert(lv_obj_get_y(heap)+lv_obj_get_height(heap)<=height);
+    }
+    v=saved;ui.update(v);settle(d);
+  }
   v.elevation=true;std::swap(v.current,v.secondaryCurrent);std::swap(v.target,v.secondaryTarget);
   v.minimum=-30;v.maximum=210;snapshot("elevation");
   v.elevation=false;std::swap(v.current,v.secondaryCurrent);std::swap(v.target,v.secondaryTarget);
@@ -158,11 +199,41 @@ int main(int argc,char **argv) {
     }
     v=saved;ui.update(v);settle(d);
   }
-  const auto findLabel=[&](auto &&self,lv_obj_t *object,const char *value)->lv_obj_t * {
-    if(lv_obj_check_type(object,&lv_label_class) && !std::strcmp(lv_label_get_text(object),value))return object;
-    for(uint32_t i=0;i<lv_obj_get_child_count(object);++i)if(auto *found=self(self,lv_obj_get_child(object,i),value))return found;
-    return nullptr;
-  };
+  if(!compact) {
+    const auto saved=v;
+    // The full dashboard retains its pre-compact geometry through motion,
+    // release, errors and idle status text, for both normal and pending goals.
+    for(bool dual:{false,true})for(bool elevation:{false,true})for(bool pending:{false,true}) {
+      v.dualAxis=dual;v.elevation=elevation;v.autoMode=false;v.pending=pending;
+      std::strcpy(v.status,"Остановлен");ui.update(v);settle(d);
+      std::vector<lv_obj_t *> labels;
+      for(const char *text:{"121°","210.0°",pending?"ЕХАТЬ":"Цель","Остановлен","192.168.3.234","Heap: 123 КБ"}) {
+        auto *label=findLabel(findLabel,ui.root(),text);assert(label);labels.push_back(label);
+      }
+      std::vector<const lv_font_t *> fonts;
+      std::vector<lv_area_t> areas;
+      for(auto *label:labels) {
+        fonts.push_back(lv_obj_get_style_text_font(label,LV_PART_MAIN));
+        lv_area_t area;lv_obj_get_coords(label,&area);areas.push_back(area);
+      }
+      for(unsigned state=0;state<6;++state) {
+        v.movingNow=state<2;v.statusFault=state==4;v.enabled=state!=5;
+        std::strcpy(v.status,state<2?"Вращение":state==2?"":state==3?"Имитация":state==4?"Ошибка ввода":"Остановлен");
+        ui.update(v);settle(d);
+        assert(!ui.touchLayout().stop.width && !ui.touchLayout().stopArea.width);
+        for(size_t i=0;i<labels.size();++i) {
+          assert(lv_obj_get_style_text_font(labels[i],LV_PART_MAIN)==fonts[i]);
+          lv_area_t area;lv_obj_get_coords(labels[i],&area);
+          assert(area.x1==areas[i].x1 && area.y1==areas[i].y1);
+          // Status has a fixed width but its text can change height when empty.
+          if(i!=3)assert(area.x2==areas[i].x2 && area.y2==areas[i].y2);
+          assert(!lv_obj_is_hidden(labels[i]));
+        }
+      }
+      v.movingNow=false;v.statusFault=false;v.enabled=true;
+    }
+    v=saved;ui.update(v);settle(d);
+  }
   if(std::min(width,height)<320) {
     const auto saved=v;
     for(bool elevation:{false,true}) {
@@ -225,22 +296,29 @@ int main(int argc,char **argv) {
   }
   v.pending=false;v.movingNow=true;v.azDirection=1;std::strcpy(v.status,"Вращение");snapshot("moving");
   layout=ui.touchLayout();
-  assert(idleGeometry.current.height>layout.current.height);
-  assert(idleGeometry.target.y>layout.target.y);
-  panel::TouchGesture input;
-  input.sample(false,0,0,layout,0);assert(press(input,layout,layout.stop,10).action==panel::TouchAction::Stop);
-  input.sample(false,0,0,layout,20);assert(press(input,layout,layout.stop,30).action==panel::TouchAction::Stop);
+  if(compact) {
+    assert(idleGeometry.current.height>layout.current.height);
+    assert(idleGeometry.target.y>layout.target.y);
+    panel::TouchGesture input;
+    input.sample(false,0,0,layout,0);assert(press(input,layout,layout.stop,10).action==panel::TouchAction::Stop);
+    input.sample(false,0,0,layout,20);assert(press(input,layout,layout.stop,30).action==panel::TouchAction::Stop);
+  } else {
+    assert(idleGeometry.current.height==layout.current.height);
+    assert(idleGeometry.target.y==layout.target.y);
+  }
   // STOP remains reachable when ordinary commands are disabled, including the speed page.
   v.enabled=false;v.speedScreen=true;v.speedAvailable[0]=v.speedAvailable[1]=true;
   snapshot("speed-stop");layout=ui.touchLayout();panel::TouchGesture blocked;
-  assert(press(blocked,layout,layout.stop,40).action==panel::TouchAction::Stop);
+  if(compact)assert(press(blocked,layout,layout.stop,40).action==panel::TouchAction::Stop);
+  const auto movingBack=layout.speedBack;
   v.enabled=true;v.movingNow=false;v.azDirection=0;std::strcpy(v.status,"");snapshot("speed");
   layout=ui.touchLayout();panel::TouchGesture speed;
+  if(!compact)assert(movingBack.x==layout.speedBack.x && movingBack.width==layout.speedBack.width);
   speed.sample(false,0,0,layout,50);
   const auto e=press(speed,layout,layout.speedTracks[1],60);assert(e.action==panel::TouchAction::SpeedValue && e.axis==1);
   v.speedScreen=false;v.hudSelector=true;
   std::strcpy(v.hudRows[0],"Мачта · G-800DXA\n120° · Стоп");std::strcpy(v.hudRows[1],"Дача · G-5500\n121° / 35° · Стоп");std::strcpy(v.hudRows[2],"Антенна · G-800SA\nНет связи");snapshot("menu");
-  v.movingNow=true;snapshot("menu-stop");assert(ui.touchLayout().stop.width);v.movingNow=false;
+  v.movingNow=true;snapshot("menu-stop");assert(bool(ui.touchLayout().stop.width)==compact);v.movingNow=false;
   v.hudSelector=false;v.feedback=v.secondaryFeedback=v.targetValid=v.secondaryTargetValid=false;
   std::strcpy(v.status,"Нет связи с повороткой");snapshot("offline");
   v.hud=false;v.settingsAvailable=DISPLAY_KIND==DISPLAY_ILI9341 && !roundPanel;v.dualAxis=false;v.feedback=true;v.current=359.9;
@@ -250,5 +328,5 @@ int main(int argc,char **argv) {
   v.current=v.minimum+4;v.target=v.maximum-8;snapshot("limits");
   std::strcpy(v.ip,"255.255.255.255  AP: 192.168.4.1");snapshot("network");
   v.statusFault=true;std::strcpy(v.status,"Ошибка AZ: нет изменения положения");snapshot("fault");
-  std::printf("PASS %dx%d: native LVGL rendering, buffer bounds, idle redraw, arrows/release, repeated STOP and speed controls\n",width,height);
+  std::printf("PASS %dx%d: native LVGL rendering, buffer bounds, idle redraw, arrows/release, layout-specific STOP and speed controls\n",width,height);
 }

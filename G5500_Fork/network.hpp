@@ -75,7 +75,7 @@ public:
   void connectWifi(const String &ssid, const String &password);
   bool ethernetStarted() const { return ethernet_.started(); }
   bool wifiConnecting() const { return wifiConnectPending_ || (wifiFallback_.trying() && WiFi.status() != WL_CONNECTED); }
-  void formatAddresses(char *text, size_t capacity, const char *separator = "\n") const;
+  void formatAddresses(char *text, size_t capacity, const char *separator = "\n", bool own = true, bool ap = true) const;
   void serviceWifiReconnect();
   void setupLoggerUdp();
   void serviceLoggerUdp();

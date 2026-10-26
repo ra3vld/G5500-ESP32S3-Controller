@@ -8,6 +8,9 @@
 #include <iostream>
 #include <string>
 using namespace forkrot;
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+namespace forkrot::crowpanel { bool beginBus() { return true; } }
+#endif
 // Radio/clock adapters are absent; the production DeviceApi, Controller,
 // Calibration, Storage, OTA and command protocol run unchanged on the host.
 namespace forkrot {
@@ -20,9 +23,21 @@ void Network::connectWifi(const String &ssid,const String &password) {
   credentials_.wifiSsid=ssid;credentials_.wifiPass=password;
   wifiSetupAp_=true;wifiConnectPending_=true;wifiConnectRequestedMs_=millis();
 }
+#if FORK_CLASSIC_ESP32 || FORK_C3
 void Diagnostics::dbgPrintln(const String &line) {diagLog_.append({line.c_str(),line.length()},true);}
 void Diagnostics::diagClear() {diagLog_.clear();}
 void Diagnostics::writeLog(JsonWriter &out) const {char data[2300];const auto n=copyLog(data,sizeof data);out << std::string_view(data,n);}
+#else
+void Diagnostics::dbgPrintln(const String &line) {
+  diagLines[diagHead]=line;diagHead=(diagHead+1)%DIAG_MAX_LINES;
+  if(diagCount<DIAG_MAX_LINES)++diagCount;
+}
+void Diagnostics::diagClear() {for(auto &line:diagLines)line="";diagHead=diagCount=0;diagPending="";}
+void Diagnostics::writeLog(JsonWriter &out) const {
+  const unsigned first=(diagHead+DIAG_MAX_LINES-diagCount)%DIAG_MAX_LINES;
+  for(unsigned i=0;i<diagCount;++i)out << diagLines[(first+i)%DIAG_MAX_LINES].c_str() << '\n';
+}
+#endif
 bool Diagnostics::writeHistoryJson(JsonWriter &out,RssiPeriod) {out << "{\"samples\":[]}";return true;}
 }
 struct Actions : DeviceActions {
