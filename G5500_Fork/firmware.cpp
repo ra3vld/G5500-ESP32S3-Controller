@@ -123,6 +123,7 @@ void Application::controllerSetup() {
   if (runtime_.recovery || !WEB_INTERFACE_ENABLED) network_.beginCommandApi();
   if (!runtime_.recovery) hardware_.beginAdc();
 
+  storage_.loadDisplay(runtime_);
   if (!runtime_.recovery) display_.initLocalDisplay();
   if (runtime_.recovery) storage_.loadPrefs(runtime_, calibration_, network_.credentials(), true);
   else { storage_.loadForkSettings(runtime_); loadPrefs(); }

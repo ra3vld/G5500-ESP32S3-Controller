@@ -59,6 +59,16 @@ class Display {
   bool flushPending_=false;
   uint32_t flushGeneration_=0,flushStarted_=0;
   bool serviceFrame();
+  static constexpr unsigned PanelWidth=DISPLAY_KIND==DISPLAY_ST7796?480:DISPLAY_KIND==DISPLAY_CROWPANEL_21?480:DISPLAY_KIND==DISPLAY_GC9A01?240:320;
+  static constexpr unsigned PanelHeight=DISPLAY_KIND==DISPLAY_CROWPANEL_21?480:DISPLAY_KIND==DISPLAY_ST7796?320:240;
+  unsigned screenWidth() const {return runtime_.displaySettings.width(PanelWidth,PanelHeight);}
+  unsigned screenHeight() const {return runtime_.displaySettings.height(PanelWidth,PanelHeight);}
+  TouchSample orientTouch(TouchSample sample) const {
+    if(!sample.healthy)return sample;
+    if(sample.x>=PanelWidth||sample.y>=PanelHeight){sample.healthy=sample.down=false;return sample;}
+    const auto p=runtime_.displaySettings.correctedTouch(sample.x,sample.y,PanelWidth,PanelHeight);
+    sample.x=uint16_t(p.x);sample.y=uint16_t(p.y);return sample;
+  }
   void updatePanelView(uint32_t now);
   void serviceKnob();
   TouchSample readTouch();
@@ -70,8 +80,7 @@ class Display {
   void serviceTrace(uint32_t now);
 #endif
 #else
-  static constexpr unsigned PanelWidth=DISPLAY_KIND==DISPLAY_ST7796?480:DISPLAY_KIND==DISPLAY_GC9A01?240:320;
-  static constexpr unsigned PanelHeight=DISPLAY_KIND==DISPLAY_ST7796?320:240,StripeRows=16;
+  static constexpr unsigned StripeRows=16;
   alignas(4) std::array<uint16_t,PanelWidth*StripeRows> pixels_{};
 #if DISPLAY_KIND == DISPLAY_GC9A01
   std::optional<Adafruit_GC9A01A> panel_;
@@ -99,6 +108,7 @@ class Display {
   void startTouchCalibration();bool readTouchRawAverage(int &x,int &y);void finishTouchCalibration();
   void serviceTouchCalibration();void serviceCalibrationTouch();void serviceTouchRecoveryHold();
   bool readTouchXY(int &x,int &y);
+  bool readCalibrationXY(int &x,int &y);
   static bool hit(int x,int y,int bx,int by,int bw,int bh) {return x>=bx && x<bx+bw && y>=by && y<by+bh;}
   void resetTouchCalAxis(bool az);void captureTouchMultiAz(uint8_t idx);void captureTouchMultiEl(uint8_t idx);
   void saveTouchCalibration();

@@ -23,6 +23,7 @@ typedef struct {
 } crowpanel_rgb_restart_stats_t;
 esp_err_t crowpanel_rgb_frame_status(esp_lcd_panel_handle_t panel, uint32_t *submitted, uint32_t *presented);
 esp_err_t crowpanel_rgb_get_restart_stats(esp_lcd_panel_handle_t panel, crowpanel_rgb_restart_stats_t *stats);
+esp_err_t crowpanel_rgb_set_source_pose(esp_lcd_panel_handle_t panel, uint8_t pose);
 #ifdef __cplusplus
 }
 #endif

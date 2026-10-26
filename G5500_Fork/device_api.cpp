@@ -311,6 +311,48 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
     status=code; type="application/json";
     output << "{\"ok\":" << (code==200?"true":"false") << ",\"error\":" << jsonQuoted(reason) << '}';
   };
+  if(path=="/api/hardware/display") {
+    const auto &current=runtime_.displaySettings;
+    if(method=="GET") {
+      constexpr unsigned w=DISPLAY_KIND==5?480:DISPLAY_KIND==3?480:DISPLAY_KIND==4?240:320;
+      constexpr unsigned h=DISPLAY_KIND==5?320:DISPLAY_KIND==3?480:240;
+      output << "{\"supported\":" << (GRAPHICAL_DISPLAY?"true":"false") << ",\"displayKind\":" << DISPLAY_KIND
+        << ",\"token\":" << runtime_.hardwareToken << ",\"revision\":" << current.revision
+        << ",\"storageOk\":" << (runtime_.displayStorageOk?"true":"false")
+        << ",\"restartRequired\":" << (runtime_.displayRestartPending?"true":"false")
+        << ",\"width\":" << (GRAPHICAL_DISPLAY?current.width(w,h):0) << ",\"height\":" << (GRAPHICAL_DISPLAY?current.height(w,h):0);
+      for(unsigned i=0;i<2;++i){const unsigned pose=i?current.touch:current.screen;const char *p=i?"touch":"screen";
+        output << ",\"" << p << "Rotation\":" << (pose&3)*90 << ",\"" << p << "MirrorX\":" << unsigned(bool(pose&4))
+          << ",\"" << p << "MirrorY\":" << unsigned(bool(pose&8));}
+      output << '}';return;
+    }
+    if(method!="POST"){reply(405,"method_not_allowed");return;}
+    if(!GRAPHICAL_DISPLAY){reply(409,"display_unavailable");return;}
+    if(runtime_.displayRestartPending){reply(409,"restarting");return;}
+    DisplaySettings next=current;uint32_t token=0,revision=0;unsigned seen=0;
+    constexpr const char *fields[]={"token","revision","screenRotation","screenMirrorX","screenMirrorY","touchRotation","touchMirrorX","touchMirrorY"};
+    for(auto e:arguments) {
+      unsigned i=0;while(i<8&&e.first!=fields[i])++i;uint32_t value=0;
+      if(i==8 || (seen&(1u<<i)) || !hardwareUnsigned(e.second,value)){reply(400,"invalid_form");return;}
+      seen|=1u<<i;
+      if(i==0)token=value;
+      else if(i==1)revision=value;
+      else {
+        auto &pose=i>=5?next.touch:next.screen;
+        const unsigned part=(i-2)%3;
+        if(!part){if(value>270||value%90){reply(400,"invalid_rotation");return;}pose=uint8_t((pose&12)|value/90);}
+        else {if(value>1){reply(400,"invalid_mirror");return;}const unsigned bit=part==1?4:8;pose=uint8_t((pose&~bit)|(value?bit:0));}
+      }
+    }
+    if((seen&3)!=3 || !(seen&252)){reply(400,"invalid_form");return;}
+    if(token!=runtime_.hardwareToken || revision!=current.revision){reply(409,"stale_configuration");return;}
+    if(runtime_.displayStorageOk && next.samePose(current)){reply(200,"");return;}
+    hardware_.cancelJoystickCalibration();runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
+    ++next.revision;
+    if(!storage_.saveDisplay(next)){reply(503,"storage_failed");return;}
+    runtime_.displayRestartPending=true;runtime_.controller.configurationLocked=true;
+    reply(200,"");restart_.request(millis());return;
+  }
   if(path=="/api/hardware/modbus") {
     const auto &c=runtime_.modbus;
     if(method=="GET") {

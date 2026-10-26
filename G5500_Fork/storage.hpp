@@ -18,6 +18,8 @@ public:
   bool saveNetwork(const NetworkConfig &config);
   bool loadModbus(Runtime &runtime);
   bool saveModbus(const ModbusConfig &config);
+  bool loadDisplay(Runtime &runtime);
+  bool saveDisplay(const DisplaySettings &settings);
   void loadHardware(Runtime &runtime, bool forceRecovery = false);
   bool stageHardware(Runtime &runtime, const HardwareConfig &config);
   bool confirmHardware(Runtime &runtime);

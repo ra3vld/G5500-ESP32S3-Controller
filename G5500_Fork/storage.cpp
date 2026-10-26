@@ -68,6 +68,27 @@ bool Storage::loadNetwork(NetworkConfig &config) {
 
 using namespace board;
 namespace {
+const char *displayKey() {
+  return DISPLAY_KIND==1?"pose1":DISPLAY_KIND==3?"pose3":DISPLAY_KIND==4?"pose4":"pose5";
+}
+}
+bool Storage::loadDisplay(Runtime &runtime) {
+  runtime.displaySettings={};
+  if(!GRAPHICAL_DISPLAY)return runtime.displayStorageOk=true;
+  if(!prefs_.begin("panel",false)){prefs_.end();return runtime.displayStorageOk=false;}
+  DisplayBytes b{};
+  const bool ok=!prefs_.isKey(displayKey()) ||
+      (prefs_.getBytesLength(displayKey())==b.size() && prefs_.getBytes(displayKey(),b.data(),b.size())==b.size() && decodeDisplay(b,runtime.displaySettings));
+  prefs_.end();return runtime.displayStorageOk=ok;
+}
+bool Storage::saveDisplay(const DisplaySettings &settings) {
+  if(!GRAPHICAL_DISPLAY || !settings.valid() || !prefs_.begin("panel",false)){prefs_.end();return false;}
+  const auto bytes=encodeDisplay(settings);DisplayBytes check{};
+  const bool ok=prefs_.putBytes(displayKey(),bytes.data(),bytes.size())==bytes.size() &&
+      prefs_.getBytesLength(displayKey())==bytes.size() && prefs_.getBytes(displayKey(),check.data(),check.size())==check.size() && check==bytes;
+  prefs_.end();return ok;
+}
+namespace {
 using RuntimeSpeedRecord = std::array<uint8_t, RuntimeSpeeds::Count * sizeof(float) + 4>;
 uint32_t runtimeSpeedChecksum(const RuntimeSpeedRecord &record) {
   uint32_t hash = 2166136261u;
