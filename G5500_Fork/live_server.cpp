@@ -1,6 +1,6 @@
 #include "live_server.hpp"
 #include "network_timing.hpp"
-#if defined(ARDUINO_ARCH_ESP32) && WEB_INTERFACE_ENABLED
+#if defined(ARDUINO_ARCH_ESP32) && WEB_LIVE_SUPPORT
 #include "heap_metrics.hpp"
 #include "bounded_socket_write.hpp"
 #include <tcp_peer.hpp>

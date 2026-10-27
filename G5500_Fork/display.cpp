@@ -1,6 +1,6 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "display.hpp"
-#if DISPLAY_KIND == DISPLAY_LCD1602
+#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_LCD1602
 #include <cstdio>
 #include <cmath>
 #include <cstring>

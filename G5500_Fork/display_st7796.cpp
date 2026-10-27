@@ -1,6 +1,6 @@
 // ESP32-3248S035C: LVGL's ST7796 driver over SPI, GT911 on I2C1. GPL-3.0.
 #include "display.hpp"
-#if DISPLAY_KIND == DISPLAY_ST7796
+#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_ST7796
 #include "board.hpp"
 #include "network.hpp"
 #include "hardware.hpp"

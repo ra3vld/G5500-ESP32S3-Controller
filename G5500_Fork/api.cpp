@@ -1,4 +1,5 @@
 #include "api.hpp"
+#include "feature_support.hpp"
 #include "motion_json.hpp"
 #include "board.hpp"
 #include "project_version.hpp"
@@ -166,7 +167,7 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"azNegative\":" << controller.hardware.pins.azNegative << ",\"azPositive\":" << controller.hardware.pins.azPositive
        << ",\"elNegative\":" << controller.hardware.pins.elNegative << ",\"elPositive\":" << controller.hardware.pins.elPositive
        << ",\"azSpeedEnable\":" << controller.hardware.pins.azSpeedEnable << ",\"elSpeedEnable\":" << controller.hardware.pins.elSpeedEnable
-       << "}},\"axes\":[";
+       << "},\"features\":"; writeBuildFeatures(json); json << "},\"axes\":[";
   for (unsigned i=0; i<2; ++i) {
     if (i) json << ',';
     const auto &axis = controller.axes[i];

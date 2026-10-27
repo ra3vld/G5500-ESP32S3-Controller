@@ -134,6 +134,7 @@ Words words(std::string_view text) {
 }
 } // namespace
 Packet Protocol::datagram(std::string_view input, uint32_t now) {
+  (void)input; (void)now;
   Packet packet;
   if (!controller_.available()) {
     packet.result = Result::Unavailable;
@@ -149,7 +150,7 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
   if (!xml.parse(root)) {
     return packet;
   }
-  if (root.name == "N1MMRotor") {
+  if (N1MM_SUPPORT && root.name == "N1MMRotor") {
     if (!root.text.empty()) {
       return packet;
     }
@@ -230,7 +231,7 @@ Packet Protocol::datagram(std::string_view input, uint32_t now) {
     packet.result = controller_.target({value, 0, true, false}, true, now, manualFollow.n1mm);
     return packet;
   }
-  if (root.name != "PST") {
+  if (!PSTROTATOR_SUPPORT || root.name != "PST") {
     return packet;
   }
   packet.matched = true;
@@ -390,6 +391,7 @@ Packet Protocol::line(std::string_view input, uint32_t now, bool tcp) {
   bool ham = (cmd == "P" && v.size() > 1) || cmd == "p" || cmd == "\\set_pos" || cmd == "set_pos" ||
              cmd == "\\get_pos" || cmd == "get_pos" || cmd == "\\stop" || cmd == "stop" ||
              (tcp && u == "S");
+  if((ham && !ROTCTLD_SUPPORT) || (!ham && !GS232_SUPPORT))return packet;
   packet.matched = true;
   packet.result = Result::Ok;
   if (!controller_.available() && u != "H" && u != "H2" && u != "H3" && u != "H4" && u != "H5") {

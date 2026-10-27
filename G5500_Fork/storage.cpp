@@ -945,6 +945,8 @@ void Storage::saveProfilePresets(const Runtime &runtime) {
 }
 
 bool Storage::addResetHistoryEntry(int bootResetReason, const String &bootResetReasonText) {
+#if RESET_HISTORY_SUPPORT
+
   resetHistorySlot_=-1;
   if(!prefs_.begin("g5500rst", false)) { prefs_.end(); return false; }
 
@@ -987,9 +989,15 @@ bool Storage::addResetHistoryEntry(int bootResetReason, const String &bootResetR
   prefs_.end();
   if(saved)resetHistorySlot_=int8_t(slot);
   return saved;
+
+#else
+(void)bootResetReason;(void)bootResetReasonText;return true;
+#endif
 }
 
 bool Storage::updateResetHistoryTime() {
+#if RESET_HISTORY_SUPPORT
+
   const time_t now=time(nullptr);
   if(resetHistorySlot_<0 || now<=1700000000)return false;
   if(!prefs_.begin("g5500rst",false)) { prefs_.end();return false; }
@@ -997,9 +1005,15 @@ bool Storage::updateResetHistoryTime() {
   prefs_.putULong64(key,uint64_t(now));
   const bool saved=prefs_.getULong64(key,0)==uint64_t(now);
   prefs_.end();return saved;
+
+#else
+return true;
+#endif
 }
 
 bool Storage::writeResetHistoryJson(JsonWriter &j) {
+#if RESET_HISTORY_SUPPORT
+
   if(!prefs_.begin("g5500rst", true)) {
     prefs_.end();j << "{\"available\":false,\"count\":0,\"entries\":[]}";return j.good();
   }
@@ -1037,13 +1051,23 @@ bool Storage::writeResetHistoryJson(JsonWriter &j) {
   j << "]}";
   prefs_.end();
   return j.good();
+
+#else
+j << "{\"available\":false,\"count\":0,\"entries\":[]}";return true;
+#endif
 }
 
 void Storage::clearResetHistory() {
+#if RESET_HISTORY_SUPPORT
+
   resetHistorySlot_=-1;
   if(!prefs_.begin("g5500rst", false)) {prefs_.end();return;}
   prefs_.clear();
   prefs_.end();
+
+#else
+
+#endif
 }
 void Storage::saveCalibrationMode(Model model, CalibrationMode mode) {
   prefs_.begin(model==Model::G800SA?"g800sacal":model!=Model::G5500?"g800cal":"g5500", false);
@@ -1255,3 +1279,23 @@ void Storage::loadHud(Runtime &runtime, bool peers) {
   runtime.controller.remote = hud.isHud() ? &hud : nullptr;
 }
 } // namespace forkrot
+
+#if MQTT_SUPPORT
+namespace forkrot {
+bool Storage::loadMqtt(MqttConfig &config) {
+  if(!prefs_.begin("mqtt",false)){prefs_.end();return false;}
+  if(!prefs_.isKey("config1")){prefs_.end();config=MqttConfig{};return true;}
+  MqttRecord bytes{};
+  const bool read=prefs_.getBytesLength("config1")==bytes.size() && prefs_.getBytes("config1",bytes.data(),bytes.size())==bytes.size();
+  prefs_.end();return read && decodeMqtt(bytes,config);
+}
+bool Storage::saveMqtt(const MqttConfig &config) {
+  if(config.validate())return false;
+  const auto bytes=encodeMqtt(config);MqttRecord verify{};
+  if(!prefs_.begin("mqtt",false)){prefs_.end();return false;}
+  const bool ok=prefs_.putBytes("config1",bytes.data(),bytes.size())==bytes.size() &&
+      prefs_.getBytesLength("config1")==verify.size() && prefs_.getBytes("config1",verify.data(),verify.size())==verify.size() && bytes==verify;
+  prefs_.end();return ok;
+}
+}
+#endif

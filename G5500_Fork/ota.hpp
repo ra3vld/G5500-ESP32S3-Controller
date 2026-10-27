@@ -1,7 +1,9 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
 #include "ota_policy.hpp"
+#include "build_config.hpp"
 namespace forkrot {
+#if OTA_SUPPORT
 class Ota {
 public:
   using Stop = void (*)(void *);
@@ -29,4 +31,23 @@ private:
   const char *error_ = "";
   char token_[33]{}, password_[17]{}, hostname_[32]{};
 };
+#else
+class Ota {
+  uint32_t restartAt_=0;bool restarting_=false;
+public:
+  using Stop=void(*)(void *);
+  void begin(Stop,void *){}
+  void service(){}
+  bool locked() const{return false;}
+  bool readyToRestart() const;
+  bool authorized(std::string_view) const{return false;}
+  const char *start(uint32_t){return "feature_disabled";}
+  const char *write(uint32_t,std::string_view){return "feature_disabled";}
+  const char *finish(){return "feature_disabled";}
+  void cancel(){}
+  const char *armArduino(){return "feature_disabled";}
+  void reboot();
+  size_t status(char *,size_t) const;
+};
+#endif
 } // namespace forkrot

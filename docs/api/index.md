@@ -11,6 +11,7 @@
 | GPIO, применение и восстановление | [Оборудование](#http-api-оборудования) |
 | Диапазоны и калибровка | [API калибровки](../setup/az-range.md#http-api) |
 | Роль устройства и каталог повороток | [API HUD](../control/hud.md#http-api) |
+| MQTT и Home Assistant | [MQTT, discovery и команды](../integrations/mqtt.md) |
 | Загрузка прошивки | [OTA](../maintenance/ota.md#http-api) |
 | Оперативные команды и телеметрия | [WebSocket](live.md) |
 | Настройка без браузера | [UART/USB, UDP и TCP](command-api.md) |

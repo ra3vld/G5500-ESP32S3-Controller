@@ -82,6 +82,7 @@ if a.motion_hz is not None:
     flags=[f for f in flags if not f.startswith('-DMOTION_CONTROL_PERIOD_MS=')]
     flags.append('-DMOTION_CONTROL_PERIOD_MS='+str(1000//a.motion_hz))
 deps=option('env:esp32_3248s035c','lib_deps') if kind==5 else option('env:esp32_2424s012c','lib_deps') if kind==4 else '' if kind==0 else 'lvgl/lvgl @ 9.6.0' if kind==3 else 'arduino-libraries/LiquidCrystal @ 1.0.7' if kind==2 else option('display_tft','lib_deps')
+if macros.get('DISPLAY_SUPPORT',(defaults('DISPLAY_SUPPORT') or ['1'])[0])=='0':deps=''
 if kind in (1,3,4,5):
     flags += ["-DLV_CONF_INCLUDE_SIMPLE", "-I"+str(ROOT/"G5500_Fork")]
 # The 3 MiB classic-ESP32 application also needs LTO with the shared LVGL UI.

@@ -1,6 +1,6 @@
 // SPI pixel transport for the common LVGL interface. GPL-3.0.
 #include "display.hpp"
-#if DISPLAY_KIND == DISPLAY_ILI9341 || DISPLAY_KIND == DISPLAY_GC9A01
+#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_ILI9341 || DISPLAY_KIND == DISPLAY_GC9A01
 #include "board.hpp"
 #include "hardware.hpp"
 #include "network.hpp"
@@ -8,7 +8,7 @@
 #include <Wire.h>
 namespace forkrot {
 namespace {
-#if DISPLAY_KIND == DISPLAY_GC9A01
+#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_GC9A01
 bool touchWrite(uint8_t reg,uint8_t value) {
   Wire.beginTransmission(0x15);Wire.write(reg);Wire.write(value);
   return Wire.endTransmission()==0;
@@ -16,7 +16,7 @@ bool touchWrite(uint8_t reg,uint8_t value) {
 #endif
 }
 void Display::initLocalDisplay() {
-#if DISPLAY_KIND == DISPLAY_GC9A01
+#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_GC9A01
   pinMode(board::PIN_BACKLIGHT,OUTPUT);digitalWrite(board::PIN_BACKLIGHT,LOW);
   SPI.begin(board::PIN_PANEL_SCK,-1,board::PIN_PANEL_MOSI,board::PIN_PANEL_CS);
   panel_.emplace(&SPI,board::PIN_PANEL_DC,board::PIN_PANEL_CS,-1);
@@ -47,7 +47,7 @@ void Display::initLocalDisplay() {
   lv_display_set_flush_cb(display_,flushFrame);
   ui_.create(DISPLAY_KIND==DISPLAY_GC9A01);ui_.update(PanelView{});
   rendering_=true;lv_refr_now(display_);rendering_=false;
-#if DISPLAY_KIND == DISPLAY_GC9A01
+#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_GC9A01
   digitalWrite(board::PIN_BACKLIGHT,HIGH);
 #endif
   diagnostics_.dbgPrintln("[Display] LVGL RGB565 partial buffer ready");
@@ -76,7 +76,7 @@ void Display::serviceKnob() {
 }
 TouchSample Display::readTouch() {
   TouchSample sample;sample.sampledAt=millis();
-#if DISPLAY_KIND == DISPLAY_GC9A01
+#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_GC9A01
   Wire.beginTransmission(0x15);Wire.write(uint8_t(0x02));
   if(Wire.endTransmission(false)!=0 || Wire.requestFrom(uint8_t(0x15),size_t(5))!=5) return sample;
   uint8_t data[5];for(auto &b:data)b=Wire.read();

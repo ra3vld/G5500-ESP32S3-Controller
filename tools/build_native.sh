@@ -34,7 +34,7 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DLWIP_TCPIP_CORE_LOCKING=0 -I 
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DLWIP_IPV6=0 -I tests/tcp_fakes -I G5500_Fork tests/tcp_peer_tests.cpp -o build/tcp_peer_ipv4_tests
 ./build/tcp_peer_ipv4_tests
 MOTION_SOURCES="G5500_Fork/motion.cpp build/motion/libruckig.a"
-CORE_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp"
+CORE_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp G5500_Fork/mqtt_bridge.cpp G5500_Fork/mqtt_service.cpp"
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork $CORE_SOURCES tests/coast_measurement_tests.cpp -o build/coast_measurement_tests
 ./build/coast_measurement_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/keyboard_hold_tests.cpp -o build/keyboard_hold_tests
@@ -272,3 +272,15 @@ for variant in 0:0 1:0 2:0 2:1; do
   ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=$simulation -DDRIVE_INTERFACE=$drive -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/coast_settings_tests.cpp -o build/coast_settings_tests
   ./build/coast_settings_tests
 done
+${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/mqtt_tests.cpp -o build/mqtt_tests
+./build/mqtt_tests
+
+${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork -I tests $CORE_SOURCES tools/mqtt_host.cpp -o build/mqtt_host
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -DDISPLAY_SUPPORT=0 -DLOCAL_INPUT_SUPPORT=0 -DWEB_INTERFACE_ENABLED=0 -DWIFI_SUPPORT=0 -DHUD_SUPPORT=0 -DRS485_SUPPORT=0 -DOTA_SUPPORT=0 -DLOG_HISTORY_SUPPORT=0 -DRESET_HISTORY_SUPPORT=0 -DN1MM_SUPPORT=0 -DPSTROTATOR_SUPPORT=0 -DGS232_SUPPORT=0 -DROTCTLD_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/features_disabled_tests.cpp -o build/features_disabled_tests
+./build/features_disabled_tests
+${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=10 -DDISPLAY_KIND=5 -I G5500_Fork $CORE_SOURCES tests/status_memory_tests.cpp -o build/status_memory_st7796_tests
+./build/status_memory_st7796_tests
+${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=1 -I G5500_Fork $CORE_SOURCES tests/status_memory_tests.cpp -o build/status_memory_s3_tests
+./build/status_memory_s3_tests
+${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -DHOME_ASSISTANT_DISCOVERY_SUPPORT=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/mqtt_plain_tests.cpp -o build/mqtt_plain_tests
+./build/mqtt_plain_tests

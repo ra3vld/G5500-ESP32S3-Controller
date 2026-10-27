@@ -22,8 +22,20 @@ public:
   bool startJoystickCalibration();
   bool pollJoystickCalibration();
   void cancelJoystickCalibration();
-  bool calibratingJoystick() const { return calibrating_; }
-  int joystickRaw(unsigned axis) const { return localRaw_[axis]; }
+  bool calibratingJoystick() const {
+#if LOCAL_INPUT_SUPPORT
+    return calibrating_;
+#else
+    return false;
+#endif
+  }
+  int joystickRaw(unsigned axis) const {
+#if LOCAL_INPUT_SUPPORT
+    return localRaw_[axis];
+#else
+    (void)axis; return -1;
+#endif
+  }
   void startHeartbeat() {
     lastHeartbeatMs = millis();
   }
@@ -52,6 +64,8 @@ private:
   void rgbStart(RgbState s);
   Runtime &runtime_;
   RgbIndicator rgb_;
+
+#if LOCAL_INPUT_SUPPORT
   LocalAxisInput localInput_{runtime_.controller, 0};
   bool localInputsStarted_ = false, localSampled_ = false;
   uint32_t localSampleAt_ = 0, calibrationUntil_ = 0;
@@ -60,6 +74,7 @@ private:
   CombinedLocalAxis localCombined_[2];
   JoystickAxis localJoystick_[2] = {{0,2048,4095,200,50,false},{0,2048,4095,200,50,false}};
   int localRaw_[2] = {-1,-1};
+#endif
   bool pwmReady = false, pwmFailed = false, directionsStarted_ = false;
   bool attached_[4] = {};
   int pwmDirection_[2]{};

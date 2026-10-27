@@ -2,7 +2,7 @@
 #include "build_config.hpp"
 #include "live.hpp"
 #include "live_frame.hpp"
-#if defined(ARDUINO_ARCH_ESP32) && WEB_INTERFACE_ENABLED
+#if defined(ARDUINO_ARCH_ESP32) && WEB_LIVE_SUPPORT
 // Arduino WebServer and IDF use different values for the HTTP_ANY macro.
 #pragma push_macro("HTTP_ANY")
 #undef HTTP_ANY
@@ -100,6 +100,19 @@ public:
   void publish(uint32_t now);
   bool started() const {return server_!=nullptr;}
   void writeDiagnostics(JsonWriter &);
+};
+}
+#elif defined(ARDUINO_ARCH_ESP32)
+namespace forkrot {
+class Runtime;
+class LiveServer {
+public:
+  explicit LiveServer(Runtime &) {}
+  bool begin() { return true; }
+  void commands(uint32_t) {}
+  void publish(uint32_t) {}
+  bool started() const { return false; }
+  void writeDiagnostics(JsonWriter &) {}
 };
 }
 #endif

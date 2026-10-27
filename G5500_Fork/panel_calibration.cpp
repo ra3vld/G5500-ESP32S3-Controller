@@ -1,6 +1,6 @@
 // LVGL pages for ILI9341 axis and resistive-touch calibration. GPL-3.0.
 #include "display.hpp"
-#if DISPLAY_KIND == DISPLAY_ILI9341
+#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_ILI9341
 #include "calibration.hpp"
 #include "hardware.hpp"
 #include "storage.hpp"

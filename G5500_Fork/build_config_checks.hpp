@@ -39,6 +39,65 @@ static_assert(BOARD_PROFILE >= BOARD_AUTO && BOARD_PROFILE <= BOARD_ESP32_3248S0
 #define FORK_C3 (SELECTED_BOARD == BOARD_ESP32_2424S012C || SELECTED_BOARD == BOARD_ESP32_C3)
 #define FORK_OPTIONAL_DRIVE (FORK_C3 || SELECTED_BOARD == BOARD_ESP32_3248S035C)
 
+// Feature dependencies are evaluated after resolving the board profile.
+static_assert(DISPLAY_SUPPORT == 0 || DISPLAY_SUPPORT == 1, "DISPLAY_SUPPORT must be 0 or 1");
+static_assert(LOCAL_INPUT_SUPPORT == 0 || LOCAL_INPUT_SUPPORT == 1, "LOCAL_INPUT_SUPPORT must be 0 or 1");
+static_assert(WIFI_SUPPORT == 0 || WIFI_SUPPORT == 1, "WIFI_SUPPORT must be 0 or 1");
+static_assert(ETHERNET_SUPPORT == 0 || ETHERNET_SUPPORT == 1, "ETHERNET_SUPPORT must be 0 or 1");
+static_assert(WEB_LIVE_SUPPORT == 0 || WEB_LIVE_SUPPORT == 1, "WEB_LIVE_SUPPORT must be 0 or 1");
+static_assert(BLUETOOTH_SPP_SUPPORT == 0 || BLUETOOTH_SPP_SUPPORT == 1, "BLUETOOTH_SPP_SUPPORT must be 0 or 1");
+static_assert(GS232_SUPPORT == 0 || GS232_SUPPORT == 1, "GS232_SUPPORT must be 0 or 1");
+static_assert(ROTCTLD_SUPPORT == 0 || ROTCTLD_SUPPORT == 1, "ROTCTLD_SUPPORT must be 0 or 1");
+static_assert(N1MM_SUPPORT == 0 || N1MM_SUPPORT == 1, "N1MM_SUPPORT must be 0 or 1");
+static_assert(PSTROTATOR_SUPPORT == 0 || PSTROTATOR_SUPPORT == 1, "PSTROTATOR_SUPPORT must be 0 or 1");
+static_assert(COMMAND_API_SUPPORT == 0 || COMMAND_API_SUPPORT == 1, "COMMAND_API_SUPPORT must be 0 or 1");
+static_assert(HUD_SUPPORT == 0 || HUD_SUPPORT == 1, "HUD_SUPPORT must be 0 or 1");
+static_assert(HUD_UDP_SUPPORT == 0 || HUD_UDP_SUPPORT == 1, "HUD_UDP_SUPPORT must be 0 or 1");
+static_assert(HUD_UART_SUPPORT == 0 || HUD_UART_SUPPORT == 1, "HUD_UART_SUPPORT must be 0 or 1");
+static_assert(RS485_SUPPORT == 0 || RS485_SUPPORT == 1, "RS485_SUPPORT must be 0 or 1");
+static_assert(MODBUS_RTU_SUPPORT == 0 || MODBUS_RTU_SUPPORT == 1, "MODBUS_RTU_SUPPORT must be 0 or 1");
+static_assert(OTA_SUPPORT == 0 || OTA_SUPPORT == 1, "OTA_SUPPORT must be 0 or 1");
+static_assert(ARDUINO_OTA_SUPPORT == 0 || ARDUINO_OTA_SUPPORT == 1, "ARDUINO_OTA_SUPPORT must be 0 or 1");
+static_assert(LOG_HISTORY_SUPPORT == 0 || LOG_HISTORY_SUPPORT == 1, "LOG_HISTORY_SUPPORT must be 0 or 1");
+static_assert(RSSI_HISTORY_SUPPORT == 0 || RSSI_HISTORY_SUPPORT == 1, "RSSI_HISTORY_SUPPORT must be 0 or 1");
+static_assert(RESET_HISTORY_SUPPORT == 0 || RESET_HISTORY_SUPPORT == 1, "RESET_HISTORY_SUPPORT must be 0 or 1");
+static_assert(NTP_SUPPORT == 0 || NTP_SUPPORT == 1, "NTP_SUPPORT must be 0 or 1");
+static_assert(MQTT_SUPPORT == 0 || MQTT_SUPPORT == 1, "MQTT_SUPPORT must be 0 or 1");
+static_assert(HOME_ASSISTANT_DISCOVERY_SUPPORT == 0 || HOME_ASSISTANT_DISCOVERY_SUPPORT == 1, "HOME_ASSISTANT_DISCOVERY_SUPPORT must be 0 or 1");
+#if WEB_LIVE_SUPPORT && !WEB_INTERFACE_ENABLED
+#error "WebSocket requires WEB_INTERFACE_ENABLED"
+#endif
+#if WEB_INTERFACE_ENABLED && !(WIFI_SUPPORT || ETHERNET_SUPPORT)
+#error "Web requires Wi-Fi or Ethernet"
+#endif
+#if MQTT_SUPPORT && !(WIFI_SUPPORT || ETHERNET_SUPPORT)
+#error "MQTT requires Wi-Fi or Ethernet"
+#endif
+#if HOME_ASSISTANT_DISCOVERY_SUPPORT && !MQTT_SUPPORT
+#error "Discovery requires MQTT"
+#endif
+#if BLUETOOTH_SPP_SUPPORT && (!BLUETOOTH_SUPPORT || !FORK_CLASSIC_ESP32)
+#error "SPP requires Classic ESP32 Bluetooth"
+#endif
+#if HUD_UDP_SUPPORT && (!HUD_SUPPORT || !(WIFI_SUPPORT || ETHERNET_SUPPORT))
+#error "HUD UDP requires HUD and a network"
+#endif
+#if HUD_UART_SUPPORT && !HUD_SUPPORT
+#error "HUD UART requires HUD"
+#endif
+#if MODBUS_RTU_SUPPORT && !RS485_SUPPORT
+#error "Modbus requires RS485"
+#endif
+#if ARDUINO_OTA_SUPPORT && (!OTA_SUPPORT || !(WIFI_SUPPORT || ETHERNET_SUPPORT))
+#error "Arduino OTA requires OTA and a network"
+#endif
+#if ETHERNET_SUPPORT && SELECTED_BOARD != BOARD_WT32_ETH01 && SELECTED_BOARD != BOARD_WAVESHARE_S3_ETH
+#error "Ethernet is not available on this board"
+#endif
+#if !COMMAND_API_SUPPORT && !WEB_INTERFACE_ENABLED
+#error "Keep a management channel: command API or web"
+#endif
+
 #if CAMERA_ENABLED != 0 && CAMERA_ENABLED != 1
 #error "CAMERA_ENABLED must be 0 or 1"
 #endif
@@ -57,7 +116,7 @@ static_assert(BOARD_PROFILE >= BOARD_AUTO && BOARD_PROFILE <= BOARD_ESP32_3248S0
 #define BLUETOOTH_BACKEND BT_NONE
 #elif BLUETOOTH_MODE != BT_AUTO
 #define BLUETOOTH_BACKEND BLUETOOTH_MODE
-#elif FORK_CLASSIC_ESP32
+#elif FORK_CLASSIC_ESP32 && BLUETOOTH_SPP_SUPPORT
 #define BLUETOOTH_BACKEND BT_ESP32_SPP
 #else
 #define BLUETOOTH_BACKEND BT_HC05

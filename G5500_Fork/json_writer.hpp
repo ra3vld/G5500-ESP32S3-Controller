@@ -96,5 +96,5 @@ private:
   bool paging_ = false;
   bool good_ = true;
 };
-inline constexpr size_t STATUS_JSON_CAPACITY = 6400;
+inline constexpr size_t STATUS_JSON_CAPACITY = 7168;
 } // namespace forkrot

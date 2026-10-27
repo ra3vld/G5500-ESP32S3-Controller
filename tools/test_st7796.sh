@@ -14,5 +14,5 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFI
   G5500_Fork/control.cpp G5500_Fork/motion.cpp build/motion/libruckig.a G5500_Fork/protocol.cpp \
   G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp \
   G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp \
-  G5500_Fork/command_api.cpp tests/device_api_tests.cpp -o build/device_api_st7796_fixture
+  G5500_Fork/command_api.cpp G5500_Fork/mqtt_bridge.cpp G5500_Fork/mqtt_service.cpp tests/device_api_tests.cpp -o build/device_api_st7796_fixture
 ./build/device_api_st7796_fixture --serve-http </dev/null

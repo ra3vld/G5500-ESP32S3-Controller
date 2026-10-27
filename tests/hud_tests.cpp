@@ -68,6 +68,32 @@ void Bus::tick(uint32_t at) {
   pump();
 }
 int main() {
+  {
+    Bus wire;Node first(wire,0x701,1),second(wire,0x702,2),panel(wire,0x703,3,true);
+    panel.save(first);panel.save(second);assert(panel.hud.select(first.hud.id));
+    for(unsigned at=100;at<=1300;at+=50)wire.tick(at);
+    assert(panel.hud.available(second.hud.id,1300));
+    ControlCommand target;target.op=ControlOp::Target;target.target={70,0,true,false};
+    const auto selection=panel.hud.selectionEpoch;
+    assert(panel.hud.submitTo(second.hud.id,target,1300)==Result::Deferred);
+    const auto secondRequest=panel.hud.requestId();
+    target.target.az=80;assert(panel.hud.submitTo(first.hud.id,target,1300)==Result::Deferred);
+    const auto firstRequest=panel.hud.requestId();
+    assert(panel.hud.config.selected==first.hud.id && panel.hud.selectionEpoch==selection);
+    assert(panel.hud.select(second.hud.id)); // Addressed jobs survive an unrelated screen selection.
+    wire.tick(1310);
+    assert(second.controller.axes[0].target==70 && first.controller.axes[0].target==80);
+    assert(panel.hud.result(secondRequest).result==Result::Ok && panel.hud.result(firstRequest).result==Result::Ok);
+    ControlCommand stop;stop.op=ControlOp::Stop;
+    assert(panel.hud.submitTo(first.hud.id,stop,1310)==Result::Deferred);const auto stopFirst=panel.hud.requestId();
+    assert(panel.hud.submitTo(second.hud.id,stop,1310)==Result::Deferred);const auto stopSecond=panel.hud.requestId();
+    wire.tick(1320);
+    assert(panel.hud.result(stopFirst).result==Result::Ok && panel.hud.result(stopSecond).result==Result::Ok);
+    assert(!first.controller.moving() && !second.controller.moving());
+    target.target.az=999;assert(panel.hud.submitTo(first.hud.id,target,1320)==Result::Invalid);
+    assert(panel.hud.submitTo(first.hud.id,target,5000)==Result::Unavailable);
+  }
+
   {Bus wire;Node motor(wire,0x901,0x0a000091),panel(wire,0x902,0x0a000092,true);
    motor.controller.setModel(Model::G800SA);motor.controller.feedback(30,0,true,false);
    panel.save(motor);assert(panel.hud.select(motor.hud.id));wire.tick(100);wire.tick(200);

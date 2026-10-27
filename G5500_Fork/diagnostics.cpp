@@ -1,6 +1,6 @@
+#include "wifi_access.hpp"
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "diagnostics.hpp"
-#include <WiFi.h>
 #include "ethernet.hpp"
 #include <time.h>
 
@@ -16,6 +16,8 @@ static auto &HWCDCSerial = Serial;
 
 namespace forkrot {
 void Diagnostics::diagStoreLine(String line) {
+#if LOG_HISTORY_SUPPORT
+
 #if FORK_CLASSIC_ESP32 || FORK_C3
   diagLog_.append({line.c_str(), line.length()}, true);
 #else
@@ -29,9 +31,15 @@ void Diagnostics::diagStoreLine(String line) {
     diagCount++;
   }
 #endif
+
+#else
+
+#endif
 }
 
 void Diagnostics::diagMirror(const String &s, bool newline) {
+#if LOG_HISTORY_SUPPORT
+
 #if FORK_CLASSIC_ESP32 || FORK_C3
   diagLog_.append({s.c_str(), s.length()}, newline);
 #else
@@ -56,9 +64,15 @@ void Diagnostics::diagMirror(const String &s, bool newline) {
     diagPending = "";
   }
 #endif
+
+#else
+
+#endif
 }
 
 void Diagnostics::diagClear() {
+#if LOG_HISTORY_SUPPORT
+
 #if FORK_CLASSIC_ESP32 || FORK_C3
   diagLog_.clear();
 #else
@@ -69,9 +83,15 @@ void Diagnostics::diagClear() {
   diagCount = 0;
   diagPending = "";
 #endif
+
+#else
+
+#endif
 }
 
 String Diagnostics::diagSnapshot() {
+#if LOG_HISTORY_SUPPORT
+
   String out;
 #if FORK_CLASSIC_ESP32 || FORK_C3
   if (!out.reserve(diagLog_.size())) return "[DIAG] not enough memory for snapshot\n";
@@ -89,9 +109,15 @@ String Diagnostics::diagSnapshot() {
   }
 #endif
   return out;
+
+#else
+return {};
+#endif
 }
 
 void Diagnostics::dbgView(std::string_view text, bool newline) {
+#if LOG_HISTORY_SUPPORT
+
 #if FORK_CLASSIC_ESP32 || FORK_C3
   diagLog_.append(text, newline);
 #else
@@ -107,6 +133,10 @@ void Diagnostics::dbgView(std::string_view text, bool newline) {
     if (newline) HWCDCSerial.println();
   }
 #endif
+#endif
+
+#else
+
 #endif
 }
 void Diagnostics::dbgPrint(const String &s) {
@@ -170,7 +200,9 @@ String Diagnostics::resetReasonToText(esp_reset_reason_t r) {
 }
 
 bool Diagnostics::syncClockFromNtp(uint32_t timeoutMs) {
-  if (!ethernetConnected() && WiFi.status() != WL_CONNECTED) {
+#if NTP_SUPPORT
+
+  if (!ethernetConnected() && radioWifi.status() != WL_CONNECTED) {
     return false;
   }
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
@@ -184,9 +216,15 @@ bool Diagnostics::syncClockFromNtp(uint32_t timeoutMs) {
     delay(100);
   }
   return false;
+
+#else
+(void)timeoutMs; return false;
+#endif
 }
 
 void Diagnostics::initRssiHistory() {
+#if RSSI_HISTORY_SUPPORT
+
   memset(rssi_.rssiHour, RSSI_EMPTY, sizeof(rssi_.rssiHour));
   memset(rssi_.rssiDay, RSSI_EMPTY, sizeof(rssi_.rssiDay));
   memset(rssi_.rssiWeek, RSSI_EMPTY, sizeof(rssi_.rssiWeek));
@@ -201,6 +239,10 @@ void Diagnostics::initRssiHistory() {
   }
   uint32_t now = millis();
   rssi_.rssiT1m = rssi_.rssiT5m = rssi_.rssiT30m = rssi_.rssiT2h = rssi_.rssiT24h = now;
+
+#else
+
+#endif
 }
 
 void Diagnostics::rssiPush(int8_t *buf, uint16_t size, uint16_t &pos, uint16_t &count, int8_t v) {
@@ -226,13 +268,15 @@ int8_t Diagnostics::rssiAvg(int32_t sum, uint16_t cnt) {
 }
 
 void Diagnostics::serviceRssiHistory() {
+#if RSSI_HISTORY_SUPPORT
+
   uint32_t now = millis();
   if (now - rssi_.rssiLastSampleMs < RSSI_SAMPLE_MS) {
     return;
   }
   rssi_.rssiLastSampleMs = now;
-  if (WiFi.status() == WL_CONNECTED) {
-    int r = WiFi.RSSI();
+  if (radioWifi.status() == WL_CONNECTED) {
+    int r = radioWifi.RSSI();
     if (r < -127) {
       r = -127;
     }
@@ -286,6 +330,10 @@ void Diagnostics::serviceRssiHistory() {
     rssi_.rssiT24h = now;
     storage_.persistRssiYear(rssi_);
   }
+
+#else
+
+#endif
 }
 
 bool Diagnostics::rssiHistoryJson(JsonWriter &j, const int8_t *buf, uint16_t size, uint16_t pos, uint16_t count,
@@ -329,6 +377,8 @@ void Diagnostics::readBootReason() {
   bootResetReasonText = resetReasonToText(bootResetReason);
 }
 bool Diagnostics::writeHistoryJson(JsonWriter &j, RssiPeriod period) {
+#if RSSI_HISTORY_SUPPORT
+
   if (period == RssiPeriod::Hour) {
     return rssiHistoryJson(j, rssi_.rssiHour, 60, rssi_.rssiHourPos, rssi_.rssiHourCount, "hour");
   }
@@ -342,12 +392,18 @@ bool Diagnostics::writeHistoryJson(JsonWriter &j, RssiPeriod period) {
     return rssiHistoryJson(j, rssi_.rssiMonth, 360, rssi_.rssiMonthPos, rssi_.rssiMonthCount, "month");
   }
   return rssiHistoryJson(j, rssi_.rssiYear, 365, rssi_.rssiYearPos, rssi_.rssiYearCount, "year");
+
+#else
+j << "{}"; (void)period; return false;
+#endif
 }
 
 } // namespace forkrot
 
 namespace forkrot {
 void Diagnostics::writeLog(JsonWriter &out) const {
+#if LOG_HISTORY_SUPPORT
+
 #if FORK_CLASSIC_ESP32 || FORK_C3
   struct Sink { JsonWriter &writer; void operator+=(char c) { writer << c; } } sink{out};
   diagLog_.copyTo(sink);
@@ -355,6 +411,10 @@ void Diagnostics::writeLog(JsonWriter &out) const {
   const unsigned first=(diagHead+DIAG_MAX_LINES-diagCount)%DIAG_MAX_LINES;
   for(unsigned i=0;i<diagCount;++i) out << diagLines[(first+i)%DIAG_MAX_LINES].c_str() << '\n';
   out << diagPending.c_str();
+#endif
+
+#else
+
 #endif
 }
 }

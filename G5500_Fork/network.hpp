@@ -15,7 +15,7 @@
 #include "wifi_fallback.hpp"
 #include "diagnostic_stream.hpp"
 #include "command_api.hpp"
-#include <WiFi.h>
+#include "wifi_access.hpp"
 #include <WiFiClient.h>
 #include "hud_uart_tx.hpp"
 #include "hud_uart_gate.hpp"
@@ -38,8 +38,8 @@ public:
   void selectionChanged() override { resetHudInputs(); }
   bool hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned report) const;
   bool apAlwaysOn() const {
-    return runtime_.setup.required || credentials_.network.choice==NetworkChoice::Ap || credentials_.network.choice==NetworkChoice::SharedHost || wifiSetupAp_ || runtime_.recovery || runtime_.hud.config.wifi == HudWifi::Host ||
-           (runtime_.hud.config.wifi == HudWifi::Existing && runtime_.controller.hardware.forceAp);
+    return WIFI_SUPPORT && ( runtime_.setup.required || credentials_.network.choice==NetworkChoice::Ap || credentials_.network.choice==NetworkChoice::SharedHost || wifiSetupAp_ || runtime_.recovery || runtime_.hud.config.wifi == HudWifi::Host ||
+           (runtime_.hud.config.wifi == HudWifi::Existing && runtime_.controller.hardware.forceAp));
   }
 
   WifiCredentials &credentials() {
@@ -74,7 +74,7 @@ public:
   bool startWifi();
   void connectWifi(const String &ssid, const String &password);
   bool ethernetStarted() const { return ethernet_.started(); }
-  bool wifiConnecting() const { return wifiConnectPending_ || (wifiFallback_.trying() && WiFi.status() != WL_CONNECTED); }
+  bool wifiConnecting() const { return wifiConnectPending_ || (wifiFallback_.trying() && radioWifi.status() != WL_CONNECTED); }
   void formatAddresses(char *text, size_t capacity, const char *separator = "\n", bool own = true, bool ap = true) const;
   void serviceWifiReconnect();
   void setupLoggerUdp();
@@ -115,7 +115,7 @@ private:
   Diagnostics &diagnostics_;
 
   DatagramSocket hudUdp_;
-  uint8_t hudRx_[HUD_FRAME_MAX]{};
+  std::array<uint8_t,HUD_SUPPORT && (HUD_UDP_SUPPORT || HUD_UART_SUPPORT) ? HUD_FRAME_MAX : 0> hudRx_{};
   struct UartLink {
     HudUartDecoder decoder;
     HudUartTx tx;
@@ -138,9 +138,15 @@ private:
   bool ethernetWasConnected_=false;
   WiFiServer tcpServer_{board::TCP_PORT};
   WiFiClient rotctldClient_;
+#if ROTCTLD_SUPPORT
   SelectionApiLineBuffer tcpReceiver_;
+#else
+  struct DisabledTcpReceiver { void clear(){} void select(size_t){} } tcpReceiver_;
+#endif
   uint32_t tcpLineAt_=0,tcpAborts_=0;
   bool tcpLinePending_=false;
+
+#if COMMAND_API_SUPPORT
   std::unique_ptr<CommandServer> commandApi_;
   DatagramSocket commandUdp_;
   char commandReply_[COMMAND_REPLY_MAX + 5]{};
@@ -150,13 +156,17 @@ private:
   uint8_t commandInterruptedPorts_ = 0;
   bool commandRebind_ = false;
   uint32_t commandRebindAt_ = 0;
+#endif
   Bluetooth bluetooth_;
   uint32_t lastBtDropped_ = 0;
   bool btReady_ = false;
   bool compactWifi_ = false;
   bool bufferedWifi_ = false;
+
+#if N1MM_SUPPORT || PSTROTATOR_SUPPORT
   DatagramSocket n1mmUdp, pstUdp;
   uint8_t loggerRx_[DatagramSocket::MAX_PACKET]{};
+#endif
   uint32_t udpDropped_=0;
   enum GsReplyPort : uint8_t { GS_REPLY_USB = 0, GS_REPLY_BLUETOOTH = 1, GS_REPLY_NATIVE_USB = 2 };
   GsReplyPort gsReplyPort = GS_REPLY_USB;

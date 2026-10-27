@@ -67,3 +67,6 @@
 #define LV_DRAW_SW_SUPPORT_L8 0
 #define LV_DRAW_SW_SUPPORT_AL88 0
 #define LV_DRAW_SW_SUPPORT_I1 0
+
+// Lossless RLE font bitmaps; the decoder uses one temporary glyph-width row.
+#define LV_USE_FONT_COMPRESSED 1

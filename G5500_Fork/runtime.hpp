@@ -5,10 +5,15 @@
 #include "hud.hpp"
 #include "setup_state.hpp"
 #include "display_settings.hpp"
+#include "mqtt_config.hpp"
 namespace forkrot {
 // The single control model plus the last hardware/UI projection. Peripheral
 // buffers and settings belong to their respective services, not this object.
 struct Runtime {
+#if MQTT_SUPPORT
+  MqttConfig mqtt;
+  bool mqttStorageOk=true;
+#endif
   Controller controller;
   SetupState setup;
   bool setupStorageOk = true;

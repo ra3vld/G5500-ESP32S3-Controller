@@ -1,6 +1,12 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "ota.hpp"
+#if OTA_SUPPORT
+#if ARDUINO_OTA_SUPPORT
 #include <ArduinoOTA.h>
+#else
+#include <Arduino.h>
+#include <Update.h>
+#endif
 #include <esp_ota_ops.h>
 #include <esp_system.h>
 #include <esp_app_format.h>
@@ -41,7 +47,9 @@ const char *Ota::start(uint32_t size) {
   if (!capacity_.available()) return capacity_.reason();
   if (locked_ || Update.isRunning()) return "update_locked";
   if (size < sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t) || size > capacity_.slot) return "image_size";
+#if ARDUINO_OTA_SUPPORT
   if (arduino_) { ArduinoOTA.end(); arduino_ = false; }
+#endif
   lock(); total_ = size; received_ = 0; error_ = ""; touched_ = millis();
   if (!Update.begin(size, U_FLASH)) { fail("begin_failed"); return error_; }
   writing_ = true;
@@ -77,6 +85,8 @@ void Ota::cancel() { if (writing_) fail("cancelled"); }
 void Ota::reboot() { restartAt_ = millis(); restarting_ = true; }
 bool Ota::readyToRestart() const { return restarting_ && uint32_t(millis() - restartAt_) >= 1500; }
 const char *Ota::armArduino() {
+#if ARDUINO_OTA_SUPPORT
+
   if (!capacity_.available()) return capacity_.reason();
   if (locked_ || Update.isRunning()) return "update_locked";
   if (arduino_) ArduinoOTA.end();
@@ -94,13 +104,19 @@ const char *Ota::armArduino() {
   });
   ArduinoOTA.begin(); arduino_ = true; armedAt_ = millis();
   return nullptr;
+
+#else
+return "feature_disabled";
+#endif
 }
 void Ota::service() {
   if (writing_ && uint32_t(millis() - touched_) >= 30000) fail("upload_timeout");
+#if ARDUINO_OTA_SUPPORT
   if (arduino_ && !locked_) {
     if (uint32_t(millis() - armedAt_) >= 600000) { ArduinoOTA.end(); arduino_ = false; }
     else ArduinoOTA.handle();
   }
+#endif
 }
 size_t Ota::status(char *data, size_t capacity) const {
   const int n = std::snprintf(data, capacity,
@@ -118,3 +134,16 @@ size_t Ota::status(char *data, size_t capacity) const {
   return n > 0 && size_t(n) < capacity ? size_t(n) : 0;
 }
 } // namespace forkrot
+
+#else
+#include <Arduino.h>
+#include <cstdio>
+namespace forkrot {
+void Ota::reboot(){restartAt_=millis();restarting_=true;}
+bool Ota::readyToRestart() const{return restarting_ && uint32_t(millis()-restartAt_)>=1500;}
+size_t Ota::status(char *data,size_t capacity)const {
+ const int n=std::snprintf(data,capacity,"{\"available\":false,\"reason\":\"feature_disabled\"}");
+ return n>0 && size_t(n)<capacity?size_t(n):0;
+}
+}
+#endif

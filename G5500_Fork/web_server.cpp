@@ -78,6 +78,7 @@ void WebInterface::setupWeb() {
     "/api/hud/discover",
     "/api/hud/peers",
     "/api/hud/select",
+    "/api/mqtt",
     "/api/mode",
     "/api/motion",
     "/api/motion/autotune",

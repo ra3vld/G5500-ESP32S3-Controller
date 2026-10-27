@@ -36,7 +36,14 @@ public:
   void diagClear();
   String diagSnapshot();
 #if FORK_CLASSIC_ESP32 || FORK_C3
-  size_t copyLog(char *out, size_t capacity) const { return diagLog_.copyTo(out, capacity); }
+  size_t copyLog(char *out, size_t capacity) const {
+#if LOG_HISTORY_SUPPORT
+    return diagLog_.copyTo(out, capacity);
+#else
+    if(capacity)out[0]=0;
+    return 0;
+#endif
+  }
 #endif
   void dbgView(std::string_view text, bool newline = false);
   void dbgPrint(const String &s);
@@ -57,18 +64,25 @@ private:
                          const char *range);
   Storage &storage_;
   bool nativeCommandMode_ = false;
+
+#if RSSI_HISTORY_SUPPORT
   RssiHistory rssi_;
+#endif
   esp_reset_reason_t bootResetReason = ESP_RST_UNKNOWN;
   String bootResetReasonText = "UNKNOWN";
 #if FORK_CLASSIC_ESP32 || FORK_C3
+  #if LOG_HISTORY_SUPPORT
   ByteLog<2048> diagLog_;
+  #endif
 #else
+  #if LOG_HISTORY_SUPPORT
   static constexpr uint16_t DIAG_MAX_LINES = 160;
   static constexpr uint16_t DIAG_MAX_LINE_LEN = 220;
   String diagLines[DIAG_MAX_LINES];
   uint16_t diagHead = 0;
   uint16_t diagCount = 0;
   String diagPending;
+  #endif
 #endif
 };
 } // namespace forkrot

@@ -1,3 +1,5 @@
+#include "build_config.hpp"
+#if HUD_SUPPORT
 // HUD/1 portable transport, identity, command lifetime and mirrors. GPL-3.0.
 #include "hud.hpp"
 #include "network_timing.hpp"
@@ -689,6 +691,11 @@ bool Hud::available() const {
   return isHud() && client_ && p && p->saved && p->fresh(now) &&
          (!p->simulated() || (config.simulationEnabled && simulation_));
 }
+bool Hud::available(uint64_t node, uint32_t at) const {
+  const auto *p=peer(node);
+  return isHud() && client_ && p && p->saved && p->fresh(at) &&
+      (!p->simulated() || (config.simulationEnabled && simulation_));
+}
 uint32_t Hud::freshnessAge() const {
   const auto *p = active();
   return p && p->received ? uint32_t(now - p->receivedAt) : UINT32_MAX;
@@ -709,7 +716,7 @@ bool Hud::select(uint64_t node) {
     return true;
   // Cancel commands that have not been sent; sent transactions retain their destination.
   for (auto &j : client_->jobs)
-    if (j.used && !j.attempts)
+    if (j.used && !j.attempts && !j.addressed)
       finish(j, Result::Cancelled);
   bool held = false;
   for (const auto &j : client_->jobs)
@@ -765,6 +772,67 @@ Result Hud::submitAt(const ControlCommand &c, uint32_t at) {
   // A physical sample can arrive after a slow frame, before service() advances its clock.
   now = at;
   return submit(c);
+}
+Hud::Job *Hud::stopSlot(uint64_t node) {
+  // A STOP accepted for another peer must not be overwritten by a new STOP.
+  for(auto &j:client_->jobs)
+    if(j.used && j.peer==node && j.command.op==ControlOp::Stop) {
+      finish(j,Result::Cancelled);return &j;
+    }
+  for(auto &j:client_->jobs)if(!j.used)return &j;
+  for(auto &j:client_->jobs)if(j.command.op!=ControlOp::Stop) {
+    finish(j,Result::Cancelled);return &j;
+  }
+  return nullptr;
+}
+Result Hud::submitTo(uint64_t node,const ControlCommand &c,uint32_t at) {
+  now=at;lastRequest_=nextSerial();lastResult_=Result::Unavailable;
+  auto *p=peer(node);
+  if(!available(node,at) || !p || (controller_.movementBlocked() && c.op!=ControlOp::Stop))return lastResult_;
+  const auto &s=p->state;
+  const bool elevation=s.model==Model::G5500;
+  const auto validTarget=[&](const Target &t) {
+    return (t.hasAz || t.hasEl) && (!t.hasAz || (std::isfinite(t.az) && t.az>=s.minimum && t.az<=s.maximum)) &&
+        (!t.hasEl || (elevation && std::isfinite(t.el) && s.elRange.contains(t.el)));
+  };
+  switch(c.op) {
+  case ControlOp::Target:
+    if(!validTarget(c.target))return lastResult_=Result::Invalid;
+    break;
+  case ControlOp::Stop:
+    if(c.axis < -1 || c.axis>1 || (c.axis==1 && !elevation))return lastResult_=Result::Invalid;
+    break;
+  case ControlOp::RuntimeSpeed:
+    if(c.axis<0 || c.axis>1 || (c.axis==1 && !elevation) || p->wireVersion<5 || !s.speedAvailable[c.axis])return lastResult_;
+    if(!std::isfinite(c.speed) || c.speed<s.speedLimit[c.axis]/20.f-s.speedLimit[c.axis]*1e-6f || c.speed>s.speedLimit[c.axis])return lastResult_=Result::Invalid;
+    break;
+  case ControlOp::Mode:
+    if(c.mode>Mode::AutoHour)return lastResult_=Result::Invalid;
+    break;
+  case ControlOp::Preset:
+    if(c.slot>=4)return lastResult_=Result::Invalid;
+    break;
+  case ControlOp::Execute:break;
+  default:return lastResult_=Result::Invalid;
+  }
+  if(c.op!=ControlOp::RuntimeSpeed && client_->manual.used && client_->manual.peer==node)releaseManual();
+  // releaseManual can issue its own serial; the automation request sorts later.
+  lastRequest_=nextSerial();
+  Job *slot=nullptr;
+  if(c.op==ControlOp::Stop) {
+    for(auto &j:client_->jobs)if(j.used && j.peer==node && !j.attempts && j.command.op!=ControlOp::Stop)finish(j,Result::Cancelled);
+    for(auto &h:client_->held)if(h.peer==node)h.active=false;
+    slot=stopSlot(node);
+  } else {
+    for(unsigned i=1;i<4;++i)if(!client_->jobs[i].used){slot=&client_->jobs[i];break;}
+  }
+  if(!slot){++busy;return lastResult_=Result::Busy;}
+  *slot=Job{};slot->used=true;slot->addressed=true;slot->command=c;
+  slot->peer=p->id;slot->boot=p->boot;slot->endpoint=p->endpoint;
+  slot->id=lastRequest_;slot->ticket=p->remoteTick;slot->started=at;
+  slot->wireVersion=p->wireVersion;slot->rangeRevision=s.rangeRevision;
+  slot->selection=selectionEpoch;slot->live=p->live && uint32_t(at-p->liveAt)<1000;
+  return lastResult_=Result::Deferred;
 }
 Result Hud::submit(const ControlCommand &c) {
   if(controller_.movementBlocked() && c.op!=ControlOp::Stop && !(c.op==ControlOp::ManualDrive && c.release))return Result::Unavailable;
@@ -837,7 +905,7 @@ Result Hud::submit(const ControlCommand &c) {
       if((i==0 || controller_.model==Model::G5500) && (!controller_.axes[i].calibrated ||
           (p->wireVersion>=4 && controller_.variableSpeed(i) && !controller_.motionSettings[i].ready))) ready=false;
     if(ready && tail && tail->command.op==ControlOp::Target && tail->peer==p->id && tail->boot==p->boot &&
-       tail->selection==selectionEpoch && tail->rangeRevision==p->state.rangeRevision &&
+       !tail->addressed && tail->selection==selectionEpoch && tail->rangeRevision==p->state.rangeRevision &&
        tail->command.external==c.external && tail->command.followInManual==c.followInManual) {
       if(!next.target.hasAz && tail->command.target.hasAz) { next.target.hasAz=true; next.target.az=tail->command.target.az; }
       if(!next.target.hasEl && tail->command.target.hasEl) { next.target.hasEl=true; next.target.el=tail->command.target.el; }
@@ -845,15 +913,13 @@ Result Hud::submit(const ControlCommand &c) {
     }
   }
   if (stop) {
-    slot = &client_->jobs[0];
-    if (slot->used)
-      finish(*slot, Result::Cancelled);
     for (auto &j : client_->jobs)
       if (j.used && j.peer == p->id && !j.attempts)
         finish(j, Result::Cancelled);
     for (auto &h : client_->held)
       if (h.peer == p->id)
         h.active = false;
+    slot=stopSlot(p->id);
   } else if(!slot)
     for (unsigned i = 1; i < 4; ++i)
       if (!client_->jobs[i].used) {
@@ -1721,3 +1787,88 @@ void Hud::writeStatus(JsonWriter &j, bool live) const {
     << ",\"hudCommandAttempts\":" << commandAttempts << ",\"hudCommandSendFailures\":" << commandSendFailures;
 }
 } // namespace forkrot
+
+#else
+#include "hud.hpp"
+#include <cstdio>
+namespace forkrot {
+uint32_t hudCrc(const uint8_t *p, size_t n) {
+  uint32_t c = ~0u;
+  for (size_t i = 0; i < n; ++i) {
+    c ^= p[i];
+    for (unsigned b = 0; b < 8; ++b)
+      c = (c >> 1) ^ (0xedb88320u & uint32_t(-int32_t(c & 1)));
+  }
+  return ~c;
+}
+void HudState::capture(const Controller &c, const Protocol &p, uint32_t now) {
+  model = c.model;
+  mode = c.mode;
+  maximum = c.maximum; minimum = c.minimum; azProfile = c.azProfile; rangeRevision = c.rangeRevision; elRange = c.elRange; elProfile = c.elProfile;
+  pending = c.pending;
+  lastTarget = c.lastTarget;
+  pendingValid = c.pendingValid;
+  presetActive = c.presetActive;
+  targetKnown = c.targetKnown;
+  presetSlot = c.presetSlot;
+  speedEnabled = c.speedEnabled;
+  driveFault = c.driveFault || c.setupMovementBlocked() || c.configurationLocked;
+  stopEpoch = c.stopEpoch;
+  remaining = c.remaining(now);
+  sequenceIndex = uint8_t(c.sequenceIndex());
+  sequenceCount = uint8_t(c.sequenceCount());
+  drive = c.hardware.simulation ? 3 : SELECTED_BOARD == BOARD_CROWPANEL_21 ? 4 : c.hardware.drive;
+  board = SELECTED_BOARD;
+  std::snprintf(name, sizeof name, "%s", p.rotorName.c_str());
+  std::snprintf(fault, sizeof fault, "%s", c.setupMovementBlocked()?"setup_incomplete":c.configurationLocked?"configuration_locked":c.fault.c_str());
+  for (unsigned i = 0; i < 2; ++i) {
+    axes[i] = c.axes[i];
+    speeds[i] = c.speeds[i];
+    speedAvailable[i] = c.runtimeSpeedAvailable(i);
+    runtimeSpeed[i] = c.runtimeSpeed(i); speedLimit[i] = c.runtimeSpeedLimit(i);
+    const auto &m=c.motionSettings[i];
+    motion[i] = {m.mode,m.ready,m.kickEnabled,m.holdEnabled};
+    variable[i] = c.variableSpeed(i);
+    tolerance[i] = c.effectiveTolerance(i);
+  }
+  for (unsigned i = 0; i < 4; ++i) {
+    std::snprintf(presets[i].label, sizeof presets[i].label, "%s", c.presets[i].label.c_str());
+    presets[i].target = c.presets[i].target;
+  }
+}
+void HudState::apply(Controller &c, Protocol &p, uint32_t now) const {
+  c.model = model;
+  c.mode = mode;
+  c.maximum = maximum; c.minimum = minimum; c.azProfile = azProfile; c.rangeRevision = rangeRevision; c.elRange = elRange; c.elProfile = elProfile;
+  c.pending = pending;
+  c.lastTarget = lastTarget;
+  c.pendingValid = pendingValid;
+  c.presetActive = presetActive;
+  c.targetKnown = targetKnown;
+  c.presetSlot = presetSlot;
+  c.speedEnabled = speedEnabled;
+  c.driveFault = driveFault;
+  c.stopEpoch = stopEpoch;
+  c.fault = fault;
+  c.snapshotAt = now;
+  c.remoteRemaining = remaining;
+  c.remoteSequenceIndex = sequenceIndex;
+  c.remoteSequenceCount = sequenceCount;
+  (void)p; // The HUD keeps its own stable N1MM identity across selection changes.
+  for (unsigned i = 0; i < 2; ++i) {
+    c.axes[i] = axes[i];
+    c.speeds[i] = speeds[i];
+    c.remoteSpeedAvailable[i] = speedAvailable[i];
+    c.remoteSpeed[i] = runtimeSpeed[i]; c.remoteSpeedLimit[i] = speedLimit[i];
+    auto &m=c.motionSettings[i]; m.mode=motion[i].mode;m.ready=motion[i].ready;
+    m.kickEnabled=motion[i].kickEnabled;m.holdEnabled=motion[i].holdEnabled;
+    c.remoteVariable[i] = variable[i];
+    c.remoteTolerance[i] = tolerance[i];
+  }
+  for (unsigned i = 0; i < 4; ++i) {
+    c.presets[i].label = presets[i].label;
+    c.presets[i].target = presets[i].target;
+  }
+}
+}
+#endif

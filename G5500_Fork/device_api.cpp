@@ -1,5 +1,7 @@
+#include "wifi_access.hpp"
 // Device configuration and control shared by HTTP, UART/USB, TCP and UDP. GPL-3.0.
 #include "device_api.hpp"
+#include "feature_support.hpp"
 #include "command_api.hpp"
 #include "hardware_form.hpp"
 #include "pin_json.hpp"
@@ -101,7 +103,8 @@ void DeviceApi::writeHardwareStatus(JsonWriter &j, bool compact, std::string_vie
     config(view=="confirmed"?r.good:view=="effective"?runtime_.controller.hardware:configured);
     j << '}';return;
   }
-  j << "{\"role\":" << jsonQuoted(runtime_.configuredAsHud()?"hud":"controller") << ",\"token\":" << runtime_.hardwareToken << ",\"generation\":" << r.generation
+  j << "{\"features\":";writeBuildFeatures(j);
+  j << ",\"role\":" << jsonQuoted(runtime_.configuredAsHud()?"hud":"controller") << ",\"token\":" << runtime_.hardwareToken << ",\"generation\":" << r.generation
     << ",\"hasConfirmed\":" << (r.hasConfirmed ? "true" : "false")
     << ",\"trial\":" << (runtime_.hardwareTrial ? "true" : "false")
     << ",\"recovery\":" << (runtime_.recovery ? "true" : "false")
@@ -114,7 +117,7 @@ void DeviceApi::writeHardwareStatus(JsonWriter &j, bool compact, std::string_vie
     << ",\"remainingMs\":" << (runtime_.hardwareTrial && elapsed < MemoryGuard::TrialMs ? MemoryGuard::TrialMs-elapsed : 0u)
     << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMaxBlock\":" << heapMaxBlockBytes()
     << ",\"backend\":" << jsonQuoted(runtime_.controller.hardware.backendName())
-    << ",\"sppSupported\":" << (FORK_CLASSIC_ESP32 && BLUETOOTH_SUPPORT ? "true" : "false")
+    << ",\"sppSupported\":" << (FORK_CLASSIC_ESP32 && BLUETOOTH_SPP_SUPPORT ? "true" : "false")
     << ",\"classicEsp32\":" << (FORK_CLASSIC_ESP32 ? "true" : "false")
     << ",\"crowpanel\":" << (SELECTED_BOARD == BOARD_CROWPANEL_21 ? "true" : "false")
     << ",\"crowpanelLocalDrive\":" << (CROWPANEL_LOCAL_DRIVE ? "true" : "false")
@@ -138,6 +141,7 @@ Response DeviceApi::callApi(std::string_view path, FormView form) {
     unsigned n=runtime_.loggerSettings.n1mmPort, p=runtime_.loggerSettings.pstPort,
       r=runtime_.loggerSettings.reportPort, command=runtime_.loggerSettings.commandPort;
     for(auto e:form) {
+      if(!featureSettingEnabled(e.first))return {501,"{\"ok\":false,\"result\":\"feature_disabled\"}"};
       unsigned *target=e.first=="n1mmPort"?&n:e.first=="pstPort"?&p:e.first=="reportPort"?&r:e.first=="commandPort"?&command:nullptr;
       if(target) {
         uint32_t value=0;
@@ -191,24 +195,25 @@ void DeviceApi::writeConfiguration(JsonWriter &j) {
   }
   j << "],\"build\":{\"board\":" << jsonQuoted(board::NAME) << ",\"displayKind\":" << DISPLAY_KIND
     << ",\"webEnabled\":" << (WEB_INTERFACE_ENABLED?"true":"false")
-    << ",\"bluetoothSupported\":" << (BLUETOOTH_SUPPORT?"true":"false") << "}}";
+    << ",\"bluetoothSupported\":" << (BLUETOOTH_SUPPORT?"true":"false") << ",\"features\":"; writeBuildFeatures(j); j << "}}";
 }
 bool DeviceApi::setupReady(SetupStep step) const {
   const auto &c=runtime_.controller;
   if(runtime_.recovery || runtime_.hardwareTrial || !runtime_.setupStorageOk)return false;
   switch(step) {
     case SetupStep::Network: {
+      if(!WIFI_SUPPORT && !ETHERNET_SUPPORT)return COMMAND_API_SUPPORT;
       switch(network_.credentials().network.choice) {
-        case NetworkChoice::Ap: case NetworkChoice::SharedHost:return (WiFi.getMode()&WIFI_AP) && uint32_t(WiFi.softAPIP());
+        case NetworkChoice::Ap: case NetworkChoice::SharedHost:return (radioWifi.getMode()&WIFI_AP) && uint32_t(radioWifi.softAPIP());
         case NetworkChoice::Ethernet: {
           if(!ethernetConnected())return false;
           const auto &ip=network_.credentials().network.ethernet;char expected[16];formatIpv4(ip.address,expected);
           return ip.automatic || ethernetIP().toString()==expected;
         }
         default: {
-          if(WiFi.status()!=WL_CONNECTED || !uint32_t(WiFi.localIP()))return false;
+          if(radioWifi.status()!=WL_CONNECTED || !uint32_t(radioWifi.localIP()))return false;
           const auto &ip=network_.credentials().network.wifi;char expected[16];formatIpv4(ip.address,expected);
-          return ip.automatic || WiFi.localIP().toString()==expected;
+          return ip.automatic || radioWifi.localIP().toString()==expected;
         }
       }
     }
@@ -295,6 +300,7 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
     status=code; type="application/json";
     output << "{\"ok\":" << (code==200?"true":"false") << ",\"error\":" << jsonQuoted(reason) << '}';
   };
+  if(!featurePathEnabled(path)) { reply(501,"feature_disabled"); return; }
   const bool hardwarePath=path=="/api/hardware" || path.substr(0,14)=="/api/hardware/";
   const bool stop=path=="/api/move" && (web_.value("d")=="S" || web_.value("d")=="A" || web_.value("d")=="E");
   if(ota_.locked() && !stop && path!="/api/status" && path!="/api/diaglog" && path!="/api/diagnostics" && path.substr(0,8)!="/api/ota") { reply(503,"update_locked"); return; }
@@ -420,6 +426,14 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
   const auto &r=runtime_.hardwareRecord;
   const auto &base=r.phase==ConfigPhase::Testing || r.phase==ConfigPhase::Pending || runtime_.recovery?r.candidate:r.good;
   if(!parseHardwareArguments(arguments,form,path=="/api/hardware",base,path=="/api/hardware"?&modbus:nullptr)) { reply(400,"invalid_form"); return; }
+  if(path=="/api/hardware" && (
+      (!LOCAL_INPUT_SUPPORT && form.config.local!=base.local) ||
+      (!LOCAL_INPUT_SUPPORT && form.config.buttonGpio!=base.buttonGpio) ||
+      (!BLUETOOTH_SUPPORT && form.config.bluetooth!=base.bluetooth) ||
+      (!BLUETOOTH_SPP_SUPPORT && form.config.bluetoothMode==BT_ESP32_SPP && base.bluetoothMode!=BT_ESP32_SPP) ||
+      (!WIFI_SUPPORT && form.config.forceAp!=base.forceAp) ||
+      (!MODBUS_RTU_SUPPORT && !(modbus==runtime_.modbus)) ||
+      (!RS485_SUPPORT && (form.config.pins.uartDe!=base.pins.uartDe || form.config.pins.hudDe!=base.pins.hudDe)))) {reply(501,"feature_disabled");return;}
   if(form.token!=runtime_.hardwareToken || form.generation!=runtime_.hardwareRecord.generation) { reply(409,"stale_configuration"); return; }
   if(path=="/api/hardware/joystick/start" || path=="/api/hardware/joystick/poll" || path=="/api/hardware/joystick/cancel") {
     if(path=="/api/hardware/joystick/cancel") { hardware_.cancelJoystickCalibration(); reply(200,""); return; }
@@ -747,13 +761,13 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     output << '}';return;
   }
   if(path=="/api/network" && method=="GET") {
-    const bool connected=WiFi.status()==WL_CONNECTED;
-    const String sta=WiFi.localIP().toString(),ap=WiFi.softAPIP().toString();
-    output << "{\"wifiMode\":" << unsigned(WiFi.getMode()) << ",\"wifiStatus\":" << int(WiFi.status()) << ",\"wifiConnecting\":" << (network_.wifiConnecting()?"true":"false") << ",\"connected\":" << (connected?"true":"false")
+    const bool connected=radioWifi.status()==WL_CONNECTED;
+    const String sta=radioWifi.localIP().toString(),ap=radioWifi.softAPIP().toString();
+    output << "{\"wifiMode\":" << unsigned(radioWifi.getMode()) << ",\"wifiStatus\":" << int(radioWifi.status()) << ",\"wifiConnecting\":" << (network_.wifiConnecting()?"true":"false") << ",\"connected\":" << (connected?"true":"false")
       << ",\"ssid\":" << jsonQuoted(network_.credentials().wifiSsid.c_str())
       << ",\"staIp\":" << jsonQuoted(sta.c_str()) << ",\"apIp\":" << jsonQuoted(ap.c_str())
       << ",\"apAlwaysOn\":" << (network_.apAlwaysOn()?"true":"false") << ",\"rssi\":";
-    if(connected)output << WiFi.RSSI();else output << "null";
+    if(connected)output << radioWifi.RSSI();else output << "null";
     output << ",\"ethernetSupported\":" << (ETHERNET_SUPPORTED?"true":"false")
       << ",\"ethStarted\":" << (network_.ethernetStarted()?"true":"false")
       << ",\"ethLink\":" << (ethernetLinkUp()?"true":"false")
@@ -1070,15 +1084,15 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     web_.sendHeader("Cache-Control", "no-store");
     auto &calibrationState = calibration_.state();
     actions_.updatePosition();
-    bool staOk = (WiFi.status() == WL_CONNECTED);
-    String staIp = staOk ? WiFi.localIP().toString() : "-";
-    const bool apEnabled = (WiFi.getMode() & WIFI_AP) != 0;
-    String apIp = apEnabled ? WiFi.softAPIP().toString() : "-";
+    bool staOk = (radioWifi.status() == WL_CONNECTED);
+    String staIp = staOk ? radioWifi.localIP().toString() : "-";
+    const bool apEnabled = (radioWifi.getMode() & WIFI_AP) != 0;
+    String apIp = apEnabled ? radioWifi.softAPIP().toString() : "-";
     const bool ethOk=ethernetConnected();
     const String ethIp=ethOk?ethernetIP().toString():"-";
     String ip = ethOk ? ethIp : staOk ? staIp : apIp;
     const char *mode = ethOk ? (apEnabled ? "Ethernet + AP" : "Ethernet") : staOk ? (apEnabled ? "AP + Wi-Fi Client" : "Wi-Fi Client") : apEnabled ? "Access Point" : "Disconnected";
-    int rssi = staOk ? WiFi.RSSI() : 0;
+    int rssi = staOk ? radioWifi.RSSI() : 0;
     String signal = !staOk
                         ? "-"
                         : (rssi >= -55 ? "Excellent"
@@ -1138,7 +1152,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       << ",\"ethLink\":" << (ethernetLinkUp()?"true":"false")
       << ",\"ethConnected\":" << (ethOk?"true":"false")
       << ",\"ethIp\":" << jsonQuoted(ethIp.c_str())
-      << ",\"connectedSsid\":" << jsonQuoted(staOk ? WiFi.SSID().c_str() : "")
+      << ",\"connectedSsid\":" << jsonQuoted(staOk ? radioWifi.SSID().c_str() : "")
       << ",\"wifiConnecting\":" << (network_.wifiConnecting() ? "true" : "false")
       << ",\"ssid\":" << jsonQuoted(network_.credentials().wifiSsid.c_str())
       << ",\"rssi\":" << rssiJson.c_str() << ",\"signal\":" << jsonQuoted(signal.c_str())
@@ -1181,6 +1195,48 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
 
     return;
   }
+
+#if MQTT_SUPPORT
+  if(path=="/api/mqtt" && (method=="GET" || method=="POST")) {
+    if(method=="POST") {
+      auto next=runtime_.mqtt;
+      bool invalid=false;
+      for(size_t i=0;i<arguments.count;++i) {
+        const auto &e=arguments.entries[i];
+        for(size_t k=0;k<i;++k)if(arguments.entries[k].first==e.first)invalid=true;
+        if(e.first=="enabled" || e.first=="discovery") {
+          const bool valid=e.second=="true" || e.second=="false" || e.second=="1" || e.second=="0";
+          if(!valid)invalid=true;
+          else (e.first=="enabled"?next.enabled:next.discovery)=e.second=="true" || e.second=="1";
+        } else if(e.first=="host")invalid|=!mqttText(e.second,next.host);
+        else if(e.first=="username")invalid|=!mqttText(e.second,next.username);
+        else if(e.first=="password")invalid|=!mqttText(e.second,next.password);
+        else if(e.first=="discoveryPrefix")invalid|=!mqttText(e.second,next.discoveryPrefix);
+        else if(e.first=="port") {
+          uint32_t value=0;if(!hardwareUnsigned(e.second,value) || !value || value>65535)invalid=true;else next.port=uint16_t(value);
+        } else invalid=true;
+      }
+      if(invalid || next.validate()){reply(400,invalid?"invalid_mqtt_config":next.validate());return;}
+      if(!HOME_ASSISTANT_DISCOVERY_SUPPORT && web_.hasArg("discovery") && next.discovery){reply(501,"feature_disabled");return;}
+      const bool changed=!(next==runtime_.mqtt) || !runtime_.mqttStorageOk;
+      if(changed) {
+        runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
+        if(!storage_.saveMqtt(next)){reply(503,"mqtt_storage_failed");return;}
+        // Keep the running client's credentials immutable until the safe restart.
+        configurationRestart();
+      }
+      output << "{\"ok\":true,\"restart\":" << (changed?"true":"false") << '}';return;
+    }
+    const auto &config=runtime_.mqtt;
+    output << "{\"enabled\":" << (config.enabled?"true":"false") << ",\"host\":" << jsonQuoted(config.host)
+      << ",\"port\":" << config.port << ",\"username\":" << jsonQuoted(config.username)
+      << ",\"hasPassword\":" << (config.password[0]?"true":"false") << ",\"discovery\":"
+      << (config.discovery && HOME_ASSISTANT_DISCOVERY_SUPPORT?"true":"false") << ",\"discoveryPrefix\":" << jsonQuoted(config.discoveryPrefix)
+      << ",\"storageOk\":" << (runtime_.mqttStorageOk?"true":"false") << ',';
+    if(mqtt_)mqtt_->writeStatus(output);else output << "\"supported\":true,\"connected\":false,\"error\":\"not_started\"";
+    output << '}';return;
+  }
+#endif
   if(path=="/api/move" && method=="POST") {
     auto r = callApi("/api/move",arguments);
     runtime_.controller.tick(millis());
@@ -1246,6 +1302,8 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     }
     auto config = runtime_.hud.config;
     const String role = web_.arg("role"), wifi = web_.arg("wifi"), uart = web_.arg("uart");
+    if((!HUD_SUPPORT && role=="hud") || (!HUD_UART_SUPPORT && uart=="1") ||
+        (!WIFI_SUPPORT && (wifi=="host" || wifi=="client"))) {reply(501,"feature_disabled");return;}
     unsigned port = 0;
     if ((role != "hud" && role != "controller") ||
         (wifi != "existing" && wifi != "host" && wifi != "client") || (uart != "0" && uart != "1") ||

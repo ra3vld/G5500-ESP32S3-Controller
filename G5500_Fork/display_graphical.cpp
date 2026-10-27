@@ -1,3 +1,4 @@
+#include "wifi_access.hpp"
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "display.hpp"
 #include "panel_metrics.hpp"
@@ -18,7 +19,7 @@ PanelCommandContext Display::commandContext() const {
           runtime_.hud.isHud()?hudKnob_.axis():knob_.axis(),controller.displayedTarget(),controller.pendingValid,controller.hasDriveError()};
 }
 void Display::loadTouchCalibration() {
-#if DISPLAY_KIND == DISPLAY_ILI9341
+#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_ILI9341
   storage_.loadTouchCalibration(touchCalibration_);
 #endif
 }
@@ -26,7 +27,7 @@ void Display::startAfterCalibrationLoad() {
   touchButtons_.cancel();
   redraw_=true;inputReady_=true;touchSelection_=runtime_.hud.selectionEpoch;
   inputRangeRevision_=runtime_.controller.rangeRevision;inputModel_=runtime_.controller.model;
-#if DISPLAY_KIND == DISPLAY_ILI9341
+#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_ILI9341
   if(!touchCalibration_.touchCalValid) startTouchCalibration();
 #endif
 }
@@ -45,7 +46,7 @@ void Display::serviceTouch() {
                   (unsigned long)(now - lastTouch_), touchButtons_.contactDown());
 #endif
   lastTouch_ = now;
-#if DISPLAY_KIND == DISPLAY_ILI9341
+#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_ILI9341
   if(rendering_ && tftPage!=TFT_PAGE_DASH) return;
   if(!rendering_) serviceTouchRecoveryHold();
   if(tftPage!=TFT_PAGE_DASH) { serviceCalibrationTouch();return; }
@@ -134,7 +135,7 @@ void Display::serviceTouch() {
       if(hud) hudKnob_.selectAxis();else knob_.selectAxis();
       touchButtons_.cancel();redraw_=true;
     }
-#if DISPLAY_KIND == DISPLAY_ILI9341
+#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_ILI9341
     if(action==panel::TouchAction::Settings) {
       runtime_.controller.stopNow(-1,now);touchButtons_.cancel();
       settingsRequested_=true;
@@ -201,7 +202,7 @@ void Display::updateLocalDisplay() {
   if (!display_ || displayFailed_) return;
   if (!serviceFrame()) return;
   const uint32_t now = millis();
-#if DISPLAY_KIND == DISPLAY_ILI9341
+#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_ILI9341
   if(settingsRequested_) {settingsRequested_=false;tftPage=TFT_PAGE_CAL_HOME;tftNeedsRedraw=true;touchWaitRelease=true;drawTftPage();}
   if(tftPage!=TFT_PAGE_DASH) { rendering_=true;lv_timer_handler();rendering_=false;return; }
 #endif
@@ -348,11 +349,11 @@ void Display::updateLocalDisplay() {
       } else std::snprintf(view.status, sizeof view.status, "Ошибка ввода");
       view.statusFault = true;
     }
-    const bool connected = WiFi.status() == WL_CONNECTED;
-    const bool ap = (WiFi.getMode() & WIFI_AP) != 0;
+    const bool connected = radioWifi.status() == WL_CONNECTED;
+    const bool ap = (radioWifi.getMode() & WIFI_AP) != 0;
     view.wifiConnected = connected;
     view.wifiAp = ap;
-    view.wifiRssi = connected ? int(WiFi.RSSI()) : -127;
+    view.wifiRssi = connected ? int(radioWifi.RSSI()) : -127;
     network_.formatAddresses(view.ip, sizeof view.ip, "  ",view.shows(DisplayLocalAddress),view.shows(DisplayApAddress));
     if(compact) {
       if(auto *sta=std::strstr(view.ip,"STA: "))

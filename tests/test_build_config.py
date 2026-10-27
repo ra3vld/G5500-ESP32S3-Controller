@@ -24,13 +24,13 @@ class BuildConfigTests(unittest.TestCase):
                 shutil.copy2(path, self.source / path.name)
         shutil.copytree(ROOT / 'G5500_Fork/src', self.source / 'src')
         (self.root / 'tools').mkdir()
-        for name in ['build_platformio.py', 'prepare_sketch.py', 'generate_web_assets.py', 'project_version.py']:
+        for name in ['build_platformio.py', 'prepare_sketch.py', 'generate_web_assets.py', 'project_version.py', 'web_poll.js']:
             shutil.copy2(ROOT / 'tools' / name, self.root / 'tools' / name)
         shutil.copy2(ROOT / 'platformio.ini', self.root / 'platformio.ini')
 
     def edit(self, **settings):
         for name, value in settings.items():
-            path = self.source / ('build_config.hpp' if name in {'BOARD_PROFILE', 'DISPLAY_KIND'} else 'runtime_defaults.hpp')
+            path = self.source / ('build_config.hpp' if name in {'BOARD_PROFILE', 'DISPLAY_KIND', 'DISPLAY_SUPPORT'} else 'runtime_defaults.hpp')
             text = path.read_text()
             # Realistic formatting: indentation, spaces after #, aligned values.
             text, count = re.subn(r'^#define\s+' + name + r'\s+[^\n]+',
@@ -46,6 +46,36 @@ class BuildConfigTests(unittest.TestCase):
                                  '-x', 'c++', '-'],
                                 input='#include "board.hpp"\n' + assertions, text=True, capture_output=True)
         self.assertEqual(result.returncode == 0, success, result.stderr)
+
+    def test_feature_dependencies(self):
+        flags=['DISPLAY_SUPPORT','LOCAL_INPUT_SUPPORT','WIFI_SUPPORT','ETHERNET_SUPPORT','WEB_LIVE_SUPPORT',
+               'BLUETOOTH_SPP_SUPPORT','GS232_SUPPORT','ROTCTLD_SUPPORT','N1MM_SUPPORT','PSTROTATOR_SUPPORT',
+               'COMMAND_API_SUPPORT','HUD_SUPPORT','HUD_UDP_SUPPORT','HUD_UART_SUPPORT','RS485_SUPPORT',
+               'MODBUS_RTU_SUPPORT','OTA_SUPPORT','ARDUINO_OTA_SUPPORT','LOG_HISTORY_SUPPORT',
+               'RSSI_HISTORY_SUPPORT','RESET_HISTORY_SUPPORT','NTP_SUPPORT','MQTT_SUPPORT','HOME_ASSISTANT_DISCOVERY_SUPPORT']
+        for name in flags:
+            with self.subTest(flag=name):
+                self.compile({},[name+'=0']+(['WEB_INTERFACE_ENABLED=0'] if name=='WIFI_SUPPORT' else []))
+                self.compile({},[name+'=2'],success=False)
+        for definitions in [
+            ['WIFI_SUPPORT=0','MQTT_SUPPORT=1'],
+            ['MQTT_SUPPORT=0','HOME_ASSISTANT_DISCOVERY_SUPPORT=1'],
+            ['RS485_SUPPORT=0','MODBUS_RTU_SUPPORT=1'],
+            ['WEB_INTERFACE_ENABLED=0','WEB_LIVE_SUPPORT=1'],
+            ['WEB_INTERFACE_ENABLED=0','COMMAND_API_SUPPORT=0'],
+            ['HUD_SUPPORT=0','HUD_UART_SUPPORT=1'],
+            ['HUD_SUPPORT=0','HUD_UDP_SUPPORT=1'],
+            ['OTA_SUPPORT=0','ARDUINO_OTA_SUPPORT=1']]:
+            self.compile({},definitions,success=False)
+        self.compile(dict(GRAPHICAL_DISPLAY=0),['BOARD_PROFILE=10','DISPLAY_KIND=5','DISPLAY_SUPPORT=0'])
+        self.compile(dict(CAMERA_ENABLED=0),['BOARD_PROFILE=7','WEB_INTERFACE_ENABLED=0'])
+
+    def test_disabled_display_omits_dependencies(self):
+        self.edit(DISPLAY_KIND='DISPLAY_ILI9341',DISPLAY_SUPPORT='0')
+        result=subprocess.run([sys.executable,str(self.root/'tools/build_platformio.py'),'--dry-run'],text=True,capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        config=configparser.ConfigParser(interpolation=None);config.read(self.root/'build/platformio-config/esp32s3_n16r8.ini')
+        self.assertEqual(config.get('env:selected','lib_deps').strip(),'')
 
     def test_service_capabilities(self):
         self.compile(dict(WEB_INTERFACE_ENABLED=1, BLUETOOTH_SUPPORT=1))
@@ -242,7 +272,7 @@ int main() {
                      ['BOARD_PROFILE=7','CONFIG_IDF_TARGET_ESP32S3=1','DRIVE_INTERFACE=2'])
         self.compile(dict(CAMERA_ENABLED=0), ['BOARD_PROFILE=7','CAMERA_ENABLED=0'])
         for flags in (['BOARD_PROFILE=1','CAMERA_ENABLED=1'],
-                      ['BOARD_PROFILE=7','WEB_INTERFACE_ENABLED=0'],
+                      ['BOARD_PROFILE=7','WEB_INTERFACE_ENABLED=0','CAMERA_ENABLED=1'],
                       ['BOARD_PROFILE=7','DISPLAY_KIND=1'],
                       ['BOARD_PROFILE=7','USER_BUTTON_GPIO=8']):
             self.compile({},flags,success=False)

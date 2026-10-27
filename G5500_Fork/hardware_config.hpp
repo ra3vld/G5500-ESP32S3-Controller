@@ -62,8 +62,8 @@ struct HardwareConfig {
   bool hudRs485() const { return pins.hudRx >= 0 && pins.hudTx >= 0 && pins.hudDe >= 0; }
   bool rs485() const { return pins.uartDe >= 0; }
   uint8_t backend() const {
-    return !bluetooth ? BT_NONE : bluetoothMode == BT_AUTO
-        ? (FORK_CLASSIC_ESP32 ? BT_ESP32_SPP : BT_HC05) : bluetoothMode;
+    return (!BLUETOOTH_SUPPORT || !bluetooth || (FORK_CLASSIC_ESP32 && bluetoothMode==BT_ESP32_SPP && !BLUETOOTH_SPP_SUPPORT)) ? BT_NONE : bluetoothMode == BT_AUTO
+        ? ((FORK_CLASSIC_ESP32 && BLUETOOTH_SPP_SUPPORT) ? BT_ESP32_SPP : BT_HC05) : bluetoothMode;
   }
   const char *backendName() const {
     return backend() == BT_ESP32_SPP ? "ESP32_SPP" : backend() == BT_HC05 ? "HC05" : "NONE";

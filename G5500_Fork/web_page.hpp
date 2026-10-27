@@ -400,9 +400,17 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <div><span id="btlabel">Bluetooth</span>: <b id="btstate" role="status">-</b></div><div id="bttransport">-</div>
 <div class="hide" id="btmacrow">Bluetooth MAC: <b class="mono" id="btmac">-</b></div></div><div class="hint hide" id="bthelp">Этот MAC нужен в Look4Sat. Подключение видно и без передачи команд; сопряжение в Android само по себе не означает активное соединение.</div>
 </div></details></section><section class="card settings-section" id="networkSettings"><details class="settings-details"><summary><h2>Настройки сети<span class="section-caption">Подключение, IP-адреса и точка доступа</span></h2></summary><div class="settings-content">
-<section class="settings-group"><h3>Домашняя сеть Wi-Fi</h3><div class="row"><div class="field"><label for="ssid">Имя сети (SSID)</label><input autocomplete="off" aria-describedby="ssid-help" id="ssid"/><p class="field-help" id="ssid-help">Точное имя сети Wi-Fi, к которой подключится устройство после сохранения.</p></div><div class="field"><label for="pass">Пароль сети</label><input autocomplete="new-password" aria-describedby="pass-help" id="pass" type="password"/><p class="field-help" id="pass-help">Пароль выбранной сети Wi-Fi. Для открытой сети оставьте пустым. Сохранённый пароль не отображается в этом поле.</p></div></div>
+<section class="settings-group" id="mqttSettings" hidden><h3>MQTT и Home Assistant</h3>
+<form id="mqttForm" onsubmit="saveMqtt(event)"><label class="check-field"><input id="mqttEnabled" type="checkbox"> Подключаться к MQTT</label>
+<div class="row"><div class="field"><label for="mqttHost">Сервер MQTT</label><input id="mqttHost" maxlength="95" placeholder="192.168.1.10" autocomplete="off"></div><div class="field"><label for="mqttPort">Порт TCP</label><input id="mqttPort" type="number" min="1" max="65535" value="1883" required></div></div>
+<div class="row"><div class="field"><label for="mqttUsername">Логин</label><input id="mqttUsername" maxlength="63" autocomplete="off"></div><div class="field"><label for="mqttPassword">Пароль MQTT</label><input id="mqttPassword" type="password" maxlength="95" autocomplete="new-password" placeholder="Оставьте пустым, чтобы сохранить пароль"></div></div>
+<label class="check-field"><input id="mqttClearPassword" type="checkbox"> Удалить сохранённый пароль MQTT</label>
+<div id="mqttDiscoveryFields"><label class="check-field"><input id="mqttDiscovery" type="checkbox" checked> Автообнаружение Home Assistant</label><div class="field"><label for="mqttDiscoveryPrefix">Префикс discovery</label><input id="mqttDiscoveryPrefix" maxlength="47" value="homeassistant" required></div></div>
+<p class="field-help">В Home Assistant добавьте интеграцию MQTT с тем же брокером. Каждая сохранённая поворотка HUD появится отдельным устройством. «Текущая выбранная поворотка» следует выбору на экране. Подключение использует TCP без TLS.</p>
+<div class="form-actions"><button id="mqttSave" type="submit" class="btn good" disabled>Сохранить MQTT и перезапустить</button></div><p id="mqttMessage" role="status" aria-live="polite">Откройте настройки сети, чтобы загрузить MQTT.</p></form></section>
+<section class="settings-group" data-feature="wifi"><h3>Домашняя сеть Wi-Fi</h3><div class="row"><div class="field"><label for="ssid">Имя сети (SSID)</label><input autocomplete="off" aria-describedby="ssid-help" id="ssid"/><p class="field-help" id="ssid-help">Точное имя сети Wi-Fi, к которой подключится устройство после сохранения.</p></div><div class="field"><label for="pass">Пароль сети</label><input autocomplete="new-password" aria-describedby="pass-help" id="pass" type="password"/><p class="field-help" id="pass-help">Пароль выбранной сети Wi-Fi. Для открытой сети оставьте пустым. Сохранённый пароль не отображается в этом поле.</p></div></div>
 <div class="form-actions"><button class="btn good" id="wifiSaveButton" onclick="wifi()">Сохранить и подключиться</button><span class="hint">Полученный IP появится ниже. Точка доступа останется доступной до следующей перезагрузки.</span></div><div aria-live="polite" class="inline-message" id="wifiMessage" role="status"></div><a id="wifiClientLink" class="hint" hidden target="_blank" rel="noopener noreferrer"></a></section>
-<section class="settings-group"><h3>Точка доступа устройства</h3><div class="field"><label for="appass">Пароль точки доступа</label><input autocomplete="new-password" aria-describedby="appass-help" id="appass" maxlength="63" minlength="8" placeholder="Пустое поле — открытая сеть" type="password"/><p class="field-help" id="appass-help">Пароль собственной точки доступа устройства: 8–63 символа. Пустое поле отключает защиту паролем. Изменение применяется после перезагрузки.</p></div><p class="hint">От 8 до 63 символов. Оставьте поле пустым, чтобы открыть сеть без пароля.</p><div class="form-actions"><button class="btn good" id="apSaveButton" onclick="saveAp()">Сохранить точку доступа</button><span class="hint">Устройство перезагрузится.</span></div></section></div></details></section><section class="card settings-section" id="otaSettings"><details class="settings-details" ontoggle="if(this.open)loadOta()"><summary><h2>Обновление прошивки<span class="section-caption">OTA через браузер или Arduino IDE</span></h2></summary><div class="settings-content">
+<section class="settings-group" data-feature="wifi"><h3>Точка доступа устройства</h3><div class="field"><label for="appass">Пароль точки доступа</label><input autocomplete="new-password" aria-describedby="appass-help" id="appass" maxlength="63" minlength="8" placeholder="Пустое поле — открытая сеть" type="password"/><p class="field-help" id="appass-help">Пароль собственной точки доступа устройства: 8–63 символа. Пустое поле отключает защиту паролем. Изменение применяется после перезагрузки.</p></div><p class="hint">От 8 до 63 символов. Оставьте поле пустым, чтобы открыть сеть без пароля.</p><div class="form-actions"><button class="btn good" id="apSaveButton" onclick="saveAp()">Сохранить точку доступа</button><span class="hint">Устройство перезагрузится.</span></div></section></div></details></section><section class="card settings-section" id="otaSettings"><details class="settings-details" ontoggle="if(this.open)loadOta()"><summary><h2>Обновление прошивки<span class="section-caption">OTA через браузер или Arduino IDE</span></h2></summary><div class="settings-content">
 <p id="otaCapacity" role="status">Откройте раздел, чтобы проверить доступность OTA.</p><div class="kv"><div>Flash: <b id="otaFlash">—</b></div><div>Текущая прошивка: <b id="otaImage">—</b></div><div>Раздел OTA: <b id="otaSlot">—</b></div></div>
 <p class="field-help">Выберите файл приложения .bin для той же платы и подключения. Настройки и калибровки сохраняются. Во время обновления движение будет остановлено; не отключайте питание.</p>
 <form id="otaForm" onsubmit="uploadOta(event)"><div class="field"><label for="otaFile">Файл прошивки</label><input id="otaFile" type="file" accept=".bin,application/octet-stream" onchange="validateOtaFile()" disabled/><p id="otaFileHelp" class="field-help">Нужен firmware.bin из PlatformIO или файл приложения из Arduino IDE.</p></div>
@@ -778,6 +786,7 @@ function liveFresh(){return live.ready&&Date.now()-live.last<=1000}
 function renderLive(){liveFrame=0;if(httpState)renderStatus(liveFresh()&&live.state?{...httpState,...live.state}:httpState);}
 function queueLiveRender(){if(!liveFrame)liveFrame=requestAnimationFrame(renderLive);}
 function connectLive(port){
+ if(httpState?.build?.features?.webLive===false)return;
  if(port!==0)connectControlLive(port);
  if(port===0||live.socket||live.retry||window.G5500_HTTP_ONLY)return;
  const socket=new WebSocket('ws://'+location.hostname+':'+(port||81)+'/api/live');live.socket=socket;live.last=Date.now();live.probeAt=0;live.stableAt=0;
@@ -1579,6 +1588,7 @@ if(document.activeElement!==ssid && !ssid.dataset.dirty) ssid.value=j.ssid||'';
 updateHud(j);
 compactStatus(j);
 updateWifiSetup(j);
+renderFeatures(j.build?.features);
 }
 let rrange='hour',rssiData=null;
 function drawRssi(j){
@@ -1997,5 +2007,47 @@ setInterval(renewSetupTest,400);
 window.addEventListener('message',event=>{if(event.origin!==location.origin||event.source!==document.getElementById('equipmentFrame').contentWindow)return;if(event.data?.type==='hardwareState'){wizard.hardwareDirty=!!event.data.dirty;wizard.hardwareCanApply=!!event.data.canApply;wizard.hardwareError=event.data.error||'';renderSetup();}if(event.data?.type==='hardwareResult'){const pending=wizard.hardwarePending.get(event.data.id);if(pending){clearTimeout(pending.timer);wizard.hardwarePending.delete(event.data.id);event.data.error?pending.reject(new Error(event.data.error)):pending.resolve(event.data);}}if(event.data?.type==='hardwareReady')event.source.postMessage({type:'hardwareStage',step:wizard.state?.step,driveInterface:wizard.state?.driveInterface,simulation:wizard.state?.simulation},location.origin);if(event.data?.type==='hardwareHeight')document.getElementById('equipmentFrame').style.height=Math.max(400,Number(event.data.height)||400)+'px';});
 pollSetup();setInterval(pollSetupBackground,2500);
 
+
+let mqttLoaded=false,mqttLoading=false;
+function featureAvailable(name){return window._forkState?.build?.features?.[name]!==false;}
+function renderFeatures(features){
+ if(!features)return;
+ const hide=(id,key)=>{const e=document.getElementById(id);if(e)e.hidden=features[key]===false;};
+ for(const [id,key] of [['mqttSettings','mqtt'],['mqttDiscoveryFields','homeAssistantDiscovery'],['otaSettings','ota'],['otaArduino','arduinoOta'],['signalSettings','rssiHistory'],['hudPanel','hud'],['peersSettings','hud']])hide(id,key);
+ document.querySelectorAll('[data-feature]').forEach(e=>e.hidden=features[e.dataset.feature]===false);
+ for(const [url,key] of [['/diaglog','logHistory'],['/resetdiag','resetHistory']])document.querySelectorAll('a[href="'+url+'"]').forEach(e=>e.hidden=features[key]===false);
+ for(const [names,enabled] of [[['n1mmPort','n1mmManualFollow'],features.n1mm],[['pstPort','pstManualFollow'],features.pstrotator],[['reportPort','reportHost'],features.n1mm!==false||features.pstrotator!==false],[['gs232ManualFollow'],features.gs232],[['rotctldManualFollow'],features.rotctld],[['commandPort'],features.commandApi]])
+  for(const name of names)document.querySelectorAll('[name='+name+']').forEach(e=>{e.disabled=enabled===false;const field=e.closest('.field');if(field)field.hidden=enabled===false;});
+ for(const [id,key] of [['wifiIpSettings','wifi'],['ethIpSettings','ethernet']]){const e=document.getElementById(id);if(e)e.hidden=features[key]===false;}
+ for(const id of ['deviceWifi','deviceUart']){const e=document.getElementById(id);e.closest('.field').hidden=features[id==='deviceWifi'?'wifi':'hudUart']===false;}
+ const udp=document.getElementById('hudAddress');if(udp)udp.closest('form').hidden=features.hudUdp===false;
+ const search=document.getElementById('hudBusSearch');if(search)search.hidden=features.rs485===false||features.modbus===false;
+ const role=document.getElementById('deviceRole');if(role)for(const o of role.options)if(o.value==='hud')o.hidden=features.hud===false;
+ if(features.mqtt!==false&&document.querySelector('#networkSettings > details').open)loadMqtt();
+}
+async function loadMqtt(){
+ if(mqttLoaded||mqttLoading||!featureAvailable('mqtt'))return;
+ mqttLoading=true;
+ try{
+  const r=await settingsRequest('/api/mqtt',{cache:'no-store'}),j=await r.json();if(!r.ok)throw new Error(j.error||j.result||'HTTP '+r.status);
+  for(const [id,key] of [['mqttHost','host'],['mqttPort','port'],['mqttUsername','username'],['mqttDiscoveryPrefix','discoveryPrefix']])document.getElementById(id).value=j[key];
+  document.getElementById('mqttEnabled').checked=!!j.enabled;document.getElementById('mqttDiscovery').checked=!!j.discovery;
+  document.getElementById('mqttMessage').textContent=j.connected?'MQTT подключён'+(j.baseTopic?' · '+j.baseTopic:''):j.enabled?'MQTT: '+(j.error||'ожидание подключения'):'MQTT отключён';
+  document.getElementById('mqttSave').disabled=false;mqttLoaded=true;
+ }catch(e){document.getElementById('mqttMessage').textContent='Не удалось загрузить MQTT: '+e.message;}
+ finally{mqttLoading=false;}
+}
+async function saveMqtt(event){
+ event.preventDefault();if(!mqttLoaded)return;
+ const button=document.getElementById('mqttSave'),message=document.getElementById('mqttMessage');button.disabled=true;
+ const body={enabled:document.getElementById('mqttEnabled').checked?'1':'0',host:document.getElementById('mqttHost').value.trim(),port:document.getElementById('mqttPort').value,username:document.getElementById('mqttUsername').value,discovery:featureAvailable('homeAssistantDiscovery')&&document.getElementById('mqttDiscovery').checked?'1':'0',discoveryPrefix:document.getElementById('mqttDiscoveryPrefix').value};
+ const password=document.getElementById('mqttPassword').value;
+ if(password||document.getElementById('mqttClearPassword').checked)body.password=document.getElementById('mqttClearPassword').checked?'':password;
+ message.textContent='Сохраняем MQTT…';
+ try{const r=await settingsRequest('/api/mqtt',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)}),j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||j.result||'HTTP '+r.status);
+  document.getElementById('mqttPassword').value='';document.getElementById('mqttClearPassword').checked=false;message.textContent=j.restart?'MQTT сохранён. Устройство перезапускается.':'Настройки MQTT сохранены.';
+ }catch(e){message.textContent='MQTT не сохранён: '+e.message;}finally{button.disabled=false;}
+}
+document.querySelector('#networkSettings > details').addEventListener('toggle',e=>{if(e.target.open)loadMqtt();});
 </script></body></html>
 )HTML";

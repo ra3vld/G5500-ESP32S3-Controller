@@ -10,6 +10,85 @@
 #define BLUETOOTH_SUPPORT 1
 #endif
 
+// Возможности сборки: 0 удаляет сервис и его буферы, 1 сохраняет поддержку.
+// Экономия нескольких флагов не складывается: часть библиотек общая.
+// Heap зависит от подключений; размер буфера не равен полному расходу сервиса.
+#ifndef DISPLAY_SUPPORT
+#define DISPLAY_SUPPORT 1
+#endif
+#ifndef LOCAL_INPUT_SUPPORT
+#define LOCAL_INPUT_SUPPORT 1
+#endif
+#ifndef WIFI_SUPPORT
+#define WIFI_SUPPORT 1
+#endif
+#ifndef ETHERNET_SUPPORT
+#define ETHERNET_SUPPORT (SELECTED_BOARD == BOARD_WT32_ETH01 || SELECTED_BOARD == BOARD_WAVESHARE_S3_ETH)
+#endif
+#ifndef WEB_LIVE_SUPPORT
+#define WEB_LIVE_SUPPORT WEB_INTERFACE_ENABLED
+#endif
+#ifndef BLUETOOTH_SPP_SUPPORT
+#define BLUETOOTH_SPP_SUPPORT (BLUETOOTH_SUPPORT && FORK_CLASSIC_ESP32)
+#endif
+#ifndef GS232_SUPPORT
+#define GS232_SUPPORT 1
+#endif
+#ifndef ROTCTLD_SUPPORT
+#define ROTCTLD_SUPPORT 1
+#endif
+#ifndef N1MM_SUPPORT
+#define N1MM_SUPPORT 1
+#endif
+#ifndef PSTROTATOR_SUPPORT
+#define PSTROTATOR_SUPPORT 1
+#endif
+// Буфер CommandServer: 8064 Б heap при первом запросе (ESP32, до MQTT).
+#ifndef COMMAND_API_SUPPORT
+#define COMMAND_API_SUPPORT 1
+#endif
+#ifndef HUD_SUPPORT
+#define HUD_SUPPORT 1
+#endif
+#ifndef HUD_UDP_SUPPORT
+#define HUD_UDP_SUPPORT (HUD_SUPPORT && (WIFI_SUPPORT || ETHERNET_SUPPORT))
+#endif
+#ifndef HUD_UART_SUPPORT
+#define HUD_UART_SUPPORT HUD_SUPPORT
+#endif
+#ifndef RS485_SUPPORT
+#define RS485_SUPPORT 1
+#endif
+#ifndef MODBUS_RTU_SUPPORT
+#define MODBUS_RTU_SUPPORT RS485_SUPPORT
+#endif
+#ifndef OTA_SUPPORT
+#define OTA_SUPPORT 1
+#endif
+#ifndef ARDUINO_OTA_SUPPORT
+#define ARDUINO_OTA_SUPPORT (OTA_SUPPORT && (WIFI_SUPPORT || ETHERNET_SUPPORT))
+#endif
+// ByteLog<2048>: 2280 Б на ESP32/C3; на S2/S3 журнал дополнительно использует heap.
+#ifndef LOG_HISTORY_SUPPORT
+#define LOG_HISTORY_SUPPORT 1
+#endif
+// RssiHistory: 1488 Б статической RAM на ESP32/S3; runtime heap не измерена.
+#ifndef RSSI_HISTORY_SUPPORT
+#define RSSI_HISTORY_SUPPORT WIFI_SUPPORT
+#endif
+#ifndef RESET_HISTORY_SUPPORT
+#define RESET_HISTORY_SUPPORT 1
+#endif
+#ifndef NTP_SUPPORT
+#define NTP_SUPPORT (WIFI_SUPPORT || ETHERNET_SUPPORT)
+#endif
+#ifndef MQTT_SUPPORT
+#define MQTT_SUPPORT (WIFI_SUPPORT || ETHERNET_SUPPORT)
+#endif
+#ifndef HOME_ASSISTANT_DISCOVERY_SUPPORT
+#define HOME_ASSISTANT_DISCOVERY_SUPPORT MQTT_SUPPORT
+#endif
+
 // НАСТРОЙКИ СБОРКИ — редактируйте значения справа от #define.
 // Флаги -D из Arduino CLI / PlatformIO имеют приоритет над этим файлом.
 // Сохраняйте строки #ifndef / #endif: они позволяют переопределять настройки.
@@ -33,7 +112,7 @@
 
 // DVP-камера Waveshare: JPEG на главной странице. 0 освобождает её GPIO.
 #ifndef CAMERA_ENABLED
-#define CAMERA_ENABLED (SELECTED_BOARD == BOARD_WAVESHARE_S3_ETH)
+#define CAMERA_ENABLED (SELECTED_BOARD == BOARD_WAVESHARE_S3_ETH && WEB_INTERFACE_ENABLED)
 #endif
 
 // Только переделанная CrowPanel: GPIO6/P48 — ADC вместо подсветки,
@@ -123,7 +202,7 @@
 #include "build_config_checks.hpp"
 
 // One graphics stack; drivers and buffer policy remain board-specific.
-#define GRAPHICAL_DISPLAY (DISPLAY_KIND == DISPLAY_ILI9341 || DISPLAY_KIND == DISPLAY_CROWPANEL_21 || DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796)
+#define GRAPHICAL_DISPLAY (DISPLAY_SUPPORT && (DISPLAY_KIND == DISPLAY_ILI9341 || DISPLAY_KIND == DISPLAY_CROWPANEL_21 || DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796))
 
 // SPI profiles have a 240-pixel short side; omit unused large font bitmaps.
 #define PANEL_COMPACT_FONTS (DISPLAY_KIND == DISPLAY_ILI9341 || DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796)

@@ -20,6 +20,10 @@ public:
   bool saveModbus(const ModbusConfig &config);
   bool loadDisplay(Runtime &runtime);
   bool saveDisplay(const DisplaySettings &settings);
+#if MQTT_SUPPORT
+  bool loadMqtt(MqttConfig &config);
+  bool saveMqtt(const MqttConfig &config);
+#endif
   void loadHardware(Runtime &runtime, bool forceRecovery = false);
   bool stageHardware(Runtime &runtime, const HardwareConfig &config);
   bool confirmHardware(Runtime &runtime);

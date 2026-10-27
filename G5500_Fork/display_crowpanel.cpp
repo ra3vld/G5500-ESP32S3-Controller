@@ -1,5 +1,5 @@
 #include "display.hpp"
-#if DISPLAY_KIND == DISPLAY_CROWPANEL_21
+#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_CROWPANEL_21
 #include "device_actions.hpp"
 #include "hardware.hpp"
 #include "diagnostics.hpp"

@@ -1,3 +1,4 @@
+#include "wifi_access.hpp"
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 /* Fork modifications by RA3VLD, 2026-10-12. GPLv3; see docs/upstream.md. */
 /*
@@ -71,7 +72,7 @@ void Application::controllerSetup() {
   const auto reset = esp_reset_reason();
   const bool unexpected = reset == ESP_RST_PANIC || reset == ESP_RST_INT_WDT ||
       reset == ESP_RST_TASK_WDT || reset == ESP_RST_WDT || reset == ESP_RST_BROWNOUT;
-  storage_.loadHardware(runtime_, unexpected || (reset != ESP_RST_POWERON &&
+  storage_.loadHardware(runtime_, (!HUD_SUPPORT && runtime_.hud.isHud()) || unexpected || (reset != ESP_RST_POWERON &&
       __atomic_load_n(&recoveryLatch, __ATOMIC_RELAXED) == RecoveryCookie));
   const bool modbusReadable=storage_.loadModbus(runtime_);
   __atomic_store_n(&recoveryLatch, 0u, __ATOMIC_RELAXED);
@@ -86,6 +87,7 @@ void Application::controllerSetup() {
   runtime_.hardwareToken = esp_random();
   if (!runtime_.hardwareToken) runtime_.hardwareToken = 1;
   if (runtime_.recovery) {
+    mqtt_.pause();
     runtime_.controller.remote = nullptr;
     runtime_.hud.config.role = DeviceRole::Controller;
     runtime_.hud.config.wifi = HudWifi::Host;
@@ -132,6 +134,10 @@ void Application::controllerSetup() {
   if (!runtime_.recovery) display_.initLocalDisplay();
   if (runtime_.recovery) storage_.loadPrefs(runtime_, calibration_, network_.credentials(), true);
   else { storage_.loadForkSettings(runtime_); loadPrefs(); }
+#if MQTT_SUPPORT
+  runtime_.mqttStorageOk=storage_.loadMqtt(runtime_.mqtt);
+  if(!runtime_.mqttStorageOk)diagnostics_.dbgPrintln("[MQTT] invalid/unreadable settings; client disabled");
+#endif
   if(runtime_.setup.fresh && runtime_.setup.generation==1 && !runtime_.setup.checked) {
     runtime_.protocol.manualFollow={true,false,true,true};runtime_.controller.restoreMode(Mode::Manual);
     if(!storage_.saveForkSettings(runtime_)){failConfiguration(RecoveryReason::Storage);return;}
@@ -252,10 +258,10 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln("Display and touch: disabled; Web control and calibration available");
 #endif
   diagnostics_.dbgPrint("[WiFi AP]  ");
-  diagnostics_.dbgPrintln((WiFi.getMode() & WIFI_AP) ? WiFi.softAPIP().toString() : "off (STA preferred)");
-  if (WiFi.status() == WL_CONNECTED) {
+  diagnostics_.dbgPrintln((radioWifi.getMode() & WIFI_AP) ? radioWifi.softAPIP().toString() : "off (STA preferred)");
+  if (radioWifi.status() == WL_CONNECTED) {
     diagnostics_.dbgPrint("[WiFi LAN] ");
-    diagnostics_.dbgPrintln(WiFi.localIP().toString());
+    diagnostics_.dbgPrintln(radioWifi.localIP().toString());
   } else {
     diagnostics_.dbgPrintln("[WiFi LAN] not connected");
   }
@@ -278,6 +284,7 @@ void Application::controllerLoop() {
     if(storage_.finishHardwareBoot(runtime_))ESP.restart();
   }
   if (runtime_.recovery) {
+    mqtt_.pause();
     network_.handlePstRotatorSerial();network_.serviceCommandUdp();
     network_.serviceCommandReplies();network_.serviceHeapDiagnostics();
     web_server_.service();delay(5);return;
@@ -287,6 +294,7 @@ void Application::controllerLoop() {
   // Once an update starts, keep outputs stopped even after an upload error.
   // Only reboot can resume input processing, so buffered commands cannot replay.
   if (ota_.locked()) {
+    mqtt_.pause();
     network_.handlePstRotatorSerial();network_.serviceCommandUdp();network_.handleRotctldTcp();
     network_.serviceCommandReplies();
     web_server_.service();
@@ -301,7 +309,7 @@ void Application::controllerLoop() {
   updatePosition();
   runtime_.controller.tick(millis()); // expire the hour before accepting any external command
   hardware_.serviceLocalInputs();
-  if (runtime_.controller.hardware.buttonGpio >= 0 && confirmButton.sample(hardware_.buttonReleased(), millis())) {
+  if (LOCAL_INPUT_SUPPORT && runtime_.controller.hardware.buttonGpio >= 0 && confirmButton.sample(hardware_.buttonReleased(), millis())) {
     runtime_.controller.execute(millis());
   }
   network_.serviceCommandUdp();
@@ -310,6 +318,7 @@ void Application::controllerLoop() {
   network_.handleBluetoothSerial(); // selected Bluetooth transport / GS-232B
   network_.handleRotctldTcp();       // Wi-Fi TCP 4533 / Look4Sat / Hamlib rotctld
   web_server_.serviceLiveCommands();
+  mqtt_.service();
   if (runtime_.controller.controlPeriodMs() < 20) updatePosition();
   hardware_.controlRotator();
   display_.serviceTouch();

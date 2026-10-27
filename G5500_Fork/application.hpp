@@ -11,6 +11,7 @@
 #include "display.hpp"
 #include "web_server.hpp"
 #include "device_api.hpp"
+#include "mqtt_service.hpp"
 namespace forkrot {
 class Application : public DeviceActions {
 public:
@@ -69,7 +70,8 @@ private:
   Display display_{runtime_, *this, calibration_, hardware_, diagnostics_, network_, storage_};
   Ota ota_;
   RestartDelay restart_;
-  DeviceApi device_api_{runtime_, *this, calibration_, hardware_, diagnostics_, network_, storage_, ota_, restart_};
+  MqttService mqtt_{runtime_, *this, hardware_};
+  DeviceApi device_api_{runtime_, *this, calibration_, hardware_, diagnostics_, network_, storage_, ota_, restart_, &mqtt_};
   WebInterface web_server_{runtime_,     *this,    calibration_, hardware_,
                            diagnostics_, network_, storage_, ota_, restart_};
   Button confirmButton;

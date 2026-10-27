@@ -1,3 +1,4 @@
+#include "wifi_access.hpp"
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "network.hpp"
 #include "network_addresses.hpp"
@@ -17,14 +18,20 @@
 namespace forkrot {
 using namespace board;
 size_t Network::uartWrite(const uint8_t *data,size_t size) {
-  if(modbus_ && runtime_.modbus.pc)return 0;
-  return rs485Reply_?rs485Reply_->write(data,size):Serial0.write(data,size);
+  if(MODBUS_RTU_SUPPORT && modbus_ && runtime_.modbus.pc)return 0;
+  return RS485_SUPPORT && rs485Reply_?rs485Reply_->write(data,size):Serial0.write(data,size);
 }
 void Network::serviceUartTx() {
+#if RS485_SUPPORT
+
   if(!rs485Reply_)return;
   const int available=Serial0.availableForWrite();
   rs485Reply_->service(millis(),available>0?size_t(available):0,
       [](const uint8_t *p,size_t n) { return Serial0.write(p,n); });
+
+#else
+
+#endif
 }
 void Network::serviceHeapDiagnostics() {
   heapDiagnostics_.service(millis(),
@@ -36,7 +43,7 @@ void Network::serviceHeapDiagnostics() {
 #if FORK_NATIVE_USB
         if(port==DiagnosticStream::Port::NativeUsb)return diagnostics_.nativeWrite(reinterpret_cast<const uint8_t *>(data),size);
 #endif
-        if(runtime_.controller.hardware.pins.uartTx<0 || (modbus_&&runtime_.modbus.pc)) return 0;
+        if(runtime_.controller.hardware.pins.uartTx<0 || (MODBUS_RTU_SUPPORT && modbus_&&runtime_.modbus.pc)) return 0;
         const int available = Serial0.availableForWrite();
         if (available <= 0) return 0;
         const size_t count = size_t(available) < size ? size_t(available) : size;
@@ -48,7 +55,7 @@ void Network::reportAllocationFailures() {
   // Emit the captured caller before the automatic reboot clears RAM. This
   // path uses fixed buffers and never sends diagnostics onto a Modbus bus.
 #if !FORK_NATIVE_USB
-  if(runtime_.controller.hardware.pins.uartTx<0 || (modbus_&&runtime_.modbus.pc))return;
+  if(runtime_.controller.hardware.pins.uartTx<0 || (MODBUS_RTU_SUPPORT && modbus_&&runtime_.modbus.pc))return;
 #endif
   static constexpr uint8_t newline[]={'\r','\n'};
 #if FORK_NATIVE_USB
@@ -88,17 +95,17 @@ int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
   case 1:
     return std::snprintf(reply, capacity,
         "WIFI status=%d savedSSID=%s NVS=%s BTready=%s BTclient=%s BTlink=%s profile=%s\r\n",
-        int(WiFi.status()), credentials_.wifiSsid.length() ? "yes" : "no",
+        int(radioWifi.status()), credentials_.wifiSsid.length() ? "yes" : "no",
         diagnostics_.wifiCredentialsReadOk() ? "OK" : "unavailable",
         btReady_ ? "yes" : "no", bluetooth_.connected() ? "yes" : "no",
         bluetooth_.linkConnected() ? "yes" : "no",
         compactWifi_ ? "compact" : bufferedWifi_ ? (FORK_CLASSIC_ESP32 ? "controller" : "buffered") : "standard");
   case 2: {
-    const IPAddress ap = (WiFi.getMode() & WIFI_AP) ? WiFi.softAPIP() : IPAddress();
-    const IPAddress sta = WiFi.localIP();
+    const IPAddress ap = (radioWifi.getMode() & WIFI_AP) ? radioWifi.softAPIP() : IPAddress();
+    const IPAddress sta = radioWifi.localIP();
     return std::snprintf(reply, capacity, "IP ap=%u.%u.%u.%u sta=%u.%u.%u.%u rssi=%d\r\n",
         unsigned(ap[0]), unsigned(ap[1]), unsigned(ap[2]), unsigned(ap[3]),
-        unsigned(sta[0]), unsigned(sta[1]), unsigned(sta[2]), unsigned(sta[3]), int(WiFi.RSSI()));
+        unsigned(sta[0]), unsigned(sta[1]), unsigned(sta[2]), unsigned(sta[3]), int(radioWifi.RSSI()));
   }
   case 3:
     return std::snprintf(reply, capacity,
@@ -118,13 +125,13 @@ int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
         static_cast<unsigned long>(tcp.liveCwnd),unsigned(tcp.liveRetries));
   }
   case 5: {
-    const auto mode = WiFi.getMode();
+    const auto mode = radioWifi.getMode();
     return std::snprintf(reply, capacity, "WIFI runtimeMode=%s apClients=%u apPolicy=%s ethLink=%s ethIp=%s\r\n",
                          mode == WIFI_STA      ? "STA"
                          : mode == WIFI_AP     ? "AP"
                          : mode == WIFI_AP_STA ? "AP+STA"
                                                : "OFF",
-                         (mode & WIFI_AP) ? unsigned(WiFi.softAPgetStationNum()) : 0,
+                         (mode & WIFI_AP) ? unsigned(radioWifi.softAPgetStationNum()) : 0,
                          apAlwaysOn() ? "always" : "fallback",
                          ethernetLinkUp()?"up":"down",ethernetIP().toString().c_str());
   }
@@ -188,6 +195,7 @@ void Network::sendReply(const String &s) {
 void Network::processGs232Command(std::string_view input) {
   if(processCommandApi(input,uint8_t(gsReplyPort)))return;
   if(!runtime_.recovery)actions_.updatePosition();
+  #if GS232_SUPPORT
   auto packet = runtime_.protocol.line(input, millis());
   if (packet.matched) {
     if (packet.result == forkrot::Result::Ok || packet.result == forkrot::Result::Pending) {
@@ -204,6 +212,9 @@ void Network::processGs232Command(std::string_view input) {
     return;
   }
 
+  #endif
+  if (input == "H4") { heapDiagnostics_.start(gsReplyPort == GS_REPLY_NATIVE_USB ? DiagnosticStream::Port::NativeUsb : gsReplyPort == GS_REPLY_USB ? DiagnosticStream::Port::Usb : DiagnosticStream::Port::Bluetooth,millis());return; }
+  #if GS232_SUPPORT
   if (input.size() > 32) return;
   String cmd(input.data(), input.size());
   cmd.trim();
@@ -285,6 +296,8 @@ void Network::processGs232Command(std::string_view input) {
     return;
   }
 #endif
+
+#endif
 }
 
 void Network::handlePstRotatorSerial() {
@@ -304,7 +317,8 @@ void Network::handlePstRotatorSerial() {
     }
   }
 #endif
-  if(modbus_ && runtime_.modbus.pc){serviceModbusPc();return;}
+  if((!RS485_SUPPORT && runtime_.controller.hardware.rs485()) || (!MODBUS_RTU_SUPPORT && runtime_.modbus.pc))return;
+  if(MODBUS_RTU_SUPPORT && modbus_ && runtime_.modbus.pc){serviceModbusPc();return;}
   if ((runtime_.hud.config.uart && !runtime_.controller.hardware.hudRs485()) || runtime_.controller.hardware.pins.uartRx < 0 || runtime_.controller.hardware.pins.uartTx < 0)
     return;
   static forkrot::ApiLineBuffer receiver;
@@ -321,7 +335,7 @@ void Network::handlePstRotatorSerial() {
   unsigned commands = 0;
   for (unsigned bytes = 0; bytes < 128 && commands < 4 && Serial0.available() && uint32_t(millis() - started) < 2; ++bytes) {
     const char byte=char(Serial0.read());
-    if(rs485Reply_)rs485Reply_->received(millis());
+    if(RS485_SUPPORT && rs485Reply_)rs485Reply_->received(millis());
     if (receiver.feed(byte, command)) {
       ++commands;
       gsReplyPort = GS_REPLY_USB;
@@ -374,6 +388,8 @@ void Network::rotctldSend(const String &s) {
 }
 
 void Network::processRotctldCommand(std::string_view input) {
+#if ROTCTLD_SUPPORT
+
   if(processCommandApi(input,3))return;
   actions_.updatePosition();
   auto packet = runtime_.protocol.line(input, millis(), true);
@@ -392,6 +408,9 @@ void Network::processRotctldCommand(std::string_view input) {
     return;
   }
 
+  #endif
+  if (input == "H4") { heapDiagnostics_.start(gsReplyPort == GS_REPLY_NATIVE_USB ? DiagnosticStream::Port::NativeUsb : gsReplyPort == GS_REPLY_USB ? DiagnosticStream::Port::Usb : DiagnosticStream::Port::Bluetooth,millis());return; }
+  #if GS232_SUPPORT
   if (input.size() > 32) return;
   String cmd(input.data(), input.size());
   cmd.trim();
@@ -477,9 +496,15 @@ void Network::processRotctldCommand(std::string_view input) {
   diagnostics_.dbgPrintln(cmd);
 #endif
   rotctldSend("RPRT -1\n");
+
+#else
+(void)input;
+#endif
 }
 
 void Network::handleRotctldTcp() {
+#if ROTCTLD_SUPPORT
+
   // Accept a client if none is currently connected.
   if (!rotctldClient_ || !rotctldClient_.connected()) {
     closeRotctld(); // clean old replies even when connected() already became false
@@ -520,27 +545,41 @@ void Network::handleRotctldTcp() {
     if (tcpReceiver_.feed(byte, command)) { ++commands; processRotctldCommand(command); }
     if(byte=='\r'||byte=='\n')tcpLinePending_=false;
   }
+
+#else
+
+#endif
 }
 void Network::closeRotctld() {
   const int fd=rotctldClient_.fd();
   if(fd>=0){abortTcpSocket(fd);++tcpAborts_;++tcpSession_;}
   rotctldClient_.stop();tcpReceiver_.clear();tcpLinePending_=false;
   commandInterruptedPorts_&=uint8_t(~(1u<<3));
+  #if COMMAND_API_SUPPORT
   if(commandReplyPort_==3)commandReplySize_=commandReplySent_=0;
+#endif
   for(auto &reply:deferred_)if(reply.port==3)reply.used=false;
 }
 
 bool Network::configureStation() {
+#if WIFI_SUPPORT
+
   const auto &c=credentials_.network.wifi;
   const auto ip=[](uint32_t n){return IPAddress(uint8_t(n>>24),uint8_t(n>>16),uint8_t(n>>8),uint8_t(n));};
-  const bool ok=c.automatic?WiFi.config(ip(0),ip(0),ip(0)):WiFi.config(ip(c.address),ip(c.gateway),ip(c.mask),ip(c.dns1),ip(c.dns2));
+  const bool ok=c.automatic?radioWifi.config(ip(0),ip(0),ip(0)):radioWifi.config(ip(c.address),ip(c.gateway),ip(c.mask),ip(c.dns1),ip(c.dns2));
   if(!ok)diagnostics_.dbgPrintln("[WIFI] IP configuration failed; setup AP remains available");
   return ok;
+
+#else
+return false;
+#endif
 }
 bool Network::startWifi() {
+#if WIFI_SUPPORT
+
   if (ETHERNET_SUPPORTED && !ethernet_.begin(credentials_.network.ethernet))
     diagnostics_.dbgPrintln("[ETH] PHY start failed; Wi-Fi remains available");
-  WiFi.persistent(false);
+  radioWifi.persistent(false);
   if (runtime_.recovery || FORK_C3 || (FORK_CLASSIC_ESP32 && runtime_.controller.hardware.backend() == BT_ESP32_SPP)) {
     compactWifi_ = initCompactWifi() == ESP_OK;
     if (!compactWifi_) return false; // never fall back to a larger buffer profile on OOM
@@ -551,56 +590,74 @@ bool Network::startWifi() {
     bufferedWifi_ = initBufferedWifi() == ESP_OK;
     if (!bufferedWifi_) return false;
   }
-  WiFi.setSleep(false);
+  radioWifi.setSleep(false);
   // The policy below owns retries; Arduino's event callback must not launch
   // an independent reconnect after we deliberately return to AP-only mode.
-  WiFi.setAutoReconnect(false);
+  radioWifi.setAutoReconnect(false);
   if (apAlwaysOn())
     restoreApOnlyAfterReconnectFail();
   if (!runtime_.recovery && credentials_.wifiSsid.length() && runtime_.hud.config.wifi != HudWifi::Host) {
     diagnostics_.dbgPrintln(apAlwaysOn() ? "[WIFI] starting STA; AP remains available"
                                          : "[WIFI] starting STA; AP reserved for fallback");
-    if (WiFi.mode(apAlwaysOn() ? WIFI_AP_STA : WIFI_STA)) {
-      if(configureStation())WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
+    if (radioWifi.mode(apAlwaysOn() ? WIFI_AP_STA : WIFI_STA)) {
+      if(configureStation())radioWifi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
       const uint32_t started = millis();
-      while (WiFi.status() != WL_CONNECTED && uint32_t(millis() - started) < WifiFallback::AttemptMs)
+      while (radioWifi.status() != WL_CONNECTED && uint32_t(millis() - started) < WifiFallback::AttemptMs)
         delay(100);
     }
   }
-  const bool connected = WiFi.status() == WL_CONNECTED;
+  const bool connected = radioWifi.status() == WL_CONNECTED;
   if (connected) {
     diagnostics_.dbgPrint(apAlwaysOn() ? "[WIFI] STA connected, AP remains, IP = "
                                        : "[WIFI] STA connected, AP off, IP = ");
-    diagnostics_.dbgPrintln(WiFi.localIP().toString());
-  } else if (!apAlwaysOn() || WiFi.getMode() != WIFI_AP) {
+    diagnostics_.dbgPrintln(radioWifi.localIP().toString());
+  } else if (!apAlwaysOn() || radioWifi.getMode() != WIFI_AP) {
     restoreApOnlyAfterReconnectFail();
   }
   serviceApSubnet();
   wifiFallback_.reset(millis(), connected);
   setupCommandUdp();
   if (!runtime_.recovery) {
+  #if HUD_UDP_SUPPORT
   if (!hudPortValid(runtime_.hud.config.port, runtime_.loggerSettings.n1mmPort,
                     runtime_.loggerSettings.pstPort, runtime_.loggerSettings.reportPort) ||
       !hudUdp_.begin(runtime_.hud.config.port,4*HUD_FRAME_MAX))
     diagnostics_.dbgPrintln("[HUD] UDP port unavailable");
   else if (!hudUdp_.setIpPrecedence(4))
     diagnostics_.dbgPrintln("[HUD] UDP priority unavailable; using default queue");
+  #endif
+  #if ROTCTLD_SUPPORT
   tcpServer_.begin();
+  #endif
   }
   actions_.setupWeb();
   heapAfterWifi_ = heapFreeBytes();
   diagnostics_.dbgPrintln(apAlwaysOn() ? "[WIFI] AP always on; STA retry 30s, attempt 8s"
                                        : "[WIFI] STA preferred; AP fallback, retry 30s, attempt 8s");
-  return runtime_.recovery ? (WiFi.getMode() == WIFI_AP) : true;
+  return runtime_.recovery ? (radioWifi.getMode() == WIFI_AP) : true;
+
+#else
+if(ETHERNET_SUPPORTED && !ethernet_.begin(credentials_.network.ethernet))return false;
+  setupCommandUdp();
+#if HUD_UDP_SUPPORT
+  if(!runtime_.recovery)hudUdp_.begin(runtime_.hud.config.port,4*HUD_FRAME_MAX);
+#endif
+#if ROTCTLD_SUPPORT
+  if(!runtime_.recovery)tcpServer_.begin();
+#endif
+  actions_.setupWeb();heapAfterWifi_=heapFreeBytes();return true;
+#endif
 }
 
 void Network::restoreApOnlyAfterReconnectFail() {
-  const IPAddress apIP = wifiSetupAp_ && (WiFi.getMode() & WIFI_AP)
-                             ? WiFi.softAPIP() : IPAddress(192, 168, 4, 1);
+#if WIFI_SUPPORT
+
+  const IPAddress apIP = wifiSetupAp_ && (radioWifi.getMode() & WIFI_AP)
+                             ? radioWifi.softAPIP() : IPAddress(192, 168, 4, 1);
   // No driver deinit/reinit: keep the compact buffer configuration. The mode
   // transition stops the failed STA and releases its connection state.
-  if (WiFi.getMode() & WIFI_STA) WiFi.disconnect(false, false);
-  if (!WiFi.mode(WIFI_AP)) {
+  if (radioWifi.getMode() & WIFI_STA) radioWifi.disconnect(false, false);
+  if (!radioWifi.mode(WIFI_AP)) {
     diagnostics_.dbgPrintln("[WIFI] AP mode failed");
     return;
   }
@@ -608,32 +665,42 @@ void Network::restoreApOnlyAfterReconnectFail() {
   char apName[33];
   std::snprintf(apName, sizeof apName, "G5500-%s-%06llX", runtime_.hud.isHud() ? "HUD" : "Rotator",
                 static_cast<unsigned long long>(runtime_.hud.id & 0xffffff));
-  const bool configured = WiFi.softAPConfig(apIP, apIP, apMask);
-  const bool started = credentials_.apPass.length() >= 8 ? WiFi.softAP(apName, credentials_.apPass.c_str())
-                                                         : WiFi.softAP(apName);
+  const bool configured = radioWifi.softAPConfig(apIP, apIP, apMask);
+  const bool started = credentials_.apPass.length() >= 8 ? radioWifi.softAP(apName, credentials_.apPass.c_str())
+                                                         : radioWifi.softAP(apName);
   heapAfterAp_ = heapFreeBytes(); // zero means AP has not been started this boot
   diagnostics_.dbgPrintln(configured && started ? String("[WIFI] AP ready at ") + apIP.toString()
                                                : String("[WIFI] AP start failed"));
+
+#else
+
+#endif
 }
 
 void Network::serviceApSubnet() {
+#if WIFI_SUPPORT
+
   // The setup browser still uses the original AP address. Defer an overlap
   // adjustment until reboot so DHCP success cannot move that page out of reach.
-  if (wifiSetupAp_ || (!ethernetConnected() && WiFi.status() != WL_CONNECTED) || !(WiFi.getMode() & WIFI_AP))
+  if (wifiSetupAp_ || (!ethernetConnected() && radioWifi.status() != WL_CONNECTED) || !(radioWifi.getMode() & WIFI_AP))
     return;
-  const bool wifi=WiFi.status()==WL_CONNECTED;
-  const uint32_t sta=wifi?uint32_t(WiFi.localIP()):0, mask=wifi?uint32_t(WiFi.subnetMask()):0;
+  const bool wifi=radioWifi.status()==WL_CONNECTED;
+  const uint32_t sta=wifi?uint32_t(radioWifi.localIP()):0, mask=wifi?uint32_t(radioWifi.subnetMask()):0;
   uint32_t eth=0,ethMask=0;
 #if SELECTED_BOARD == BOARD_WT32_ETH01 || SELECTED_BOARD == BOARD_WAVESHARE_S3_ETH
   if(ethernetConnected()) { eth=uint32_t(ETH.localIP());ethMask=uint32_t(ETH.subnetMask()); }
 #endif
-  const uint32_t ap=uint32_t(WiFi.softAPIP());
+  const uint32_t ap=uint32_t(radioWifi.softAPIP());
   if(!apSubnetOverlaps(ap,sta,mask) && !apSubnetOverlaps(ap,eth,ethMask)) return;
   const uint32_t chosen=serviceApAddress(sta,mask,eth,ethMask);
-  if (chosen && WiFi.softAPConfig(IPAddress(chosen), IPAddress(chosen), IPAddress(255, 255, 255, 0))) {
+  if (chosen && radioWifi.softAPConfig(IPAddress(chosen), IPAddress(chosen), IPAddress(255, 255, 255, 0))) {
     diagnostics_.dbgPrint("[WIFI] AP subnet changed to avoid uplink overlap: ");
-    diagnostics_.dbgPrintln(WiFi.softAPIP().toString());
+    diagnostics_.dbgPrintln(radioWifi.softAPIP().toString());
   }
+
+#else
+
+#endif
 }
 
 void Network::formatAddresses(char *text, size_t capacity, const char *separator, bool own, bool accessPoint) const {
@@ -642,22 +709,30 @@ void Network::formatAddresses(char *text, size_t capacity, const char *separator
     std::snprintf(out, 16, "%u.%u.%u.%u", unsigned(ip[0]), unsigned(ip[1]),
                   unsigned(ip[2]), unsigned(ip[3]));
   };
-  if (WiFi.status() == WL_CONNECTED) address(sta, WiFi.localIP());
-  if (WiFi.getMode() & WIFI_AP) address(ap, WiFi.softAPIP());
+  if (radioWifi.status() == WL_CONNECTED) address(sta, radioWifi.localIP());
+  if (radioWifi.getMode() & WIFI_AP) address(ap, radioWifi.softAPIP());
   if (ethernetConnected()) address(eth, ethernetIP());
   formatNetworkAddresses(text, capacity, sta, ap, separator, eth, own, accessPoint);
 }
 
 void Network::connectWifi(const String &ssid, const String &password) {
+#if WIFI_SUPPORT
+
   credentials_.wifiSsid = ssid;
   credentials_.wifiPass = password;
   // Keep the setup browser reachable until the next reboot, including on ESP32.
   wifiSetupAp_ = true;
   wifiConnectPending_ = true;
   wifiConnectRequestedMs_ = millis();
+
+#else
+(void)ssid;(void)password;
+#endif
 }
 
 void Network::serviceWifiReconnect() {
+#if WIFI_SUPPORT
+
   const bool wired=ethernetConnected();
   if(wired!=ethernetWasConnected_) {
     ethernetWasConnected_=wired;
@@ -668,10 +743,10 @@ void Network::serviceWifiReconnect() {
     // Finish sending the save response before changing the radio channel.
     if (uint32_t(millis() - wifiConnectRequestedMs_) < 250) return;
     wifiConnectPending_ = false;
-    if (!(WiFi.getMode() & WIFI_AP)) restoreApOnlyAfterReconnectFail();
-    WiFi.disconnect(false, false);
-    if (WiFi.mode(WIFI_AP_STA))
-      if(configureStation())WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
+    if (!(radioWifi.getMode() & WIFI_AP)) restoreApOnlyAfterReconnectFail();
+    radioWifi.disconnect(false, false);
+    if (radioWifi.mode(WIFI_AP_STA))
+      if(configureStation())radioWifi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
     wifiFallback_.beginAttempt(millis());
     return;
   }
@@ -679,39 +754,52 @@ void Network::serviceWifiReconnect() {
   if (runtime_.hud.config.wifi == HudWifi::Host)
     return;
   const auto action =
-      wifiFallback_.update(millis(), credentials_.wifiSsid.length() != 0, WiFi.status() == WL_CONNECTED,
-                           (WiFi.getMode() & WIFI_AP) != 0, apAlwaysOn());
+      wifiFallback_.update(millis(), credentials_.wifiSsid.length() != 0, radioWifi.status() == WL_CONNECTED,
+                           (radioWifi.getMode() & WIFI_AP) != 0, apAlwaysOn());
   if (action == WifiAction::StopAp) {
-    if (WiFi.mode(WIFI_STA)) diagnostics_.dbgPrintln("[WIFI] STA connected; fallback AP stopped");
+    if (radioWifi.mode(WIFI_STA)) diagnostics_.dbgPrintln("[WIFI] STA connected; fallback AP stopped");
     else diagnostics_.dbgPrintln("[WIFI] failed to stop fallback AP");
   } else if (action == WifiAction::StartAp) {
     restoreApOnlyAfterReconnectFail();
   } else if (action == WifiAction::ReconnectSta) {
     diagnostics_.dbgPrintln("[WIFI] STA lost; immediate reconnect before fallback");
-    if (!WiFi.reconnect()) diagnostics_.dbgPrintln("[WIFI] immediate STA reconnect failed");
+    if (!radioWifi.reconnect()) diagnostics_.dbgPrintln("[WIFI] immediate STA reconnect failed");
   } else if (action == WifiAction::StartSta) {
     diagnostics_.dbgPrintln("[WIFI] STA reconnect attempt; AP remains during attempt");
-    if (WiFi.mode(WIFI_AP_STA))
-      if(configureStation())WiFi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
+    if (radioWifi.mode(WIFI_AP_STA))
+      if(configureStation())radioWifi.begin(credentials_.wifiSsid.c_str(), credentials_.wifiPass.c_str());
   }
+
+#else
+
+#endif
 }
 
 void Network::setupLoggerUdp() {
+#if (N1MM_SUPPORT || PSTROTATOR_SUPPORT) && (WIFI_SUPPORT || ETHERNET_SUPPORT)
+
   n1mmUdp.stop();
   pstUdp.stop();
-  bool a = n1mmUdp.begin(runtime_.loggerSettings.n1mmPort),
-       b = pstUdp.begin(runtime_.loggerSettings.pstPort);
+  bool a = !N1MM_SUPPORT || n1mmUdp.begin(runtime_.loggerSettings.n1mmPort),
+       b = !PSTROTATOR_SUPPORT || pstUdp.begin(runtime_.loggerSettings.pstPort);
   if (!a || !b) {
     runtime_.controller.fault = "udp_bind_failed";
   }
   for (auto &peer : reportPeers) {
     peer.used = false;
   }
+
+#else
+
+#endif
 }
 
 void Network::serviceLoggerUdp() {
+#if (N1MM_SUPPORT || PSTROTATOR_SUPPORT) && (WIFI_SUPPORT || ETHERNET_SUPPORT)
+
   const uint32_t started = millis();
   for (DatagramSocket *socket : {&n1mmUdp, &pstUdp}) {
+    if((socket==&n1mmUdp && !N1MM_SUPPORT) || (socket==&pstUdp && !PSTROTATOR_SUPPORT))continue;
     for (unsigned count = 0; count < 2 && uint32_t(millis() - started) < 2; ++count) {
       uint32_t address=0;uint16_t port=0;
       const int size=socket->receiveInto(loggerRx_,sizeof loggerRx_,address,port);
@@ -749,7 +837,7 @@ void Network::serviceLoggerUdp() {
       }
     }
   }
-  if (runtime_.controller.available() && uint32_t(millis() - lastReportMs) >= 500) {
+  if (N1MM_SUPPORT && runtime_.controller.available() && uint32_t(millis() - lastReportMs) >= 500) {
     lastReportMs = millis();
     const auto message = runtime_.protocol.positionReport(runtime_.currentAz);
     for (auto peer : reportPeers) {
@@ -763,8 +851,14 @@ void Network::serviceLoggerUdp() {
       n1mmUdp.send(uint32_t(host), runtime_.loggerSettings.reportPort, message);
     }
   }
+
+#else
+
+#endif
 }
 void Network::serviceModbusPc() {
+#if MODBUS_RTU_SUPPORT
+
   if(!modbus_||!runtime_.modbus.pc)return;
   auto &m=*modbus_;mb::Frame frame;
   for(unsigned i=0;i<2&&m.pc.read(frame);++i) {
@@ -783,8 +877,14 @@ void Network::serviceModbusPc() {
   runtime_.modbusStatus.received=m.link.received+m.pcReceived;
   runtime_.modbusStatus.rejected=m.link.rejectedFrames()+m.pcRejected+m.bus.rejected()+m.pc.rejected();
   runtime_.modbusStatus.timeouts=m.link.timeouts+m.pcTimeouts;
+
+#else
+
+#endif
 }
 void Network::serviceModbusBus() {
+#if MODBUS_RTU_SUPPORT
+
   if(!modbus_||!modbus_->busReady)return;
   auto &m=*modbus_;mb::Frame frame;
   for(unsigned i=0;i<4&&m.bus.read(frame);++i) {
@@ -795,6 +895,10 @@ void Network::serviceModbusBus() {
   }
   m.link.service(micros(),millis(),m.bus.idle(),[&](const mb::Frame &f){return m.bus.send(f);});
   runtime_.modbusStatus={m.link.received+m.pcReceived,m.link.rejectedFrames()+m.pcRejected+m.bus.rejected()+m.pc.rejected(),m.link.timeouts+m.pcTimeouts,m.link.passes(),m.link.recoveries(),m.link.owner(),m.link.fault()};
+
+#else
+
+#endif
 }
 namespace {
 uint32_t uartFormat(const UartConfig &port) {
@@ -805,12 +909,12 @@ uint32_t uartFormat(const UartConfig &port) {
 }
 bool Network::beginSerial() {
   const auto &config = runtime_.controller.hardware;
-  if(!runtime_.recovery && (runtime_.modbus.pc||runtime_.modbus.bus) && !modbus_)return false;
-  if(!runtime_.recovery && runtime_.modbus.wiring(config,runtime_.hud.config.uart))return false;
-  if(modbus_ && runtime_.modbus.pc) {
+  if(!runtime_.recovery && MODBUS_RTU_SUPPORT && (runtime_.modbus.pc||runtime_.modbus.bus) && !modbus_)return false;
+  if(!runtime_.recovery && MODBUS_RTU_SUPPORT && runtime_.modbus.wiring(config,runtime_.hud.config.uart && HUD_UART_SUPPORT))return false;
+  if(MODBUS_RTU_SUPPORT && modbus_ && runtime_.modbus.pc) {
     if(!modbus_->pc.begin(0,config.pins.uartRx,config.pins.uartTx,config.pins.uartDe,runtime_.modbus.uart0))return false;
-  } else if (config.pins.uartRx >= 0 && config.pins.uartTx >= 0) {
-    if (config.rs485()) {
+  } else if ((RS485_SUPPORT || !config.rs485()) && (MODBUS_RTU_SUPPORT || !runtime_.modbus.pc) && config.pins.uartRx >= 0 && config.pins.uartTx >= 0) {
+    if (RS485_SUPPORT && config.rs485()) {
       if(heapFreeBytes()<sizeof(Rs485Reply)+MemoryGuard::CriticalFree ||
           heapMaxBlockBytes()<sizeof(Rs485Reply)+MemoryGuard::CriticalBlock) return false;
       rs485Reply_.reset(new(std::nothrow) Rs485Reply);
@@ -826,14 +930,14 @@ bool Network::beginSerial() {
       if (config.pins.hudReady>=0) pinMode(config.pins.hudReady,INPUT);
     }
     Serial0.begin(runtime_.modbus.uart0.baud, uartFormat(runtime_.modbus.uart0), config.pins.uartRx, config.pins.uartTx);
-    if (config.rs485() && (!Serial0.setPins(-1, -1, -1, config.pins.uartDe) ||
+    if (RS485_SUPPORT && config.rs485() && (!Serial0.setPins(-1, -1, -1, config.pins.uartDe) ||
         !Serial0.setMode(UART_MODE_RS485_HALF_DUPLEX))) return false;
   }
-  if(modbus_ && runtime_.modbus.bus) {
+  if(MODBUS_RTU_SUPPORT && modbus_ && runtime_.modbus.bus) {
     if(!modbus_->bus.begin(1,config.pins.hudRx,config.pins.hudTx,config.pins.hudDe,runtime_.modbus.uart1) ||
         !modbus_->link.begin(runtime_.modbus,runtime_.hud.isHud(),uint32_t(runtime_.hud.boot),micros()))return false;
     modbus_->busReady=true;
-  } else if (runtime_.hud.config.uart && config.hudRs485()) {
+  } else if (HUD_UART_SUPPORT && RS485_SUPPORT && runtime_.hud.config.uart && config.hudRs485()) {
     if (!hud485_) return false;
     auto &serial=hud485_->serial;
     digitalWrite(config.pins.hudDe, LOW);pinMode(config.pins.hudDe, OUTPUT);
@@ -842,7 +946,7 @@ bool Network::beginSerial() {
     if (!serial.setPins(-1,-1,-1,config.pins.hudDe) || !serial.setMode(UART_MODE_RS485_HALF_DUPLEX)) return false;
   }
   heapBeforeBt_ = heapFreeBytes();
-  const auto backend = runtime_.recovery ? BT_NONE : runtime_.controller.hardware.backend();
+  const auto backend = (runtime_.recovery || !BLUETOOTH_SUPPORT) ? BT_NONE : runtime_.controller.hardware.backend();
   if (backend == BT_ESP32_SPP && (heapFreeBytes() < 98304 || heapMaxBlockBytes() < 32768)) return false;
   btReady_ = bluetooth_.begin(backend,runtime_.controller.hardware.pins);
   if (!btReady_) diagnostics_.dbgPrintln("[BT] initialization failed; USB and network remain available");
@@ -857,23 +961,20 @@ bool Network::hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned 
   return portsValid(port,n1mm,pst,report,runtime_.loggerSettings.commandPort);
 }
 void Network::beginHud() {
+#if HUD_SUPPORT
+
   const auto &line=runtime_.controller.hardware.hudRs485()?runtime_.modbus.uart1:runtime_.modbus.uart0;
   runtime_.hud.config.link.baud=line.baud;
   runtime_.hud.config.link.frameBits=line.frameBits();
   runtime_.hud.begin(ESP.getEfuseMac() & 0xffffffffffffULL, (uint64_t(esp_random()) << 32) | esp_random());
   runtime_.hud.setTransport(this);
-  if(!runtime_.recovery && (runtime_.modbus.pc||runtime_.modbus.bus)) {
-    modbus_.reset(new(std::nothrow) ModbusLink(runtime_));
-    if(modbus_)modbus_->link.registers().begin(uint32_t(runtime_.hud.boot));
-    else runtime_.hud.catalogError=true;
-  }
-  if (runtime_.hud.config.uart && runtime_.controller.hardware.hudRs485() && !runtime_.modbus.bus) {
+  if (HUD_UART_SUPPORT && RS485_SUPPORT && runtime_.hud.config.uart && runtime_.controller.hardware.hudRs485() && !runtime_.modbus.bus) {
     if (heapFreeBytes() >= sizeof(Rs485Link)+MemoryGuard::CriticalFree &&
         heapMaxBlockBytes() >= sizeof(Rs485Link)+MemoryGuard::CriticalBlock)
       hud485_.reset(new (std::nothrow) Rs485Link);
     if (hud485_) hud485_->link.begin(runtime_.hud.isHud(),runtime_.hud.boot,millis(),runtime_.modbus.uart1);
     else runtime_.hud.catalogError=true;
-  } else if (runtime_.hud.config.uart && !runtime_.modbus.bus) {
+  } else if (HUD_UART_SUPPORT && runtime_.hud.config.uart && !runtime_.controller.hardware.hudRs485() && !runtime_.modbus.bus) {
     hudUart_.reset(new (std::nothrow) UartLink);
     if (hudUart_) hudUart_->tx.setPaced(runtime_.hud.config.link.paced());
     if (!hudUart_)
@@ -883,22 +984,51 @@ void Network::beginHud() {
     runtime_.hud.config.uart = false;
     runtime_.hud.catalogError = true;
   }
+
+#else
+runtime_.hud.begin(ESP.getEfuseMac() & 0xffffffffffffULL,(uint64_t(esp_random())<<32)|esp_random());
+#endif
+#if MODBUS_RTU_SUPPORT
+  if(MODBUS_RTU_SUPPORT && !runtime_.recovery && (runtime_.modbus.pc||runtime_.modbus.bus)) {
+    modbus_.reset(new(std::nothrow) ModbusLink(runtime_));
+    if(MODBUS_RTU_SUPPORT && modbus_)modbus_->link.registers().begin(uint32_t(runtime_.hud.boot));
+    else runtime_.hud.catalogError=true;
+  }
+#endif
 }
 bool Network::sendHud(const HudEndpoint &e, const uint8_t *bytes, size_t size) {
-  int error = 0;
-  const bool sent =
-      e.uart ? runtime_.hud.config.uart && (modbus_ && runtime_.modbus.bus ? modbus_->link.enqueue(uint8_t(e.address),bytes,size,millis()) : hud485_ ? hud485_->link.enqueue(bytes,size,millis()) : hudUart_ && hudUart_->tx.enqueue(bytes, size))
-             : hudUdp_.send(e.address, e.port, {reinterpret_cast<const char *>(bytes), size}, &error);
-  if (sent) {
-    ++runtime_.hud.sent;
+  bool sent=false; int error=0;
+#if HUD_SUPPORT
+  if(e.uart) {
+#if HUD_UART_SUPPORT
+    if(runtime_.hud.config.uart) {
+#if MODBUS_RTU_SUPPORT
+      if(modbus_ && runtime_.modbus.bus)sent=modbus_->link.enqueue(uint8_t(e.address),bytes,size,millis());
+      else
+#endif
+#if RS485_SUPPORT
+      if(hud485_)sent=hud485_->link.enqueue(bytes,size,millis());
+      else
+#endif
+      if(hudUart_)sent=hudUart_->tx.enqueue(bytes,size);
+    }
+#endif
   } else {
-    ++runtime_.hud.sendErrors;
-    runtime_.hud.sendErrno = error;
+#if HUD_UDP_SUPPORT
+    sent=hudUdp_.send(e.address,e.port,{reinterpret_cast<const char *>(bytes),size},&error);
+#endif
   }
+#else
+  (void)e;(void)bytes;(void)size;
+#endif
+  if(sent)++runtime_.hud.sent;
+  else {++runtime_.hud.sendErrors;runtime_.hud.sendErrno=error;}
   return sent;
 }
 
 bool Network::deferReply(const Packet &p, uint8_t port) {
+#if HUD_SUPPORT
+
   if (p.result != Result::Deferred)
     return false;
   // GS-232 motion commands have no success reply. On a half-duplex PC link,
@@ -919,12 +1049,18 @@ bool Network::deferReply(const Packet &p, uint8_t port) {
   else
     sendReply("?>\r\n");
   return true;
+
+#else
+(void)p;(void)port;return false;
+#endif
 }
 void Network::resetHudInputs() {
+#if HUD_SUPPORT
+
   if (inputEpoch_ == runtime_.hud.selectionEpoch)
     return;
   inputEpoch_ = runtime_.hud.selectionEpoch;
-  if(modbus_ && modbus_->busReady)modbus_->link.cancel();
+  if(MODBUS_RTU_SUPPORT && modbus_ && modbus_->busReady)modbus_->link.cancel();
   bluetooth_.discardInput();
   int queued = 0;
   if (rotctldClient_ && ::ioctl(rotctldClient_.fd(), FIONREAD, &queued) < 0)
@@ -935,25 +1071,33 @@ void Network::resetHudInputs() {
   setupLoggerUdp(); // Closing the sockets discards every buffered old-selection datagram.
   for (auto &peer : reportPeers)
     peer.used = false;
+
+#else
+
+#endif
 }
 void Network::serviceHud(bool advanceSimulation) {
+#if HUD_SUPPORT
+
   resetHudInputs();
   auto &hud = runtime_.hud;
   const uint32_t started = millis();
+#if HUD_UDP_SUPPORT
   for (unsigned i = 0; i < 4 && uint32_t(millis() - started) < 2; ++i) {
     uint32_t address = 0;
     uint16_t port = 0;
-    const int n = hudUdp_.receiveInto(hudRx_, sizeof hudRx_, address, port);
+    const int n = hudUdp_.receiveInto(hudRx_.data(), hudRx_.size(), address, port);
     if (n == -1)
       break;
     if (n > 0)
-      hud.receive({address, port, false}, hudRx_, size_t(n), millis());
+      hud.receive({address, port, false}, hudRx_.data(), size_t(n), millis());
   }
-  if (hud.config.uart && hudUart_) {
+#endif
+  if (HUD_UART_SUPPORT && hud.config.uart && hudUart_) {
     for (unsigned i = 0; i < 256 && Serial0.available() && uint32_t(millis() - started) < 2; ++i) {
-      const auto n = hudUart_->decoder.feed(uint8_t(Serial0.read()), hudRx_, sizeof hudRx_);
+      const auto n = hudUart_->decoder.feed(uint8_t(Serial0.read()), hudRx_.data(), hudRx_.size());
       if (n)
-        hud.receive({0, hud.config.port, true}, hudRx_, n, millis());
+        hud.receive({0, hud.config.port, true}, hudRx_.data(), n, millis());
     }
     const int available = Serial0.availableForWrite();
     const auto &pins=runtime_.controller.hardware.pins;
@@ -962,7 +1106,7 @@ void Network::serviceHud(bool advanceSimulation) {
         available>0?size_t(available):0,hudUart_->tx,
         [](const uint8_t *data,size_t n) { return Serial0.write(data,n); });
   }
-  if (hud.config.uart && hud485_) {
+  if (HUD_UART_SUPPORT && RS485_SUPPORT && hud.config.uart && hud485_) {
     auto &serial=hud485_->serial;
     for (unsigned i=0;i<512 && serial.available() && uint32_t(millis()-started)<3;++i)
       hud485_->link.feed(uint8_t(serial.read()),millis(),[&](const uint8_t *p,size_t n) {
@@ -1001,5 +1145,10 @@ void Network::serviceHud(bool advanceSimulation) {
         gsReplyPort = saved;
       }
     }
+
+#else
+(void)advanceSimulation;
+serviceModbusBus();
+#endif
 }
 } // namespace forkrot

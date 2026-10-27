@@ -12,7 +12,7 @@ enum class HudWifi : uint8_t { Existing, Host, Client };
 // Reserved multicast address: cannot be a controller's ESP32 MAC address.
 inline constexpr uint64_t HUD_SIMULATION_ID = 0xfffffffffffeULL;
 struct HudConfig {
-  DeviceRole role = (SELECTED_BOARD == BOARD_ESP32_2424S012C || SELECTED_BOARD == BOARD_ESP32_3248S035C) ? DeviceRole::Hud : DeviceRole::Controller;
+  DeviceRole role = (HUD_SUPPORT && (SELECTED_BOARD == BOARD_ESP32_2424S012C || SELECTED_BOARD == BOARD_ESP32_3248S035C)) ? DeviceRole::Hud : DeviceRole::Controller;
   HudWifi wifi = HudWifi::Existing;
   bool uart = false;
   bool simulationEnabled = false;
@@ -112,6 +112,7 @@ public:
   }
   size_t feed(uint8_t byte, uint8_t *out, size_t capacity);
 };
+#if HUD_SUPPORT
 class Hud : public CommandSink {
 public:
   explicit Hud(Controller &c, Protocol &p) : controller_(c), protocol_(p) {}
@@ -128,6 +129,9 @@ public:
   void setMemoryLimited(bool value) { memoryLimited_ = value; }
   bool isHud() const { return config.role == DeviceRole::Hud; }
   bool available() const override;
+  bool available(uint64_t node, uint32_t at) const;
+  // Addressed automation commands never change the local screen selection.
+  Result submitTo(uint64_t node, const ControlCommand &, uint32_t at);
   uint32_t requestId() const override { return lastRequest_; }
   uint32_t selectionGeneration() const override { return selectionEpoch; }
   Result lastResult() const override { return lastResult_; }
@@ -176,7 +180,7 @@ private:
     uint64_t peer = 0, boot = 0;
     uint32_t id = 0, ticket = 0, started = 0, sent = 0, selection = 0;
     uint8_t attempts = 0;
-    bool used = false, live = false;
+    bool used = false, live = false, addressed = false;
     uint8_t wireVersion = 1;
     uint32_t rangeRevision = 0, manualGesture = 0;
   };
@@ -241,6 +245,7 @@ private:
     return serialMs>50?serialMs:50;
   }
   void finish(Job &, Result);
+  Job *stopSlot(uint64_t peer);
   bool sendJob(Job &);
   bool sendQuery(const HudEndpoint &, uint64_t target, bool discovery = false);
   bool sendState(const HudEndpoint &, uint64_t target, uint32_t seq, bool ack = false, Result r = Result::Ok,
@@ -253,4 +258,44 @@ private:
   Result execute(const ControlCommand &, uint64_t source, uint64_t session, uint32_t seq,
                  Controller *local = nullptr);
 };
+#else
+class Hud : public CommandSink {
+public:
+  explicit Hud(Controller &,Protocol &) {}
+  HudConfig config;
+  uint64_t id=0,boot=0;
+  uint32_t selectionEpoch=0,now=0,received=0,rejected=0,duplicates=0,timeouts=0,busy=0,sent=0,sendErrors=0;
+  int sendErrno=0;
+  uint32_t commandAttempts=0,commandSendFailures=0;
+  bool settingsDirty=false,presetsDirty=false,selectionDirty=false,catalogError=false;
+  void begin(uint64_t node,uint64_t session){id=node;boot=session;}
+  bool isHud() const{return config.role==DeviceRole::Hud;}
+  void setTransport(HudTransport *){}
+  void setMemoryLimited(bool){}
+  bool available() const override{return false;}
+  uint32_t requestId() const override{return 0;}
+  Result lastResult() const override{return Result::Unavailable;}
+  Result submit(const ControlCommand &) override{return Result::Unavailable;}
+  Result submitAt(const ControlCommand &,uint32_t) override{return Result::Unavailable;}
+  Result submitTo(uint64_t,const ControlCommand &,uint32_t){return Result::Unavailable;}
+  bool available(uint64_t,uint32_t) const{return false;}
+  HudReply result(uint32_t request) const{return {Result::Unavailable,0,request};}
+  void service(uint32_t,bool=true){}
+  void receive(const HudEndpoint &,const uint8_t *,size_t,uint32_t){}
+  bool discover(HudEndpoint){return false;}
+  bool discoverRs485(uint8_t,uint8_t,uint8_t,uint8_t){return false;}
+  HudPeer *peers() const{return nullptr;}
+  HudPeer *peer(uint64_t) const{return nullptr;}
+  HudPeer *active() const{return nullptr;}
+  HudPeer *add(uint64_t,HudEndpoint,const char *,bool=true){return nullptr;}
+  bool remove(uint64_t){return false;}
+  bool select(uint64_t){return false;}
+  bool setSimulationEnabled(bool){return false;}
+  size_t count(bool=true) const{return 0;}
+  bool writePeers(JsonWriter &j,size_t,size_t,bool=false) const{j << "{\"peers\":[]}";return true;}
+  void writeStatus(JsonWriter &,bool=false) const{}
+  uint32_t freshnessAge() const{return UINT32_MAX;}
+  void invalidateMirror(){}
+};
+#endif
 } // namespace forkrot

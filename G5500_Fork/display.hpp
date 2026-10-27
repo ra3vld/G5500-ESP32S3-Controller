@@ -132,7 +132,7 @@ public:
   void initLocalDisplay();void serviceTouch();void updateLocalDisplay();
 };
 }
-#elif DISPLAY_KIND == DISPLAY_LCD1602
+#elif DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_LCD1602
 #include <Arduino.h>
 #include <LiquidCrystal.h>
 #include "board.hpp"

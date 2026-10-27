@@ -389,6 +389,8 @@ void Hardware::crowpanelFault() {
 }
 #endif
 void Hardware::beginInputs() {
+#if LOCAL_INPUT_SUPPORT
+
   const auto &c = runtime_.controller.hardware;
   if (!runtime_.recovery && c.buttonGpio >= 0) pinMode(c.buttonGpio, c.buttonPullup ? INPUT_PULLUP : INPUT);
   if (runtime_.recovery || board::validateHardware(c, runtime_.hud.config.uart,runtime_.hud.isHud())) return;
@@ -404,8 +406,14 @@ void Hardware::beginInputs() {
     localJoystick_[i]=JoystickAxis(c.local[at],c.local[at+1],c.local[at+2],c.local[9],c.local[10],c.local[1+i]);
   }
   localInputsStarted_ = c.localMask()!=0;
+
+#else
+
+#endif
 }
 bool Hardware::startJoystickCalibration() {
+#if LOCAL_INPUT_SUPPORT
+
   if(!localInputsStarted_ || !(runtime_.controller.hardware.local[0]&LOCAL_INPUT_JOYSTICK) ||
       runtime_.controller.configurationLocked || runtime_.controller.autoTune.active()) return false;
   runtime_.controller.stopNow(-1,millis()); applyOutputs();
@@ -414,19 +422,37 @@ bool Hardware::startJoystickCalibration() {
   runtime_.controller.configurationLocked=true;
   calibrationUntil_=millis()+2000;
   return true;
+
+#else
+return false;
+#endif
 }
 bool Hardware::pollJoystickCalibration() {
+#if LOCAL_INPUT_SUPPORT
+
   if(!calibrating_ || int32_t(millis()-calibrationUntil_)>=0) { cancelJoystickCalibration(); return false; }
   calibrationUntil_=millis()+2000;
   return true;
+
+#else
+return false;
+#endif
 }
 void Hardware::cancelJoystickCalibration() {
+#if LOCAL_INPUT_SUPPORT
+
   if(!calibrating_) return;
   calibrating_=false;
   runtime_.controller.configurationLocked=runtime_.recovery || runtime_.hardwareTrial;
   localInput_.sample(0,0,0,false,millis());
+
+#else
+
+#endif
 }
 void Hardware::serviceLocalInputs() {
+#if LOCAL_INPUT_SUPPORT
+
   const uint32_t now = millis();
   if (!localInputsStarted_) return;
   if(calibrating_ && int32_t(now-calibrationUntil_)>=0) cancelJoystickCalibration();
@@ -469,5 +495,9 @@ void Hardware::serviceLocalInputs() {
   const auto selection=runtime_.hud.selectionEpoch;
   localInput_.sample(values[0], values[1], neutralMask,
       !calibrating_ && (!runtime_.hud.isHud() || runtime_.hud.manualAvailable()), now, selection);
+
+#else
+
+#endif
 }
 } // namespace forkrot

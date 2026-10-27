@@ -1,5 +1,6 @@
 // Management transports. All controller access stays on the Arduino loop. GPL-3.0.
 #include "network.hpp"
+#if COMMAND_API_SUPPORT
 #include <lwip/sockets.h>
 #include "hardware_form.hpp"
 #include <new>
@@ -34,6 +35,7 @@ size_t Network::runCommandApi(uint64_t peer,std::string_view input,char *reply,s
   return unavailableReply(input,reply,capacity);
 }
 void Network::setupCommandUdp() {
+#if WIFI_SUPPORT || ETHERNET_SUPPORT
   if(!runtime_.recovery && !portsValid(runtime_.hud.config.port,runtime_.loggerSettings.n1mmPort,
       runtime_.loggerSettings.pstPort,runtime_.loggerSettings.reportPort,runtime_.loggerSettings.commandPort)) {
     runtime_.controller.fault="command_port_conflict";return;
@@ -43,8 +45,11 @@ void Network::setupCommandUdp() {
     commandRebindAt_=millis();commandRebind_=true;return;
   }
   if(!commandUdp_.begin(runtime_.loggerSettings.commandPort,2048))runtime_.controller.fault="command_udp_bind_failed";
+
+#endif
 }
 void Network::serviceCommandUdp() {
+#if WIFI_SUPPORT || ETHERNET_SUPPORT
   if(commandRebind_ && uint32_t(millis()-commandRebindAt_)>=1500) {
     commandRebind_=false;
     if(!commandUdp_.begin(runtime_.loggerSettings.commandPort,2048))runtime_.controller.fault="command_udp_bind_failed";
@@ -60,6 +65,8 @@ void Network::serviceCommandUdp() {
   const auto size=runCommandApi(peer,{reinterpret_cast<const char *>(input),size_t(count)},reply,sizeof reply);
   if(size)commandUdp_.send(address,port,{reply,size});
   hardware_.applyOutputs();
+
+#endif
 }
 bool Network::processCommandApi(std::string_view input,uint8_t port) {
   if(input.empty() || input.front()!='@')return false;
@@ -107,3 +114,14 @@ void Network::serviceCommandReplies() {
   if(commandReplySent_==commandReplySize_)commandReplySize_=0;
 }
 }
+
+#else
+namespace forkrot {
+bool Network::beginCommandApi(){return false;}
+size_t Network::runCommandApi(uint64_t,std::string_view,char *,size_t){return 0;}
+void Network::setupCommandUdp(){}
+void Network::serviceCommandUdp(){}
+bool Network::processCommandApi(std::string_view,uint8_t){return false;}
+void Network::serviceCommandReplies(){}
+}
+#endif
