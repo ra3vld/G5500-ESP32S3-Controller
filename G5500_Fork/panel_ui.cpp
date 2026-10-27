@@ -8,6 +8,10 @@
 #include <cmath>
 #include <algorithm>
 #include <initializer_list>
+LV_FONT_DECLARE(panel_font_64)
+LV_FONT_DECLARE(panel_font_72)
+LV_FONT_DECLARE(panel_font_96)
+LV_FONT_DECLARE(panel_font_128)
 namespace forkrot {
 namespace {
 constexpr uint32_t bg = 0x0a111c, text = 0xeff5ff, muted = 0x8fabc3;
@@ -240,6 +244,30 @@ void PanelUi::create(bool round) {
   width_=lv_display_get_horizontal_resolution(lv_display_get_default());
   height_=lv_display_get_vertical_resolution(lv_display_get_default());
   diameter_=std::min(width_,height_);round_=round;root_=lv_screen_active();
+  const lv_font_t *numeric[]={&panel_font_144,&panel_font_128,
+#if !PANEL_COMPACT_FONTS
+    &crowpanel_font_112,&panel_font_96,&crowpanel_font_80,
+#else
+    &panel_font_96,&panel_font_80,
+#endif
+    &panel_font_72,&panel_font_64,&panel_font_56,&panel_font_48,&panel_font_40,&panel_font_24,&panel_font_18,&panel_font_14};
+  // Readings need only the glyph area, leaving the unused line padding for
+  // adjacent jog buttons. Font bitmaps and advances stay unchanged.
+  const auto tighten=[](const lv_font_t *original,bool separator=false) {
+    auto tight=*original;
+    int ascent=0,descent=0;
+    for(const char32_t *ch=separator?U"0123456789-/NC°—−":U"0123456789-NC°—−";*ch;++ch) {
+      lv_font_glyph_dsc_t glyph{};
+      if(lv_font_get_glyph_dsc(original,&glyph,*ch,0)) {
+        ascent=std::max(ascent,int(glyph.box_h)+int(glyph.ofs_y));
+        descent=std::max(descent,-int(glyph.ofs_y));
+      }
+    }
+    tight.line_height=ascent+descent;tight.base_line=descent;
+    return tight;
+  };
+  for(const auto *original:numeric)currentFonts_[currentFontCount_++]=tighten(original);
+  secondaryFonts_[0]=tighten(face(28),true);secondaryFonts_[1]=tighten(face(22),true);
   auto *screen = lv_screen_active();
   lv_obj_set_style_bg_color(screen, lv_color_hex(bg), 0);
   lv_obj_set_scrollable(screen, false);
@@ -381,8 +409,6 @@ void PanelUi::configureLayout(const PanelView &v) {
     set(axis_,v.hudSelector?"":v.dualAxis?(v.elevation?"EL":"AZ"):"AZ");
     font(axis_,face(28));
     const bool confirm=!v.autoMode && ((v.targetValid && v.pending) || (v.secondaryTargetValid && v.secondaryPending));
-    const int currentTop=y(confirm?142:178);
-    lv_obj_set_y(angle_,currentTop);lv_obj_set_y(secondaryAngle_,currentTop+lv_obj_get_height(angle_)-lv_obj_get_height(secondaryAngle_));
     const bool idle=!v.movingNow && !v.statusFault && (!v.status[0] || !std::strcmp(v.status,"Имитация"));
     const auto *goal=confirm?face(112):idle?face(48):face(36);
     const auto *caption=confirm?face(28):idle?face(28):face(22);
@@ -430,22 +456,13 @@ void PanelUi::configureLayout(const PanelView &v) {
       }
       lv_obj_set_y(heap_,y(v.shows(DisplayLocalAddress)||v.shows(DisplayApAddress)?(confirm?434:426):(confirm?436:400)));
     }
-    const auto current=bounds(angle_);const auto secondary=bounds(secondaryAngle_);
-    const int leftCurrent=std::min(int(current.x),v.dualAxis?int(secondary.x):int(current.x));
-    const int rightCurrent=std::max(int(current.x+current.width),v.dualAxis?int(secondary.x+secondary.width):0);
-    touchLayout_.current={uint16_t(leftCurrent),current.y,uint16_t(rightCurrent-leftCurrent),current.height};
     auto target=bounds(target_,4);const auto captionRect=bounds(targetCaption_,4);
     int left=std::min(target.x,captionRect.x),top=std::min(target.y,captionRect.y);
     int right=std::max(target.x+target.width,captionRect.x+captionRect.width);
     int bottom=std::max(target.y+target.height,captionRect.y+captionRect.height);
     if(v.dualAxis) {const auto r=bounds(secondaryTarget_,4);left=std::min(left,int(r.x));top=std::min(top,int(r.y));right=std::max(right,int(r.x+r.width));bottom=std::max(bottom,int(r.y+r.height));}
     touchLayout_.target={uint16_t(left),uint16_t(top),uint16_t(right-left),uint16_t(bottom-top)};
-    const int side=std::max(30,p(60)),arrowSize=std::max(24,p(48));
-    const int arrowTop=currentTop+(lv_obj_get_height(angle_)-side)/2;
-    for(auto &r:touchLayout_.arrows) r={};
-    const unsigned negative=v.elevation?3:0,positive=v.elevation?2:1;
-    touchLayout_.arrows[negative]={0,uint16_t(arrowTop),uint16_t(side),uint16_t(side)};
-    touchLayout_.arrows[positive]={uint16_t(width_-side),uint16_t(arrowTop),uint16_t(side),uint16_t(side)};
+    const int arrowSize=std::max(24,p(48));
     const auto sign=[](int value){return (value>0)-(value<0);};
     const int az=sign(v.azDirection?v.azDirection:!v.elevation?v.direction:0);
     const int el=sign(v.elDirection?v.elDirection:v.elevation?v.direction:0);
@@ -455,8 +472,7 @@ void PanelUi::configureLayout(const PanelView &v) {
       lv_obj_set_hidden(arrows_[i],v.hudSelector || i>=2);
       if(i>=2)continue;
       lv_obj_set_size(arrows_[i],arrowSize,arrowSize);
-      lv_obj_set_pos(arrows_[i],(i?width_-side:0)+(side-arrowSize)/2,arrowTop+(side-arrowSize)/2);
-      const int lineWidth=std::max(3,p(6));
+      const int lineWidth=std::max(4,p(6));
       if(lv_obj_get_style_line_width(arrows_[i],LV_PART_MAIN)!=lineWidth)
         lv_obj_set_style_line_width(arrows_[i],lineWidth,0);
       if(compactArrowDirection_!=direction) {
@@ -476,26 +492,59 @@ void PanelUi::configureLayout(const PanelView &v) {
     }
     compactArrowDirection_=direction;
   }
-  const bool showStop=compact && v.movingNow;
+  const bool showStop=v.movingNow;
   lv_obj_set_hidden(hudName_,!v.hud || !v.shows(DisplayName));
-  lv_obj_set_hidden(hudAddress_,!v.hud || !v.shows(DisplayControllerAddress));
-  lv_obj_set_hidden(ip_,!v.shows(DisplayLocalAddress) && !v.shows(DisplayApAddress));
-  lv_obj_set_hidden(heap_,!v.shows(DisplayHeap));
+  lv_obj_set_hidden(hudAddress_,showStop || !v.hud || !v.shows(DisplayControllerAddress));
+  lv_obj_set_hidden(ip_,showStop || (!v.shows(DisplayLocalAddress) && !v.shows(DisplayApAddress)));
+  lv_obj_set_hidden(heap_,showStop || !v.shows(DisplayHeap));
+  lv_obj_set_hidden(bluetooth_,showStop || compact);
+  lv_obj_set_hidden(status_,showStop && !v.statusFault);
   lv_obj_set_hidden(axis_,!v.shows(DisplayAxis));
   lv_obj_set_hidden(actionButton_,!showStop);
-  lv_obj_set_pos(actionButton_,x(v.speedScreen?250:160),y(v.speedScreen?374:334));
-  lv_obj_set_width(actionButton_,p(v.speedScreen?130:160));
+  if(v.speedScreen) {
+    lv_obj_set_pos(actionButton_,x(250),y(374));
+    lv_obj_set_size(actionButton_,p(130),std::max(28,p(44)));
+    font(actionLabel_,face(22));
+  } else {
+    // The footer button replaces status and telemetry, leaving the goal and
+    // jog controls in place. Reserve the same area before motion is rendered.
+    const int gap=std::max(2,p(4));
+    const bool confirmation=!v.autoMode && ((v.targetValid&&v.pending)||(v.secondaryTargetValid&&v.secondaryPending));
+    int top=compact?y(confirmation?400:354):lv_obj_get_y(status_);
+    if(v.hudSelector)top=y(334);
+    else {
+      if(touchLayout_.target.width)top=std::max(top,int(touchLayout_.target.y+touchLayout_.target.height)+gap);
+      for(auto *obj:{targetCaption_,target_,secondaryTarget_})
+        if(lv_label_get_text(obj)[0]) {const auto r=bounds(obj);top=std::max(top,int(r.y+r.height)+gap);}
+      if(v.statusFault) {const auto r=bounds(status_);top=std::max(top,int(r.y+r.height)+gap);}
+    }
+    int bottom=v.hudSelector?y(444):compact?y(confirmation?462:452):
+        y(v.dualAxis&&confirmation?432:408)+face(11)->line_height;
+    bottom=std::max(bottom,top+int(face(11)->line_height)+gap);
+    int buttonWidth=p(300);
+    if(round_) {
+      const int radius=diameter_/2-gap;
+      const int dy=std::max(std::abs(top-height_/2),std::abs(bottom-height_/2));
+      buttonWidth=std::min(buttonWidth,2*int(std::sqrt(std::max(0,radius*radius-dy*dy))));
+    }
+    lv_obj_set_pos(actionButton_,(width_-buttonWidth)/2,top);
+    lv_obj_set_size(actionButton_,buttonWidth,bottom-top);
+    for(const auto *candidate:{compact?face(36):&panel_font_28,compact?face(28):face(22),face(11)}) {
+      if(candidate->line_height+gap<=bottom-top) {font(actionLabel_,candidate);break;}
+    }
+  }
+  lv_obj_center(actionLabel_);
   lv_obj_set_pos(speedBack_,x(showStop?100:160),y(374));
   lv_obj_set_width(speedBack_,p(showStop?130:160));
   lv_obj_set_hidden(settingsButton_,!v.settingsAvailable || v.hud || v.speedScreen || v.hudSelector);
   touchLayout_.mode=bounds(modeButton_);
   touchLayout_.name=v.hud && v.shows(DisplayName)?bounds(hudName_,p(4)):
-      v.hud && v.shows(DisplayControllerAddress)?bounds(hudAddress_,p(4)):panel::TouchRect{};
+      !showStop && v.hud && v.shows(DisplayControllerAddress)?bounds(hudAddress_,p(4)):panel::TouchRect{};
   touchLayout_.axis=v.dualAxis && v.shows(DisplayAxis)?bounds(axis_,p(8)):panel::TouchRect{};
   touchLayout_.peers=bounds(hudList_);
   for(unsigned i=0;i<3;++i) touchLayout_.rows[i]=bounds(hudRows_[i],p(4));
   touchLayout_.settings=v.settingsAvailable && !v.hud && !v.speedScreen && !v.hudSelector?bounds(settingsButton_):panel::TouchRect{};
-  touchLayout_.stopArea=compact?bounds(actionButton_):panel::TouchRect{};
+  touchLayout_.stopArea=bounds(actionButton_);
   touchLayout_.confirmAllowed=v.enabled && !v.movingNow && (v.targetValid || v.secondaryTargetValid || v.statusFault);
   touchLayout_.actionEpoch=actionEpoch_;
   touchLayout_.stop=showStop?bounds(actionButton_):panel::TouchRect{};
@@ -506,10 +555,110 @@ void PanelUi::configureLayout(const PanelView &v) {
   touchLayout_.speedBack=bounds(speedBack_);
   touchLayout_.centerX=width_/2;touchLayout_.centerY=height_/2;
   touchLayout_.width=width_;touchLayout_.height=height_;
-  touchLayout_.innerRadius=p(140);touchLayout_.outerRadius=p(240);
+  touchLayout_.innerRadius=p(140);touchLayout_.outerRadius=p(240)+panel::DialTouchExtension;
   touchLayout_.swipeDeadzone=std::max(6,p(12));touchLayout_.swipeFull=std::max(50,p(100));
   touchLayout_.enabled=touchLayout_.enabled && v.enabled;
   confirmationCaption_=bounds(targetCaption_,p(8));confirmationAngle_=bounds(target_,p(8));
+  layoutCurrent(v);
+}
+void PanelUi::layoutCurrent(const PanelView &v) {
+  if(v.hudSelector || v.speedScreen)return;
+  const bool compact=diameter_<320;
+  const bool confirmation=!v.autoMode && ((v.targetValid&&v.pending)||(v.secondaryTargetValid&&v.secondaryPending));
+  const auto *other=&secondaryFonts_[!compact&&confirmation?1:0];
+  const int gap=std::max(2,p(4)),buttonSize=std::max(30,p(44));
+  std::array<panel::TouchRect,24> obstacles{};unsigned count=0;
+  const auto obstacle=[&](panel::TouchRect r){if(r.width&&r.height)obstacles[count++]=r;};
+  obstacle(touchLayout_.mode);obstacle(touchLayout_.name);obstacle(touchLayout_.axis);
+  obstacle(touchLayout_.settings);obstacle(touchLayout_.stop);obstacle(touchLayout_.target);
+  for(auto *obj:{hudName_,hudAddress_,range_,targetCaption_,target_,secondaryTarget_,status_,bluetooth_,ip_,heap_}) {
+    if(!lv_obj_is_hidden(obj)&&lv_label_get_text(obj)[0])obstacle(bounds(obj));
+  }
+  if(!compact) {obstacle(bounds(wifi_));obstacle(bounds(wifiSlash_));obstacle(bounds(wifiAp_));}
+  int top=gap,bottom=height_-gap;
+  for(const auto &r:{touchLayout_.mode,touchLayout_.name,touchLayout_.axis,touchLayout_.settings})
+    if(r.width)top=std::max(top,int(r.y+r.height)+gap);
+  for(auto *obj:{targetCaption_,target_,secondaryTarget_,status_,ip_,heap_})
+    if(!lv_obj_is_hidden(obj)&&lv_label_get_text(obj)[0])bottom=std::min(bottom,int(bounds(obj).y)-gap);
+  if(touchLayout_.target.width)bottom=std::min(bottom,int(touchLayout_.target.y)-gap);
+  uint64_t key=14695981039346656037ULL;
+  const auto hash=[&](unsigned value){key=(key^value)*1099511628211ULL;};
+  hash(top);hash(bottom);hash(v.elevation);hash(v.dualAxis);hash(confirmation);
+  for(auto *obj:{angle_,secondaryAngle_})for(const unsigned char *c=reinterpret_cast<const unsigned char *>(lv_label_get_text(obj));*c;++c)hash(*c);
+  for(unsigned i=0;i<count;++i){const auto &r=obstacles[i];hash(r.x);hash(r.y);hash(r.width);hash(r.height);}
+  if(currentLayoutValid_&&key==currentLayoutKey_) {
+    touchLayout_.current=currentRegion_;std::copy(std::begin(currentArrows_),std::end(currentArrows_),touchLayout_.arrows);return;
+  }
+  const auto overlap=[](const panel::TouchRect &a,const panel::TouchRect &b,int pad=0) {
+    return a.width&&b.width&&int(a.x)<int(b.x+b.width)+pad&&int(b.x)<int(a.x+a.width)+pad&&
+        int(a.y)<int(b.y+b.height)+pad&&int(b.y)<int(a.y+a.height)+pad;
+  };
+  const auto onScreen=[&](const panel::TouchRect &r,int radius) {
+    if(r.x+r.width>width_||r.y+r.height>height_)return false;
+    if(!round_&&radius==p(240))return true;
+    const int dx=std::max(std::abs(int(r.x)-width_/2),std::abs(int(r.x+r.width)-width_/2));
+    const int dy=std::max(std::abs(int(r.y)-height_/2),std::abs(int(r.y+r.height)-height_/2));
+    return dx*dx+dy*dy<=radius*radius;
+  };
+  const auto measure=[&](lv_obj_t *obj,const lv_font_t *f) {
+    lv_point_t size;lv_text_get_size(&size,lv_label_get_text(obj),f,
+        lv_obj_get_style_text_letter_space(obj,LV_PART_MAIN),0,LV_COORD_MAX,LV_TEXT_FLAG_NONE);return int(size.x);
+  };
+  panel::TouchRect chosen{},arrows[4]{};const lv_font_t *selected=nullptr,*secondary=other;
+  const int horizontalWidth=compact?std::max(24,p(48)):buttonSize;
+  const int horizontalHeight=buttonSize,verticalHeight=std::max(24,p(28));
+  for(unsigned candidate=0;candidate<currentFontCount_&&!selected;++candidate) {
+    const auto *f=&currentFonts_[candidate];
+    for(const auto *small:{other,compact?&secondaryFonts_[1]:other}) {
+      const int rowWidth=measure(angle_,f)+(v.dualAxis?measure(secondaryAngle_,small):0);
+      const int ascent=std::max(int(f->line_height-f->base_line),v.dualAxis?int(small->line_height-small->base_line):0);
+      const int descent=std::max(int(f->base_line),v.dualAxis?int(small->base_line):0),rowHeight=ascent+descent;
+      const int verticalSpace=!compact&&v.dualAxis?verticalHeight+gap:0;
+      const int left=(width_-rowWidth)/2;
+      const int first=top+verticalSpace,last=bottom-rowHeight-verticalSpace;
+      if(first>last||left<horizontalWidth+2*gap)continue;
+      for(int y:{(first+last)/2,first,last}) {
+        panel::TouchRect row{uint16_t(left),uint16_t(y),uint16_t(rowWidth),uint16_t(rowHeight)};
+        if(!onScreen(row,p(225)))continue;
+        panel::TouchRect placed[4]{
+          {uint16_t(left-gap-horizontalWidth),uint16_t(y+(rowHeight-horizontalHeight)/2),uint16_t(horizontalWidth),uint16_t(horizontalHeight)},
+          {uint16_t(left+rowWidth+gap),uint16_t(y+(rowHeight-horizontalHeight)/2),uint16_t(horizontalWidth),uint16_t(horizontalHeight)}};
+        if(!compact&&v.dualAxis) {
+          placed[2]={uint16_t((width_-buttonSize)/2),uint16_t(y-gap-verticalHeight),uint16_t(buttonSize),uint16_t(verticalHeight)};
+          placed[3]={uint16_t((width_-buttonSize)/2),uint16_t(y+rowHeight+gap),uint16_t(buttonSize),uint16_t(verticalHeight)};
+        }
+        bool clear=true;
+        for(unsigned k=0;k<count&&clear;++k)if(overlap(row,obstacles[k],gap))clear=false;
+        for(unsigned i=0;i<4&&clear;++i) {
+          if(!placed[i].width)continue;
+          if(!onScreen(placed[i],p(240))||overlap(placed[i],row,gap)){clear=false;break;}
+          for(unsigned k=0;k<count;++k)if(overlap(placed[i],obstacles[k],gap)){clear=false;break;}
+          for(unsigned k=0;k<i;++k)if(overlap(placed[i],placed[k],gap)){clear=false;break;}
+        }
+        if(!clear)continue;
+        selected=f;secondary=small;chosen=row;std::copy(std::begin(placed),std::end(placed),arrows);break;
+      }
+      if(selected)break;
+    }
+  }
+  if(!selected)return;
+  other=secondary;
+  font(angle_,selected);font(secondaryAngle_,other);
+  const int mainWidth=measure(angle_,selected),otherWidth=v.dualAxis?measure(secondaryAngle_,other):0;
+  const int baseline=chosen.y+std::max(int(selected->line_height-selected->base_line),v.dualAxis?int(other->line_height-other->base_line):0);
+  lv_obj_set_pos(angle_,chosen.x+(v.elevation&&v.dualAxis?otherWidth:0),baseline-selected->line_height+selected->base_line);
+  lv_obj_set_pos(secondaryAngle_,chosen.x+(v.elevation?0:mainWidth),baseline-other->line_height+other->base_line);
+  touchLayout_.current=chosen;
+  for(auto &r:touchLayout_.arrows)r={};
+  for(unsigned i=0;i<(compact?2u:4u);++i) {
+    const unsigned slot=compact?(v.elevation?(i?2:3):i):i;
+    touchLayout_.arrows[slot]=arrows[i];
+    if(!arrows[i].width)continue;
+    const int size=compact?std::max(24,p(48)):p(36);
+    lv_obj_set_pos(arrows_[i],arrows[i].x+(int(arrows[i].width)-size)/2,arrows[i].y+(int(arrows[i].height)-size)/2);
+  }
+  currentLayoutValid_=true;currentLayoutKey_=key;currentRegion_=touchLayout_.current;
+  std::copy(std::begin(touchLayout_.arrows),std::end(touchLayout_.arrows),currentArrows_);
 }
 void PanelUi::setPressed(panel::TouchAction action) {
   if (action == panel::TouchAction::Mode) lv_obj_add_state(modeButton_, LV_STATE_PRESSED);
@@ -553,14 +702,8 @@ void PanelUi::update(const PanelView &v) {
   // keeps its original fonts and geometry when motion/status changes.
   const bool idle=compact && !v.movingNow && !v.statusFault && (!v.status[0] || !std::strcmp(v.status,"Имитация"));
   const bool prominent=confirmation && !idle;
-  const bool emphasize=prominent && !compact;
-  const lv_font_t *mainFont = compact && confirmation ? face(80) : idle ? face(v.dualAxis?112:160) : emphasize ? face(36)
-                         : v.dualAxis ? face(80)
-                                      : face(112);
-  const auto *otherFont = emphasize ? face(22) : face(28);
   const auto *goalFont =
       idle ? face(48) : compact ? face(36) : confirmation ? (v.dualAxis ? face(80) : face(112)) : face(36);
-  font(angle_, mainFont);
   font(target_, goalFont);
   const auto *captionFont=idle?face(28):!compact && confirmation?face(36):face(22);
   font(targetCaption_,captionFont);
@@ -603,21 +746,6 @@ void PanelUi::update(const PanelView &v) {
   color(targetCaption_, confirmation ? 0xf0b85c : targetColor);
   color(target_, confirmation ? 0xf0b85c : targetColor);
   color(secondaryTarget_, confirmation ? 0xf0b85c : targetColor);
-  const int currentMaximumWidth=p(idle?360:330);
-  if(compact && idle && !confirmation && v.dualAxis) {
-    // A third digit on the other axis must not keep the selected angle at
-    // its moving size after release. Fit the secondary reading first.
-    const auto textWidth=[](lv_obj_t *label,const lv_font_t *face) {
-      lv_point_t size;
-      lv_text_get_size(&size,lv_label_get_text(label),face,
-          lv_obj_get_style_text_letter_space(label,LV_PART_MAIN),
-          lv_obj_get_style_text_line_space(label,LV_PART_MAIN),LV_COORD_MAX,LV_TEXT_FLAG_NONE);
-      return size.x;
-    };
-    if(textWidth(angle_,mainFont)+textWidth(secondaryAngle_,otherFont)>currentMaximumWidth)
-      otherFont=face(22);
-  }
-  font(secondaryAngle_,otherFont);
   // Fit continuous multi-turn coordinates inside the ring, leaving room for jog arrows.
   auto fit = [&](lv_obj_t *primary, lv_obj_t *secondary, const lv_font_t *initial, int maximumWidth) {
     const lv_font_t *chosen = initial;
@@ -632,7 +760,6 @@ void PanelUi::update(const PanelView &v) {
     }
     return chosen;
   };
-  mainFont = fit(angle_, secondaryAngle_, mainFont, currentMaximumWidth);
   if(!compact) goalFont = fit(target_, secondaryTarget_, goalFont, p(confirmation ? 380 : 300));
   auto row = [&](lv_obj_t *primary, lv_obj_t *secondary, const lv_font_t *large,
                  const lv_font_t *small, int top, int prefix) {
@@ -650,13 +777,6 @@ void PanelUi::update(const PanelView &v) {
     return x;
   };
   font(axis_, compact?face(28):v.dualAxis && confirmation ? face(11) : face(22));
-  const int currentY = compact ? (confirmation?142:178) : v.dualAxis ? (confirmation ? 184 : 198) : 170;
-  const int currentLeft = row(angle_, secondaryAngle_, mainFont, otherFont, currentY, 0);
-  lv_obj_update_layout(angle_);
-  lv_obj_update_layout(secondaryAngle_);
-  const int currentWidth =
-      lv_obj_get_width(angle_) + (v.dualAxis ? lv_obj_get_width(secondaryAngle_) : 0);
-  const int currentHeight = lv_obj_get_height(angle_);
   const int goalY = idle ? 344 : confirmation ? (v.dualAxis ? 300 : 250) : (v.dualAxis ? 316 : 282);
   lv_obj_update_layout(targetCaption_);
   const int captionWidth = lv_obj_get_width(targetCaption_);
@@ -691,24 +811,13 @@ void PanelUi::update(const PanelView &v) {
   touchLayout_ = {};
   touchLayout_.dualAxis = v.dualAxis;
   touchLayout_.enabled = !v.hudSelector;
-  touchLayout_.current = {uint16_t(currentLeft), uint16_t(y(currentY)), uint16_t(currentWidth),
-                          uint16_t(currentHeight)};
   touchLayout_.target = (v.targetValid || v.secondaryTargetValid || v.statusFault)
                             ? panel::TouchRect{uint16_t(goalLeft - 4), uint16_t(goalTop),
                                                    uint16_t(goalRight - goalLeft + 8),
                                                    uint16_t(goalBottom - goalTop + 4)}
                             : panel::TouchRect{};
-  const int centerY = y(currentY) + currentHeight / 2;
-  touchLayout_.arrows[0] = {uint16_t(std::max(x(12), currentLeft - std::max(32,p(52)))), uint16_t(centerY - std::max(15,p(22))), uint16_t(std::max(30,p(44))),
-                            uint16_t(std::max(30,p(44)))};
-  touchLayout_.arrows[1] = {uint16_t(std::min(x(424), currentLeft + currentWidth + p(8))),
-                            uint16_t(centerY - std::max(15,p(22))), uint16_t(std::max(30,p(44))), uint16_t(std::max(30,p(44)))};
-  touchLayout_.arrows[2] = {uint16_t(width_/2-std::max(15,p(22))), uint16_t(y(currentY) - std::max(30,p(46))), uint16_t(std::max(30,p(44))), uint16_t(std::max(30,p(44)))};
-  touchLayout_.arrows[3] = {uint16_t(width_/2-std::max(15,p(22))), uint16_t(y(currentY) + currentHeight + p(2)), uint16_t(std::max(30,p(44))), uint16_t(std::max(30,p(44)))};
   for (unsigned i = 0; i < 4; ++i) {
-    const auto &r = touchLayout_.arrows[i];
     if(!compact) {
-      lv_obj_set_pos(arrows_[i], r.x + (r.width-p(36))/2, r.y + (r.height-p(36))/2);
       lv_obj_set_hidden(arrows_[i], v.hudSelector || (i >= 2 && !v.dualAxis));
     }
     if(compact)continue;

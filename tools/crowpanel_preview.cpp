@@ -310,7 +310,7 @@ int main(int argc, char **argv) {
     auto *current = findLabel("121°"); assert(current);
     assert(lv_obj_get_style_text_font(target, LV_PART_MAIN) ==
            (view.dualAxis ? &crowpanel_font_80 : &crowpanel_font_112));
-    assert(lv_obj_get_style_text_font(current, LV_PART_MAIN) == &crowpanel_font_36);
+    assert(lv_obj_get_style_text_font(current, LV_PART_MAIN)->line_height >= 26);
     assert(lv_obj_get_y(current) + lv_obj_get_height(current) < lv_obj_get_y(caption));
     assert(lv_obj_get_y(caption) + lv_obj_get_height(caption) < lv_obj_get_y(target));
     assert(lv_obj_get_x(target) >= 30 && lv_obj_get_x(target) + lv_obj_get_width(target) <= 450);
@@ -481,18 +481,17 @@ int main(int argc, char **argv) {
       const auto &layout = ui.touchLayout();
       assert(!overlaps(layout.current, layout.target));
       for (unsigned i = 0; i < 4; ++i) {
-        assert(layout.arrows[i].width >= 44 && layout.arrows[i].height >= 44);
+        assert(layout.arrows[i].width >= 44 && layout.arrows[i].height >= 28);
         assert(!overlaps(layout.arrows[i], layout.current));
         assert(!overlaps(layout.arrows[i], layout.target));
-        assert(!overlaps(layout.arrows[i], forkrot::crowpanel::ModeButton));
+        assert(!overlaps(layout.arrows[i], layout.mode));
         for (unsigned j = 0; j < i; ++j) {
           assert(!overlaps(layout.arrows[i], layout.arrows[j]));
         }
       }
       auto *main = findLabel(elevation ? "180°" : "450°");
       assert(main);
-      assert(lv_obj_get_style_text_font(main, LV_PART_MAIN) ==
-             (pending ? &crowpanel_font_36 : &crowpanel_font_80));
+      assert(lv_obj_get_style_text_font(main, LV_PART_MAIN)->line_height >= (pending ? 26 : 70));
       auto *other = findLabel(elevation ? "450° / " : " / 180°");
       auto *goal = findLabel(elevation ? "180.0°" : "450.0°");
       auto *otherGoal = findLabel(elevation ? "450.0° / " : " / 180.0°");
@@ -523,7 +522,7 @@ int main(int argc, char **argv) {
              (pending ? &crowpanel_font_80 : &crowpanel_font_36));
       const auto &right = layout.arrows[1], &down = layout.arrows[3];
       assert(nearColor(right.x + 28, right.y + 22, 3, 0xeff5ff));
-      assert(nearColor(down.x + 22, down.y + 28, 3, 0xeff5ff));
+      assert(nearColor(down.x + 22, down.y + down.height / 2 + 6, 3, 0xeff5ff));
       std::snprintf(path, sizeof path, "%s/dual-%s-%s.ppm", argv[1], elevation ? "el" : "az",
                     pending ? "pending" : "normal");
       save(path);
@@ -564,7 +563,9 @@ int main(int argc, char **argv) {
       view.targetValid=true;
       ui.update(view);settle(d);checkFullRedraw(d,argv[1]);
       const auto &layout=ui.touchLayout();
-      assert(layout.current.x>=60 && layout.current.x+layout.current.width<=420);
+      assert(layout.arrows[0].x+layout.arrows[0].width<=layout.current.x);
+      assert(layout.current.x+layout.current.width<=layout.arrows[1].x);
+      assert(layout.arrows[1].x+layout.arrows[1].width<=480);
       assert(layout.target.x<480 && layout.target.x+layout.target.width<=450);
       char boundsLabel[80];std::snprintf(boundsLabel,sizeof boundsLabel,"%.1f°..%.1f°",double(view.minimum),double(view.maximum));
       assert(findLabel(boundsLabel));

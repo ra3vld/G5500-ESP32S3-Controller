@@ -26,6 +26,13 @@ class PanelUi {
   lv_obj_t *settingsButton_=nullptr,*actionButton_=nullptr,*actionLabel_=nullptr;
   lv_obj_t *root_=nullptr;
   void configureLayout(const PanelView &view);
+  void layoutCurrent(const PanelView &view);
+  std::array<lv_font_t,13> currentFonts_{};
+  std::array<lv_font_t,2> secondaryFonts_{};
+  unsigned currentFontCount_=0;
+  bool currentLayoutValid_=false;
+  uint64_t currentLayoutKey_=0;
+  panel::TouchRect currentRegion_{},currentArrows_[4]{};
   lv_point_precise_t arrowPoints_[4][5]{},wifiSlashPoints_[2]{};
   bool arrowMoving_[4]{};
   int compactArrowDirection_=-1;

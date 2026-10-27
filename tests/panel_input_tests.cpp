@@ -3,6 +3,7 @@
 #include "touch_sample.hpp"
 #include <cassert>
 #include <cstdio>
+#include <utility>
 using namespace forkrot;
 using namespace forkrot::panel;
 
@@ -18,6 +19,28 @@ static TouchLayout layout() {
   return l;
 }
 int main() {
+  {
+    TouchLayout r;r.width=480;r.height=320;r.centerX=240;r.centerY=160;
+    r.innerRadius=93;r.outerRadius=160+DialTouchExtension;r.name={};
+    assert(r.dialHit(450,160)&&!r.dialContains(451,160)&&!r.dialContains(480,160));
+    TouchGesture input;input.sample(false,0,0,r,0);
+    assert(input.sample(true,450,160,r,10).action==TouchAction::Target);
+    assert(r.bearing(450,160)==90);input.sample(false,0,0,r,20);
+    r.mode={360,130,60,44};
+    assert(r.dialContains(380,150)&&!r.dialHit(380,150));
+    assert(input.sample(true,380,150,r,30).action==TouchAction::Mode);input.sample(false,0,0,r,40);
+    assert(input.sample(true,450,160,r,50).action==TouchAction::Target);
+    // An established ring drag keeps its role over other buttons.
+    assert(input.sample(true,380,150,r,60).action==TouchAction::Target);input.sample(false,0,0,r,70);
+    r.stop={430,140,40,40};assert(!r.dialHit(450,160));
+    assert(input.sample(true,450,160,r,80).action==TouchAction::Stop);
+    input.sample(false,0,0,r,90);
+    r=layout();r.outerRadius=120+DialTouchExtension;r.name={};
+    for(auto point:{std::pair<int,int>{0,0},{239,0},{0,239},{239,239}}) {
+      assert(r.dialHit(point.first,point.second));TouchGesture corner;
+      assert(corner.sample(true,point.first,point.second,r,100).action==TouchAction::Target);
+    }
+  }
   auto l=layout();TouchGesture input;input.cancel();
   auto sample=[&](bool down,int x=0,int y=0){return input.sample(down,x,y,l,100);};
   // A finger held during boot/recovery must be released before it can confirm.

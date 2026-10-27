@@ -16,6 +16,7 @@ inline constexpr TouchRect ModeButton{140, 84, 200, 44};
 inline constexpr TouchRect HudList{35, 129, 410, 185};
 inline constexpr int HudRowTop = HudList.y + 10, HudRowHeight = 58;
 inline constexpr int DialCenter = 240, DialTouchInner = 140, DialTouchOuter = 240;
+inline constexpr int DialTouchExtension = 50;
 inline bool dialContains(uint16_t x, uint16_t y) {
   if (x >= 480 || y >= 480) return false;
   const int dx = int(x) - DialCenter, dy = int(y) - DialCenter;
@@ -69,6 +70,12 @@ struct TouchLayout {
   float bearing(uint16_t x,uint16_t y) const {
     return float((std::lround(std::atan2(float(int(x)-centerX),float(centerY-int(y))) *
         180.f/3.14159265358979323846f)+360)%360);
+  }
+  bool dialHit(uint16_t x,uint16_t y) const {
+    if(speedScreen || current.contains(x,y) || target.contains(x,y) || mode.contains(x,y) ||
+        name.contains(x,y) || axis.contains(x,y) || settings.contains(x,y) || stop.contains(x,y))return false;
+    for(const auto &arrow:arrows)if(arrow.contains(x,y))return false;
+    return dialContains(x,y);
   }
 };
 struct TouchEvent {
@@ -168,7 +175,7 @@ public:
               role_ = Role::Swipe;
             } else if (layout.target.contains(x, y)) {
               role_ = Role::Target;
-            } else if (layout.dialContains(x, y)) {
+            } else if (layout.dialHit(x, y)) {
               role_ = Role::Ring;
             }
           }
