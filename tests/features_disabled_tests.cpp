@@ -17,5 +17,22 @@ int main(){
  const auto saved=Preferences::database;
  f.storage.clearResetHistory();f.hardware.beginInputs();f.hardware.serviceLocalInputs();
  assert(Preferences::database==saved); // Disabled services do not erase stored records.
+ // A previous Bluetooth-enabled record stays latent, without forcing recovery.
+ auto previous=f.runtime.hardwareRecord.good;previous.bluetooth=true;
+ assert(f.storage.stageHardware(f.runtime,previous));
+ Runtime restored;f.storage.loadHardware(restored);
+ if(restored.recovery || !restored.hardwareTrial || !restored.controller.hardware.bluetooth)std::cerr<<"latent BT: recovery="<<restored.recovery<<" reason="<<int(restored.recoveryReason)<<" trial="<<restored.hardwareTrial<<" BT="<<restored.controller.hardware.bluetooth<<std::endl;
+ assert(!restored.recovery && restored.hardwareTrial && restored.controller.hardware.bluetooth);
+ assert(restored.controller.hardware.backend()==BT_NONE);
+ // A saved HUD role must survive a build without HUD and keep motor GPIO idle.
+ Fixture oldHud;HudConfig hudConfig;hudConfig.role=DeviceRole::Hud;
+ assert(oldHud.storage.saveHudConfig(hudConfig));
+ const auto roleBytes=Preferences::database["hudcfg"]["config"];
+ Runtime reboot;oldHud.storage.loadHud(reboot,false);assert(reboot.hud.isHud());
+ oldHud.storage.loadHardware(reboot,!HUD_SUPPORT && reboot.hud.isHud());
+ reboot.setup.required=false;assert(!reboot.controller.hardware.simulation);
+ fakeHardware.events.clear();Hardware motor(reboot);motor.beginDirections();motor.beginAdc();motor.applyOutputs();
+ assert(fakeHardware.events.empty() && reboot.hud.isHud());
+ assert(Preferences::database["hudcfg"]["config"]==roleBytes);
  std::cout<<"PASS: minimal services: explicit feature_disabled, retained configuration and working local STOP\n";
 }

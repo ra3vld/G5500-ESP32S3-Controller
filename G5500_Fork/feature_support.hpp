@@ -7,7 +7,7 @@ struct Feature { const char *name; bool enabled; };
 inline constexpr Feature buildFeatures[] = {
   {"display", DISPLAY_SUPPORT && DISPLAY_KIND != DISPLAY_NONE}, {"localInput", LOCAL_INPUT_SUPPORT},
   {"wifi", WIFI_SUPPORT}, {"ethernet", ETHERNET_SUPPORT}, {"web", WEB_INTERFACE_ENABLED},
-  {"webLive", WEB_LIVE_SUPPORT}, {"bluetooth", BLUETOOTH_SUPPORT}, {"bluetoothSpp", BLUETOOTH_SPP_SUPPORT},
+  {"webPlainHtml", WEB_PLAIN_HTML_SUPPORT}, {"webLive", WEB_LIVE_SUPPORT}, {"bluetooth", BLUETOOTH_SUPPORT}, {"bluetoothSpp", BLUETOOTH_SPP_SUPPORT},
   {"gs232", GS232_SUPPORT}, {"rotctld", ROTCTLD_SUPPORT}, {"n1mm", N1MM_SUPPORT},
   {"pstrotator", PSTROTATOR_SUPPORT}, {"commandApi", COMMAND_API_SUPPORT}, {"hud", HUD_SUPPORT},
   {"hudUdp", HUD_UDP_SUPPORT}, {"hudUart", HUD_UART_SUPPORT}, {"rs485", RS485_SUPPORT},

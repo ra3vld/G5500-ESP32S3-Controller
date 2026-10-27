@@ -48,7 +48,7 @@ class BuildConfigTests(unittest.TestCase):
         self.assertEqual(result.returncode == 0, success, result.stderr)
 
     def test_feature_dependencies(self):
-        flags=['DISPLAY_SUPPORT','LOCAL_INPUT_SUPPORT','WIFI_SUPPORT','ETHERNET_SUPPORT','WEB_LIVE_SUPPORT',
+        flags=['DISPLAY_SUPPORT','LOCAL_INPUT_SUPPORT','WIFI_SUPPORT','ETHERNET_SUPPORT','WEB_LIVE_SUPPORT','WEB_PLAIN_HTML_SUPPORT',
                'BLUETOOTH_SPP_SUPPORT','GS232_SUPPORT','ROTCTLD_SUPPORT','N1MM_SUPPORT','PSTROTATOR_SUPPORT',
                'COMMAND_API_SUPPORT','HUD_SUPPORT','HUD_UDP_SUPPORT','HUD_UART_SUPPORT','RS485_SUPPORT',
                'MODBUS_RTU_SUPPORT','OTA_SUPPORT','ARDUINO_OTA_SUPPORT','LOG_HISTORY_SUPPORT',
@@ -62,6 +62,7 @@ class BuildConfigTests(unittest.TestCase):
             ['MQTT_SUPPORT=0','HOME_ASSISTANT_DISCOVERY_SUPPORT=1'],
             ['RS485_SUPPORT=0','MODBUS_RTU_SUPPORT=1'],
             ['WEB_INTERFACE_ENABLED=0','WEB_LIVE_SUPPORT=1'],
+            ['WEB_INTERFACE_ENABLED=0','WEB_PLAIN_HTML_SUPPORT=1'],
             ['WEB_INTERFACE_ENABLED=0','COMMAND_API_SUPPORT=0'],
             ['HUD_SUPPORT=0','HUD_UART_SUPPORT=1'],
             ['HUD_SUPPORT=0','HUD_UDP_SUPPORT=1'],
@@ -76,6 +77,11 @@ class BuildConfigTests(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
         config=configparser.ConfigParser(interpolation=None);config.read(self.root/'build/platformio-config/esp32s3_n16r8.ini')
         self.assertEqual(config.get('env:selected','lib_deps').strip(),'')
+        for board,display in [(1,1),(5,3),(8,4),(10,5)]:
+            result=subprocess.run(['g++','-std=c++17','-fsyntax-only','-I',str(self.source),
+                                   f'-DBOARD_PROFILE={board}',f'-DDISPLAY_KIND={display}',
+                                   '-DDISPLAY_SUPPORT=0',str(self.source/'display_spi.cpp')],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
 
     def test_service_capabilities(self):
         self.compile(dict(WEB_INTERFACE_ENABLED=1, BLUETOOTH_SUPPORT=1))
@@ -347,6 +353,7 @@ int main() {
         self.assertNotIn('ILI9341', config['lib_deps'])
         config = self.selected_config('--display', 'tft', '--bluetooth', '1')
         self.assertIn('-DDISPLAY_KIND=1', config['build_flags'])
+        self.assertIn('-DWEB_PLAIN_HTML_SUPPORT=0', config['build_flags'])
         self.assertIn('-DBLUETOOTH_ENABLED=1', config['build_flags'])
         self.assertNotIn('BluetoothSerial', config['lib_deps'])
         self.assertIn('-DBLUETOOTH_ENABLED=1', config['build_flags'])
@@ -416,6 +423,19 @@ int main() {
         self.assertIn('-DCROWPANEL_LOCAL_DRIVE=1', config['env:selected']['build_flags'])
         self.assertIn('-DDRIVE_INTERFACE=2', config['env:selected']['build_flags'])
         self.assertIn('lvgl', config['env:selected']['lib_deps'])
+
+    def test_legacy_s2_preserves_services_or_enables_mqtt_compact(self):
+        for profile,mqtt,compact in [('esp32s2_4mb',False,False),('esp32s2_4mb_headless',False,False),
+                                     ('esp32s2_4mb_ota_compact',True,True)]:
+            result=subprocess.run([sys.executable,str(self.root/'tools/build_platformio.py'),
+                                   '--env',profile,'--dry-run'],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            config=configparser.ConfigParser(interpolation=None)
+            config.read(self.root/f'build/platformio-config/{profile}.ini')
+            flags=config['env:selected']['build_flags']
+            self.assertEqual('-DMQTT_SUPPORT=0' not in flags,mqtt)
+            self.assertEqual('-DWEB_LIVE_SUPPORT=0' in flags,compact)
+            self.assertEqual('-DARDUINO_OTA_SUPPORT=0' in flags,compact)
 
     def test_esp32_ota_partitions_and_arduino_copy(self):
         for name, flash, count in [('partitions_s2.csv', 4 << 20, 2),

@@ -30,7 +30,8 @@ int main() {
     for(int pin:{0,16,18,19,21,22,23,25,26,27}) {
       config.pins.azPositive=pin;
       const auto error=board::validateHardwareDetailed(config);
-      assert(error && error.pin==pin && std::strcmp(error.owner,"ethernet.rmii")==0);
+      if(simulation)assert(!error); // Simulation does not reserve motor GPIO.
+      else assert(error && error.pin==pin && std::strcmp(error.owner,"ethernet.rmii")==0);
     }
     config.pins=PinMap{};
     MotionTestRuntime runtime;runtime.controller.configureHardware(config);Hardware motor(runtime);

@@ -24,8 +24,11 @@ int main() {
       if(!board::ethernetPin(pin) && !board::cameraPin(pin))continue;
       auto invalid=c;invalid.pins.azPositive=pin;
       const auto error=board::validateHardwareDetailed(invalid);
-      assert(error && error.pin==pin);
-      assert(std::strcmp(error.owner,board::ethernetPin(pin)?"ethernet.spi":"camera")==0);
+      if(simulated)assert(!error); // Motor GPIO are inactive in simulation.
+      else {
+        assert(error && error.pin==pin);
+        assert(std::strcmp(error.owner,board::ethernetPin(pin)?"ethernet.spi":"camera")==0);
+      }
     }
     MotionTestRuntime runtime;runtime.controller.configureHardware(c);Hardware hw(runtime);
     fakeHardware={};hw.beginDirections();hw.beginAdc();hw.applyOutputs();

@@ -264,7 +264,14 @@ inline bool sharedPanelSensorBus(const HardwareConfig &c,const PinDefinition &d)
   (void)c;(void)d;return false;
 #endif
 }
-inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool hudUart=false,bool hud=false) {
+inline HardwareValidation validateHardwareDetailed(const HardwareConfig &configured,bool hudUart=false,bool hud=false) {
+#if !BLUETOOTH_SUPPORT
+  // Keep saved settings intact while validating the hardware that can run.
+  auto effective=configured;effective.bluetooth=false;
+  const auto &c=effective;
+#else
+  const auto &c=configured;
+#endif
   const bool physical=!hud && !c.simulation;
   for(unsigned i=0;!hud && i<2;++i) {
     const auto at=i*3;
@@ -290,7 +297,6 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &c,bool 
       !c.singleAxis() && !sharedSensors) return {"sensor_bus_unavailable","elSensor"};
   if(physical && (FORK_C3 || DISPLAY_KIND==DISPLAY_ST7796) && c.sensorType(0) && c.sensorType(1) &&
       !c.singleAxis() && !sharedSensors) return {"sensor_bus_unavailable","elSensor"};
-  if(!BLUETOOTH_SUPPORT && c.bluetooth) return {"bluetooth_not_supported","bluetoothEnabled"};
   if(c.drive>DRIVE_DIR_PWM || c.bluetoothMode<BT_HC05 || c.bluetoothMode>BT_AUTO ||
       (!hud && c.pwmInverted && c.drive!=DRIVE_BTS7960)) return {"invalid_hardware"};
   if(c.backend()==BT_ESP32_SPP && !FORK_CLASSIC_ESP32) return {"spp_not_supported","bluetoothMode"};

@@ -55,7 +55,11 @@ static void hudBackgroundTests() {
 static void mqttApiTests() {
 #if MQTT_SUPPORT
   {
-    Fixture f;MqttConfig config;assert(f.storage.loadMqtt(config)&&!config.enabled);
+    Fixture f;f.runtime.hud.config.role=DeviceRole::Controller;f.runtime.hud.begin(1,0x1234);
+    auto hardware=f.runtime.controller.hardware;hardware.simulation=true;
+    f.runtime.controller=Controller{};f.runtime.controller.configureHardware(hardware);
+    f.runtime.controller.feedback(90,45,true,true);
+    MqttConfig config;assert(f.storage.loadMqtt(config)&&!config.enabled);
     assert(f.call("GET","/api/mqtt").body.find("\"hasPassword\":false")!=std::string::npos);
     assert(f.call("POST","/api/mqtt","enabled=1").status==400);
     for(const char *bad:{"enabled=yes","port=0","port=65536","unknown=1","host=bad%2Fhost","discoveryPrefix=a%2F%2B"})assert(f.call("POST","/api/mqtt",bad).status==400);
@@ -719,11 +723,13 @@ int main(int argc,char **argv) {
     const auto bytes=encodeHardware(legacy);
     Preferences::database["hardware"]["config1"]=Preferences::Bytes(bytes.begin(),bytes.end());
     auto &runtime=migration.runtime;migration.storage.loadHardware(runtime);
-    assert(runtime.recovery && runtime.hardwareRecord.hasConfirmed);
+    assert(!runtime.recovery && runtime.hardwareRecord.hasConfirmed);
     assert(runtime.hardwareRecord.good.bluetooth && runtime.hardwareRecord.good.drive==DRIVE_BTS7960);
-    assert(runtime.controller.hardware.drive==DRIVE_BTS7960 && !runtime.controller.hardware.bluetooth);
-    assert(migration.call("POST","/api/hardware/rollback","token=11&generation=1").status==200);
-    assert(!runtime.hardwareRecord.candidate.bluetooth && runtime.hardwareRecord.candidate.pwmInverted);
+    assert(runtime.controller.hardware.drive==DRIVE_BTS7960 && runtime.controller.hardware.bluetooth);
+    assert(runtime.controller.hardware.backend()==BT_NONE);
+    assert(migration.call("POST","/api/hardware","token=11&generation=1&bluetoothEnabled=0").status==501);
+    assert(migration.call("POST","/api/hardware","token=11&generation=1&forceApSta=1").status==200);
+    assert(runtime.hardwareRecord.candidate.bluetooth && runtime.hardwareRecord.candidate.pwmInverted && runtime.hardwareRecord.candidate.forceAp);
     migration.storage.loadHardware(runtime);
     assert(runtime.hardwareTrial && !runtime.recovery && runtime.controller.hardware.drive==DRIVE_BTS7960);
   }

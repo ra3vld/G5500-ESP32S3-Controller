@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 import tempfile
+import struct
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
@@ -8,6 +9,18 @@ from check_firmware_size import check
 
 
 class FirmwareSizeTests(unittest.TestCase):
+    def test_compiled_partition_table(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);image=root/'firmware.bin';table=root/'partitions.bin'
+            def entry(kind,size):return struct.pack('<HBBII16sI',0x50aa,kind,0,0x10000,size,b'app',0)
+            table.write_bytes(entry(1,32)+entry(0,1024)+entry(0,768)+b'\xff'*32)
+            image.write_bytes(b'\0'*768)
+            self.assertEqual(check(image,table),(768,768))
+            image.write_bytes(b'\0'*769)
+            with self.assertRaisesRegex(ValueError,'exceeds'):check(image,table)
+            table.write_bytes(b'\xff'*32)
+            with self.assertRaisesRegex(ValueError,'No application'):check(image,table)
+
     def test_actual_bin_and_smallest_app_slot(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

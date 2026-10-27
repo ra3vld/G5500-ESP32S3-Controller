@@ -10,9 +10,9 @@ namespace forkrot {
 void WebInterface::sendHtml(const char *raw, size_t rawSize, const unsigned char *gzip, size_t gzipSize) {
   const String encoding = web_.header("Accept-Encoding");
   web_.sendHeader("Vary", "Accept-Encoding");
-#if (!FORK_S3 && !FORK_CLASSIC_ESP32) || SELECTED_BOARD == BOARD_ESP32_3248S035C
-  // Keep graphics and the complete UI within the existing application slots.
-  // LTO can discard the uncompressed HTML when this profile only serves gzip.
+#if !WEB_PLAIN_HTML_SUPPORT
+  // Call sites omit plaintext references, so gzip-only builds discard it
+  // even without link-time optimization.
   (void)raw; (void)rawSize;
   if (!encoding.length() || acceptsGzip(encoding.c_str())) {
     web_.sendHeader("Content-Encoding", "gzip");
@@ -50,11 +50,11 @@ void WebInterface::setupWeb() {
   },this);
   if(runtime_.recovery) {web_.begin();return;}
   static const char *headers[]={"Accept-Encoding"};web_.collectHeaders(headers,1);
-  web_.on("/",HTTP_GET,[this] {web_.sendHeader("Cache-Control","no-store");sendHtml(WEB_PAGE,sizeof WEB_PAGE-1,WEB_PAGE_GZIP,sizeof WEB_PAGE_GZIP);});
-  web_.on("/setup",HTTP_GET,[this] {web_.sendHeader("Cache-Control","no-store");sendHtml(WEB_PAGE,sizeof WEB_PAGE-1,WEB_PAGE_GZIP,sizeof WEB_PAGE_GZIP);});
-  web_.on("/diaglog",HTTP_GET,[this] {sendHtml(DIAG_PAGE,sizeof DIAG_PAGE-1,DIAG_PAGE_GZIP,sizeof DIAG_PAGE_GZIP);});
-  web_.on("/resetdiag",HTTP_GET,[this] {sendHtml(RESET_DIAG_PAGE,sizeof RESET_DIAG_PAGE-1,RESET_DIAG_PAGE_GZIP,sizeof RESET_DIAG_PAGE_GZIP);});
-  web_.on("/adc",HTTP_GET,[this] {sendHtml(ADC_TEST_PAGE,sizeof ADC_TEST_PAGE-1,ADC_TEST_PAGE_GZIP,sizeof ADC_TEST_PAGE_GZIP);});
+  web_.on("/",HTTP_GET,[this] {web_.sendHeader("Cache-Control","no-store");sendHtml(WEB_PLAIN_HTML_SUPPORT?WEB_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof WEB_PAGE-1:0,WEB_PAGE_GZIP,sizeof WEB_PAGE_GZIP);});
+  web_.on("/setup",HTTP_GET,[this] {web_.sendHeader("Cache-Control","no-store");sendHtml(WEB_PLAIN_HTML_SUPPORT?WEB_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof WEB_PAGE-1:0,WEB_PAGE_GZIP,sizeof WEB_PAGE_GZIP);});
+  web_.on("/diaglog",HTTP_GET,[this] {sendHtml(WEB_PLAIN_HTML_SUPPORT?DIAG_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof DIAG_PAGE-1:0,DIAG_PAGE_GZIP,sizeof DIAG_PAGE_GZIP);});
+  web_.on("/resetdiag",HTTP_GET,[this] {sendHtml(WEB_PLAIN_HTML_SUPPORT?RESET_DIAG_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof RESET_DIAG_PAGE-1:0,RESET_DIAG_PAGE_GZIP,sizeof RESET_DIAG_PAGE_GZIP);});
+  web_.on("/adc",HTTP_GET,[this] {sendHtml(WEB_PLAIN_HTML_SUPPORT?ADC_TEST_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ADC_TEST_PAGE-1:0,ADC_TEST_PAGE_GZIP,sizeof ADC_TEST_PAGE_GZIP);});
   for(const char *path : {
     "/api/setup",
     "/api/motion/coast",

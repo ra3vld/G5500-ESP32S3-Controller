@@ -39,6 +39,11 @@ static_assert(BOARD_PROFILE >= BOARD_AUTO && BOARD_PROFILE <= BOARD_ESP32_3248S0
 #define FORK_C3 (SELECTED_BOARD == BOARD_ESP32_2424S012C || SELECTED_BOARD == BOARD_ESP32_C3)
 #define FORK_OPTIONAL_DRIVE (FORK_C3 || SELECTED_BOARD == BOARD_ESP32_3248S035C)
 
+static_assert(WEB_PLAIN_HTML_SUPPORT == 0 || WEB_PLAIN_HTML_SUPPORT == 1, "WEB_PLAIN_HTML_SUPPORT must be 0 or 1");
+#if WEB_PLAIN_HTML_SUPPORT && !WEB_INTERFACE_ENABLED
+#error "Plain HTML requires the web interface"
+#endif
+
 // Feature dependencies are evaluated after resolving the board profile.
 static_assert(DISPLAY_SUPPORT == 0 || DISPLAY_SUPPORT == 1, "DISPLAY_SUPPORT must be 0 or 1");
 static_assert(LOCAL_INPUT_SUPPORT == 0 || LOCAL_INPUT_SUPPORT == 1, "LOCAL_INPUT_SUPPORT must be 0 or 1");

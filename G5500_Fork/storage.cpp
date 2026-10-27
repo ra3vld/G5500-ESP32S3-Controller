@@ -253,15 +253,13 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
   // and must fall back to good. An inactive map cannot veto the selected one.
   const bool candidateBoot=record.phase==ConfigPhase::Pending && !forceRecovery && !history.pending;
   const auto &bootConfig=candidateBoot?record.candidate:record.good;
-  const bool unsupportedRadio = !BLUETOOTH_SUPPORT &&
-      bootConfig.bluetooth;
   if (!readable || !valid) {
     record = {};
     record.phase = ConfigPhase::Recovery;
     record.reason = !readable ? RecoveryReason::Storage : RecoveryReason::Invalid;
   } else if (!historyValid) {
     record.phase=ConfigPhase::Recovery;record.reason=RecoveryReason::Storage;
-  } else if (unsupportedRadio || invalidStored(bootConfig)) {
+  } else if (invalidStored(bootConfig)) {
     // The record passed its format/checksum checks. Preserve both maps, the
     // confirmation and generation even when this role/image cannot use it.
     record.phase = ConfigPhase::Recovery;

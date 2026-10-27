@@ -47,6 +47,8 @@ CrowPanel 2.1 (DHE03921D): `pio run -e crowpanel_21` или `./tools/build_ardui
 | Partition Scheme | Huge APP (3MB No OTA/1MB SPIFFS) | 16M Flash (3MB APP/9.9MB FATFS) | Huge APP (3MB No OTA/1MB SPIFFS) | Minimal SPIFFS (1.9MB APP with OTA/128KB SPIFFS) |
 | BOARD_PROFILE | AUTO или ESP32 | AUTO или S3 | AUTO или S2_MINI | AUTO или S2_LEGACY |
 
+Для прежней S2 с двумя OTA-разделами и MQTT установите `WEB_LIVE_SUPPORT=0` и `ARDUINO_OTA_SUPPORT=0`: сохраняются HTTP-управление, браузерное OTA и MQTT/Home Assistant. В PlatformIO это профиль `esp32s2_4mb_ota_compact`. Стандартные `esp32s2_4mb` / `_headless` сохраняют WebSocket и ArduinoOTA, исключая новый MQTT при сборке, чтобы поместиться в прежний раздел.
+
 Arduino-ESP32 генерирует бинарную таблицу из выбранной схемы. На ESP32 выбирайте слот приложения 3 МБ: встроенный SPP включён в образ независимо от положения веб-переключателя. Flash Size должен совпадать с физической памятью платы. Если используете старую копию скетча с `partitions.csv`, этот файл по-прежнему имеет приоритет перед меню; для сборки по меню удалите его из той копии. NVS у перечисленных схем остаётся на `0x9000`. Для [обновления по Wi-Fi](maintenance/ota.md) нужны два подходящих раздела приложения: Huge APP OTA не поддерживает.
 
 Для отдельной Arduino-копии с таблицей разделов проекта используйте `tools/prepare_sketch.py --target esp32|s3|s2-mini|s2` и откройте подготовленную копию. Скрипт копирует выбранный CSV под именем `partitions.csv`: ESP32 и S2 Mini — `partitions_esp32.csv` (один раздел 3 МиБ), S3 — `partitions_s3.csv` (6 553 600 байт на слот), прежняя S2 — `partitions_s2.csv` (два раздела по 1 966 080 байт). В подготовленной копии `partitions.csv` имеет приоритет над меню Partition Scheme. PlatformIO и CLI-скрипты также используют таблицы проекта.
@@ -92,12 +94,12 @@ python3 tools/build_platformio.py --env esp32_4mb --display none --motion-hz 200
 
 После установки проверьте шум неподвижного датчика и фактическую частоту по [диагностике контура](api/index.md#api-регуляторов-движения), затем заново проверьте регулятор под нагрузкой. 200 Гц — экспериментальный режим. Выбранная частота задаёт номинальный период; задержки других операций могут привести к пропускам. Для Arduino IDE или прямого вызова PlatformIO начальное значение задаётся общим флагом `-DMOTION_CONTROL_PERIOD_MS=5` (200 Гц), `10` (100 Гц) или `20` (50 Гц).
 
-Выберите окружение своей платы: `esp32_4mb`, `esp32s3_n16r8`, `esp32s2_mini` или `esp32s2_4mb` для прежней проводки S2. Для ESP32, S3 и S2 Mini доступны варианты `_tft` и `_lcd`. Профиль обычной CrowPanel — `crowpanel_21`, переделанной платы с локальным AZ — `crowpanel_21_az`. Суффикс `_headless` у S2/S3 выбирает сборку без дисплея; веб в этих вариантах включён. `esp32_4mb_noweb` — классический ESP32 без PSRAM, дисплея, HTTP/WebSocket и Bluetooth, с двумя OTA-разделами и [командным API](api/command-api.md).
+Выберите окружение своей платы: `esp32_4mb`, `esp32s3_n16r8`, `esp32s2_mini` или `esp32s2_4mb_ota_compact` для прежней проводки S2 с MQTT и браузерным OTA. Для ESP32, S3 и S2 Mini доступны варианты `_tft` и `_lcd`. Профиль обычной CrowPanel — `crowpanel_21`, переделанной платы с локальным AZ — `crowpanel_21_az`. Суффикс `_headless` у S2/S3 выбирает сборку без дисплея; веб в этих вариантах включён. `esp32_4mb_noweb` — классический ESP32 без PSRAM, дисплея, HTTP/WebSocket и Bluetooth, с двумя OTA-разделами и [командным API](api/command-api.md).
 
 ```sh
 pio run -e esp32s3_n16r8_tft -j4
 pio run -e esp32s2_mini_lcd -j4
-pio run -e esp32s2_4mb_headless -j4
+pio run -e esp32s2_4mb_ota_compact -j4
 pio run -e esp32_4mb_noweb -j4
 ```
 
@@ -124,7 +126,9 @@ python3 tools/prepare_sketch.py --target esp32
 
 Для универсальной прошивки обычного ESP32 с OTA используйте `esp32_8mb_ota` при физических 8 МиБ Flash. Профиль `esp32_4mb_ota` имеет меньшие разделы и для этого образа не подходит. Arduino-копия для 8 МиБ: `python3 tools/prepare_sketch.py --target esp32-8mb`, CLI-сборка: `./tools/build_arduino.sh esp32-8mb`. [Выбор разделов и обновление](maintenance/ota.md).
 
-Обычный ESP32 с физическими 4 МиБ Flash не вмещает два экземпляра универсального образа со SPP. Выключение Bluetooth в настройках не уменьшает этот образ; для 4 МиБ с OTA предусмотрен `esp32_4mb_noweb`.
+Обычный ESP32 с физическими 4 МиБ Flash не вмещает два экземпляра универсального образа со SPP. Выключение Bluetooth в настройках не уменьшает этот образ. Для 4 МиБ с OTA доступны `esp32_4mb_noweb` и `esp32_4mb_ota_compact`.
+
+`pio run -e esp32_4mb_ota_compact` сохраняет веб, браузерное OTA, MQTT/Home Assistant и внешний HC-05. В нём исключены встроенный SPP, WebSocket, ArduinoOTA и несжатые копии HTML. Браузер использует gzip и периодический HTTP-опрос. Первая запись с OTA-разметкой выполняется через USB; дальнейшее обновление — через веб.
 
 Ядро S-профилей Ruckig Community включено в исходники и не требует установки библиотеки. Условия приведены в [лицензии MIT](licenses/ruckig-MIT.txt).
 

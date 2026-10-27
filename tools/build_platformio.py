@@ -89,6 +89,8 @@ if kind in (1,3,4,5):
 lto_override = kind == 1 and macros.get('BOARD_PROFILE') in ('BOARD_ESP32', '4')
 if lto_override and '-flto' not in flags:
     flags.append('-flto')
+if lto_override and 'WEB_PLAIN_HTML_SUPPORT' not in macros:
+    flags.append('-DWEB_PLAIN_HTML_SUPPORT=0')
 # Classic SPP uses IDF directly; no additional Bluetooth library is needed.
 work=ROOT/'build/platformio-config';work.mkdir(parents=True,exist_ok=True)
 path=work/(a.env+'.ini')
@@ -97,7 +99,7 @@ if 'pre:tools/platformio_version.py' not in scripts:
     scripts.insert(0, 'pre:tools/platformio_version.py')
 if lto_override and 'post:tools/platformio_lto.py' not in scripts:
     scripts.append('post:tools/platformio_lto.py')
-if kind in (1, 3, 4, 5) and 'post:tools/platformio_image_size.py' not in scripts:
+if 'post:tools/platformio_image_size.py' not in scripts:
     scripts.append('post:tools/platformio_image_size.py')
 script_config = '\nextra_scripts = ' + ' '.join(scripts) if scripts else ''
 path.write_text(f'[platformio]\nextra_configs = {ROOT}/platformio.ini\nsrc_dir = {ROOT}/G5500_Fork\n[env:selected]\nextends = {section}\nbuild_flags = '+ ' '.join(flags)+script_config+('\nlib_ldf_mode = chain' if kind in (1,3,4,5) else '')+'\nlib_deps =\n'+''.join(' '+line+'\n' for line in deps.splitlines() if line.strip()))

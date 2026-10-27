@@ -1,6 +1,6 @@
 // SPI pixel transport for the common LVGL interface. GPL-3.0.
 #include "display.hpp"
-#if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_ILI9341 || DISPLAY_KIND == DISPLAY_GC9A01
+#if DISPLAY_SUPPORT && (DISPLAY_KIND == DISPLAY_ILI9341 || DISPLAY_KIND == DISPLAY_GC9A01)
 #include "board.hpp"
 #include "hardware.hpp"
 #include "network.hpp"

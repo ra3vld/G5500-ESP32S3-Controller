@@ -277,6 +277,7 @@ void Network::processGs232Command(std::string_view input) {
     sendReply(String("SIM ") + Controller::resultName(result) + "\r\n");
     return;
   }
+#if DISPLAY_SUPPORT
   if (cmd == "H5") {
     const auto stats = crowpanel::displayStats();
     char reply[384];
@@ -295,6 +296,7 @@ void Network::processGs232Command(std::string_view input) {
     sendReply(reply);
     return;
   }
+#endif
 #endif
 
 #endif
@@ -554,8 +556,8 @@ void Network::closeRotctld() {
   const int fd=rotctldClient_.fd();
   if(fd>=0){abortTcpSocket(fd);++tcpAborts_;++tcpSession_;}
   rotctldClient_.stop();tcpReceiver_.clear();tcpLinePending_=false;
-  commandInterruptedPorts_&=uint8_t(~(1u<<3));
   #if COMMAND_API_SUPPORT
+  commandInterruptedPorts_&=uint8_t(~(1u<<3));
   if(commandReplyPort_==3)commandReplySize_=commandReplySent_=0;
 #endif
   for(auto &reply:deferred_)if(reply.port==3)reply.used=false;
@@ -687,7 +689,7 @@ void Network::serviceApSubnet() {
   const bool wifi=radioWifi.status()==WL_CONNECTED;
   const uint32_t sta=wifi?uint32_t(radioWifi.localIP()):0, mask=wifi?uint32_t(radioWifi.subnetMask()):0;
   uint32_t eth=0,ethMask=0;
-#if SELECTED_BOARD == BOARD_WT32_ETH01 || SELECTED_BOARD == BOARD_WAVESHARE_S3_ETH
+#if ETHERNET_SUPPORT
   if(ethernetConnected()) { eth=uint32_t(ETH.localIP());ethMask=uint32_t(ETH.subnetMask()); }
 #endif
   const uint32_t ap=uint32_t(radioWifi.softAPIP());
