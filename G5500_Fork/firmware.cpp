@@ -157,7 +157,7 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrint("[BUILD] ");
   diagnostics_.dbgPrint(board::NAME);
   diagnostics_.dbgPrint(" | display=");
-  diagnostics_.dbgPrint(DISPLAY_KIND == DISPLAY_ST7796 ? "ST7796" : DISPLAY_KIND == DISPLAY_GC9A01 ? "GC9A01" : DISPLAY_KIND == DISPLAY_CROWPANEL_21 ? "CROWPANEL_21" : DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE");
+  diagnostics_.dbgPrint(DISPLAY_KIND == DISPLAY_ST77916 ? "ST77916" : DISPLAY_KIND == DISPLAY_ST7796 ? "ST7796" : DISPLAY_KIND == DISPLAY_GC9A01 ? "GC9A01" : DISPLAY_KIND == DISPLAY_CROWPANEL_21 ? "CROWPANEL_21" : DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE");
   diagnostics_.dbgPrint(" | drive=");
   diagnostics_.dbgPrintln(runtime_.hud.isHud() ? "HUD remote drive"
                           : runtime_.controller.hardware.simulation ? "SIMULATED 13.4 deg/s"
@@ -246,6 +246,8 @@ void Application::controllerSetup() {
 #if TFT_DISPLAY_ENABLED
   diagnostics_.dbgPrintln("TFT: ILI9341 320x240 dashboard + XPT2046 touch calibration UI");
   diagnostics_.dbgPrintln("TFT calibration: 2-POINT / MULTI-POINT, P36/P45/custom, AZ/EL capture + reset");
+#elif DISPLAY_KIND == DISPLAY_ST77916
+  diagnostics_.dbgPrintln("ST77916: QSPI 360x360, CST816S touch, runtime GPIO map");
 #elif DISPLAY_KIND == DISPLAY_ST7796
   diagnostics_.dbgPrintln("ESP32-3248S035C: ST7796 480x320, GT911 touch, network HUD");
 #elif DISPLAY_KIND == DISPLAY_GC9A01

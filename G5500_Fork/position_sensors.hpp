@@ -5,7 +5,7 @@
 #include <Wire.h>
 namespace forkrot {
 class PositionSensors {
-  TwoWire first_{DISPLAY_KIND==DISPLAY_CROWPANEL_21?1:0}, second_{FORK_C3 || DISPLAY_KIND==DISPLAY_ST7796?0:1};
+  TwoWire first_{DISPLAY_KIND==DISPLAY_CROWPANEL_21?1:0}, second_{FORK_C3 || DISPLAY_KIND==DISPLAY_ST7796 || DISPLAY_KIND==DISPLAY_ST77916?0:1};
   TwoWire *axes_[2]{};
   int raw_[2]{-1,-1};
   int previous_[2]{-1,-1};

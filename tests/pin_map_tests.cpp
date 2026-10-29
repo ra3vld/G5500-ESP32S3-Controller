@@ -15,7 +15,7 @@ int main(int argc,char **argv) {
     assert(board::output(46) && board::pullup(46) && !board::validateHardware(c));
   }
   if(argc==2 && std::string(argv[1])=="--describe") {
-    char data[8192]; JsonWriter j(data,sizeof data);
+    char data[12288]; JsonWriter j(data,sizeof data);
     j << "{\"metadata\":"; writePinCapabilities(j,false);
     j << ",\"pins\":"; writePinMap(j,PinMap{});
     j << ",\"classicEsp32\":" << unsigned(SELECTED_BOARD==BOARD_ESP32)
@@ -96,6 +96,10 @@ int main(int argc,char **argv) {
   ports.pins.hudRx=ports.pins.hc05Rx;
   assert(std::string(board::validateHardware(ports))=="incomplete_hud485");
   ports.pins.hudTx=ports.pins.hc05Tx;ports.pins.hudDe=ports.pins.hc05State;
+  if(DISPLAY_KIND==DISPLAY_ST77916 && FORK_CLASSIC_ESP32) {
+    // The default touch bus uses HC-05 TX/STATE; use spare pins for this fixture.
+    ports.pins.hudTx=12;ports.pins.hudDe=2;
+  }
   ports.buttonGpio=-1;
   if(SELECTED_BOARD==BOARD_CROWPANEL_21) ports.pins.uartRx=ports.pins.uartTx=-1;
   assert(ports.hudRs485() && !board::validateHardware(ports,true));
@@ -111,7 +115,7 @@ int main(int argc,char **argv) {
   record.good.pins.uartDe=0;record.candidate.pins.hudRx=4;record.candidate.pins.hudTx=5;record.candidate.pins.hudDe=6;
   record.good.pins.led=-1; record.candidate.pins.led=0; record.candidate.buttonGpio=-1;
   const auto bytes=encodeHardware(record); HardwareRecord decoded;
-  assert(bytes[2]==8 && decodeHardware(bytes,decoded));
+  assert(bytes[2]==9 && decodeHardware(bytes,decoded));
   assert(decoded.good==record.good && decoded.candidate==record.candidate);
   auto broken=bytes; broken[36]^=1; assert(!decodeHardware(broken,decoded));
   const auto v2=encodeHardwareRecord<98>(record);
@@ -127,6 +131,9 @@ int main(int argc,char **argv) {
   const auto oldRadio=encodeHardwareRecord<196>(record);
   assert(oldRadio[2]==6 && decodeHardware(oldRadio,decoded) && decoded.good==record.good);
   record.good.sensors[6]=1;record.candidate.sensors[7]=1;
+  const auto oldEnable=encodeHardwareRecord<208>(record);
+  assert(oldEnable[2]==8 && decodeHardware(oldEnable,decoded));
+  assert(decoded.good==record.good && decoded.candidate==record.candidate);
   const auto oldInverted=encodeHardwareRecord<204>(record);
   assert(oldInverted[2]==7 && decodeHardware(oldInverted,decoded));
   assert(decoded.good==record.good && decoded.candidate==record.candidate);
@@ -160,6 +167,23 @@ int main(int argc,char **argv) {
   assert(!previous.recovery && previous.hardwareRecord.good==prior.good);
   assert(!previous.controller.hardware.rs485() && !previous.controller.hardware.hudRs485());
   assert(std::get<Preferences::Bytes>(Preferences::database["hardware"]["config1"]).size()==HardwareBytes{}.size());
+  // Load the last released format through Storage, retaining both maps and
+  // the tail fields while adding defaults for the six new display pin roles.
+  Preferences::database.clear();
+  HardwareRecord v8Record;v8Record.hasConfirmed=true;v8Record.phase=ConfigPhase::Confirmed;
+  v8Record.good.simulation=v8Record.candidate.simulation=true;
+  v8Record.good.sensors[6]=1;v8Record.candidate.sensors[7]=1;
+  v8Record.good.pins.led=v8Record.candidate.pins.led=-1;
+  v8Record.good.local[10]=37;v8Record.candidate.local[10]=42;
+  v8Record.generation=17;
+  const auto v8Bytes=encodeHardwareRecord<208>(v8Record);
+  Preferences::database["hardware"]["config1"]=Preferences::Bytes(v8Bytes.begin(),v8Bytes.end());
+  Storage v8Storage;MotionTestRuntime v8Runtime;v8Storage.loadHardware(v8Runtime);
+  v8Record.good.releaseSimulationPins();v8Record.candidate.releaseSimulationPins();
+  assert(!v8Runtime.recovery && v8Runtime.hardwareRecord.generation==17);
+  assert(v8Runtime.hardwareRecord.good==v8Record.good && v8Runtime.hardwareRecord.candidate==v8Record.candidate);
+  const auto &upgraded=std::get<Preferences::Bytes>(Preferences::database["hardware"]["config1"]);
+  assert(upgraded.size()==HardwareBytes{}.size() && upgraded[2]==9);
   Preferences::database.clear();
   Preferences::database["hardware"]["config1"]=Preferences::Bytes(legacy.begin(),legacy.end());
   Storage storage; MotionTestRuntime migrated; storage.loadHardware(migrated);

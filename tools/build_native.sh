@@ -284,3 +284,20 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -DBOARD_PR
 ./build/status_memory_s3_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -DHOME_ASSISTANT_DISCOVERY_SUPPORT=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/mqtt_plain_tests.cpp -o build/mqtt_plain_tests
 ./build/mqtt_plain_tests
+
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=1 -DDISPLAY_KIND=6 -I G5500_Fork tests/st77916_tests.cpp -o build/st77916_tests_1
+./build/st77916_tests_1
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=1 -DDISPLAY_KIND=6 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_st77916_tests_1
+./build/display_api_st77916_tests_1
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=1 -DDISPLAY_KIND=0 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/pin_map_tests.cpp -o build/pin_map_tests_1_d0
+./build/pin_map_tests_1_d0
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=1 -DDISPLAY_KIND=6 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/pin_map_tests.cpp -o build/pin_map_tests_1_d6
+./build/pin_map_tests_1_d6
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -DDISPLAY_KIND=6 -I G5500_Fork tests/st77916_tests.cpp -o build/st77916_tests_4
+./build/st77916_tests_4
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DDISPLAY_KIND=6 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_st77916_tests_4
+./build/display_api_st77916_tests_4
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -DDISPLAY_KIND=0 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/pin_map_tests.cpp -o build/pin_map_tests_4_d0
+./build/pin_map_tests_4_d0
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -DDISPLAY_KIND=6 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/pin_map_tests.cpp -o build/pin_map_tests_4_d6
+./build/pin_map_tests_4_d6

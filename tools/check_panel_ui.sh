@@ -12,6 +12,11 @@ build_preview() {
     G5500_Fork/crowpanel_font_36.cpp G5500_Fork/crowpanel_font_80.cpp G5500_Fork/crowpanel_font_112.cpp \
     "$build/lvgl/liblvgl.a" -lm -pthread -o "$build/panel-preview-$2"
 }
+if [ "${1:-}" = --st77916 ]; then
+  build_preview 4 6
+  "$build/panel-preview-6" "$build" 360 360 1
+  exit
+fi
 if [ "${1:-}" = --st7796 ]; then
   build_preview 10 5
   "$build/panel-preview-5" "$build" 480 320 0

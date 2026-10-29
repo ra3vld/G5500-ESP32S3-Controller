@@ -8,18 +8,18 @@ const fixture=JSON.parse(fs.readFileSync(path.join(root,'build/pin-map-4.json'),
 (async()=>{
  const browser=await chromium.launch({headless:true,args:['--no-sandbox'],executablePath:process.env.CHROMIUM_PATH});
  try {
-  for(const kind of [1,3,4,5,0,2])for(const mobile of [false,true]) {
+  for(const kind of (process.env.DISPLAY_KINDS?.split(',').map(Number)||[1,3,4,5,6,0,2]))for(const mobile of [false,true]) {
    const page=await browser.newPage({viewport:{width:mobile?360:1100,height:900},locale:'ru-RU'}),errors=[],posts=[];
    page.on('pageerror',e=>errors.push(e.message));
    const config={driveInterface:0,simulation:1,bluetoothEnabled:0,bluetoothMode:3,forceApSta:0,buttonGpio:fixture.buttonGpio,buttonActiveLow:1,buttonPullup:1,pwmInverted:0,pins:{...fixture.pins}};
    const hardware={token:123,generation:2,recovery:false,trial:false,ready:true,hasConfirmed:true,configured:config,classicEsp32:true,sppSupported:true};
-   let saved={supported:[1,3,4,5].includes(kind),displayKind:kind,token:123,revision:7,storageOk:true,restartRequired:false,width:kind===5?480:kind===3?480:320,height:kind===3?480:240,screenRotation:0,screenMirrorX:0,screenMirrorY:0,touchRotation:0,touchMirrorX:0,touchMirrorY:0},failure=null;
+   let saved={supported:[1,3,4,5,6].includes(kind),displayKind:kind,token:123,revision:7,storageOk:true,restartRequired:false,width:kind===5?480:kind===3?480:320,height:kind===3?480:240,screenRotation:0,screenMirrorX:0,screenMirrorY:0,touchRotation:0,touchMirrorX:0,touchMirrorY:0},failure=null;
    saved.defaultFields=[1,4].includes(kind)?47:63;for(const [i,name] of fields.entries())saved[name]=Number(Boolean(saved.defaultFields&(1<<i)));
    await page.route('http://display.test/**',async route=>{
     const req=route.request(),u=new URL(req.url());
     if(u.pathname==='/hardware')return route.fulfill({contentType:'text/html',body:html});
     if(u.pathname==='/api/hardware/display') {
-     if(req.method()==='GET'){const w=kind===5||kind===3?480:kind===4?240:320,h=kind===3?480:kind===5?320:240;saved.width=saved.screenRotation%180?h:w;saved.height=saved.screenRotation%180?w:h;return route.fulfill({contentType:'application/json',body:JSON.stringify(saved)});}
+     if(req.method()==='GET'){const w=kind===6?360:kind===5||kind===3?480:kind===4?240:320,h=kind===6?360:kind===3?480:kind===5?320:240;saved.width=saved.screenRotation%180?h:w;saved.height=saved.screenRotation%180?w:h;return route.fulfill({contentType:'application/json',body:JSON.stringify(saved)});}
      const body=Object.fromEntries(new URLSearchParams(req.postData()));posts.push(body);
      if(failure)return route.fulfill({status:failure==='storage_failed'?503:409,contentType:'application/json',body:JSON.stringify({error:failure})});
      assert.equal(body.token,'123');assert.equal(body.revision,String(saved.revision));
@@ -73,6 +73,6 @@ const fixture=JSON.parse(fs.readFileSync(path.join(root,'build/pin-map-4.json'),
    if(kind===5){const dir=path.join(root,'build/display-fields');fs.mkdirSync(dir,{recursive:true});await card.screenshot({path:path.join(dir,mobile?'web-mobile.png':'web-desktop.png')});}
    await page.close();
   }
-  console.log('PASS: 12 display-profile/viewport cases; six independent visibility toggles, save/reload/reset, write errors, stale state, manual edits and unsupported displays');
+  console.log('PASS: selected display-profile/viewport cases; six independent visibility toggles, save/reload/reset, write errors, stale state, manual edits and unsupported displays');
  } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

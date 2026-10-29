@@ -201,8 +201,18 @@
 // DISPLAY_CROWPANEL_21 — встроенный экран CrowPanel 2.1 (только эта плата).
 // DISPLAY_GC9A01 — встроенный экран ESP32-2424S012C, включая Y(B).
 // DISPLAY_ST7796 — встроенный экран ESP32-3248S035C.
+// DISPLAY_ST77916 — внешний Waveshare 1.85, QSPI + CST816S, ESP32 / ESP32-S3.
 #ifndef DISPLAY_KIND
 #define DISPLAY_KIND DISPLAY_NONE
+#endif
+
+// QSPI: частота для внешнего ST77916; GPIO задаются в веб-настройках.
+#ifndef ST77916_SPI_HZ
+#define ST77916_SPI_HZ 20000000
+#endif
+// 0 — автоопределение панели, 1 / 2 — первая / вторая таблица Waveshare.
+#ifndef ST77916_INIT_VARIANT
+#define ST77916_INIT_VARIANT 0
 #endif
 
 // Остальное оборудование настраивается в вебе: Настройки → Оборудование.
@@ -269,7 +279,7 @@
 #include "build_config_checks.hpp"
 
 // One graphics stack; drivers and buffer policy remain board-specific.
-#define GRAPHICAL_DISPLAY (DISPLAY_SUPPORT && (DISPLAY_KIND == DISPLAY_ILI9341 || DISPLAY_KIND == DISPLAY_CROWPANEL_21 || DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796))
+#define GRAPHICAL_DISPLAY (DISPLAY_SUPPORT && (DISPLAY_KIND == DISPLAY_ILI9341 || DISPLAY_KIND == DISPLAY_CROWPANEL_21 || DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796 || DISPLAY_KIND == DISPLAY_ST77916))
 
-// SPI profiles have a 240-pixel short side; omit unused large font bitmaps.
-#define PANEL_COMPACT_FONTS (DISPLAY_KIND == DISPLAY_ILI9341 || DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796)
+// SPI/QSPI profiles use the scalable compact font set to bound flash usage.
+#define PANEL_COMPACT_FONTS (DISPLAY_KIND == DISPLAY_ILI9341 || DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796 || DISPLAY_KIND == DISPLAY_ST77916)

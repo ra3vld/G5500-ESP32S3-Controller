@@ -124,6 +124,26 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
     await page.locator('[name="pin.touchIrq"]').selectOption('-1');
     assert(!(await page.locator('#save').isDisabled()));
    }
+   if(fixture.metadata.displayKind===6){
+    assert.equal(await page.locator('[name="pin.tftDc"]').count(),0);
+    assert.equal(await page.locator('[name="pin.touchCs"]').count(),0);
+    for(const name of ['tftRst','touchRst','touchIrq','tftBacklight']) {
+     assert.equal(await page.locator('[name="pin.'+name+'"]').inputValue(),'-1');
+    }
+    assert.match(await page.locator('[name="pin.tftMiso"]').locator('..').textContent(),/QSPI · D1/);
+    for(const name of ['tftMosi','tftMiso','tftSck','tftCs','tftD2','tftD3','touchSda','touchScl']) {
+     const field=page.locator('[name="pin.'+name+'"]');
+     await field.selectOption('-1');assert(await page.locator('#save').isDisabled());
+     await field.selectOption(String(fixture.pins[name]));assert(!(await page.locator('#save').isDisabled()));
+    }
+    await page.evaluate(()=>{const e=form.elements['pin.tftD2'];e.value=form.elements['pin.touchSda'].value;e.dispatchEvent(new Event('input',{bubbles:true}));});
+    assert(await page.locator('#save').isDisabled());
+    await page.locator('[name="pin.tftD2"]').selectOption(String(fixture.pins.tftD2));
+    if(process.env.HARDWARE_SCREENSHOT_DIR) {
+     fs.mkdirSync(process.env.HARDWARE_SCREENSHOT_DIR,{recursive:true});
+     await page.locator('[data-pin-group=tft]').screenshot({path:path.join(process.env.HARDWARE_SCREENSHOT_DIR,`qspi-${profile}-${mobile?'mobile':'desktop'}.png`)});
+    }
+   }
    if(fixture.metadata.displayKind===2){
     await page.locator('[name="pin.lcdE"]').selectOption('-1');assert(await page.locator('#save').isDisabled());
     await page.locator('[name="pin.lcdE"]').selectOption(String(fixture.pins.lcdE));

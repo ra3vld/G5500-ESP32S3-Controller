@@ -63,12 +63,26 @@ enum class PinGroup : uint8_t { Drive, Hud485, Uart, Hc05, Indicator, Tft, Lcd, 
  X(elSensorScl, PIN_UART_DE, Output, SensorEl, false) \
  X(hudReady, PIN_UART_DE, Input, HudRadio, true) \
  X(azEnable, PIN_UART_DE, Output, Drive, true) \
- X(elEnable, PIN_UART_DE, Output, Drive, true)
+ X(elEnable, PIN_UART_DE, Output, Drive, true) \
+ X(tftD2, PIN_UART_DE, Output, Tft, false) \
+ X(tftD3, PIN_UART_DE, Output, Tft, false) \
+ X(tftBacklight, PIN_UART_DE, Output, Tft, true) \
+ X(touchSda, PIN_UART_DE, Output, Tft, false) \
+ X(touchScl, PIN_UART_DE, Output, Tft, false) \
+ X(touchRst, PIN_UART_DE, Output, Tft, true)
 struct PinMap {
 #define FORK_PIN_MEMBER(name, initial, kind, group, optional) int8_t name = board::initial < 0 ? -1 : board::initial;
   FORK_PIN_MAP(FORK_PIN_MEMBER)
 #undef FORK_PIN_MEMBER
   PinMap() {
+#if DISPLAY_KIND == DISPLAY_ST77916
+    tftDc=touchCs=tftRst=touchIrq=-1;
+    if(SELECTED_BOARD==BOARD_ESP32) {
+      tftD2=4;tftD3=13;touchSda=5;touchScl=15;
+    } else {
+      tftD2=13;tftD3=14;touchSda=8;touchScl=9;
+    }
+#endif
     if (SELECTED_BOARD == BOARD_CROWPANEL_21 && BLUETOOTH_BACKEND == BT_HC05) uartRx=uartTx=-1;
   }
   bool operator==(const PinMap &) const;
@@ -81,8 +95,8 @@ struct PinDefinition {
   PinGroup group;
   bool optional;
 };
-inline constexpr std::array<PinDefinition,46> pinDefinitions{{
-#define FORK_PIN_DEFINITION(name, initial, kind, group, optional) {#name,"pin." #name,&PinMap::name,PinKind::kind,PinGroup::group,optional},
+inline constexpr std::array<PinDefinition,52> pinDefinitions{{
+#define FORK_PIN_DEFINITION(name, initial, kind, group, optional) {#name,"pin." #name,&PinMap::name,(DISPLAY_KIND==DISPLAY_ST77916 && &PinMap::name==&PinMap::tftMiso)?PinKind::Output:PinKind::kind,PinGroup::group,optional},
   FORK_PIN_MAP(FORK_PIN_DEFINITION)
 #undef FORK_PIN_DEFINITION
 }};

@@ -23,7 +23,7 @@ static void as(unsigned bus,unsigned raw,unsigned status=0x20) {
 static void validationAndRecords() {
   auto c=config();HardwareRecord record;record.good=record.candidate=c;
   const auto encoded=encodeHardware(record);HardwareRecord next;
-  assert(encoded[2]==8 && decodeHardware(encoded,next));assert(next.good==c && next.candidate==c);
+  assert(encoded[2]==9 && decodeHardware(encoded,next));assert(next.good==c && next.candidate==c);
   for(unsigned i=0;i<encoded.size();++i) {auto bad=encoded;bad[i]^=1;assert(!decodeHardware(bad,next));}
   for(unsigned version:{40,98,154,162}) {
     auto old=record;old.good=old.candidate=HardwareConfig{};

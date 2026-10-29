@@ -14,6 +14,8 @@
 | LOLIN S2 Mini | `esp32s2_mini` | 4 МиБ | Нет; `_tft`, `_lcd` | HC-05 | Да, с учётом размера образа |
 | Прежняя проводка S2 | `esp32s2_4mb_ota_compact` | 4 МиБ | Нет | HC-05 | Через браузер |
 | CrowPanel 2.1 | `crowpanel_21` | 16 МиБ | Встроенный | HC-05 при свободных GPIO | Да |
+| [ESP32 + Waveshare 1.85″](../boards/waveshare-1.85-qspi.md) | `esp32_4mb_st77916` | 4 МиБ | ST77916 360×360 / CST816S | Встроенный SPP | Нет |
+| [ESP32-S3 + Waveshare 1.85″](../boards/waveshare-1.85-qspi.md) | `esp32s3_n16r8_st77916` | 16 МиБ | ST77916 360×360 / CST816S | HC-05 при свободных GPIO | Да |
 | ESP32-2424S012C-Y(B) | `esp32_2424s012c` | 4 МиБ | GC9A01 240×240 / CST816 | HC-05 при свободных GPIO | Нет |
 | [ESP32-3248S035C](../boards/esp32-3248s035c.md) | `esp32_3248s035c` | 4 МиБ | ST7796 480×320 / GT911 | Встроенный SPP | Нет |
 | [ESP32-C3 без дисплея](../boards/esp32-c3.md) | `esp32c3_4mb` | 4 МиБ | Нет | HC-05 | Нет |
@@ -42,7 +44,7 @@
 
 Меняйте значения существующих определений под `#ifndef`, сохраняя эти защиты. Флаги `-D` имеют приоритет. `BOARD_AUTO` выбирает S2 Mini для LOLIN S2 Mini, прежнюю S2 для общего S2, классический ESP32 для ESP32, `BOARD_ESP32_C3` без дисплея для C3 и S3 для S3. Явные варианты: `BOARD_ESP32`, `BOARD_ESP32_C3`, `BOARD_S3`, `BOARD_S2_MINI`, `BOARD_S2_LEGACY`, `BOARD_CROWPANEL_21`, `BOARD_WT32_ETH01`, `BOARD_WAVESHARE_S3_ETH`, `BOARD_ESP32_2424S012C`, `BOARD_ESP32_3248S035C`. WT32-ETH01 использует отдельную [распиновку Ethernet](../boards/wt32-eth01.md). Плата в IDE должна соответствовать чипу.
 
-Дисплей: `DISPLAY_NONE`, `DISPLAY_ILI9341` (TFT и XPT2046), `DISPLAY_LCD1602` (параллельный HD44780), `DISPLAY_CROWPANEL_21`, `DISPLAY_GC9A01` или `DISPLAY_ST7796`. CrowPanel требует одновременно `BOARD_CROWPANEL_21` и `DISPLAY_CROWPANEL_21`, GC9A01 — `BOARD_ESP32_2424S012C` и `DISPLAY_GC9A01`. ST7796 требует `BOARD_ESP32_3248S035C` и `DISPLAY_ST7796`. Графические экраны используют общий [сенсорный интерфейс](../control/display.md). Прежние `TFT_DISPLAY_ENABLED=0/1` и `DISPLAY_ENABLED=0/1` сохранены как алиасы NONE/TFT; противоречивые флаги отклоняются.
+Дисплей: `DISPLAY_NONE`, `DISPLAY_ILI9341` (TFT и XPT2046), `DISPLAY_LCD1602` (параллельный HD44780), `DISPLAY_CROWPANEL_21`, `DISPLAY_GC9A01`, `DISPLAY_ST7796` или `DISPLAY_ST77916`. CrowPanel требует одновременно `BOARD_CROWPANEL_21` и `DISPLAY_CROWPANEL_21`, GC9A01 — `BOARD_ESP32_2424S012C` и `DISPLAY_GC9A01`. ST7796 требует `BOARD_ESP32_3248S035C` и `DISPLAY_ST7796`. Внешний ST77916/QSPI выбирается с `BOARD_ESP32` либо `BOARD_S3`; его GPIO задаются в веб-настройках. Графические экраны используют общий [сенсорный интерфейс](../control/display.md). Прежние `TFT_DISPLAY_ENABLED=0/1` и `DISPLAY_ENABLED=0/1` сохранены как алиасы NONE/TFT; противоречивые флаги отклоняются.
 
 Тип чипа, режимы Flash/PSRAM, native USB и таблица разделов выбираются в окружении PlatformIO или меню IDE согласно [инструкции сборки](../build.md).
 

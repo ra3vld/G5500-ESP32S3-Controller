@@ -69,7 +69,7 @@ bool Storage::loadNetwork(NetworkConfig &config) {
 using namespace board;
 namespace {
 const char *displayKey() {
-  return DISPLAY_KIND==1?"pose1":DISPLAY_KIND==3?"pose3":DISPLAY_KIND==4?"pose4":"pose5";
+  return DISPLAY_KIND==1?"pose1":DISPLAY_KIND==3?"pose3":DISPLAY_KIND==4?"pose4":DISPLAY_KIND==6?"pose6":"pose5";
 }
 }
 bool Storage::loadDisplay(Runtime &runtime) {
@@ -223,6 +223,9 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
       valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
     } else if(prefs_.getBytesLength("config1")==UartHardwareBytes{}.size()) {
       UartHardwareBytes legacy{};
+      valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
+    } else if(prefs_.getBytesLength("config1")==EnableHardwareBytes{}.size()) {
+      EnableHardwareBytes legacy{};
       valid=prefs_.getBytes("config1",legacy.data(),legacy.size())==legacy.size() && decodeHardware(legacy,record);
     } else if(prefs_.getBytesLength("config1")==InvertedSensorHardwareBytes{}.size()) {
       InvertedSensorHardwareBytes legacy{};

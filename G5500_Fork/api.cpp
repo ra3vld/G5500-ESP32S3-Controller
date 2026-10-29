@@ -145,7 +145,7 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"commit\":" << jsonQuoted(firmware::COMMIT)
        << ",\"dirty\":" << (firmware::DIRTY ? "true" : "false")
        << ",\"board\":" << jsonQuoted(board::NAME) << ",\"display\":"
-       << jsonQuoted(DISPLAY_KIND == DISPLAY_ST7796 ? "ST7796"
+       << jsonQuoted(DISPLAY_KIND == DISPLAY_ST77916 ? "ST77916" : DISPLAY_KIND == DISPLAY_ST7796 ? "ST7796"
                      : DISPLAY_KIND == DISPLAY_GC9A01 ? "GC9A01"
                      : DISPLAY_KIND == DISPLAY_CROWPANEL_21 ? "CROWPANEL_21"
                      : DISPLAY_KIND == DISPLAY_ILI9341    ? "ILI9341"

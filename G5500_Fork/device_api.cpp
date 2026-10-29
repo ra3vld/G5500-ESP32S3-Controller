@@ -333,8 +333,8 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
   if(path=="/api/hardware/display") {
     const auto &current=runtime_.displaySettings;
     if(method=="GET") {
-      constexpr unsigned w=DISPLAY_KIND==5?480:DISPLAY_KIND==3?480:DISPLAY_KIND==4?240:320;
-      constexpr unsigned h=DISPLAY_KIND==5?320:DISPLAY_KIND==3?480:240;
+      constexpr unsigned w=DISPLAY_KIND==6?360:DISPLAY_KIND==5?480:DISPLAY_KIND==3?480:DISPLAY_KIND==4?240:320;
+      constexpr unsigned h=DISPLAY_KIND==6?360:DISPLAY_KIND==5?320:DISPLAY_KIND==3?480:240;
       output << "{\"supported\":" << (GRAPHICAL_DISPLAY?"true":"false") << ",\"displayKind\":" << DISPLAY_KIND
         << ",\"token\":" << runtime_.hardwareToken << ",\"revision\":" << current.revision
         << ",\"storageOk\":" << (runtime_.displayStorageOk?"true":"false")

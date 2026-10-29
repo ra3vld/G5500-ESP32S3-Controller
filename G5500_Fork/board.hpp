@@ -245,7 +245,11 @@ inline bool pinActive(const HardwareConfig &c,const PinDefinition &d,bool hud=fa
   case PinGroup::Hc05:return c.backend()==BT_HC05;
   case PinGroup::Indicator:return true;
   case PinGroup::HudRadio:return true;
-  case PinGroup::Tft:return DISPLAY_KIND==DISPLAY_ILI9341;
+  case PinGroup::Tft:
+    if(DISPLAY_KIND==DISPLAY_ST77916) return d.member!=&PinMap::tftDc && d.member!=&PinMap::touchCs;
+    if(DISPLAY_KIND!=DISPLAY_ILI9341) return false;
+    return d.member!=&PinMap::tftD2 && d.member!=&PinMap::tftD3 && d.member!=&PinMap::tftBacklight &&
+           d.member!=&PinMap::touchSda && d.member!=&PinMap::touchScl && d.member!=&PinMap::touchRst;
   case PinGroup::Lcd:return DISPLAY_KIND==DISPLAY_LCD1602;
   }
   return false;
@@ -295,7 +299,7 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &configu
     return {"sensor_address_conflict","elSensorAddress"};
   if(physical && DISPLAY_KIND==DISPLAY_CROWPANEL_21 && c.sensorType(0) && c.sensorType(1) &&
       !c.singleAxis() && !sharedSensors) return {"sensor_bus_unavailable","elSensor"};
-  if(physical && (FORK_C3 || DISPLAY_KIND==DISPLAY_ST7796) && c.sensorType(0) && c.sensorType(1) &&
+  if(physical && (FORK_C3 || DISPLAY_KIND==DISPLAY_ST7796 || DISPLAY_KIND==DISPLAY_ST77916) && c.sensorType(0) && c.sensorType(1) &&
       !c.singleAxis() && !sharedSensors) return {"sensor_bus_unavailable","elSensor"};
   if(c.drive>DRIVE_DIR_PWM || c.bluetoothMode<BT_HC05 || c.bluetoothMode>BT_AUTO ||
       (!hud && c.pwmInverted && c.drive!=DRIVE_BTS7960)) return {"invalid_hardware"};

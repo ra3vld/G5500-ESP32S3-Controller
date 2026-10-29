@@ -18,7 +18,7 @@
 | Adafruit BusIO | 1.17.2 | ILI9341 и GC9A01 |
 | XPT2046_Touchscreen | официальный tag v1.4 | TFT/touch |
 | LiquidCrystal | 1.0.7 | параллельный LCD1602 |
-| LVGL | 9.6.0 | CrowPanel 2.1, ILI9341 и GC9A01 |
+| LVGL | 9.6.0 | CrowPanel 2.1, ILI9341, GC9A01, ST7796 и ST77916 |
 
 NONE не требует экранных библиотек. LCD требует только LiquidCrystal; TFT не требует LiquidCrystal. Для Bluetooth дополнительные библиотеки не нужны: на ESP32 доступны встроенный SPP и внешний HC-05, на S2/S3 — HC-05. Выберите транспорт после сборки в веб-настройках оборудования; Bluetooth по умолчанию выключен.
 
@@ -29,6 +29,8 @@ CrowPanel 2.1 (DHE03921D): `pio run -e crowpanel_21` или `./tools/build_ardui
 Для [ESP32-2424S012C-Y(B)](boards/esp32-2424s012c.md) на ESP32-C3 используйте `pio run -e esp32_2424s012c` или `./tools/build_arduino.sh esp32-2424s012c`. Это сенсорная плата GC9A01/CST816 с назначением местного оборудования на свободные GPIO, ролью HUD по умолчанию и обновлением через USB. В Arduino IDE выберите **ESP32C3 Dev Module**, Flash 4 MB, Flash Mode DIO, **USB CDC On Boot: Enabled**, Partition Scheme **Huge APP (3MB No OTA/1MB SPIFFS)**; в `build_config.hpp` задайте `BOARD_ESP32_2424S012C` и `DISPLAY_GC9A01`.
 
 Для [ESP32-3248S035C со ST7796/GT911](boards/esp32-3248s035c.md) используйте `pio run -e esp32_3248s035c` или `./tools/build_arduino.sh esp32-3248s035c`. Профиль использует общий LVGL-интерфейс 480×320, один раздел приложения 3 МиБ и обновление через USB.
+
+Для [внешнего Waveshare 1.85″ ST77916/CST816S](boards/waveshare-1.85-qspi.md): `pio run -e esp32_4mb_st77916` или `pio run -e esp32s3_n16r8_st77916`. Выводы QSPI и I²C задаются в веб-настройках оборудования.
 
 ## Arduino IDE 2.x
 
@@ -74,7 +76,7 @@ DISPLAY_KIND=2 ./tools/build_arduino.sh s2-mini
 DISPLAY_KIND=1 ./tools/build_arduino.sh s2-mini
 ```
 
-`DISPLAY_KIND`: 0 NONE, 1 ILI9341, 2 LCD1602, 3 CrowPanel, 4 GC9A01. CrowPanel и GC9A01 требуют соответствующего профиля платы. Старый `DISPLAY_ENABLED=0/1` остаётся алиасом NONE/TFT; несовместимые флаги отклоняются. Привод, Bluetooth и кнопка выбираются в вебе после сборки. Скрипт допускает `ARDUINO_CLI`, `ARDUINO_CONFIG_FILE`, `FQBN`, `BUILD_JOBS`; исходники и результаты изолированы в `build/arduino-<target>` и `artifacts/arduino-<target>`. Прежние аппаратные `-D` задают только начальные значения нового устройства; сохранённая конфигурация имеет приоритет.
+`DISPLAY_KIND`: 0 NONE, 1 ILI9341, 2 LCD1602, 3 CrowPanel, 4 GC9A01, 5 ST7796, 6 ST77916. CrowPanel и GC9A01 требуют соответствующего профиля платы. Старый `DISPLAY_ENABLED=0/1` остаётся алиасом NONE/TFT; несовместимые флаги отклоняются. Привод, Bluetooth и кнопка выбираются в вебе после сборки. Скрипт допускает `ARDUINO_CLI`, `ARDUINO_CONFIG_FILE`, `FQBN`, `BUILD_JOBS`; исходники и результаты изолированы в `build/arduino-<target>` и `artifacts/arduino-<target>`. Прежние аппаратные `-D` задают только начальные значения нового устройства; сохранённая конфигурация имеет приоритет.
 
 ## PlatformIO
 

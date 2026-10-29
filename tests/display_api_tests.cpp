@@ -8,7 +8,7 @@ struct DisplayStopSink : CommandSink {
 };
 int main() {
   static_assert(GRAPHICAL_DISPLAY);
-  const char *key=DISPLAY_KIND==1?"pose1":DISPLAY_KIND==3?"pose3":DISPLAY_KIND==4?"pose4":"pose5";
+  const char *key=DISPLAY_KIND==1?"pose1":DISPLAY_KIND==3?"pose3":DISPLAY_KIND==4?"pose4":DISPLAY_KIND==6?"pose6":"pose5";
   for(unsigned mask=0;mask<=DisplayAllFields;++mask) {
     DisplayStopSink remote;Fixture f;assert(f.storage.loadDisplay(f.runtime));
     if(f.runtime.hud.isHud())f.runtime.controller.remote=&remote;
@@ -28,6 +28,10 @@ int main() {
   if(f.runtime.hud.isHud())f.runtime.controller.remote=&remote;
   auto get=f.call("GET","/api/hardware/display");assert(get.status==200&&get.body.find("\"supported\":true")!=std::string::npos);
   for(unsigned i=0;i<6;++i)assert(get.body.find('"'+std::string(DisplayFieldNames[i])+"\":"+((f.runtime.displaySettings.visible&(1u<<i))?"1":"0"))!=std::string::npos);
+  if(DISPLAY_KIND==6) {
+    assert(get.body.find("\"width\":360")!=std::string::npos);
+    assert(get.body.find("\"height\":360")!=std::string::npos);
+  }
   const auto original=Preferences::database;
   Preferences::beginSucceeds=false;Runtime unavailable;
   assert(!f.storage.loadDisplay(unavailable)&&!unavailable.displayStorageOk);

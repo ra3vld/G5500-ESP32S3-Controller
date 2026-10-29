@@ -30,6 +30,7 @@
 - [Waveshare ESP32-S3-ETH: камера и два BTS7960](boards/waveshare-esp32-s3-eth.md).
 - [CrowPanel: экран и жесты](boards/crowpanel-21.md), [переделка CrowPanel для локального AZ](boards/crowpanel-az.md).
 - [ESP32-2424S012C-Y(B): круглый сенсорный HUD на ESP32-C3](boards/esp32-2424s012c.md).
+- [Waveshare 1.85″: внешний круглый экран ST77916/QSPI на ESP32 и ESP32-S3](boards/waveshare-1.85-qspi.md).
 - [ESP32-3248S035C: сенсорный HUD 480×320, ST7796/GT911](boards/esp32-3248s035c.md).
 
 ## Подключение приводов и схемы
@@ -65,4 +66,4 @@
 
 ## Лицензии и авторство
 
-Проект — [GNU GPL v3](../LICENSE), исходный автор UA1CFM, изменения форка RA3VLD. Сторонние компоненты: [RGB-драйвер CrowPanel](licenses/crowpanel-rgb-driver.md), [DejaVu](licenses/DejaVu.txt), [Ruckig MIT](licenses/ruckig-MIT.txt), [фавиконка Lucide ISC](licenses/lucide-favicon.md).
+Проект — [GNU GPL v3](../LICENSE), исходный автор UA1CFM, изменения форка RA3VLD. Сторонние компоненты: [RGB-драйвер CrowPanel](licenses/crowpanel-rgb-driver.md), [DejaVu](licenses/DejaVu.txt), [таблицы ST77916 Apache-2.0](licenses/st77916.md), [Ruckig MIT](licenses/ruckig-MIT.txt), [фавиконка Lucide ISC](licenses/lucide-favicon.md).

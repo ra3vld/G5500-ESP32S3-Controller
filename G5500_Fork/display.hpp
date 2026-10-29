@@ -17,6 +17,9 @@
 #endif
 #elif DISPLAY_KIND == DISPLAY_GC9A01
 #include <Adafruit_GC9A01A.h>
+#elif DISPLAY_KIND == DISPLAY_ST77916
+#include "qspi_panel_bus.hpp"
+#include <Wire.h>
 #elif DISPLAY_KIND == DISPLAY_ST7796
 #include <Wire.h>
 #include "gt911_touch.hpp"
@@ -59,8 +62,8 @@ class Display {
   bool flushPending_=false;
   uint32_t flushGeneration_=0,flushStarted_=0;
   bool serviceFrame();
-  static constexpr unsigned PanelWidth=DISPLAY_KIND==DISPLAY_ST7796?480:DISPLAY_KIND==DISPLAY_CROWPANEL_21?480:DISPLAY_KIND==DISPLAY_GC9A01?240:320;
-  static constexpr unsigned PanelHeight=DISPLAY_KIND==DISPLAY_CROWPANEL_21?480:DISPLAY_KIND==DISPLAY_ST7796?320:240;
+  static constexpr unsigned PanelWidth=DISPLAY_KIND==DISPLAY_ST77916?360:DISPLAY_KIND==DISPLAY_ST7796?480:DISPLAY_KIND==DISPLAY_CROWPANEL_21?480:DISPLAY_KIND==DISPLAY_GC9A01?240:320;
+  static constexpr unsigned PanelHeight=DISPLAY_KIND==DISPLAY_ST77916?360:DISPLAY_KIND==DISPLAY_CROWPANEL_21?480:DISPLAY_KIND==DISPLAY_ST7796?320:240;
   unsigned screenWidth() const {return runtime_.displaySettings.width(PanelWidth,PanelHeight);}
   unsigned screenHeight() const {return runtime_.displaySettings.height(PanelWidth,PanelHeight);}
   TouchSample orientTouch(TouchSample sample) const {
@@ -80,7 +83,7 @@ class Display {
   void serviceTrace(uint32_t now);
 #endif
 #else
-#if DISPLAY_KIND == DISPLAY_ST7796
+#if DISPLAY_KIND == DISPLAY_ST7796 || DISPLAY_KIND == DISPLAY_ST77916
   static constexpr unsigned StripeRows=8;
 #else
   static constexpr unsigned StripeRows=16;
@@ -88,6 +91,10 @@ class Display {
   alignas(4) std::array<uint16_t,PanelWidth*StripeRows> pixels_{};
 #if DISPLAY_KIND == DISPLAY_GC9A01
   std::optional<Adafruit_GC9A01A> panel_;
+#elif DISPLAY_KIND == DISPLAY_ST77916
+  QspiPanelBus panelBus_;
+  TwoWire touchBus_{1};
+  bool touchBusReady_=false;
 #elif DISPLAY_KIND == DISPLAY_ST7796
   TwoWire touchBus_{1};
   Gt911Touch<TwoWire> touch_{touchBus_};

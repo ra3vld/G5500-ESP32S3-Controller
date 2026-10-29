@@ -140,4 +140,13 @@ for flags in [
     headless+['BLUETOOTH_ENABLED=1','BLUETOOTH_MODE=BT_ESP32_SPP'],
     *[headless+[f'USER_BUTTON_GPIO={pin}'] for pin in range(11,20)],
 ]: compile_case(flags,False)
+
+# External QSPI module is independent of the ESP32 / ESP32-S3 board profile.
+for board in (1,4):
+    compile_case([f'BOARD_PROFILE={board}','DISPLAY_KIND=6'],True)
+    compile_case([f'BOARD_PROFILE={board}','DISPLAY_KIND=6','ST77916_SPI_HZ=0'],False)
+    compile_case([f'BOARD_PROFILE={board}','DISPLAY_KIND=6','ST77916_INIT_VARIANT=3'],False)
+for board in (2,3,5,6,7,8,9,10):
+    compile_case([f'BOARD_PROFILE={board}','DISPLAY_KIND=6'],False)
+
 print(f'PASS: {checks} board/display/BT/drive/local-input ownership and negative compile checks')
