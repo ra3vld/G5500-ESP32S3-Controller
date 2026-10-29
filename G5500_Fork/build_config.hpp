@@ -208,7 +208,7 @@
 
 // QSPI: частота для внешнего ST77916; GPIO задаются в веб-настройках.
 #ifndef ST77916_SPI_HZ
-#define ST77916_SPI_HZ 20000000
+#define ST77916_SPI_HZ 40000000
 #endif
 // 0 — автоопределение панели, 1 / 2 — первая / вторая таблица Waveshare.
 #ifndef ST77916_INIT_VARIANT

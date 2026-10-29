@@ -25,6 +25,43 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    });
    await page.goto('http://hardware.test/recovery');
    await page.waitForFunction(()=>!document.getElementById('save').disabled);
+   if(process.env.HARDWARE_SCENARIO==='pin-order'){
+    const fields=selector=>page.locator(selector+' select').evaluateAll(els=>els.map(el=>el.name.replace('pin.','')));
+    const before=await fields('#pins');
+    await page.evaluate(()=>{metadata.roles.reverse();buildPins();dirty=false;return refresh();});
+    assert.deepEqual(await fields('#pins'),before,'Presentation must not follow API/storage role order');
+    const expected=fixture.metadata.roles.filter(d=>d.group!=='tft'||(fixture.metadata.displayKind===6?!['tftDc','touchCs'].includes(d.name):fixture.metadata.displayKind===1&&!['tftD2','tftD3','tftBacklight','touchSda','touchScl','touchRst'].includes(d.name))).filter(d=>d.group!=='lcd'||fixture.metadata.displayKind===2).map(d=>d.name);
+    assert.deepEqual([...before].sort(),expected.sort(),'Every supported GPIO appears exactly once');
+    if([1,6].includes(fixture.metadata.displayKind)){
+     const banks=await page.locator('[data-pin-group=tft] [data-pin-bank]').evaluateAll(els=>els.map(el=>el.dataset.pinBank));assert.deepEqual(banks,['lcd','touch']);
+     const lcd=await fields('[data-pin-group=tft] [data-pin-bank=lcd]');const touch=await fields('[data-pin-group=tft] [data-pin-bank=touch]');
+     assert(lcd.every(n=>n.startsWith('tft'))&&touch.every(n=>n.startsWith('touch')));
+     if(fixture.metadata.displayKind===6){
+      assert.deepEqual(lcd,['tftMosi','tftMiso','tftD2','tftD3','tftSck','tftCs','tftRst','tftBacklight']);assert.deepEqual(touch,['touchSda','touchScl','touchIrq','touchRst']);
+      const boxes=await page.locator('[data-pin-bank=lcd] label').evaluateAll(els=>els.slice(0,4).map(el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y};}));
+      if(mobile)assert(boxes.every((b,i)=>!i||b.y>boxes[i-1].y&&Math.abs(b.x-boxes[0].x)<1));else assert(boxes.every((b,i)=>Math.abs(b.y-boxes[0].y)<1&&(!i||b.x>boxes[i-1].x)));
+     }else{assert.deepEqual(lcd,['tftMosi','tftMiso','tftSck','tftCs','tftDc','tftRst']);assert.deepEqual(touch,['touchCs','touchIrq']);}
+     if(process.env.HARDWARE_SCREENSHOT_DIR){fs.mkdirSync(process.env.HARDWARE_SCREENSHOT_DIR,{recursive:true});await page.locator('[data-pin-group=tft]').screenshot({path:path.join(process.env.HARDWARE_SCREENSHOT_DIR,`pins-${profile}-${mobile?'mobile':'desktop'}.png`)});}
+    }
+    if(fixture.metadata.displayKind===2){
+     assert.deepEqual(await fields('[data-pin-group=lcd]'),['lcdD4','lcdD5','lcdD6','lcdD7','lcdRs','lcdE']);
+     if(process.env.HARDWARE_SCREENSHOT_DIR){fs.mkdirSync(process.env.HARDWARE_SCREENSHOT_DIR,{recursive:true});await page.locator('[data-pin-group=lcd]').screenshot({path:path.join(process.env.HARDWARE_SCREENSHOT_DIR,`pins-${profile}-${mobile?'mobile':'desktop'}.png`)});}
+    }
+    for(const group of ['drive','buttons']){
+     const banks=page.locator('[data-pin-group='+group+'] [data-pin-bank]');assert.deepEqual(await banks.evaluateAll(els=>els.map(el=>el.dataset.pinBank)),['az','el']);
+     for(const axis of ['az','el'])assert((await fields('[data-pin-group='+group+'] [data-pin-bank='+axis+']')).every(n=>n.toLowerCase().includes(axis)));
+    }
+    for(const [group,names] of Object.entries({uart:['uartRx','uartTx','uartDe'],hud485:['hudRx','hudTx','hudDe'],hc05:['hc05Rx','hc05Tx','hc05State'],joystick:['localAzAdc','localElAdc'],sensorAz:['azSensorSda','azSensorScl'],sensorEl:['elSensorSda','elSensorScl']}))assert.deepEqual(await fields('[data-pin-group='+group+']'),names);
+    if(profile==='1'){
+     await page.locator('[name=driveMode]').selectOption('0');await page.locator('[name=localInputMode]').selectOption('1');
+     if(process.env.HARDWARE_SCREENSHOT_DIR)for(const group of ['drive','buttons'])await page.locator('[data-pin-group='+group+']').screenshot({path:path.join(process.env.HARDWARE_SCREENSHOT_DIR,`${group}-${mobile?'mobile':'desktop'}.png`)});
+     await page.locator('[name=driveMode]').selectOption('simulation');assert(await page.locator('[data-pin-group=drive]').isHidden());
+     await page.locator('[name=localInputMode]').selectOption('0');assert(await page.locator('[data-pin-group=buttons]').isHidden());
+    }
+    const geometry=await page.locator('#pins select:visible').evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return {x:r.x,right:r.right,height:r.height};}));
+    assert(geometry.every(r=>r.x>=0&&r.right<=(mobile?360:1100)&&r.height>=44));assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    assert.deepEqual(errors,[]);assert.equal(requests.length,0);await page.close();console.log(`PASS: ${profile} ${mobile?'mobile':'desktop'} GPIO ordering, LCD before touch, adjacent data lines, axis grouping, metadata-order independence and geometry`);continue;
+   }
    assert.match(await page.locator('#state').textContent(),/восстановления/);
    assert.match(await page.locator('#failures').textContent(),/Сбои: 2 \/ 3/);
    assert.match(await page.locator('#failures').textContent(),/30 минут/);
@@ -262,6 +299,6 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    }
    await page.close();
   }
-  console.log('PASS: selected board/display configurations, independent UART line parameters, mobile/desktop GPIO editing, TFT/LCD completeness, simulation, CrowPanel reservations, dirty fields, defaults and trial/probe/confirm');
+  console.log(process.env.HARDWARE_SCENARIO==='pin-order'?'PASS: selected GPIO layouts, signal grouping, metadata-order independence and mobile/desktop geometry':'PASS: selected board/display configurations, independent UART line parameters, mobile/desktop GPIO editing, TFT/LCD completeness, simulation, CrowPanel reservations, dirty fields, defaults and trial/probe/confirm');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});
