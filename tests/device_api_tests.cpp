@@ -130,6 +130,26 @@ static void hudBackgroundTests() {
 static void mqttApiTests() {
 #if MQTT_SUPPORT
   {
+    Fixture f;
+    const auto summary=[&](){const auto r=f.call("GET","/api/status",{},false);assert(r.status==200);return r.body;};
+    assert(summary().find("\"mqtt\":{\"enabled\":false,\"storageOk\":true,\"supported\":true,\"connected\":false,\"error\":\"disabled\"}")!=std::string::npos);
+    f.runtime.mqtt.enabled=true;std::strcpy(f.runtime.mqtt.host,"broker.local");
+    std::strcpy(f.runtime.mqtt.username,"private-user");std::strcpy(f.runtime.mqtt.password,"private-password");
+    const auto active=summary();
+    assert(active.find("\"mqtt\":{\"enabled\":true,\"storageOk\":true,\"supported\":true,\"connected\":false,\"error\":\"not_started\"}")!=std::string::npos);
+    for(const char *privateValue:{"private-user","private-password","broker.local","baseTopic","outboxBytes"})assert(active.find(privateValue)==std::string::npos);
+    f.runtime.mqttStorageOk=false;
+    assert(summary().find("\"error\":\"mqtt_storage_failed\"")!=std::string::npos);
+    f.runtime.mqttStorageOk=true;
+    MqttService mqtt{f.runtime,f.actions,f.hardware};
+    DeviceApi api{f.runtime,f.actions,f.calibration,f.hardware,f.diagnostics,f.network,f.storage,f.ota,f.restart,&mqtt};
+    char data[8000];JsonWriter out(data,sizeof data);int status=200;const char *type=nullptr;
+    api.execute("GET","/api/status",{},out,status,type,false);
+    assert(status==200&&out.good());
+    const std::string connectedService(data,out.size());
+    assert(connectedService.find("\"mqtt\":{\"enabled\":true,\"storageOk\":true,\"supported\":true,\"connected\":false,\"error\":\"not_started\"}")!=std::string::npos);
+  }
+  {
     Fixture f;useLocalController(f);auto &r=f.runtime;
     WiFi.connectionStatus=WL_CONNECTED;r.setup.required=true;r.setup.equipment=true;r.setup.step=SetupStep::Review;r.controller.setupRequired=true;
     assert(f.call("POST","/api/setup","action=resume",false).status==200);
@@ -147,6 +167,8 @@ static void mqttApiTests() {
     const auto saved=f.call("GET","/api/mqtt",{},false);
     assert(saved.status==200&&saved.body.find("\"host\":\"broker.local\"")!=std::string::npos&&saved.body.find("\"hasPassword\":true")!=std::string::npos);
     assert(!r.mqtt.enabled&&r.mqtt.password[0]==0); // The active client keeps its original credentials until restart.
+    const auto active=f.call("GET","/api/status",{},false);
+    assert(active.body.find("\"mqtt\":{\"enabled\":false")!=std::string::npos&&active.body.find("wizard-secret")==std::string::npos);
     assert(f.call("POST","/api/setup","action=begin_save"+token,false).status==200);
     assert(f.call("POST","/api/mqtt","host=corrected.local"+token,false).status==200);
     assert(f.call("POST","/api/setup","action=end_save"+token,false).status==200);

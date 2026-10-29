@@ -14,6 +14,8 @@ int main(int argc,char **argv){
   assert(base.bridge.nodeCount()==1);
   for(const auto &message:base.messages)assert(message.payload.size()<1024);
   assert(base.config("000000000042_target_az/config") && base.config("000000000042_stop/config"));
+  const auto *elevation=base.config("000000000042_el/config");
+  assert(elevation && elevation->payload.find("\"name\":\"Элевация\"")!=std::string::npos);
   assert(base.config("000000000042_mode/config")->payload.find("auto_1h")!=std::string::npos);
   const auto before=base.messages.size();
   assert(base.bridge.receive("homeassistant/status","online",true,4100));base.run(4100,6500);

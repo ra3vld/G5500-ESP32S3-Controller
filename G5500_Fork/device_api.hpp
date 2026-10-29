@@ -23,6 +23,7 @@ private:
   bool setupReady(SetupStep step) const;
   bool setupMotionAllowed() const;
   void writeSetup(JsonWriter &) const;
+  void writeMqttStatus(JsonWriter &) const;
   void invalidateSetup(SetupStep step);
   void configurationRestart(bool setupBatch);
   Response callApi(std::string_view path, FormView form);

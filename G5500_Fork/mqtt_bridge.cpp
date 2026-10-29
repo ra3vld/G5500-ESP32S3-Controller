@@ -32,7 +32,7 @@ void haName(JsonWriter &j,const char *name) {
 struct Entity { const char *domain,*id,*name,*field,*command;int axis; };
 constexpr Entity entities[MqttBridge::EntityCount]={
   {"sensor","az","Азимут","az.current",nullptr,0},
-  {"sensor","el","Угол места","el.current",nullptr,1},
+  {"sensor","el","Элевация","el.current",nullptr,1},
   {"binary_sensor","moving","Движение","moving",nullptr,-1},
   {"sensor","fault","Ошибка","fault",nullptr,-1},
   {"binary_sensor","pending","Ожидает подтверждения","pending",nullptr,-1},

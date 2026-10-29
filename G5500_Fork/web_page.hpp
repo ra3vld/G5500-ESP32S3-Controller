@@ -62,7 +62,7 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 @media(max-width:600px){.device-fields{grid-template-columns:minmax(0,1fr);gap:14px}.device-actions>.btn,.device-address>.btn{width:100%}.device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}.device-peer>.btn:first-child{grid-column:1/-1}.device-pagination .btn{padding:10px 12px}}
 [hidden]{display:none!important}.nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--a);outline-offset:2px}
 .history-intro{margin:20px 0}.history-intro h2{font-size:24px;margin:0 0 8px}.history-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}.history-entry.card{margin:0;padding:18px 20px}.history-entry h3{font-size:16px;color:var(--a);margin:0 0 12px}.history-entry ul{margin:0;padding-left:20px;line-height:1.6;font-size:15px}.history-entry li+li{margin-top:8px}#historyPanel{padding-bottom:16px}
-.current-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;padding:12px;font-size:13px}.current-status span{display:block;color:var(--m);margin-bottom:5px}.current-status b{font-size:14px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.current-status .online{color:var(--a)}.current-status .offline{color:#e5a94f}
+.current-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;padding:12px;font-size:13px}.current-status span{display:block;color:var(--m);margin-bottom:5px}.current-status b{font-size:14px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.current-status .online,#networkStatus .online{color:var(--a)}.current-status .offline,#networkStatus .offline{color:#e5a94f}
 .action-feedback{position:fixed;z-index:50;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:calc(100% - 24px);max-width:620px;display:flex;align-items:center;gap:12px;padding:12px 14px;background:#132532;border:2px solid #57bde8;border-radius:12px;box-shadow:0 6px 30px #0009;font-size:16px;line-height:1.4;overflow-wrap:anywhere}.action-feedback[data-state=success]{border-color:#24d18d}.action-feedback[data-state=error]{border-color:#ff7970}.action-feedback>div{flex:1;min-width:0}.action-feedback strong{display:block;margin-bottom:3px}.action-feedback button{flex:none;border:0;border-radius:8px;min-width:44px;min-height:44px;background:#294153;color:white;font-size:24px;cursor:pointer}.action-feedback[data-state=pending] button{visibility:hidden}.btn[aria-busy=true]{opacity:.8;outline:2px solid #57bde8;outline-offset:2px}.btn[aria-busy=true]::after{content:' …'}
 
 /* Settings share one disclosure, field and action layout. */
@@ -256,6 +256,7 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <div class="card current-status" id="currentStatus" aria-label="Текущий статус устройства">
 <div><span>Сеть</span><b id="statusWifi">—</b></div>
 <div><span>Bluetooth</span><b id="statusBt">—</b></div>
+<div><span>MQTT</span><b id="statusMqtt" role="status">—</b></div>
 <div><span>Сигнал Wi-Fi</span><b id="statusSignal">—</b></div>
 <div title="Свободная внутренняя RAM"><span>Свободная память</span><b id="statusMemory">—</b></div>
 <div><span>Uptime</span><b id="statusUptime">—</b></div>
@@ -392,10 +393,11 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <div class="field"><label for="hudReadyHigh">Уровень готовности AUX / BUSY</label><select id="hudReadyHigh" name="readyHigh" aria-describedby="hudReadyHigh-help"><option value="1">HIGH — передача разрешена</option><option value="0">LOW — передача разрешена</option></select><p id="hudReadyHigh-help" class="field-help">Необязательный вход «Радиомост · AUX / BUSY» назначается в настройках оборудования. Без входа передача разрешена постоянно.</p></div>
 </div><p class="hint">Сигнал AUX / BUSY относится к обычному UART0. Радиочастота и эфирная скорость задаются средствами самого модуля. Частота обновления относится к состоянию. Непрерывное ручное управление доступно от 9600 бод; контроллер останавливает его через 1 с без продления.</p></section>
 <div class="form-actions"><button class="btn good" type="submit">Сохранить и перезагрузить</button></div></form>
-</section></div></details></section><section class="card settings-section" id="networkStatus"><details class="settings-details" open><summary><h2>Статус сети<span class="section-caption">Адреса, Wi-Fi и Bluetooth</span></h2></summary><div class="settings-content"><div class="kv">
+</section></div></details></section><section class="card settings-section" id="networkStatus"><details class="settings-details" open><summary><h2>Статус сети<span class="section-caption">Адреса, Wi-Fi, Bluetooth и MQTT</span></h2></summary><div class="settings-content"><div class="kv">
 <div id="ethernetStatus" hidden>Ethernet: <b id="ethip">-</b> <span id="ethstate"></span></div><div>IP клиента (STA): <b id="ip">-</b></div><div>IP точки доступа: <b id="apip">-</b></div><div>TCP rotctld: <b>4533</b></div><div>Режим: <b id="mode">-</b></div><div>Уровень Wi-Fi: <b id="rssi">-</b></div><div>Качество: <b id="sig">-</b></div>
 <div class="hide" id="btlinkrow">Bluetooth-соединение: <b id="btlinkstate" role="status">-</b></div>
 <div><span id="btlabel">Bluetooth</span>: <b id="btstate" role="status">-</b></div><div id="bttransport">-</div>
+<div>MQTT: <b id="mqttstate" role="status">—</b></div>
 <div class="hide" id="btmacrow">Bluetooth MAC: <b class="mono" id="btmac">-</b></div></div><div class="hint hide" id="bthelp">Этот MAC нужен в Look4Sat. Подключение видно и без передачи команд; сопряжение в Android само по себе не означает активное соединение.</div>
 </div></details></section><section class="card settings-section" id="networkSettings"><details class="settings-details"><summary><h2>Настройки сети<span class="section-caption">Подключение, IP-адреса и точка доступа</span></h2></summary><div class="settings-content">
 <section class="settings-group" id="mqttSettings" hidden><h3>MQTT и Home Assistant</h3>
@@ -738,7 +740,24 @@ function networkAddresses(j){
  const sta=j?.staIp??(Number.isFinite(j?.rssi)?j.ip:null),ap=j?.apIp??(j?.wifiMode==='Access Point'?j.ip:null);
  return [j?.ethConnected&&valid(j.ethIp)?'ETH: '+j.ethIp:'',valid(sta)?'STA: '+sta:'',valid(ap)?'AP: '+ap:''].filter(Boolean);
 }
+function renderMqttStatus(j,unavailable=false){
+ const mqtt=j?.mqtt,errors={network_unavailable:'Нет сети',mqtt_memory_limited:'Недостаточно памяти',mqtt_start_failed:'Ошибка запуска',mqtt_storage_failed:'Ошибка настроек',connecting:'Подключение…',not_started:'Ожидает запуска'};
+ let text='Нет данных',style='',hint='Ожидаем состояние MQTT.';
+ if(unavailable)hint='Не удалось обновить статус MQTT: нет ответа устройства.';
+ else if(mqtt?.supported===false||j?.build?.features?.mqtt===false){text='Недоступен в сборке';hint='Поддержка MQTT не включена в эту прошивку.';}
+ else if(mqtt?.storageOk===false||mqtt?.error==='mqtt_storage_failed'){text='Ошибка настроек';style='offline';hint='Не удалось прочитать сохранённые настройки MQTT.';}
+ else if(mqtt?.enabled===false){text='Отключён';hint='Подключение к MQTT выключено в настройках.';}
+ else if(mqtt?.connected===true){text='Подключён';style='online';hint='Соединение с MQTT-брокером установлено.';}
+ else if(mqtt){
+  text=errors[mqtt.error]||(mqtt.error?'Ошибка: '+mqtt.error:'Нет подключения');style='offline';
+  if(mqtt.brokerError>0)text='Отказ брокера (код '+mqtt.brokerError+')';
+  else if(mqtt.brokerError<0)text='Ошибка подключения';
+  hint=text+(mqtt.error?' ('+mqtt.error+')':'');
+ }
+ for(const id of ['statusMqtt','mqttstate']){const node=document.getElementById(id);setText(node,text);node.className=style;node.title=hint;}
+}
 function compactStatus(j){
+ renderMqttStatus(j,connection.httpOnline===false);
  const wifi=document.getElementById('statusWifi'),bt=document.getElementById('statusBt');
  const wifiModes={'Wi-Fi Client':'Подключён','AP + Wi-Fi Client':'Подключён + AP','Access Point':'Точка доступа','Disconnected':'Нет подключения','Ethernet':'Ethernet','Ethernet + AP':'Ethernet + AP'};
  wifi.textContent=[wifiModes[j.wifiMode]||j.wifiMode||'—',...networkAddresses(j)].join('\n');wifi.style.whiteSpace='pre-line';wifi.title=j.ssid||'';
@@ -1575,6 +1594,7 @@ if(document.querySelector('#calibrationSettings details').open){loadAzCalibratio
 }catch(e){
  if(controller.signal.aborted&&keyboardHeld())return;
  connection.httpOnline=false;updateConnection();
+ renderMqttStatus(null,true);
  const wifi=document.getElementById('statusWifi'),addresses=networkAddresses(httpState);setText(wifi,['Нет связи',...(addresses.length?['Последние адреса:',...addresses]:[])].join('\n'));wifi.className='offline';wifi.title='Не удалось обновить статус устройства';
  for(const id of ['statusBt','statusSignal','statusMemory','statusUptime']){const node=document.getElementById(id);setText(node,'—');node.className='';}
 }finally{clearTimeout(timeout);statusController=null;statusPending=false;if(statusRefreshQueued){statusRefreshQueued=false;queueMicrotask(()=>upd(true));}}}

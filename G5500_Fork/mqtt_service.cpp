@@ -180,16 +180,21 @@ void MqttService::pause() {
   }
 #endif
 }
-void MqttService::writeStatus(JsonWriter &j) const {
+void MqttService::writeStatus(JsonWriter &j, bool compact) const {
   j << "\"supported\":true,\"connected\":";
 #if defined(ARDUINO_ARCH_ESP32) && defined(ARDUINO)
   j << (impl_ && impl_->connected.load()?"true":"false") << ",\"error\":" << jsonQuoted(error_);
+  if(compact) {
+    if(impl_)j << ",\"brokerError\":" << impl_->connectError.load();
+    return;
+  }
   if(impl_)j << ",\"baseTopic\":" << jsonQuoted(impl_->bridge.baseTopic()) << ",\"nodes\":" << impl_->bridge.nodeCount()
     << ",\"rejected\":" << impl_->bridge.rejected() << ",\"dropped\":" << impl_->bridge.dropped()
     << ",\"commands\":" << impl_->bridge.commands() << ",\"lastResult\":" << jsonQuoted(impl_->bridge.lastResult())
     << ",\"requestId\":" << impl_->bridge.pendingRequest() << ",\"outboxBytes\":" << esp_mqtt_client_get_outbox_size(impl_->client)
     << ",\"stackFreeBytes\":" << impl_->stackFree.load() << ",\"brokerError\":" << impl_->connectError.load();
 #else
+  (void)compact;
   j << "false,\"error\":" << jsonQuoted(runtime_.mqtt.enabled?"not_started":"disabled");
 #endif
 }

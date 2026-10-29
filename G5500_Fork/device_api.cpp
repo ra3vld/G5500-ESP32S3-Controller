@@ -13,6 +13,19 @@
 #include <esp_timer.h>
 namespace forkrot {
 using namespace board;
+void DeviceApi::writeMqttStatus(JsonWriter &j) const {
+  j << ",\"mqtt\":{";
+#if MQTT_SUPPORT
+  j << "\"enabled\":" << (runtime_.mqtt.enabled?"true":"false")
+    << ",\"storageOk\":" << (runtime_.mqttStorageOk?"true":"false") << ',';
+  if(mqtt_)mqtt_->writeStatus(j,true);
+  else j << "\"supported\":true,\"connected\":false,\"error\":"
+         << jsonQuoted(!runtime_.mqttStorageOk?"mqtt_storage_failed":runtime_.mqtt.enabled?"not_started":"disabled");
+#else
+  j << "\"enabled\":false,\"storageOk\":true,\"supported\":false,\"connected\":false,\"error\":\"feature_disabled\"";
+#endif
+  j << '}';
+}
 namespace {
 void writeHardwareTrial(JsonWriter &j, const Runtime &runtime) {
   j << ",\"hardwareTrial\":";
@@ -1174,6 +1187,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     j << ']';
     runtime_.hud.writeStatus(j);
     writeHardwareTrial(j,runtime_);
+    writeMqttStatus(j);
     if (!writeStateJson(j, runtime_.controller, runtime_.protocol, runtime_.loggerSettings, millis(), true)) {
       web_.send(503, "application/json", "{\"error\":\"status_too_large\"}");
       return;

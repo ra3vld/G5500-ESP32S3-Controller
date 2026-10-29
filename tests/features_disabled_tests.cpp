@@ -10,6 +10,7 @@ int main(){
  }
  assert(f.call("POST","/api/settings","rotorName=Minimal").status==200);
  const auto status=f.call("GET","/api/status", "", false);assert(status.status==200&&status.body.find("\"mqtt\":false")!=std::string::npos);
+ assert(status.body.find("\"mqtt\":{\"enabled\":false,\"storageOk\":true,\"supported\":false,\"connected\":false,\"error\":\"feature_disabled\"}")!=std::string::npos);
  // Ordinary control and protections remain in the minimal service build.
  assert(f.runtime.controller.jog(0,1,false,millis())==Result::Ok);
  assert(f.call("POST","/api/move","d=S").status==200);assert(!f.runtime.controller.moving());
