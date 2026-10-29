@@ -10,7 +10,7 @@ const root=process.env.ROTOR_URL;
  try{
   const pages=await Promise.all([process.env.SIM_URL,process.env.SECOND_URL,root,root].map(async url=>{
    const page=await browser.newPage();page.on('pageerror',e=>errors.push(e.message));
-   await page.goto(url);await page.waitForFunction(()=>live.ready&&window._forkState?.model&&(window._forkState.deviceRole!=='hud'||window._forkState.hudLive));
+   await page.goto(url);await page.waitForFunction(()=>live.ready&&live.format==='binary'&&controlLive.ready&&window._forkState?.model&&(window._forkState.deviceRole!=='hud'||window._forkState.hudLive));
    return page;
   }));
   // Four effective controller consumers: two subscribed HUDs and two direct browsers.
@@ -53,15 +53,12 @@ const root=process.env.ROTOR_URL;
   await downloads;
   // The per-server WS cap is four, including simultaneously opening sockets.
   assert.equal(await pages[2].evaluate(async()=>{
-   const extras=await Promise.all([0,1].map(()=>new Promise((resolve,reject)=>{
-    const s=new WebSocket(live.socket.url);s.onerror=reject;s.onmessage=e=>{if(JSON.parse(e.data).type==='state')resolve(s)};
-   })));
    const rejected=await new Promise(resolve=>{
     const s=new WebSocket(live.socket.url),timer=setTimeout(()=>{s.close();resolve(false)},2000);
     s.onclose=()=>{clearTimeout(timer);resolve(true)};s.onerror=()=>{};
     s.onmessage=()=>{clearTimeout(timer);s.close();resolve(false)};
    });
-   for(const s of extras)s.close();return rejected;
+   return rejected;
   }),true);
   // Old selection / boot commands never execute.
   const stale=await pages[0].evaluate(async()=>{

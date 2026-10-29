@@ -517,6 +517,61 @@ int main(){
  assert(slowStates>=3&&slowStates<=4);
  networkMemoryLimited=false;runtime.hud.setMemoryLimited(false);
  httpd_sess_trigger_close(&fakeServer,1000);httpd_sess_trigger_close(&fakeServer,1001);
+ // v2 keeps metadata on change and copies compact independent samples into
+ // the existing outgoing slot. Mixed legacy/control clients retain semantics.
+ runtime.hud.config.role=DeviceRole::Controller;runtime.hud.begin(1,10);c.autoTune={};c.stopNow(-1,90000);
+ const auto idleChecks=bufferMetric("liveControlChecks");
+ for(unsigned t=90000;t<91000;t+=5)publishAt(t);
+ assert(bufferMetric("liveControlChecks")==idleChecks);
+ assert(connect(1000)==ESP_OK&&command(1000,"v=2&telemetry=1")==ESP_OK);
+ assert(connect(1001)==ESP_OK&&command(1001,"v=1&control=1")==ESP_OK);
+ assert(connect(1002)==ESP_OK);fakeServer.sent.clear();
+ publishAt(91000);publishAt(91005);
+ const auto binaryFor=[&](int fd) {
+   std::string result;for(const auto &m:fakeServer.sent)if(m.first==fd&&m.second.size()==LIVE_BINARY_SIZE&&m.second.substr(0,2)=="GL")result=m.second;
+   return result;
+ };
+ const auto word=[](const std::string &b,size_t p){uint32_t v=0;for(unsigned i=0;i<4;++i)v|=uint32_t(uint8_t(b[p+i]))<<(i*8);return v;};
+ assert(binaryFor(1000).size()==160);assert(word(binaryFor(1000),12)==10);
+ std::cout<<"Live payload bytes: legacy="<<bufferMetric("liveStateBytes")<<", metadata="<<bufferMetric("liveMetadataBytes")<<", binary="<<bufferMetric("liveBinaryBytes")<<"\n";
+ const auto metadataEncodes=bufferMetric("liveMetadataEncodes"),legacyEncodes=bufferMetric("liveStateEncodes");
+ fakeServer.sent.clear();
+ for(unsigned t=91010;t<91200;t+=5){c.axes[0].current=float(t)/1000;publishAt(t);}
+ assert(binaryFor(1000).empty());publishAt(91200);assert(!binaryFor(1000).empty());
+ for(unsigned t=91400;t<=93000;t+=200){c.axes[0].current=float(t)/1000;runtime.hud.received++;publishAt(t);}
+ assert(bufferMetric("liveMetadataEncodes")==metadataEncodes);
+ assert(bufferMetric("liveStateEncodes")==legacyEncodes+10);
+ httpd_sess_trigger_close(&fakeServer,1002);
+ const auto jsonEncodes=bufferMetric("liveStateEncodes");
+ for(unsigned t=93200;t<=94200;t+=200){c.axes[0].current=float(t)/1000;publishAt(t);}
+ assert(bufferMetric("liveStateEncodes")==jsonEncodes&&bufferMetric("liveStateBuffers")==1);
+ assert(bufferMetric("liveMetadataBytes")<2000);
+ // A partly sent old metadata frame must finish intact before its replacement.
+ fakeServer.sent.clear();fakeServer.maxWrite=7;c.fault="first metadata";publishAt(94400);
+ fakeServer.maxWrite=SIZE_MAX;fakeServer.blockedFds.insert(1000);c.fault="latest metadata";publishAt(94405);
+ assert(command(1001,packet(1,"/api/move","&d=S"))==ESP_OK);server.commands(94410);publishAt(94410);
+ bool stopReply=false;for(const auto &m:fakeServer.sent)stopReply|=m.first==1001&&m.second.find("\"type\":\"result\"")!=std::string::npos;
+ assert(stopReply);
+ fakeServer.blockedFds.clear();publishAt(94415);publishAt(94420);publishAt(94425);
+ std::string lastMeta;for(const auto &m:fakeServer.sent)if(m.first==1000&&m.second.find("\"type\":\"metadata\"")!=std::string::npos)lastMeta=m.second;
+ assert(lastMeta.find("latest metadata")!=std::string::npos&&!binaryFor(1000).empty());
+ const auto metaAt=lastMeta.find("\"revision\":");assert(metaAt!=std::string::npos);
+ assert(word(binaryFor(1000),8)==std::stoul(lastMeta.substr(metaAt+11)));
+ // Pressure retains the same 500 ms pacing; compact frames remain independent
+ // of a paused large JSON write and need no bulk-memory allocation.
+ c.fault="";networkMemoryLimited=true;runtime.hud.setMemoryLimited(true);publishAt(95000);publishAt(95005);fakeServer.sent.clear();
+ for(unsigned t=95010;t<95500;t+=5){c.axes[0].current=float(t)/1000;publishAt(t);}
+ assert(binaryFor(1000).empty());publishAt(95500);assert(!binaryFor(1000).empty());
+ networkMemoryLimited=false;runtime.hud.setMemoryLimited(false);
+  fakeServer.sent.clear();c.axes[0].current+=1;publishAt(95700);
+  assert(!binaryFor(1000).empty()); // normal 200 ms pacing resumes immediately
+ httpd_sess_trigger_close(&fakeServer,1000);fakeServer.sent.clear();
+ assert(connect(1000)==ESP_OK&&command(1000,"v=2&telemetry=1")==ESP_OK);publishAt(96000);publishAt(96005);
+ assert(!binaryFor(1000).empty());bool freshMetadata=false;
+ for(const auto &m:fakeServer.sent)freshMetadata|=m.first==1000&&m.second.find("\"type\":\"metadata\"")!=std::string::npos;
+ assert(freshMetadata);httpd_sess_trigger_close(&fakeServer,1000);httpd_sess_trigger_close(&fakeServer,1001);
+ assert(bufferMetric("liveStateBuffers")==0);
+ std::cout<<"PASS: binary 160 B, no idle hashing, metadata only on change, no fast JSON, mixed consumers, partial metadata/context, STOP, reconnect, unchanged 200/500 ms\n";
  fakeEspTimeUs=-1;
  std::cout<<"PASS: HUD manual renewals and release receive one deferred admission without false completion errors\n";
  std::cout<<"PASS: shared immutable state, four pinned revisions, independent fast peer, bounded pool, idle trim and last-client release\n";

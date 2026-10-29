@@ -64,7 +64,12 @@ int main(){
     if (kind == "live_state") {
       char data[LIVE_STATE_CAPACITY]; JsonWriter writer(data,sizeof data);
       writeLiveState(writer,c,hud,now); char boot[17];liveBootText(boot,hud.boot);
-      response.body="{\"boot\":"+jsonQuote(boot)+",\"control\":"+std::to_string(liveControlFingerprint(c,hud))+",\"state\":"+std::string(writer.data(),writer.size())+"}";
+      char meta[LIVE_STATE_CAPACITY],binary[LIVE_BINARY_SIZE];JsonWriter metadata(meta,sizeof meta);
+      writeLiveMetadata(metadata,c,hud);writeLiveBinary(binary,c,hud,now,0,0,false);
+      std::string encoded;for(unsigned char byte:binary){encoded+="0123456789abcdef"[byte>>4];encoded+="0123456789abcdef"[byte&15];}
+      response.body="{\"boot\":"+jsonQuote(boot)+",\"control\":"+std::to_string(liveControlFingerprint(c,hud))+
+        ",\"metadataHash\":"+std::to_string(liveMetadataFingerprint(c,hud))+",\"metadata\":"+std::string(metadata.data(),metadata.size())+
+        ",\"binary\":"+jsonQuote(encoded)+",\"state\":"+std::string(writer.data(),writer.size())+"}";
     } else if (kind == "live") {
       LiveRequest request;
       response=request.parse(args)?executeLive(request,c,p,cfg,hud,now):Response{400,"{\"ok\":false,\"result\":\"invalid\"}"};

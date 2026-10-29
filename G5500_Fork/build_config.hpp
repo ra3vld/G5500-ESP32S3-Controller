@@ -9,7 +9,7 @@
 
 // Compile-time capabilities. Unlike runtime defaults these remove services.
 // При 0, Б (BIN/DRAM/IRAM): ST 190464/8048/424; S3 512560/8040/256.
-// Вместе с WebSocket; heap HTTP/SDK не измерена. WS: stack 6144 Б, Clients 160 Б, 2376 Б/клиент, 3092 Б/снимок (до 4).
+// Вместе с WebSocket; heap HTTP/SDK не измерена. WS: stack 6144 Б; очереди выделяются на подключение, общие JSON-снимки — блоками по 256 Б, бинарный снимок 160 Б.
 #ifndef WEB_INTERFACE_ENABLED
 #define WEB_INTERFACE_ENABLED 1
 #endif
@@ -46,7 +46,7 @@
 #define ETHERNET_SUPPORT (SELECTED_BOARD == BOARD_WT32_ETH01 || SELECTED_BOARD == BOARD_WAVESHARE_S3_ETH)
 #endif
 // При 0, Б (BIN/DRAM/IRAM): ST 44480/280/424; S3 45104/280/256.
-// HTTP остаётся. Heap при WS: stack 6144 Б + Clients 160 Б + 2376 Б/клиент + 3092 Б/снимок; полный runtime не измерен.
+// HTTP остаётся. Heap при WS: stack 6144 Б, очереди подключений и общие JSON-снимки по фактической ёмкости; полный runtime не измерен.
 #ifndef WEB_LIVE_SUPPORT
 #define WEB_LIVE_SUPPORT WEB_INTERFACE_ENABLED
 #endif

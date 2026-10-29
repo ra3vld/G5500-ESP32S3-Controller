@@ -16,8 +16,10 @@ namespace forkrot {
 // HTTPD owns sockets; the Arduino loop alone owns Controller/Hud.
 class LiveServer {
   static constexpr size_t ControlCapacity=256;
+  static_assert(LIVE_BINARY_SIZE<=ControlCapacity,"binary state must fit the existing small frame");
   struct StateBuffer {
-    std::array<char,LIVE_STATE_CAPACITY+4> bytes{};
+    std::unique_ptr<char[]> bytes;
+    size_t capacity=0;
     size_t size=0;
     uint32_t revision=0;
     unsigned users=0;
@@ -44,10 +46,10 @@ class LiveServer {
     uint32_t memoryWaits=0;
   };
   struct Client {
-    int fd=-1; uint32_t generation=0, lastId=0, revision=0;
+    int fd=-1; uint32_t generation=0, lastId=0, revision=0, metadataRevision=0;
     uint32_t acceptedAt=0,controlSentAt=0;
     uint32_t ackCheckedAt=0, ackStartedAt=0;
-    bool closing=false, controlOnly=false;
+    bool closing=false, controlOnly=false, binary=false;
     bool ackWaiting=false;
     // Stable slot metadata survives disconnects; queues exist only while used.
     std::unique_ptr<ClientBuffers> buffers;
@@ -59,11 +61,17 @@ class LiveServer {
   StaticSemaphore_t mutexStorage_;
   SemaphoreHandle_t mutex_=nullptr;
   // A slow peer pins its frame; other peers can share the newest snapshot.
-  // At most one retained snapshot per client, allocated only when needed.
-  std::array<std::unique_ptr<StateBuffer>,4> states_;
-  unsigned stateIndex_=0;
-  size_t stateSize_=0;
-  uint32_t revision_=0, publishedAt_=0, hash_=0, controlHash_=0, wakeAt_=0;
+  // Four pinned frames plus the latest legacy/metadata projections. Binary
+  // samples fit in each client's existing small outgoing buffer.
+  std::array<std::unique_ptr<StateBuffer>,6> states_;
+  unsigned stateIndex_=0, metadataIndex_=0;
+  size_t stateSize_=0, metadataSize_=0;
+  std::array<char,LIVE_BINARY_SIZE> binary_{};
+  uint32_t metadataRevision_=0, metadataHash_=0, sampledAt_=0, sampleDelay_=0;
+  uint32_t binaryMetadataRevision_=0, sampleMetadataHash_=0;
+  bool legacyPending_=false;
+  uint32_t controlChecks_=0, stateEncodes_=0, metadataEncodes_=0;
+  uint32_t revision_=0, publishedAt_=0, controlHash_=0, wakeAt_=0;
   uint32_t workRuns_=0, framesSent_=0, queueErrors_=0, sendErrors_=0, sendDeferred_=0;
   uint32_t memoryDeferred_=0, socketDeferred_=0, sendMemoryRetries_=0, ackDeferred_=0, ackTimeouts_=0;
   uint32_t handshakeTimeouts_=0, admissionRejected_=0;
@@ -87,7 +95,10 @@ class LiveServer {
   static void releaseSnapshot(ClientBuffers &b, uint32_t now) {
     if(b.snapshot){if(!--b.snapshot->users)b.snapshot->unusedAt=now;b.snapshot=nullptr;}
   }
-  StateBuffer *writableState(unsigned &index);
+  StateBuffer *writableState(unsigned &index, size_t size, bool metadata);
+  uint32_t currentRevision(const Client &c) const {
+    return c.controlOnly||c.binary?revision_:stateSize_?states_[stateIndex_]->revision:0;
+  }
   bool activate(Client &); // mutex held; called only after successful upgrade
   void reply(Client &,uint32_t,const char *);
   void cancelTarget(Client &,uint32_t);

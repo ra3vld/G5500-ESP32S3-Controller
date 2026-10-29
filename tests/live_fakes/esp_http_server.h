@@ -11,7 +11,7 @@
 #include <algorithm>
 using esp_err_t=int;
 inline constexpr int ESP_OK=0,ESP_FAIL=-1,HTTP_GET=1,HTTP_POST=2;
-enum httpd_ws_type_t {HTTPD_WS_TYPE_TEXT=1,HTTPD_WS_TYPE_CLOSE=8,HTTPD_WS_TYPE_PING=9,HTTPD_WS_TYPE_PONG=10};
+enum httpd_ws_type_t {HTTPD_WS_TYPE_TEXT=1,HTTPD_WS_TYPE_BINARY=2,HTTPD_WS_TYPE_CLOSE=8,HTTPD_WS_TYPE_PING=9,HTTPD_WS_TYPE_PONG=10};
 enum httpd_ws_client_info_t {HTTPD_WS_CLIENT_INVALID,HTTPD_WS_CLIENT_HTTP,HTTPD_WS_CLIENT_WEBSOCKET};
 struct httpd_ws_frame_t {bool final=true,fragmented=false;httpd_ws_type_t type=HTTPD_WS_TYPE_TEXT;uint8_t *payload=nullptr;size_t len=0;};
 struct FakeHttpd;

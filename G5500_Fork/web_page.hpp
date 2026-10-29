@@ -784,19 +784,48 @@ function updateConnection(){
 function liveFresh(){return live.ready&&Date.now()-live.last<=1000}
 function renderLive(){liveFrame=0;if(httpState)renderStatus(liveFresh()&&live.state?{...httpState,...live.state}:httpState);}
 function queueLiveRender(){if(!liveFrame)liveFrame=requestAnimationFrame(renderLive);}
+function decodeLiveBinary(data,metadata){
+ if(!(data instanceof ArrayBuffer)||data.byteLength!==160)throw new Error('live size');
+ const d=new DataView(data),u=p=>d.getUint32(p,true),f=p=>{const n=d.getFloat32(p,true);return Number.isFinite(n)?n:null};
+ if(d.getUint8(0)!==71||d.getUint8(1)!==76||d.getUint8(2)!==2||d.getUint8(3)!==1)throw new Error('live version');
+ const boot=u(16).toString(16).padStart(8,'0')+u(12).toString(16).padStart(8,'0');
+ if(!metadata||metadata.boot!==boot||metadata.revision!==u(8)||(metadata.state.hudSelectionEpoch??0)!==u(20))throw new Error('live context');
+ const flags=u(28),state={...metadata.state,remainingMs:u(24),moving:!!(flags&1),motion:flags&1?'MOVING':'STOP',networkMemoryLimited:!!(flags&2),telemetryIntervalMs:flags&2?500:200,hudOnline:!!(flags&4),hudLive:!!(flags&8),hudAgeMs:u(32)===0xffffffff?null:u(32)};
+ const counters=['hudRejected','hudTimeouts','hudBusy','hudReceived','hudSent','hudSendErrors','hudSendErrno','hudCommandAttempts','hudCommandSendFailures'];
+ counters.forEach((name,i)=>state[name]=i===6?d.getInt32(36+4*i,true):u(36+4*i));
+ state.autotune={...state.autotune,output:f(72),validationError:f(76)};
+ const phases=['idle','kick','run','braking','holding','fault'],faults=['','kick_start_timeout','feedback_stale','feedback_invalid','stalled','planner_error'];
+ state.axes=state.axes.map((axis,i)=>{
+  const p=80+40*i,bits=d.getUint8(p+37),phase=d.getUint8(p+38),fault=d.getUint8(p+39);
+  if(phase>=phases.length||fault>=faults.length||bits&192)throw new Error('live axis');
+  return {...axis,current:f(p),target:f(p+4),speedOutputPercent:f(p+8),measuredVelocity:f(p+12),requestedVelocity:f(p+16),profileAcceleration:f(p+20),speedSetpoint:f(p+24),speedLimit:f(p+28),stopToleranceDegrees:f(p+32),direction:d.getInt8(p+36),tracking:!!(bits&1),completed:!!(bits&2),calibrated:!!(bits&4),holdArmed:!!(bits&8),speedEnabled:!!(bits&16),speedAdjustable:!!(bits&32),motionPhase:phases[phase],motionFault:faults[fault]};
+ });
+ state.az=state.axes[0].current;state.el=state.axes[1].current;state.targetAz=state.axes[0].target;state.targetEl=state.axes[1].target;
+ state.azSpeedOutputPercent=state.axes[0].speedOutputPercent;state.elSpeedOutputPercent=state.axes[1].speedOutputPercent;
+ return {v:1,type:'state',boot,revision:u(4),state};
+}
 function connectLive(port){
  if(httpState?.build?.features?.webLive===false)return;
  if(port!==0)connectControlLive(port);
  if(port===0||live.socket||live.retry||window.G5500_HTTP_ONLY)return;
  const socket=new WebSocket('ws://'+location.hostname+':'+(port||81)+'/api/live');live.socket=socket;live.last=Date.now();live.probeAt=0;live.stableAt=0;
+ let metadata=null;socket.binaryType='arraybuffer';
+ socket.onopen=()=>{if(live.socket===socket&&httpState?.liveBinaryVersion===2)socket.send('v=2&telemetry=1')};
  socket.onmessage=event=>{
   if(live.socket!==socket)return;
-  let message;try{message=JSON.parse(event.data)}catch(e){socket.close();return}
+  let message;try{
+   message=typeof event.data==='string'?JSON.parse(event.data):decodeLiveBinary(event.data,metadata);
+   if(message.v===2&&message.type==='metadata'){
+    if(!/^[0-9a-f]{16}$/.test(message.boot)||!Number.isInteger(message.revision)||message.revision<1||!Array.isArray(message.state?.axes)||message.state.axes.length!==2)throw new Error('live metadata');
+    if(live.ready&&(live.boot!==message.boot||live.state?.hudSelectionEpoch!==message.state.hudSelectionEpoch)){live.ready=false;releaseKeyboardAxes();}
+    metadata=message;return;
+   }
+  }catch(e){socket.close();return}
   if(message.v!==1||!message.boot)return;
   if(message.type==='state'){
-   background.setLimited(message.state?.networkMemoryLimited);live.last=Date.now();if(!live.stableAt)live.stableAt=live.last;
    if(live.boot&&message.boot!==live.boot){releaseKeyboardAxes();for(const p of live.pending.values()){clearTimeout(p.timer);p.reject(new Error('restarted'))}live.pending.clear();live.revision=0;live.state=null;}
-   if(live.ready&&message.boot===live.boot&&message.revision<=live.revision)return;
+   if(message.boot===live.boot&&message.revision<=live.revision)return;
+   live.format=typeof event.data==='string'?'json':'binary';background.setLimited(message.state?.networkMemoryLimited);live.last=Date.now();if(!live.stableAt)live.stableAt=live.last;
    const changed=live.state&&live.state.hudSelectionEpoch!==message.state.hudSelectionEpoch;
    live.boot=message.boot;live.revision=message.revision;live.state=message.state;live.ready=true;queueLiveRender();
    connection.state={...httpState,...message.state};updateConnection();

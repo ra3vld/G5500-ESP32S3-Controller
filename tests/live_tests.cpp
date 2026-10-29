@@ -5,8 +5,30 @@
 #include <iostream>
 #include <vector>
 using namespace forkrot;
-int main() {
+static void vector(const Controller &c,const Hud &h) {
+  char data[LIVE_STATE_CAPACITY],meta[LIVE_STATE_CAPACITY],binary[LIVE_BINARY_SIZE];
+  JsonWriter j(data,sizeof data),m(meta,sizeof meta);assert(writeLiveState(j,c,h,100));assert(writeLiveMetadata(m,c,h));
+  writeLiveBinary(binary,c,h,100,15,9,false);
+  std::string hex;for(unsigned char byte:binary){hex+="0123456789abcdef"[byte>>4];hex+="0123456789abcdef"[byte&15];}
+  std::cout<<"{\"state\":"<<j.data()<<",\"metadata\":{\"v\":2,\"type\":\"metadata\",\"boot\":\"000000000000000a\",\"revision\":9,\"state\":"<<m.data()<<"},\"binary\":\""<<hex<<"\"}\n";
+}
+int main(int argc,char **argv) {
   Controller c = forkrot::testController();Protocol p(c);Settings settings;Hud h(c,p);h.begin(1,10);c.feedback(20,30,true,true);
+  if(argc==2&&std::string(argv[1])=="--vectors") {
+    vector(c,h);
+    c.axes[0].current=-12.345f;c.axes[0].target=450;c.axes[0].direction=-1;c.axes[0].tracking=true;
+    c.axes[0].holdArmed=true;c.axes[0].motionPhase=MotionPhase::Holding;c.axes[1].motionError=MotionError::FeedbackStale;
+    c.axes[0].measuredVelocity=-.123f;c.axes[0].profileAcceleration=.555f;c.axes[0].speedOutputPercent=78.25f;
+    c.motionSettings[0].mode=RegulatorMode::Cascade;c.motionSettings[0].velocity=.001f;c.motionSettings[0].holdEnabled=true;
+    h.received=123;h.sent=456;h.sendErrno=-12;h.rejected=3;h.timeouts=4;h.busy=5;h.commandAttempts=6;h.commandSendFailures=7;
+    vector(c,h);
+    c.autoTune.phase=AutoTunePhase::Tracking;c.autoTune.axis=0;c.autoTune.id=3;c.autoTune.trackingPeriodMs=1500;
+    c.autoTune.trackingCandidate=2;c.autoTune.trackingCase=7;c.autoTune.validationError=-.437f;
+    c.autoTune.reason="quote \" and \\";vector(c,h);
+    h.config.role=DeviceRole::Hud;h.begin(1,10);auto *peer=h.add(2,{0x01020304,4534,false},"Remote \"AZ\"");
+    assert(peer&&h.select(2));peer->received=true;peer->live=true;peer->liveAt=h.now=100;vector(c,h);
+    return 0;
+  }
   LiveRequest request;
   const std::string prefix="v=1&cid=1&boot=000000000000000a&selection=0&path=";
   assert(request.parse(prefix+"%2Fapi%2Ftarget&az=123"));

@@ -25,6 +25,9 @@ class Core:
         result = json.loads(self.process.stdout.readline())
         self.state = result['state']
         self.state['livePort'] = getattr(self, 'live_port', 0)
+        self.state['liveBinaryVersion'] = 2
+        self.state['liveControlChannel'] = True
+        self.state['liveHeartbeat'] = True
         if self.state.get('hudSelectionEpoch', 0) != previous and hasattr(self, 'selection_changed'):
             self.selection_changed()
         if self.log and not command.startswith('step '):

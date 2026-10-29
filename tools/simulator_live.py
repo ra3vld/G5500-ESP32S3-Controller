@@ -14,13 +14,17 @@ class Live:
         self.last = None
         self.last_sent = 0.0
         self.sent_revision = {}
+        self.modes = {}
+        self.sent_metadata = {}
+        self.metadata_revision = 0
+        self.metadata_hash = None
 
     async def connection(self, reader, writer):
         try:
             if len(self.clients) >= 4:
                 return
             headers = await asyncio.wait_for(reader.readuntil(b'\r\n\r\n'), 1)
-            if len(headers) > 4096 or not headers.startswith(b'GET /api/live HTTP/1.1\r\n'):
+            if len(headers) > 4096 or not any(headers.startswith(b'GET '+path+b' HTTP/1.1\r\n') for path in (b'/api/live',b'/api/control')):
                 return
             fields = dict(line.split(':', 1) for line in headers.decode().split('\r\n')[1:] if ':' in line)
             fields = {k.lower(): v.strip() for k, v in fields.items()}
@@ -50,6 +54,18 @@ class Live:
                 mask = await reader.readexactly(4)
                 payload = await asyncio.wait_for(reader.readexactly(size), .5)
                 command = bytes(c ^ mask[i % 4] for i, c in enumerate(payload)).decode()
+                if command == 'v=2&telemetry=1':
+                    self.modes[writer] = 'binary'
+                    self.sent_revision.pop(writer, None)
+                    self.sent_metadata.pop(writer, None)
+                    continue
+                if command == 'v=1&control=1':
+                    self.modes[writer] = 'control'
+                    self.sent_revision.pop(writer, None)
+                    continue
+                if command == 'v=1&ping=1':
+                    await self.send(writer, b'', opcode=10)
+                    continue
                 form = urllib.parse.parse_qs(command)
                 cid = int(form.get('cid', ['0'])[0])
                 if cid <= last_id:
@@ -66,19 +82,21 @@ class Live:
         finally:
             self.clients.discard(writer)
             self.sent_revision.pop(writer, None)
+            self.sent_metadata.pop(writer, None)
+            self.modes.pop(writer, None)
             writer.close()
             try:
                 await writer.wait_closed()
             except ConnectionError:
                 pass
 
-    async def send(self, writer, message):
-        data = json.dumps(message, separators=(',', ':')).encode()
+    async def send(self, writer, message, opcode=1):
+        data = message if isinstance(message, (bytes, bytearray)) else json.dumps(message, separators=(',', ':')).encode()
         if writer.transport.get_write_buffer_size() > 8192:
             writer.close()
             return
-        writer.write(bytes([0x81, len(data)]) if len(data) < 126 else b'\x81\x7e'+struct.pack('!H', len(data)))
-        writer.write(data)
+        header = bytes([0x80 | opcode, len(data)]) if len(data) < 126 else bytes([0x80 | opcode, 126])+struct.pack('!H', len(data))
+        writer.write(header + data)
         await asyncio.wait_for(writer.drain(), .05)
 
     async def result(self, writer, cid, reply):
@@ -103,18 +121,33 @@ class Live:
             return
         state = json.loads(self.core.call('live_state')['body'])
         now = asyncio.get_running_loop().time()
-        changed = state != self.last
+        changed = not self.last or state['state'] != self.last['state']
         if not changed and now - self.last_sent < .25 and all(w in self.sent_revision for w in self.clients):
             return
         critical = not self.last or state['control'] != self.last['control']
-        if not critical and now - self.last_sent < .02:
+        if not critical and now - self.last_sent < .2 and all(w in self.sent_revision for w in self.clients):
             return
         self.last, self.last_sent = state, now
         self.revision += 1
-        message = dict(v=1, type='state', revision=self.revision, **state)
+        message = dict(v=1, type='state', revision=self.revision, boot=state['boot'], state=state['state'])
+        if self.metadata_hash != state['metadataHash']:
+            self.metadata_hash = state['metadataHash']
+            self.metadata_revision += 1
+        metadata = dict(v=2, type='metadata', revision=self.metadata_revision, boot=state['boot'], state=state['metadata'])
+        binary = bytearray.fromhex(state['binary'])
+        struct.pack_into('<II', binary, 4, self.revision, self.metadata_revision)
         for writer in tuple(self.clients):
             try:
-                await self.send(writer, message)
+                mode = self.modes.get(writer, 'legacy')
+                if mode == 'control':
+                    await self.send(writer, dict(v=1, type='control', boot=state['boot'], selection=state['state'].get('hudSelectionEpoch',0), memoryLimited=False))
+                elif mode == 'binary':
+                    if self.sent_metadata.get(writer) != self.metadata_revision:
+                        await self.send(writer, metadata)
+                        self.sent_metadata[writer] = self.metadata_revision
+                    await self.send(writer, binary, opcode=2)
+                else:
+                    await self.send(writer, message)
                 self.sent_revision[writer] = self.revision
             except (ConnectionError, TimeoutError):
                 writer.close()
