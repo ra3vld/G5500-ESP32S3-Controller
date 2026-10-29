@@ -1529,12 +1529,16 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
   if(method=="POST" && (path=="/api/mode" || path=="/api/execute" || path=="/api/preset" || path=="/api/preset/run" || path=="/api/settings" || path=="/api/motion/reset" || path=="/api/motion/autotune" || path=="/api/speed")) {
       auto oldModel = runtime_.controller.model;
       auto oldSettings = runtime_.loggerSettings;
-      const auto oldControlPeriod=runtime_.controller.controlPeriodMs();
+      const bool oldSpeedEnabled=runtime_.controller.speedEnabled;
       actions_.updatePosition();
       auto response = callApi(path,arguments);
       if (response.status == 200) {
-        // Apply the frequency-change STOP to GPIO before synchronous NVS writes.
-        if(oldControlPeriod!=runtime_.controller.controlPeriodMs())hardware_.applyOutputs();
+        // Model/PWM changes use a logical STOP; resolve it before any NVS work.
+        // Per-axis tuning/frequency changes already use stopNow(). Unrelated
+        // settings preserve motion and the other axis keeps its current output.
+        if(oldModel!=runtime_.controller.model || oldSpeedEnabled!=runtime_.controller.speedEnabled)
+          runtime_.controller.stopNow(-1,millis());
+        hardware_.applyOutputs();
         if (oldModel != runtime_.controller.model) {
           invalidateSetup(SetupStep::Model);
           // Old calibration was already saved on each calibration edit.

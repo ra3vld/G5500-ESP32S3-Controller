@@ -153,7 +153,7 @@ body.settings-view .nav{position:static}
 #settingsPanel .period-options{display:flex;flex-wrap:wrap;gap:8px}
 #settingsPanel .period-options .btn{flex:1 1 90px;white-space:nowrap;overflow-wrap:normal}
 #settingsPanel canvas{margin-top:16px}
-body.settings-view>.action-feedback{position:static;transform:none;left:auto;bottom:auto;flex:none;align-self:center;width:calc(100% - 24px);margin:0 12px max(12px,env(safe-area-inset-bottom));max-width:956px;box-shadow:none;font-size:14px}
+.action-feedback{max-height:50dvh;overflow-y:auto}
 @media(max-width:760px){#settingsPanel .range-editors,#settingsPanel .calibration-grid{grid-template-columns:minmax(0,1fr)}#networkStatus .kv{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.settings-details>summary{padding:10px 14px;gap:12px}.settings-details>summary h2{font-size:16px}.settings-content{padding:16px}#networkStatus .settings-content{padding:10px 14px}#settingsPanel .row,#settingsPanel .device-fields{grid-template-columns:minmax(0,1fr);gap:16px}#settingsPanel .settings-pane{padding:12px}#settingsPanel .form-actions>.btn{width:100%}#settingsPanel .form-actions{gap:10px}#settingsPanel .range-form .row{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel .profile-options{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel #azmc{grid-column:1/-1}#settingsPanel .device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
@@ -182,8 +182,6 @@ body.settings-view>.action-feedback{position:static;transform:none;left:auto;bot
 #setupPeerLink a{display:inline-flex;align-items:center;min-height:44px;max-width:100%;color:#acd3e8;line-height:1.5;overflow-wrap:anywhere;text-underline-offset:3px}
 #equipmentFrame{box-sizing:border-box;width:100%;border:0;display:block;margin-top:16px;min-height:400px;background:#101721}
 #equipmentFrame[hidden]{display:none}body[data-setup-step="4"] #hardwareSettings,body[data-setup-step="4"] #encoderSettings{display:none!important}
-.setup-notice{display:flex;align-items:center;flex-wrap:wrap;gap:12px;line-height:1.5}
-.setup-notice .btn{margin:0}
 body.setup-view #settingsPanel>.settings-section:not(.setup-visible){display:none!important}
 body.setup-view #settingsPanel>.settings-section>details>summary{display:none}
 body.setup-view .nav,body.setup-view #setupEntry,body.setup-view [data-setup-save],body.setup-view [data-setup-hide]{display:none!important}
@@ -504,7 +502,7 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <span id="firmwareIdentity">G5500 Fork</span>
 <div class="footer-links"><a href="https://github.com/ra3vld/G5500-ESP32S3-Controller" target="_blank" rel="noopener noreferrer">Репозиторий RA3VLD</a><a href="https://github.com/ua1cfm/G5500-ESP32S3-Controller" target="_blank" rel="noopener noreferrer">Оригинал UA1CFM</a></div>
 </footer></div>
-<div id="settingsFeedback" class="action-feedback" hidden><div role="status" aria-live="polite" aria-atomic="true"><strong id="settingsFeedbackTitle"></strong><span id="settingsFeedbackText"></span></div><button type="button" aria-label="Закрыть уведомление" onclick="this.parentElement.hidden=true">×</button></div>
+<div id="settingsFeedback" class="action-feedback" hidden><div role="status" aria-live="polite" aria-atomic="true"><strong id="settingsFeedbackTitle"></strong><span id="settingsFeedbackText"></span></div><button type="button" aria-label="Закрыть уведомление" onclick="dismissSettingsFeedback()">×</button></div>
 <script>
 /* BEGIN BOUNDED POLLING */
 // Embedded by generate_web_assets.py. Control/STOP requests bypass this pool.
@@ -559,11 +557,12 @@ const background=(()=>{
 function setText(node,value){const text=String(value??'');if(node.textContent!==text)node.textContent=text;}
 let settingsActionSequence=0,settingsFeedbackTimer;
 const settingsRequests=new Set();
+function dismissSettingsFeedback(){clearTimeout(settingsFeedbackTimer);document.getElementById('settingsFeedback').hidden=true;}
 function settingsFeedback(message,state='error'){
  const box=document.getElementById('settingsFeedback');box.dataset.state=state;box.hidden=document.getElementById('settingsPanel').hidden;
  setText(document.getElementById('settingsFeedbackTitle'),state==='pending'?'Выполняется…':state==='success'?'Готово':'Не выполнено');
  setText(document.getElementById('settingsFeedbackText'),message);
- clearTimeout(settingsFeedbackTimer);if(state==='success')settingsFeedbackTimer=setTimeout(()=>{box.hidden=true;},6000);
+ clearTimeout(settingsFeedbackTimer);if(state!=='pending')settingsFeedbackTimer=setTimeout(dismissSettingsFeedback,state==='success'?6000:10000);
 }
 function beginSettingsAction(message,key){
  if(settingsRequests.has(key))return null;
@@ -654,7 +653,7 @@ function selectTab(name,updateHash=true){
   button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;
  }
  if(updateHash&&location.hash!=='#'+name)location.hash=name;
- if(!settings)document.getElementById('settingsFeedback').hidden=true;
+ if(!settings)dismissSettingsFeedback();
  refreshCamera();
  if(opening)loadRssi();
  if(updateHash)(settings?document.querySelector('.wrap'):window).scrollTo({top:0,behavior:'instant'});
@@ -1845,12 +1844,10 @@ setupRoot.prepend(shell);
 const footer=document.createElement('section');footer.id='setupFooter';footer.className='card';footer.hidden=true;
 footer.innerHTML='<div class="setup-navigation"><button class="btn" id="setupBack">Назад</button><button class="btn good" id="setupNext">Далее</button><button class="btn" id="setupReset" title="Отменить несохранённые изменения этого шага">Вернуть к исходному</button><button class="btn" id="setupPause">Сохранить и продолжить позже</button></div>';
 setupRoot.append(footer);
-const notice=document.createElement('div');notice.id='setupNotice';notice.className='card setup-notice';notice.hidden=true;notice.innerHTML='<span>Настройка не завершена. Её можно продолжить позже.</span><a class="btn" href="/setup">Продолжить настройку</a>';
-document.querySelector('main').before(notice);
 const wizardLink=document.createElement('a');wizardLink.href='/setup';wizardLink.className='btn';wizardLink.textContent='Мастер настройки';const setupEntry=document.createElement('section');setupEntry.id='setupEntry';setupEntry.className='card';setupEntry.innerHTML='<p>Пошаговая настройка контроллера или HUD</p>';setupEntry.prepend(wizardLink);setupRoot.prepend(setupEntry);
 const nameForm=document.createElement('form');nameForm.id='setupNameForm';nameForm.className='settings-pane';nameForm.innerHTML='<div class="field-action"><div class="field"><label for="setupDeviceName">Имя устройства / имя в N1MM</label><input id="setupDeviceName" maxlength="31" required></div><button class="btn" type="submit">Сохранить имя</button></div>';
 document.querySelector('#hudPanel .settings-content').prepend(nameForm);
-nameForm.oninput=()=>{nameForm.dataset.dirty='1';renderSetup();};nameForm.onsubmit=async e=>{e.preventDefault();if(await forkPost('/api/settings',{rotorName:document.getElementById('setupDeviceName').value}))delete nameForm.dataset.dirty;renderSetup();};
+nameForm.oninput=()=>{nameForm.dataset.dirty='1';renderSetup();};nameForm.onsubmit=async e=>{e.preventDefault();const revision=setupDraftRevision(nameForm);if(await forkPost('/api/settings',{rotorName:document.getElementById('setupDeviceName').value}))clearSavedSetupDraft(nameForm,revision);renderSetup();};
 const ipForm=document.createElement('form');ipForm.id='networkIpForm';ipForm.className='settings-pane';
 ipForm.innerHTML='<h3>Подключение и IP-адреса</h3><div class="field"><label for="networkChoice">Основное подключение</label><select id="networkChoice" name="choice"><option value="0">Wi-Fi через роутер</option><option value="1">Точка доступа устройства</option><option value="2">Общая точка доступа</option><option value="3">Клиент общей точки доступа</option><option value="4">Ethernet</option></select></div><div id="ipInterfaces" class="row"></div><div class="form-actions"><button class="btn good">Сохранить сеть и перезапустить</button></div><p id="networkLinkStatus" role="status"></p><p id="networkIpMessage" role="status"></p>';
 for(const [prefix,title] of [['wifi','Wi-Fi STA'],['eth','Ethernet']]){
@@ -1862,7 +1859,7 @@ for(const [prefix,title] of [['wifi','Wi-Fi STA'],['eth','Ethernet']]){
 }
 document.querySelector('#networkSettings .settings-content').prepend(ipForm);
 ipForm.oninput=()=>ipForm.dataset.dirty='1';
-ipForm.onsubmit=async e=>{e.preventDefault();try{await setupRequest('/api/network',networkDraft());delete ipForm.dataset.dirty;document.getElementById('networkIpMessage').textContent='Сохранено. Перезапуск; после подключения продолжим с сохранённого шага.';}catch(e){document.getElementById('networkIpMessage').textContent=e.message;}};
+ipForm.onsubmit=async e=>{e.preventDefault();settingsFeedback('Сохранение настроек сети…','pending');try{await setupRequest('/api/network',networkDraft());delete ipForm.dataset.dirty;document.getElementById('networkIpMessage').textContent='Сохранено. Перезапуск; после подключения продолжим с сохранённого шага.';settingsFeedback(document.getElementById('networkIpMessage').textContent,'success');}catch(e){document.getElementById('networkIpMessage').textContent=e.message;settingsFeedback(e.message);}};
 const coastCard=document.createElement('section');coastCard.id='coastSettings';coastCard.className='settings-pane';coastCard.innerHTML='<h3>Выбег при фиксированной скорости</h3><p>После калибровки выберите свободный участок вдали от границ. Измерьте оба направления оси; затем сохраните угол раннего отключения.</p><form id="coastForm"><div class="row"><div class="field"><label for="coastAxis">Ось</label><select id="coastAxis"><option value="0">AZ</option><option value="1">EL</option></select></div><div class="field"><label for="coastTravel">Пробный ход, °</label><input id="coastTravel" type="number" min="5" max="90" value="10" required></div></div><div class="form-actions"><button class="btn" type="submit" value="0">Измерить −</button><button class="btn" type="submit" value="1">Измерить +</button><button class="btn" type="button" id="coastCancel">Остановить измерение</button><button class="btn good" type="button" id="coastApply">Применить результат</button></div></form><p id="coastResult" role="status"></p>';
 document.querySelector('#motionSettings .settings-content').append(coastCard);
 async function coastAction(action,direction){try{const result=await setupRequest('/api/motion/coast',{action,axis:document.getElementById('coastAxis').value,direction,travel:document.getElementById('coastTravel').value});renderCoast(result);}catch(e){document.getElementById('coastResult').textContent=e.message;}}
@@ -1871,13 +1868,31 @@ function renderCoast(result){const a=Number(document.getElementById('coastAxis')
 const testCard=document.createElement('section');testCard.id='setupTests';testCard.className='card settings-section';testCard.hidden=true;
 testCard.innerHTML='<div class="settings-content"><div id="setupReview"><h3>Выбранная конфигурация</h3><ul id="setupReviewList"></ul><p id="setupReviewProblems" role="status"></p></div><div id="setupMovementCheck"><h3>Проверка движения</h3><p>Удерживайте направление для короткой проверки. Отпускание и STOP прекращают управление. Во время калибровки ориентируйтесь на физическое положение антенны.</p><div class="setup-test-buttons"><button class="btn" type="button" data-setup-axis="0" data-direction="-1">AZ −</button><button class="btn" type="button" data-setup-axis="0" data-direction="1">AZ +</button><button class="btn el-setting" type="button" data-setup-axis="1" data-direction="-1">EL −</button><button class="btn el-setting" type="button" data-setup-axis="1" data-direction="1">EL +</button><button class="btn stop" id="setupStop" type="button">STOP</button></div><form id="setupTargetForm"><div class="field-action"><div class="field"><label for="setupTarget">Проверочный угол AZ, °</label><input id="setupTarget" type="number" step="0.1" required></div><button class="btn" type="submit">Проверить наведение</button></div></form><p id="setupTestResult" role="status"></p></div></div>';
 setupRoot.insertBefore(testCard,footer);
-const testStream={client:keyboardToken(),session:keyboardToken(),gesture:0,serial:0,timer:null,pending:false,axis:0,direction:0};
-async function testHold(release=false){const k=testStream;if(k.pending&&!release)return;k.pending=true;try{const body={d:release?'S':'H',client:k.client,session:k.session,gesture:k.gesture,serial:++k.serial,mask:1<<k.axis,az:!release&&k.axis===0?k.direction:0,el:!release&&k.axis===1?k.direction:0,selection:window._forkState?.hudSelectionEpoch,rangeRevision:window._forkState?.azRangeRevision};await setupRequest('/api/move',body);document.getElementById('setupTestResult').textContent=release?'Управление отпущено':'Удержание направления';}catch(e){clearInterval(k.timer);k.timer=null;document.getElementById('setupTestResult').textContent=e.message;}finally{k.pending=false;}}
-function stopTest(){if(testStream.timer){clearInterval(testStream.timer);testStream.timer=null;testHold(true);}}
+const testStream={client:keyboardToken(),session:keyboardToken(),gesture:0,timer:null,active:null};
+async function testHold(release=false,g=testStream.active){
+ const k=testStream;if(!g||!release&&(k.active!==g||g.pending))return;g.pending=true;
+ try{
+  const body={d:release?'S':'H',client:k.client,session:k.session,gesture:g.gesture,serial:++g.serial,mask:1<<g.axis,az:!release&&g.axis===0?g.direction:0,el:!release&&g.axis===1?g.direction:0,selection:g.selection,rangeRevision:g.range};
+  await setupRequest('/api/move',body);
+  if(k.active===g||release&&k.gesture===g.gesture&&!k.active)document.getElementById('setupTestResult').textContent=release?'Управление отпущено':'Удержание направления';
+ }catch(e){
+  // A delayed response belongs to its gesture, including after a new press.
+  if(k.active===g){clearInterval(k.timer);k.timer=null;k.active=null;}
+  if(k.gesture===g.gesture)document.getElementById('setupTestResult').textContent=e.message;
+ }finally{g.pending=false;}
+}
+function stopTest(){const k=testStream,g=k.active;if(!g)return;clearInterval(k.timer);k.timer=null;k.active=null;testHold(true,g);}
+function startTest(button,owner){
+ const k=testStream;if(k.active)return false;
+ k.gesture=(k.gesture+1)>>>0||1;
+ const j=window._forkState,g={gesture:k.gesture,serial:0,pending:false,button,owner,axis:Number(button.dataset.setupAxis),direction:Number(button.dataset.direction),selection:j?.hudSelectionEpoch,range:j?.azRangeRevision};
+ k.active=g;k.timer=setInterval(()=>testHold(false,g),250);testHold(false,g);return true;
+}
 for(const button of testCard.querySelectorAll('[data-setup-axis]')){
- button.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();stopTest();testStream.axis=Number(button.dataset.setupAxis);testStream.direction=Number(button.dataset.direction);++testStream.gesture;testStream.serial=0;button.setPointerCapture(e.pointerId);testHold();testStream.timer=setInterval(()=>testHold(),250);};
- for(const event of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(event,stopTest);
- button.onkeydown=e=>{if((e.code==='Space'||e.code==='Enter')&&!e.repeat){e.preventDefault();testStream.axis=Number(button.dataset.setupAxis);testStream.direction=Number(button.dataset.direction);++testStream.gesture;testStream.serial=0;testHold();testStream.timer=setInterval(()=>testHold(),250);}};button.onkeyup=stopTest;button.onblur=stopTest;
+ button.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();if(startTest(button,'pointer:'+e.pointerId))button.setPointerCapture(e.pointerId);};
+ for(const event of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(event,e=>{if(testStream.active?.button===button&&testStream.active.owner==='pointer:'+e.pointerId)stopTest();});
+ button.onkeydown=e=>{if(e.code==='Space'||e.code==='Enter'){e.preventDefault();if(!e.repeat)startTest(button,'key:'+e.code);}};
+ button.onkeyup=e=>{if(testStream.active?.button===button&&testStream.active.owner==='key:'+e.code)stopTest();};button.onblur=()=>{if(testStream.active?.button===button)stopTest();};
 }
 document.getElementById('setupStop').onclick=()=>{stopTest();setupRequest('/api/move',{d:'S'}).catch(e=>setupMessage(e.message));};
 document.getElementById('setupTargetForm').onsubmit=async e=>{e.preventDefault();try{await setupRequest('/api/target',{az:document.getElementById('setupTarget').value,selection:window._forkState?.hudSelectionEpoch});document.getElementById('setupTestResult').textContent='Проверочная цель принята';}catch(e){document.getElementById('setupTestResult').textContent=e.message;}};
@@ -1943,7 +1958,7 @@ function renderSetupSummary(state,j){
 }
 function renderSetup(){
  const state=wizard.state,j=window._forkState||{};if(!state)return;renderSetupSummary(state,j);
- notice.hidden=!state.required||wizard.active;shell.hidden=footer.hidden=!wizard.active;document.body.classList.toggle('setup-view',wizard.active);window.setupCommissioning=wizard.active;
+ shell.hidden=footer.hidden=!wizard.active;document.body.classList.toggle('setup-view',wizard.active);window.setupCommissioning=wizard.active;
  hudUartFields();renderMqttSettings();
  for(const card of setupRoot.querySelectorAll(':scope > .settings-section')){card.classList.remove('setup-visible');}
  document.getElementById('peersSettings').classList.toggle('hide',j.deviceRole!=='hud');document.getElementById('rotorSettings').classList.toggle('hide',j.deviceRole==='hud');
@@ -1967,7 +1982,9 @@ function renderSetup(){
 function setupForms(){const step=wizard.state?.step;return (step===0?['networkIpForm']:step===1?['setupNameForm','hudConfig']:step===2?['forkSettings','setupDriveForm']:step===3||step===4||step===7?['forkSettings']:step===5?['azRangeForm','elRangeForm']:step===6?['forkSettings','azMotionForm','elMotionForm','controlFrequencyForm']:step===9?['presetEditor',...(featureAvailable('mqtt')?['mqttForm']:[])]:[]).map(id=>document.getElementById(id)).filter(Boolean);}
 function setupUnsaved(){return setupForms().some(f=>!!f.dataset.dirty)||(wizard.state?.step===0&&['ssid','pass','appass'].some(id=>!!document.getElementById(id).dataset.dirty))||([3,4].includes(wizard.state?.step)&&wizard.hardwareDirty);}
 for(const id of ['azRangeForm','elRangeForm'])document.getElementById(id).addEventListener('input',e=>{e.currentTarget.dataset.dirty='1';});
-setupRoot.addEventListener('input',()=>{if(wizard.active){wizard.error='';renderSetup();}});
+function setupDraftRevision(el){return Number(el.dataset.editRevision||0);}
+function clearSavedSetupDraft(el,revision){if(setupDraftRevision(el)!==revision)return;delete el.dataset.dirty;}
+setupRoot.addEventListener('input',event=>{for(const el of [event.target,event.target.form])if(el)el.dataset.editRevision=String(setupDraftRevision(el)+1);if(wizard.active){wizard.error='';renderSetup();}});
 function hardwareCall(action){return new Promise((resolve,reject)=>{const id=++wizard.hardwareRpc,timer=setTimeout(()=>{wizard.hardwarePending.delete(id);reject(new Error('Нет ответа от страницы оборудования. Проверьте связь.'));},12000);wizard.hardwarePending.set(id,{resolve,reject,timer});document.getElementById('equipmentFrame').contentWindow.postMessage({type:'hardwareAction',action,id,needsConfirmation:!wizard.state.equipment,setupToken:wizard.state.token},location.origin);});}
 async function saveSetupCurrent(){
  const step=wizard.state.step;
@@ -1975,13 +1992,13 @@ async function saveSetupCurrent(){
  if(step===0){for(const id of ['ssid','pass','appass']){const el=document.getElementById(id);if(el.dataset.dirty&&!el.reportValidity())throw new Error('Проверьте параметры сети.');}}
  if([3,4].includes(step))await hardwareCall('validate');
  await setupRequest('/api/setup',{action:'begin_save'});
- const save=async(f,path,body)=>{await setupRequest(path,body);if(f)delete f.dataset.dirty;};
+ const save=async(f,path,body)=>{const revision=f&&setupDraftRevision(f);await setupRequest(path,body);if(f)clearSavedSetupDraft(f,revision);};
  if(step===0){
   if(ipForm.dataset.dirty)await save(ipForm,'/api/network',networkDraft());
   for(const [path,ids] of [['/api/wifi',['ssid','pass']],['/api/ap',['appass']]])if(ids.some(id=>document.getElementById(id).dataset.dirty)){
-   const body=path==='/api/wifi'?{ssid:ssid.value,pass:pass.value}:{pass:appass.value};
+   const revisions=ids.map(id=>setupDraftRevision(document.getElementById(id))),body=path==='/api/wifi'?{ssid:ssid.value,pass:pass.value}:{pass:appass.value};
    const response=await fetch(path,{method:'POST',body:new URLSearchParams(body)});if(!response.ok)throw new Error(await response.text());
-   for(const id of ids)delete document.getElementById(id).dataset.dirty;
+   ids.forEach((id,i)=>clearSavedSetupDraft(document.getElementById(id),revisions[i]));
   }
  }
  if(step===1){
@@ -1994,7 +2011,7 @@ async function saveSetupCurrent(){
   if(step===2){for(const key of Object.keys(body))if(key!=='model'&&(key!=='speedEnabled'||window._forkState?.build?.drive!=='YAESU'||sharedForm.elements.model.value==='G5500'))delete body[key];}
   if(Object.keys(body).length)await save(sharedForm,'/api/settings',body);else delete sharedForm.dataset.dirty;
  }
- if(step===2){wizard.state=await setupRequest('/api/setup');wizard.state=await setupRequest('/api/setup',{action:'drive',generation:wizard.state.generation,driveInterface:driveForm.elements.driveInterface.value,simulation:driveForm.elements.simulation.value});delete driveForm.dataset.dirty;}
+ if(step===2){wizard.state=await setupRequest('/api/setup');const revision=setupDraftRevision(driveForm);wizard.state=await setupRequest('/api/setup',{action:'drive',generation:wizard.state.generation,driveInterface:driveForm.elements.driveInterface.value,simulation:driveForm.elements.simulation.value});clearSavedSetupDraft(driveForm,revision);}
  if([3,4].includes(step))await hardwareCall('save');
  if(step===5)for(const axis of ['az','el']){const f=document.getElementById(axis+'RangeForm');if(f.dataset.dirty)await save(f,'/api/'+axis+'range',{profile:'custom',start:f.elements.start.value,span:f.elements.span.value});}
  if(step===6){
@@ -2004,6 +2021,7 @@ async function saveSetupCurrent(){
  }
  if(step===9){const f=document.getElementById('presetEditor');if(f.dataset.dirty)await save(f,'/api/preset',Object.fromEntries(new FormData(f)));if(featureAvailable('mqtt')&&document.getElementById('mqttForm').dataset.dirty)await storeMqtt();}
  wizard.state=await setupRequest('/api/setup',{action:'end_save'});
+ if(setupUnsaved())throw new Error('Во время сохранения появились новые изменения. Сохраните их перед переходом дальше.');
 }
 async function resetSetupDraft(){if(wizard.busy)return;wizard.busy=true;stopTest();try{
  for(const f of setupForms())delete f.dataset.dirty;
@@ -2020,7 +2038,7 @@ async function setupAction(action){if(wizard.busy||wizard.waiting)return;wizard.
  if(wizard.state.restartRequired&&action!=='pause'&&action!=='complete'){wizard.state=await setupRequest('/api/setup',{action:'apply'});wizard.waiting=true;wizard.restartToken=wizard.state.token;return;}
  const s=await setupRequest('/api/setup',{action,generation:wizard.state?.generation});wizard.state=s;
  if(action==='pause'||!s.required){wizard.active=false;location.href='/#settings';return;}
- }catch(e){wizard.error=e.message;try{await setupRequest('/api/setup',{action:'end_save'});}catch(_){} }
+ }catch(e){wizard.error=e.message;settingsFeedback(e.message);try{await setupRequest('/api/setup',{action:'end_save'});}catch(_){} }
  finally{wizard.busy=false;renderSetup();}}
 document.getElementById('setupReset').onclick=resetSetupDraft;document.getElementById('setupBack').onclick=()=>setupAction('back');document.getElementById('setupNext').onclick=()=>setupAction(wizard.state.step===9?'complete':'advance');document.getElementById('setupPause').onclick=()=>setupAction('pause');
 // Enter in an ordinary settings form uses the same save-and-continue path.
@@ -2106,9 +2124,9 @@ async function storeMqtt(){
 async function saveMqtt(event){
  event.preventDefault();if(!mqttLoaded)return;
  const button=document.getElementById('mqttSave'),message=document.getElementById('mqttMessage');button.disabled=true;
- message.textContent='Сохраняем MQTT…';
- try{const j=await storeMqtt();message.textContent=j.restart?'MQTT сохранён. Устройство перезапускается.':'Настройки MQTT сохранены.';
- }catch(e){message.textContent='MQTT не сохранён: '+e.message;}finally{button.disabled=false;}
+ message.textContent='Сохраняем MQTT…';settingsFeedback(message.textContent,'pending');
+ try{const j=await storeMqtt();message.textContent=j.restart?'MQTT сохранён. Устройство перезапускается.':'Настройки MQTT сохранены.';settingsFeedback(message.textContent,'success');
+ }catch(e){message.textContent='MQTT не сохранён: '+e.message;settingsFeedback(message.textContent);}finally{button.disabled=false;}
 }
 document.querySelector('#networkSettings > details').addEventListener('toggle',renderMqttSettings);
 </script></body></html>

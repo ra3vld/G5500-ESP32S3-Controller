@@ -4,7 +4,36 @@
 #include <iostream>
 #include <limits>
 using namespace forkrot;
+static void settingsStorageFailures() {
+  Preferences::database.clear();Storage storage;Runtime r;
+  r.controller.hardware.simulation=false;r.controller.hardware.drive=DRIVE_YAESU;
+  r.loggerSettings.reportHost="192.168.1.2";
+  assert(storage.saveForkSettings(r));
+  for(const char *key:{"model","mode","speedon","speed","startspd","approachspd","accelms","decelms","slowdeg","azcoast","elcoast","azdecelf","eldecelf","name","nport","pport","rport","cmdport","rhost","nmanual","pmanual","gmanual","rmanual","azmech"}) {
+    Preferences::failedKey=key;assert(!storage.saveForkSettings(r));Preferences::failedKey.clear();
+  }
+  Preferences::corruptStringKey="name";assert(!storage.saveForkSettings(r));Preferences::corruptStringKey.clear();
+  assert(storage.saveForkSettings(r));
+  // Empty string writes must create a key, rather than match a default value.
+  r.loggerSettings.reportHost.clear();Preferences::database["forkcfg"].erase("rhost");Preferences::failedStringKey="rhost";
+  assert(!storage.saveForkSettings(r));Preferences::failedStringKey.clear();assert(storage.saveForkSettings(r));
+  r.controller.hardware.drive=DRIVE_BTS7960;
+  assert(storage.saveForkSettings(r));
+  for(const char *key:{"azwork","elwork","azstart","elstart","azapproach","elapproach","azaccel","elaccel","azdecel","eldecel","azslow","elslow","azcoast","elcoast","azdecelf","eldecelf","controlhz","r200","r201"}) {
+    Preferences::failedKey=key;assert(!storage.saveForkSettings(r));Preferences::failedKey.clear();
+  }
+  for(const char *space:{"forkcfg","forkpwm","forkmotion"}) {
+    Preferences::failedBeginNamespace=space;assert(!storage.saveForkSettings(r));Preferences::failedBeginNamespace.clear();
+  }
+  r.hud.config.role=DeviceRole::Hud;r.loggerSettings.reportHost="192.168.1.3";assert(storage.saveForkSettings(r));
+  for(const char *key:{"hudname","nport","nmanual","rhost"}) {
+    Preferences::failedKey=key;assert(!storage.saveForkSettings(r));Preferences::failedKey.clear();
+  }
+  Preferences::failedBeginNamespace="forkcfg";assert(!storage.saveForkSettings(r));Preferences::failedBeginNamespace.clear();
+  assert(storage.saveForkSettings(r));Preferences::database.clear();
+}
 int main(){
+  settingsStorageFailures();
   {
     Preferences::database.clear();Storage storage;Runtime r;
     auto &c=r.controller;c.hardware.simulation=false;c.hardware.drive=DRIVE_BTS7960;c.speedEnabled=true;

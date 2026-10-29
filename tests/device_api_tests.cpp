@@ -1,7 +1,46 @@
 #include "device_service_fixture.hpp"
+static void useLocalController(Fixture &f) {
+  auto &r=f.runtime;r.hud.config.role=DeviceRole::Controller;r.controller.remote=nullptr;
+  r.controller.driveFault=false;r.controller.fault.clear();r.controller.feedback(90,45,true,true);
+}
+static void settingsOutputSafetyTests() {
+  for(bool wire:{false,true})for(const char *fields:{"azCoastDegrees=3","azMotionVelocityKp=1.23","model=G800SA","speedEnabled=1","controlHz=100","rotorName=Running"}) {
+    Fixture f;auto &c=f.runtime.controller;auto config=c.hardware;
+    config.simulation=false;config.drive=DRIVE_YAESU;config.pins=PinMap{};
+    if(!config.hasDirections(0)||!config.hasDirections(1))continue;
+    c.configureHardware(config);c.speedEnabled=false;c.feedback(90,45,true,true);
+    f.hardware.beginDirections();assert(!c.driveFault);
+    assert(f.call("POST","/api/move","d=R",wire).status==200);
+    assert(f.call("POST","/api/move","d=U",wire).status==200);
+    const int az=c.hardware.pins.azPositive,el=c.hardware.pins.elPositive;
+    assert(fakeHardware.levels[az]==HIGH&&fakeHardware.levels[el]==HIGH);
+    const auto epoch=c.stopEpoch;
+    const bool nameOnly=std::string(fields).find("rotorName=")==0;
+    const bool axisOnly=std::string(fields).find("az")==0;
+    unsigned writes=0;
+    Preferences::beforeWrite=[&](const char *) {
+      ++writes;
+      assert(fakeHardware.levels[az]==(nameOnly?HIGH:LOW));
+      assert(fakeHardware.levels[el]==(nameOnly||axisOnly?HIGH:LOW));
+    };
+    const auto response=f.call("POST","/api/settings",fields,wire);
+    Preferences::beforeWrite={};assert(response.status==200&&writes);
+    assert(nameOnly?c.stopEpoch==epoch:c.stopEpoch!=epoch);
+  }
+  for(bool wire:{false,true}) {
+    Fixture f;
+    assert(f.call("POST","/api/settings","rotorName=Before",wire).status==200);
+    Preferences::failedStringKey=f.runtime.hud.isHud()?"hudname":"name";
+    const auto response=f.call("POST","/api/settings","rotorName=After",wire);
+    Preferences::failedStringKey.clear();
+    assert(response.status==503&&response.body.find("motion_storage_failed")!=std::string::npos);
+    Runtime reboot;reboot.hud.config.role=f.runtime.hud.config.role;
+    f.storage.loadForkSettings(reboot);assert(reboot.protocol.rotorName=="Before");
+  }
+}
 static void liveTrialConfirmationTests() {
   for(bool wire:{false,true}) {
-    Fixture f;auto &r=f.runtime;auto candidate=r.controller.hardware;
+    Fixture f;useLocalController(f);auto &r=f.runtime;auto candidate=r.controller.hardware;
     candidate.buttonLow=!candidate.buttonLow;
     assert(f.storage.stageHardware(r,candidate));f.storage.loadHardware(r);f.ready();
     assert(r.hardwareTrial&&!r.controller.configurationLocked&&!r.recovery);
@@ -91,7 +130,7 @@ static void hudBackgroundTests() {
 static void mqttApiTests() {
 #if MQTT_SUPPORT
   {
-    Fixture f;auto &r=f.runtime;
+    Fixture f;useLocalController(f);auto &r=f.runtime;
     WiFi.connectionStatus=WL_CONNECTED;r.setup.required=true;r.setup.equipment=true;r.setup.step=SetupStep::Review;r.controller.setupRequired=true;
     assert(f.call("POST","/api/setup","action=resume",false).status==200);
     const auto token="&setupToken="+std::to_string(r.setupLease);
@@ -150,6 +189,7 @@ static void mqttApiTests() {
 #endif
 }
 int main(int argc,char **argv) {
+  settingsOutputSafetyTests();
   liveTrialConfirmationTests();
   hudBackgroundTests();
   mqttApiTests();

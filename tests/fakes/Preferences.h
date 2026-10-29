@@ -13,11 +13,13 @@ public:
   inline static std::vector<std::pair<std::string, bool>> opened;
   inline static bool beginSucceeds = true, readOnlyBeginSucceeds = true;
   inline static std::string failedStringKey, corruptStringKey, failedBytesKey;
+  inline static std::string failedKey, failedBeginNamespace;
   inline static std::function<void(const char *)> beforeBytesWrite;
+  inline static std::function<void(const char *)> beforeWrite;
 
   bool begin(const char *name, bool readOnly = false) {
     if (active_) { throw std::runtime_error("nested NVS begin"); }
-    if (!beginSucceeds || (readOnly && !readOnlyBeginSucceeds)) { return false; }
+    if (!beginSucceeds || failedBeginNamespace==name || (readOnly && !readOnlyBeginSucceeds)) { return false; }
     name_ = name;
     active_ = true;
     readOnly_ = readOnly;
@@ -53,26 +55,24 @@ public:
     if (count) { std::memcpy(out, bytes.data(), count); }
     return count;
   }
-  void putUChar(const char *key, uint8_t value) { put(key, value); }
-  void putUShort(const char *key, uint16_t value) { put(key, value); }
-  void putUInt(const char *key, uint32_t value) { put(key, value); }
-  void putInt(const char *key, int32_t value) { put(key, value); }
-  void putULong64(const char *key, uint64_t value) { put(key, value); }
-  void putBool(const char *key, bool value) { put(key, value); }
-  void putFloat(const char *key, float value) { put(key, value); }
+  size_t putUChar(const char *key, uint8_t value) { return put(key, value)?sizeof value:0; }
+  size_t putUShort(const char *key, uint16_t value) { return put(key, value)?sizeof value:0; }
+  size_t putUInt(const char *key, uint32_t value) { return put(key, value)?sizeof value:0; }
+  size_t putInt(const char *key, int32_t value) { return put(key, value)?sizeof value:0; }
+  size_t putULong64(const char *key, uint64_t value) { return put(key, value)?sizeof value:0; }
+  size_t putBool(const char *key, bool value) { return put(key, value)?sizeof value:0; }
+  size_t putFloat(const char *key, float value) { return put(key, value)?sizeof value:0; }
   size_t putString(const char *key, String value) {
     writable();
     if (failedStringKey == key) { return 0; }
     const auto length = value.length();
-    put(key, corruptStringKey == key ? String("verification mismatch") : std::move(value));
-    return length;
+    return put(key, corruptStringKey == key ? String("verification mismatch") : std::move(value))?length:0;
   }
   size_t putBytes(const char *key, const void *value, size_t length) {
     if(beforeBytesWrite) beforeBytesWrite(key);
     if(failedBytesKey==key)return 0;
     const auto bytes = static_cast<const uint8_t *>(value);
-    put(key, Bytes(bytes, bytes + length));
-    return length;
+    return put(key, Bytes(bytes, bytes + length))?length:0;
   }
 private:
   template <typename T> T get(const char *key, T fallback) {
@@ -87,9 +87,12 @@ private:
   void writable() {
     if (!active_ || readOnly_) { throw std::runtime_error("write to closed/read-only NVS"); }
   }
-  template <typename T> void put(const char *key, T value) {
+  template <typename T> bool put(const char *key, T value) {
     writable();
+    if(beforeWrite)beforeWrite(key);
+    if(failedKey==key)return false;
     database[name_].insert_or_assign(key, Value(std::move(value)));
+    return true;
   }
   std::string name_;
   bool active_ = false, readOnly_ = false;

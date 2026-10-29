@@ -53,7 +53,7 @@ const request=async(route,body)=>{const r=await fetch(base+route,{method:'POST',
      for(const text of texts)if(overlap(rect,text.rect))errors.push('button/text overlap: '+button.textContent.trim()+' / '+text.text);
     }
     const feedback=document.getElementById('settingsFeedback');
-    if(!feedback.hidden&&wrap.getBoundingClientRect().bottom>feedback.getBoundingClientRect().top+1)errors.push('feedback overlays page');
+    if(!feedback.hidden){const r=feedback.getBoundingClientRect();if(getComputedStyle(feedback).position!=='fixed'||r.top<0||r.bottom>innerHeight||r.left<0||r.right>innerWidth)errors.push('feedback outside viewport');}
     return errors;
    });assert.deepEqual(issues,[]);
   };
@@ -86,6 +86,6 @@ const request=async(route,body)=>{const r=await fetch(base+route,{method:'POST',
   await retina.goto(base+'/#settings');await retina.locator('#signalSettings summary').click();
   await retina.waitForFunction(()=>{const c=document.getElementById('rchart');return devicePixelRatio===2&&c.clientWidth>0&&c.width===c.clientWidth*2;});
   await retina.locator('#rchart').screenshot({path:path.join(out,'signal-retina.png')});await retina.close();
-  console.log('PASS: ordered controller/HUD settings sections, keyboard toggles, preserved forms, no button/text overlap, no clipped controls, reserved feedback area, readable responsive RSSI chart at DPR 1/2, 320/390/600/760/1100/1440px and G800 EL hiding');
+  console.log('PASS: ordered controller/HUD settings sections, keyboard toggles, preserved forms, no button/text overlap, no clipped controls, floating feedback, readable responsive RSSI chart at DPR 1/2, 320/390/600/760/1100/1440px and G800 EL hiding');
  }finally{await browser.close();await request('/api/settings',{model:'G5500'});await request('/api/elrange',{profile:'standard'});}
 })().catch(e=>{console.error(e);process.exit(1)});

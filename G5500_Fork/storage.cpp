@@ -841,71 +841,94 @@ void Storage::loadMotionSettings(Runtime &runtime) {
 
 bool Storage::saveForkSettings(const Runtime &runtime) {
   const auto &savedAz=reportedSpeed(runtime.controller,0);
-  prefs_.begin("forkcfg", false);
+  bool valid=true;
+  auto putUChar=[&](const char *key,uint8_t value) {
+    valid=(prefs_.putUChar(key,value)==sizeof value && prefs_.getUChar(key)==value) && valid;
+  };
+  auto putUShort=[&](const char *key,uint16_t value) {
+    valid=(prefs_.putUShort(key,value)==sizeof value && prefs_.getUShort(key)==value) && valid;
+  };
+  auto putUInt=[&](const char *key,uint32_t value) {
+    valid=(prefs_.putUInt(key,value)==sizeof value && prefs_.getUInt(key)==value) && valid;
+  };
+  auto putBool=[&](const char *key,bool value) {
+    valid=(prefs_.putBool(key,value)==sizeof value && prefs_.getBool(key)==value) && valid;
+  };
+  auto putFloat=[&](const char *key,float value) {
+    valid=(prefs_.putFloat(key,value)==sizeof value && prefs_.getFloat(key)==value) && valid;
+  };
+  auto putString=[&](const char *key,const char *value) {
+    const size_t size=std::strlen(value);
+    // Empty strings return zero on success; existence and readback distinguish it from failure.
+    valid=(prefs_.putString(key,value)==size && prefs_.isKey(key) && prefs_.getString(key)==value) && valid;
+  };
+  if(!prefs_.begin("forkcfg", false)){prefs_.end();return false;}
   if (!runtime.hud.isHud()) {
-    prefs_.putUChar("model", uint8_t(runtime.controller.model));
-    prefs_.putUChar("mode", runtime.controller.mode == forkrot::Mode::Auto ? 1 : 0);
+    putUChar("model", uint8_t(runtime.controller.model));
+    putUChar("mode", runtime.controller.mode == forkrot::Mode::Auto ? 1 : 0);
   if (runtime.controller.hardware.drive == DRIVE_YAESU) {
-  prefs_.putBool("speedon", runtime.controller.speedEnabled);
-  prefs_.putUInt("speed", savedAz.speedPercent);
-  prefs_.putUInt("startspd", savedAz.startSpeedPercent);
-  prefs_.putUInt("approachspd", savedAz.approachSpeedPercent);
-  prefs_.putUInt("accelms", savedAz.accelerationMs);
-  prefs_.putUInt("decelms", savedAz.decelerationMs);
-  prefs_.putUInt("slowdeg", savedAz.slowdownDegrees);
+  putBool("speedon", runtime.controller.speedEnabled);
+  putUInt("speed", savedAz.speedPercent);
+  putUInt("startspd", savedAz.startSpeedPercent);
+  putUInt("approachspd", savedAz.approachSpeedPercent);
+  putUInt("accelms", savedAz.accelerationMs);
+  putUInt("decelms", savedAz.decelerationMs);
+  putUInt("slowdeg", savedAz.slowdownDegrees);
   for (unsigned i = 0; i < 2; ++i) {
     const auto &speed = reportedSpeed(runtime.controller,i);
     const String prefix = i ? "el" : "az";
-    prefs_.putFloat((prefix + "coast").c_str(), speed.coastDegrees);
-    prefs_.putFloat((prefix + "decelf").c_str(), speed.decelerationFactor);
+    putFloat((prefix + "coast").c_str(), speed.coastDegrees);
+    putFloat((prefix + "decelf").c_str(), speed.decelerationFactor);
   }
   }
-  prefs_.putString("name", runtime.protocol.rotorName.c_str());
+  putString("name", runtime.protocol.rotorName.c_str());
   } else
-    prefs_.putString("hudname", runtime.protocol.rotorName.c_str());
-  prefs_.putUShort("nport", runtime.loggerSettings.n1mmPort);
-  prefs_.putUShort("pport", runtime.loggerSettings.pstPort);
-  prefs_.putUShort("rport", runtime.loggerSettings.reportPort);
-  prefs_.putUShort("cmdport", runtime.loggerSettings.commandPort);
-  prefs_.putString("rhost", runtime.loggerSettings.reportHost.c_str());
-  prefs_.putBool("nmanual", runtime.protocol.manualFollow.n1mm);
-  prefs_.putBool("pmanual", runtime.protocol.manualFollow.pst);
-  prefs_.putBool("gmanual", runtime.protocol.manualFollow.gs232);
-  prefs_.putBool("rmanual", runtime.protocol.manualFollow.rotctld);
-  prefs_.putBool("azmech", runtime.protocol.externalAzMode == forkrot::ExternalAzMode::Mechanical);
+    putString("hudname", runtime.protocol.rotorName.c_str());
+  putUShort("nport", runtime.loggerSettings.n1mmPort);
+  putUShort("pport", runtime.loggerSettings.pstPort);
+  putUShort("rport", runtime.loggerSettings.reportPort);
+  putUShort("cmdport", runtime.loggerSettings.commandPort);
+  putString("rhost", runtime.loggerSettings.reportHost.c_str());
+  putBool("nmanual", runtime.protocol.manualFollow.n1mm);
+  putBool("pmanual", runtime.protocol.manualFollow.pst);
+  putBool("gmanual", runtime.protocol.manualFollow.gs232);
+  putBool("rmanual", runtime.protocol.manualFollow.rotctld);
+  putBool("azmech", runtime.protocol.externalAzMode == forkrot::ExternalAzMode::Mechanical);
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
-  prefs_.putBool("encinv", runtime.loggerSettings.encoderInverted);
+  putBool("encinv", runtime.loggerSettings.encoderInverted);
 #endif
   prefs_.end();
+  if(!valid)return false;
   if (runtime.controller.hardware.drive != DRIVE_YAESU || runtime.controller.hardware.simulation) {
   if (runtime.hud.isHud())
     return true;
-  prefs_.begin("forkpwm", false);
+  if(!prefs_.begin("forkpwm", false)){prefs_.end();return false;}
   for (unsigned i=0; i<2; ++i) {
     const auto &speed = reportedSpeed(runtime.controller,i);
     const String prefix = i ? "el" : "az";
-    prefs_.putUInt((prefix + "work").c_str(), speed.speedPercent);
-    prefs_.putUInt((prefix + "start").c_str(), speed.startSpeedPercent);
-    prefs_.putUInt((prefix + "approach").c_str(), speed.approachSpeedPercent);
-    prefs_.putUInt((prefix + "accel").c_str(), speed.accelerationMs);
-    prefs_.putUInt((prefix + "decel").c_str(), speed.decelerationMs);
-    prefs_.putUInt((prefix + "slow").c_str(), speed.slowdownDegrees);
-    prefs_.putFloat((prefix + "coast").c_str(), speed.coastDegrees);
-    prefs_.putFloat((prefix + "decelf").c_str(), speed.decelerationFactor);
+    putUInt((prefix + "work").c_str(), speed.speedPercent);
+    putUInt((prefix + "start").c_str(), speed.startSpeedPercent);
+    putUInt((prefix + "approach").c_str(), speed.approachSpeedPercent);
+    putUInt((prefix + "accel").c_str(), speed.accelerationMs);
+    putUInt((prefix + "decel").c_str(), speed.decelerationMs);
+    putUInt((prefix + "slow").c_str(), speed.slowdownDegrees);
+    putFloat((prefix + "coast").c_str(), speed.coastDegrees);
+    putFloat((prefix + "decelf").c_str(), speed.decelerationFactor);
   }
   prefs_.end();
+  if(!valid)return false;
   }
   if(runtime.hud.isHud()) return true;
   const bool opened=prefs_.begin("forkmotion",false);
   if(!opened) { prefs_.end(); return false; }
-  prefs_.putUInt("controlhz",1000/runtime.controller.controlPeriodMs());
-  bool valid=prefs_.getUInt("controlhz",0)==1000/runtime.controller.controlPeriodMs();
+  putUInt("controlhz",1000/runtime.controller.controlPeriodMs());
+
   for(unsigned i=0;i<2;++i) {
     char key[12]; std::snprintf(key,sizeof key,"%c%u%u%u",runtime.controller.hardware.simulation?'s':'r',
         unsigned(runtime.controller.hardware.drive),unsigned(runtime.controller.model),i);
     const auto record=encodeDrive(reportedMotion(runtime.controller,i),reportedSpeed(runtime.controller,i));
-    prefs_.putBytes(key,record.data(),record.size()); DriveRecord check{};
-    valid=prefs_.getBytesLength(key)==record.size() && prefs_.getBytes(key,check.data(),check.size())==check.size() && check==record && valid;
+    const auto written=prefs_.putBytes(key,record.data(),record.size()); DriveRecord check{};
+    valid=written==record.size() && prefs_.getBytesLength(key)==record.size() && prefs_.getBytes(key,check.data(),check.size())==check.size() && check==record && valid;
   }
   prefs_.end(); return valid;
 

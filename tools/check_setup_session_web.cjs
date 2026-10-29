@@ -14,7 +14,7 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
   const proc=spawn(binary,['--serve-http'],{cwd:root,stdio:['pipe','pipe','inherit']}),pending=[];
   readline.createInterface({input:proc.stdout}).on('line',line=>{const p=pending.shift();if(!p)throw Error('Unexpected fixture output: '+line);try{p.resolve(JSON.parse(line));}catch(e){p.reject(e);}});
   proc.on('exit',code=>{for(const p of pending.splice(0))p.reject(Error('Native fixture exited '+code));});
-  const started=Date.now(),trace=[],errors=[];let queue=Promise.resolve(),saveDelay=0,armDelay=0,renewDelay=0;
+  const started=Date.now(),trace=[],errors=[];let queue=Promise.resolve(),saveDelay=0,armDelay=0,renewDelay=0,holdReplyDelay=0;
   const rpc=(method,route,body='')=>{
    const task=queue.then(()=>new Promise((resolve,reject)=>{pending.push({resolve,reject});proc.stdin.write(`${10001+Date.now()-started}\t${method}\t${route}\t${body}\n`);}));
    queue=task.catch(()=>{});return task;
@@ -35,11 +35,15 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     try{
      if(slow&&delayed)await wait(3200);
      const result=await rpc(req.method(),url.pathname,body);trace.push({path:url.pathname,query:url.search,...result,response:result.body,body:Object.fromEntries(form)});
+     if(url.pathname==='/api/move'&&form.get('d')==='H'&&holdReplyDelay){
+      const delay=holdReplyDelay;holdReplyDelay=0;await wait(delay);
+      return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'delayed_hold_failure'})});
+     }
      await route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});
     }finally{if(slow)--pendingPolls[key];}
    });
    if(['hud-role','hud-hardware','hud-review','hud-fields'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/hud');
-   if(['simulation','motion','optional-drive','controller-fields','passive'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/controller');
+   if(['simulation','motion','optional-drive','controller-fields','passive','audit-fixes'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/controller');
    if(process.env.SETUP_SESSION_SCENARIO==='trial-inline'){
     await rpc('POST','/api/setup','action=pause');
     const stage=async()=>{const h=(await rpc('GET','/api/hardware')).body;assert.equal((await rpc('POST','/api/hardware',new URLSearchParams({token:h.token,generation:h.generation,simulation:1,buttonActiveLow:h.configured.buttonActiveLow?0:1}).toString())).status,200);await rpc('POST','/__fixture/reboot');};
@@ -99,6 +103,68 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
    await page.goto('http://setup-session.test/setup');
    await page.waitForFunction(()=>wizard.active&&wizard.state?.token&&wizard.state.step===1);
    const session=await page.evaluate(()=>wizard.state.token);
+   if(process.env.SETUP_SESSION_SCENARIO==='audit-fixes'){
+    await page.locator('#setupDeviceName').fill('Saved A');saveDelay=1500;
+    await page.locator('#setupNext').click();await page.waitForFunction(()=>wizard.busy);await wait(200);
+    assert(await page.locator('#setupDeviceName').isEnabled());
+    await page.locator('#setupDeviceName').fill('New draft B');await page.locator('#setupTitle').click();
+    await page.waitForFunction(()=>!wizard.busy);
+    assert.equal(await page.evaluate(()=>wizard.state.step),1);
+    assert.equal(await page.locator('#setupDeviceName').inputValue(),'New draft B');
+    assert.equal(await page.evaluate(()=>nameForm.dataset.dirty),'1');
+    assert.match(await page.locator('#setupMessage').textContent(),/новые изменения/);
+    assert.equal((await rpc('GET','/api/status')).body.rotorName,'Saved A');
+    await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===2);
+    assert.equal((await rpc('GET','/api/status')).body.rotorName,'New draft B');
+    await page.locator('#setupBack').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===1);
+    assert.equal(await page.locator('#setupDeviceName').inputValue(),'New draft B');
+    await rpc('POST','/__fixture/step','9');await page.evaluate(()=>pollSetup());await page.evaluate(()=>upd(true));
+    await page.evaluate(()=>{
+     window.auditTimers=new Set();
+     const create=window.setInterval.bind(window),remove=window.clearInterval.bind(window);
+     window.setInterval=(fn,delay,...args)=>{const id=create(fn,delay,...args);if(delay===250)window.auditTimers.add(id);return id;};
+     window.clearInterval=id=>{window.auditTimers.delete(id);return remove(id);};
+    });
+    const button=page.locator('[data-setup-axis="0"][data-direction="1"]');
+    for(const [first,second] of [['Space','Enter'],['Enter','Space']]){
+     await button.focus();await page.keyboard.down(first);await wait(350);
+     const gesture=await page.evaluate(()=>testStream.gesture);
+     await page.keyboard.down(second);await wait(350);
+     assert.equal(await page.evaluate(()=>testStream.gesture),gesture);
+     assert.equal(await page.evaluate(()=>window.auditTimers.size),1);
+     await page.keyboard.up(second);await wait(100);
+     assert.equal(await page.evaluate(()=>testStream.active?.owner),'key:'+first);
+     assert((await rpc('GET','/api/setup')).moving);
+     await page.keyboard.up(first);await wait(150);
+     assert.equal(await page.evaluate(()=>window.auditTimers.size),0);
+     assert(!(await rpc('GET','/api/setup')).moving);
+    }
+    await button.scrollIntoViewIfNeeded();
+    const box=await button.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await wait(350);
+    const pointerGesture=await page.evaluate(()=>testStream.gesture);
+    await page.keyboard.down('Space');await page.keyboard.up('Space');await wait(100);
+    assert.equal(await page.evaluate(()=>testStream.gesture),pointerGesture);
+    assert.match(await page.evaluate(()=>testStream.active?.owner),/^pointer:/);
+    assert.equal(await page.evaluate(()=>window.auditTimers.size),1);
+    assert((await rpc('GET','/api/setup')).moving);
+    await page.mouse.up();await wait(150);
+    assert.equal(await page.evaluate(()=>window.auditTimers.size),0);
+    assert(!(await rpc('GET','/api/setup')).moving);
+    // A failure from an already released gesture cannot cancel the next one.
+    holdReplyDelay=1300;await button.focus();await page.keyboard.down('Space');
+    await page.waitForFunction(()=>!!testStream.active?.pending);await wait(150);
+    const oldGesture=await page.evaluate(()=>testStream.gesture);
+    await page.keyboard.up('Space');await page.keyboard.down('Enter');await wait(1600);
+    assert.equal(await page.evaluate(()=>testStream.gesture),oldGesture+1);
+    assert.equal(await page.evaluate(()=>testStream.active?.owner),'key:Enter');
+    assert.equal(await page.evaluate(()=>window.auditTimers.size),1);
+    assert((await rpc('GET','/api/setup')).moving);
+    await page.keyboard.up('Enter');await wait(150);
+    assert.equal(await page.evaluate(()=>window.auditTimers.size),0);
+    assert(!(await rpc('GET','/api/setup')).moving);
+    assert.deepEqual(errors,[]);
+    console.log(`PASS: ${width}px, edits during save stay dirty and block navigation until saved; one keyboard HOLD owner/timer, unrelated key release and stale failed response preserve the active gesture`);continue;
+   }
    if(process.env.SETUP_SESSION_SCENARIO==='optional-drive'){
     await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===2);
     await page.locator('#setupDriveKind').selectOption('G800DXA');
@@ -148,7 +214,8 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     let state=await rpc('GET','/api/setup');assert(state.body.required&&state.body.paused&&state.body.motionAllowed);
     assert.equal((await rpc('POST','/api/move','d=R')).status,200);assert((await rpc('GET','/api/setup')).moving);
     assert.equal((await rpc('POST','/api/move','d=S')).status,200);assert(!(await rpc('GET','/api/setup')).moving);
-    assert(!/движение заблокировано/.test(await page.locator('#setupNotice').textContent()));
+    assert.equal(await page.locator('#setupNotice').count(),0);
+    assert.equal(await page.getByRole('link',{name:'Продолжить настройку',exact:true}).count(),0);
     await page.goto('http://setup-session.test/hardware');await page.waitForFunction(()=>typeof state!=='undefined'&&!!state);
     assert.equal(await page.locator('#setup-motion').count(),0);assert.deepEqual(errors,[]);
     console.log(`PASS: ${width}px, physical motion works during and after paused wizard, STOP works, permission checkbox/button absent`);continue;

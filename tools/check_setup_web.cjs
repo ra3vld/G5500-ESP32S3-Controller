@@ -70,6 +70,13 @@ function equipmentSized(step){
     }
     if(u.pathname==='/api/status')return json(status);
     if(u.pathname==='/api/settings'&&req.method()==='POST'){if(failSave)return route.fulfill({status:503,json:{ok:false,error:'storage_failed'}});Object.assign(status,body);return json({ok:true});}
+    if(u.pathname==='/api/hardware'&&req.method()==='POST'){
+     for(const [name,value] of Object.entries(body)){
+      if(name.startsWith('pin.'))hw.configured.pins[name.slice(4)]=Number(value);
+      else if(!['token','generation','setupToken'].includes(name)&&!name.startsWith('mb.'))hw.configured[name]=Number(value);
+     }
+     state.restartRequired=true;return json({ok:true});
+    }
     if(['/api/network','/api/ap','/api/wifi','/api/device','/api/hardware','/api/hardware/confirm'].includes(u.pathname)&&req.method()==='POST'){state.restartRequired=true;return json({ok:true});}
     if(u.pathname==='/api/network')return json({ethernetSupported:true,choice:0,connected:true,staIp:'192.168.1.20',apIp:'192.168.4.1',wifi:{mode:'dhcp'},eth:{mode:'dhcp'}});
     if(u.pathname==='/api/hardware/pins')return json(fixture.metadata);
@@ -223,7 +230,8 @@ function equipmentSized(step){
    await page.locator('#presetEditor-label').fill('Сохранено при паузе');await page.locator('#presetEditor-az').fill('85');await page.locator('#presetEditor-el').fill('45');
    await page.locator('#setupPause').click();await page.waitForFunction(()=>location.pathname==='/');
    assert(posts.some(p=>p.path==='/api/preset'&&p.body.label==='Сохранено при паузе'&&p.body.az==='85'));
-   await page.locator('#setupNotice').waitFor({state:'visible'});
+   assert.equal(await page.locator('#setupNotice').count(),0);
+   assert.equal(await page.getByRole('link',{name:'Продолжить настройку',exact:true}).count(),0);
    if(role==='controller'){forceRecovery=true;await page.evaluate(()=>pollSetup());await page.waitForURL('**/recovery');}
    assert.deepEqual(errors,[],role+' browser errors');
    await page.close();
