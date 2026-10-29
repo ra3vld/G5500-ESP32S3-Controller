@@ -67,7 +67,6 @@ void Application::controllerSetup() {
 
   runtime_.setupStorageOk=storage_.loadSetup(runtime_);
   runtime_.controller.setupRequired=runtime_.setup.required;
-  runtime_.controller.setupMotionConfirmed=runtime_.setup.motionConfirmed&&runtime_.setup.equipment;
   storage_.loadHud(runtime_, false);
   const auto reset = esp_reset_reason();
   const bool unexpected = reset == ESP_RST_PANIC || reset == ESP_RST_INT_WDT ||
@@ -76,7 +75,7 @@ void Application::controllerSetup() {
       __atomic_load_n(&recoveryLatch, __ATOMIC_RELAXED) == RecoveryCookie));
   const bool modbusReadable=storage_.loadModbus(runtime_);
   __atomic_store_n(&recoveryLatch, 0u, __ATOMIC_RELAXED);
-  if(!runtime_.setupStorageOk || !modbusReadable || (!runtime_.recovery &&
+  if(!modbusReadable || (!runtime_.recovery &&
       runtime_.modbus.wiring(runtime_.controller.hardware,runtime_.hud.config.uart))) {
     storage_.enterRecovery(runtime_,RecoveryReason::Invalid);
     storage_.loadHardware(runtime_,true);
@@ -138,10 +137,6 @@ void Application::controllerSetup() {
   runtime_.mqttStorageOk=storage_.loadMqtt(runtime_.mqtt);
   if(!runtime_.mqttStorageOk)diagnostics_.dbgPrintln("[MQTT] invalid/unreadable settings; client disabled");
 #endif
-  if(runtime_.setup.fresh && runtime_.setup.generation==1 && !runtime_.setup.checked) {
-    runtime_.protocol.manualFollow={true,false,true,true};runtime_.controller.restoreMode(Mode::Manual);
-    if(!storage_.saveForkSettings(runtime_)){failConfiguration(RecoveryReason::Storage);return;}
-  }
   diagnostics_.dbgPrintln(String("[WIFI NVS] load=") +
                          (storage_.wifiCredentialsReadOk() ? "OK" : "namespace unavailable") +
                          ", saved SSID=" + (network_.credentials().wifiSsid.length() ? "present" : "empty"));

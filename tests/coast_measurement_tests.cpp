@@ -8,7 +8,7 @@ int main(){
   c.feedback(90,45,true,true);uint32_t now=1000;float position=90;
   auto sample=[&](float p){now+=100;position=p;c.feedbackAt(0,p,true,now);c.tickCoast(now);};
   for(unsigned i=0;i<6;++i)sample(position);
-  c.setupRequired=true;assert(c.startCoast(0,1,10,now)==Result::Unavailable);c.setupAccess=true;
+  c.setupRequired=true;
   assert(c.startCoast(0,1,10,now)==Result::Ok);
   for(unsigned i=0;i<20;++i)sample(position+.5f);
   assert(c.coast.phase==CoastMeasurement::Coasting);

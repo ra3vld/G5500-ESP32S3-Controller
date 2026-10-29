@@ -6,7 +6,7 @@
 using namespace forkrot;
 
 static Controller readyController() {
-  Controller c;
+  Controller c;c.setupRequired=true;
   for (auto &m : c.motionSettings) m.ready = true;
   c.feedback(100, 60, true, true);
   return c;

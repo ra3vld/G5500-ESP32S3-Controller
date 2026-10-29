@@ -8,3 +8,5 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFI
 ./build/setup_motion_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=10 -DDISPLAY_KIND=5 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $SETUP_SOURCES tests/setup_motion_tests.cpp -o build/st7796_setup_motion_tests
 ./build/st7796_setup_motion_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $SETUP_SOURCES tests/setup_passive_tests.cpp -o build/setup_passive_tests
+./build/setup_passive_tests

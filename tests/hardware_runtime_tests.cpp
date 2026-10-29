@@ -186,7 +186,7 @@ static void optionalPwmEnable() {
     if(driver==DRIVE_BTS7960) conflict.pins.azSpeedEnable=cfg.pins.azPositive;
     else conflict.pins.azEnable=cfg.pins.azPositive;
     assert(std::string(board::validateHardware(conflict))=="gpio_conflict");
-    MotionTestRuntime r;r.controller.configureHardware(cfg);r.controller.feedback(90,45,true,true);
+    MotionTestRuntime r;r.setup.required=true;r.setup.equipment=false;r.controller.setupRequired=true;r.controller.configureHardware(cfg);r.controller.feedback(90,45,true,true);
     Hardware h(r);fakeHardware={};h.beginDirections();h.beginAdc();
     const auto disabled=[&](){for(unsigned axis=0;axis<2;++axis)if(cfg.enablePin(axis)>=0)assert(fakeHardware.levels[cfg.enablePin(axis)]==LOW);};
     const auto noInvalid=[&](){for(const auto &e:fakeHardware.events)assert(e.pin>=0 && e.operation!="write_unowned");};
@@ -258,7 +258,7 @@ static void directionPwm() {
   HardwareConfig cfg;cfg.drive=DRIVE_DIR_PWM;cfg.simulation=false;cfg.bluetooth=false;
   cfg.pins.azNegative=cfg.pins.uartRx;cfg.pins.elNegative=cfg.pins.uartTx;
   assert(!board::validateHardware(cfg));
-  MotionTestRuntime r;r.controller.configureHardware(cfg);r.controller.feedback(90,45,true,true);
+  MotionTestRuntime r;r.setup.required=true;r.setup.equipment=false;r.controller.setupRequired=true;r.controller.configureHardware(cfg);r.controller.feedback(90,45,true,true);
   Hardware h(r);fakeHardware={};h.beginDirections();h.beginAdc();
   const auto drive=[&](int az,int el){r.controller.axes[0].direction=az;r.controller.axes[1].direction=el;
     r.controller.axes[0].speedOutputPercent=50;r.controller.axes[1].speedOutputPercent=40;h.applyOutputs();};

@@ -111,12 +111,17 @@ template<class Arguments>
 inline bool parseHardwareArguments(const Arguments &arguments, HardwareForm &out, bool settings,
                                    const HardwareConfig &base = HardwareConfig{}, ModbusConfig *modbus = nullptr) {
   hardware_form_detail::Parser parser(settings,base);
-  size_t bytes=0;uint16_t seenModbus=0;
+  size_t bytes=0;uint16_t seenModbus=0;bool seenSetup=false;
   for(auto entry:arguments) {
     if(entry.first.size()>1536 || entry.second.size()>1536 ||
        entry.first.find_first_of("&=")!=entry.first.npos || entry.second.find_first_of("&=")!=entry.second.npos)return false;
     bytes+=(bytes?1:0)+entry.first.size()+1+entry.second.size();
     if(bytes>1536)return false;
+    if(entry.first=="setupToken") {
+      uint32_t token=0;
+      if(seenSetup || !hardwareUnsigned(entry.second,token) || !token)return false;
+      seenSetup=true;continue;
+    }
     if(modbus && settings && entry.first.substr(0,3)=="mb.") {
       unsigned i=0;while(i<12 && entry.first.substr(3)!=SerialFieldNames[i])++i;
       uint32_t value=0;

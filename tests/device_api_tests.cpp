@@ -55,6 +55,33 @@ static void hudBackgroundTests() {
 static void mqttApiTests() {
 #if MQTT_SUPPORT
   {
+    Fixture f;auto &r=f.runtime;
+    WiFi.connectionStatus=WL_CONNECTED;r.setup.required=true;r.setup.equipment=true;r.setup.step=SetupStep::Review;r.controller.setupRequired=true;
+    assert(f.call("POST","/api/setup","action=resume",false).status==200);
+    const auto token="&setupToken="+std::to_string(r.setupLease);
+    assert(f.call("POST","/api/setup","action=begin_save"+token,false).status==200);
+    Preferences::failedBytesKey="config1";
+    assert(f.call("POST","/api/mqtt","enabled=1&host=broker.local"+token,false).status==503);
+    assert(r.setup.required&&!r.setupRestartRequired&&!f.restart.pending());Preferences::failedBytesKey.clear();
+    assert(f.call("POST","/api/mqtt","enabled=1&host=broker.local&password=wizard-secret"+token,false).status==200);
+    assert(r.setupRestartRequired&&!f.restart.pending());
+    assert(f.call("POST","/api/setup","action=end_save"+token,false).status==200);
+    WiFi.connectionStatus=0;
+    assert(f.call("POST","/api/setup","action=complete&generation="+std::to_string(r.setup.generation)+token,false).status==409);
+    assert(r.setup.required&&!f.restart.pending());
+    const auto saved=f.call("GET","/api/mqtt",{},false);
+    assert(saved.status==200&&saved.body.find("\"host\":\"broker.local\"")!=std::string::npos&&saved.body.find("\"hasPassword\":true")!=std::string::npos);
+    assert(!r.mqtt.enabled&&r.mqtt.password[0]==0); // The active client keeps its original credentials until restart.
+    assert(f.call("POST","/api/setup","action=begin_save"+token,false).status==200);
+    assert(f.call("POST","/api/mqtt","host=corrected.local"+token,false).status==200);
+    assert(f.call("POST","/api/setup","action=end_save"+token,false).status==200);
+    WiFi.connectionStatus=WL_CONNECTED;
+    assert(f.call("POST","/api/setup","action=complete&generation="+std::to_string(r.setup.generation)+token,false).status==200);
+    assert(!r.setup.required&&!r.controller.setupRequired&&r.setup.step==SetupStep::Done&&f.restart.pending());
+    Runtime reboot;MqttConfig mqtt;assert(f.storage.loadSetup(reboot)&&!reboot.setup.required);
+    assert(f.storage.loadMqtt(mqtt)&&mqtt.enabled&&std::string(mqtt.host)=="corrected.local"&&std::string(mqtt.password)=="wizard-secret");
+  }
+  {
     Fixture f;f.runtime.hud.config.role=DeviceRole::Controller;f.runtime.hud.begin(1,0x1234);
     auto hardware=f.runtime.controller.hardware;hardware.simulation=true;
     f.runtime.controller=Controller{};f.runtime.controller.configureHardware(hardware);
@@ -154,16 +181,27 @@ int main(int argc,char **argv) {
     f.runtime.hud.config.wifi=HudWifi::Existing;
     f.runtime.controller.hardware.forceAp=false;assert(!f.network.apAlwaysOn());
     f.runtime.controller.hardware.forceAp=true;assert(f.network.apAlwaysOn());
-    f.runtime.controller.hardware.forceAp=false;f.runtime.setup.required=true;assert(f.network.apAlwaysOn());
+    f.runtime.controller.hardware.forceAp=false;f.runtime.setup.required=true;
+    for(unsigned step=0;step<unsigned(SetupStep::Done);++step)for(bool paused:{false,true}) {
+      f.runtime.setup.step=SetupStep(step);f.runtime.setup.paused=paused;
+      assert(!f.network.apAlwaysOn());
+      WifiFallback policy;policy.reset(0,true);
+      assert(policy.update(1,true,true,true,f.network.apAlwaysOn())==WifiAction::StopAp);
+    }
+    assert(f.call("GET","/api/network","",false).body.find("\"apAlwaysOn\":false")!=std::string::npos);
     f.runtime.setup.required=false;f.runtime.recovery=true;assert(f.network.apAlwaysOn());
     f.runtime.recovery=false;n.choice=NetworkChoice::Ap;assert(f.network.apAlwaysOn());
+    n.choice=NetworkChoice::SharedHost;assert(f.network.apAlwaysOn());
+    n.choice=NetworkChoice::SharedClient;assert(!f.network.apAlwaysOn());
+    n.choice=NetworkChoice::Ethernet;assert(!f.network.apAlwaysOn());
+    n.choice=NetworkChoice::Wifi;f.runtime.hud.config.wifi=HudWifi::Host;assert(f.network.apAlwaysOn());
   }
 
   {
     Preferences::database.clear();Runtime fresh;Storage storage;
     assert(storage.loadSetup(fresh));assert(fresh.setup.required && fresh.setup.step==SetupStep::Network);
     storage.loadHardware(fresh);Hardware newMotor(fresh);fakeHardware={};newMotor.beginDirections();newMotor.beginAdc();newMotor.applyOutputs();
-    assert(fakeHardware.events.empty()&&fakeHardware.readsRaw==0&&fakeHardware.readsMv==0);
+    assert(!fresh.controller.moving()&&!fresh.controller.movementBlocked());
     fresh.setup.step=SetupStep::Equipment;fresh.setup.paused=true;assert(storage.saveSetup(fresh.setup));
     Runtime restored;assert(storage.loadSetup(restored));assert(restored.setup.required&&restored.setup.paused&&restored.setup.step==SetupStep::Equipment);
     for(int drive=-1;drive<=3;++drive)for(bool simulation:{false,true}){
@@ -188,9 +226,9 @@ int main(int argc,char **argv) {
     assert(setup.call("POST","/api/setup","action=start",true).status==405);
     auto result=setup.call("POST","/api/setup","action=start",false);assert(result.status==200);
     auto &r=setup.runtime;auto &c=r.controller;assert(c.setupRequired && r.setup.required && r.setupLease);
-    HudState blocked;blocked.capture(c,r.protocol,fakeHardware.now);assert(blocked.driveFault&&std::string(blocked.fault)=="setup_incomplete");
-    assert(c.jog(0,1,false,fakeHardware.now)==Result::Unavailable);
-    assert(c.target({100,0,true,false},false,fakeHardware.now)==Result::Unavailable);
+    HudState active;active.capture(c,r.protocol,fakeHardware.now);assert(!active.driveFault);
+    assert(c.jog(0,1,false,fakeHardware.now)==Result::Ok);c.stopNow(-1,fakeHardware.now);
+    assert(c.target({100,0,true,false},false,fakeHardware.now)==Result::Ok);c.stopNow(-1,fakeHardware.now);
     assert(setup.call("POST","/api/setup","action=advance&generation=0&checked=1",false).status==409);
     assert(setup.call("POST","/api/setup","action=advance&generation="+std::to_string(r.setup.generation)+"&checked=1",false).status==409);
     WiFi.connectionStatus=WL_CONNECTED;
@@ -201,21 +239,21 @@ int main(int argc,char **argv) {
     assert(setup.call("POST","/api/setup","action=arm&setupToken="+std::to_string(session),false).status==200);
     const auto permit=r.setupTestToken;
     const auto token=std::to_string(session)+"&setupTestToken="+std::to_string(permit);
-    assert(setup.call("POST","/api/move","d=R",false).status==503);
+    assert(setup.call("POST","/api/move","d=R",false).status==200);
     assert(setup.call("POST","/api/move","d=R&setupToken="+token,true).status==503);
     assert(setup.call("POST","/api/move","d=R&setupToken="+token,false).status==200);
-    assert(!c.setupAccess && c.moving());
+    assert(c.moving());
     c.stopNow(-1,fakeHardware.now);r.setupStorageOk=false;
-    assert(setup.call("POST","/api/move","d=R&setupToken="+token,false).status==503);
+    assert(setup.call("POST","/api/move","d=R&setupToken="+token,false).status==200);
     r.setupStorageOk=true;r.recovery=true;
     assert(setup.call("POST","/api/move","d=S",false).status==200);
     assert(setup.call("POST","/api/move","d=R&setupToken="+token,false).status==409);
     r.recovery=false;
     struct Sink:CommandSink {unsigned modes=0;Result submit(const ControlCommand &command) override {if(command.op==ControlOp::Mode)++modes;return Result::Ok;}bool available()const override{return true;}uint32_t requestId()const override{return 1;}Result lastResult()const override{return Result::Ok;}} sink;
     c.stopNow(-1,fakeHardware.now);c.remote=&sink;r.setup.step=SetupStep::Programs;
-    assert(setup.call("POST","/api/mode","mode=manual",false).status==503);
-    assert(setup.call("POST","/api/mode","mode=manual&setupToken="+token,false).status==200&&sink.modes==1);
-    assert(setup.call("POST","/api/mode","mode=auto&setupToken="+token,false).status==503);
+    assert(setup.call("POST","/api/mode","mode=manual",false).status==200);
+    assert(setup.call("POST","/api/mode","mode=manual&setupToken="+token,false).status==200&&sink.modes==2);
+    assert(setup.call("POST","/api/mode","mode=auto&setupToken="+token,false).status==200);
     c.remote=nullptr;r.setup.step=SetupStep::Review;
     fakeHardware.now+=1501;setup.api.serviceSetup(fakeHardware.now);assert(!c.moving()&&r.setupLease==session&&!r.setupTestToken);
     assert(setup.call("POST","/api/setup","action=renew&setupToken="+token,false).status==409);
@@ -258,22 +296,25 @@ int main(int argc,char **argv) {
     const auto token="&setupToken="+std::to_string(r.setupLease);
     assert(tuningStep.call("GET","/api/setup","",false).body.find("\"ready\":true")!=std::string::npos);
     assert(tuningStep.call("POST","/api/setup","action=begin_save"+token,false).status==200);
-    assert(!r.setupTestToken && !c.setupAccess);
+    assert(!r.setupTestToken);
     assert(tuningStep.call("POST","/api/settings","controlHz=100"+token,false).status==200);
-    assert(c.controlPeriodMs()==10 && !c.moving() && !c.setupAccess && !r.setupTestToken);
+    assert(c.controlPeriodMs()==10 && !c.moving() && !r.setupTestToken);
     assert(tuningStep.call("POST","/api/settings","azMotionVelocityKp=1.23&elMotionVelocityKp=1.34"+token,false).status==200);
     assert(tuningStep.call("POST","/api/setup","action=end_save"+token,false).status==200);
     assert(tuningStep.call("POST","/api/setup","action=advance&generation="+std::to_string(r.setup.generation)+token,false).status==200);
     assert(r.setup.step==SetupStep::Programs && c.motionSettings[0].velocityKp==1.23f && c.motionSettings[1].velocityKp==1.34f);
     Runtime restored;restored.controller.hardware=c.hardware;tuningStep.storage.loadForkSettings(restored);
     assert(restored.controller.controlPeriodMs()==10 && restored.controller.motionSettings[0].velocityKp==1.23f && restored.controller.motionSettings[1].velocityKp==1.34f);
-    assert(tuningStep.call("POST","/api/move","d=R"+token,false).status==503);
-    assert(tuningStep.call("POST","/api/target","az=100"+token,false).status==503);
+    assert(tuningStep.call("POST","/api/move","d=R"+token,false).status==200);
+    assert(tuningStep.call("POST","/api/target","az=100"+token,false).status==200);c.stopNow(-1,fakeHardware.now);
     r.setup.step=SetupStep::Tuning;
-    assert(tuningStep.call("POST","/api/motion/autotune","action=start&axis=az&mode=cascade&id=0&travel=10&outputLimit=20"+token,false).status==503);
+    c.resetMotion(-1,fakeHardware.now);c.feedbackAt(0,90,true,fakeHardware.now);c.feedbackAt(1,45,true,fakeHardware.now);
+    const auto tune=tuningStep.call("POST","/api/motion/autotune","action=start&axis=az&mode=cascade&id=0&travel=60&outputLimit=50"+token,false);
+    if(tune.status!=200)std::cerr<<"Setup autotune: "<<tune.body<<'\n';
+    assert(tune.status==200);c.cancelAutoTune(fakeHardware.now);
     c.configurationLocked=true;
     assert(tuningStep.call("POST","/api/settings","controlHz=200"+token,false).status==503 && c.controlPeriodMs()==10);
-    assert(!c.moving() && !c.setupAccess && !r.setupTestToken);
+    assert(!c.moving() && !r.setupTestToken);
   }
   {
     Fixture draft;auto &r=draft.runtime;
@@ -297,7 +338,7 @@ int main(int argc,char **argv) {
     assert(r.setup.drive==0&&!r.setup.simulation&&r.controller.hardware==active&&!draft.restart.pending());
     Runtime restored;assert(draft.storage.loadSetup(restored)&&restored.setup.drive==0&&!restored.setup.simulation);
     assert(draft.call("POST","/api/setup","action=begin_save"+token,false).status==200);
-    assert(draft.call("POST","/api/hardware","token=11&generation=1&driveInterface=2",false).body.find("setup_drive_mismatch")!=std::string::npos);
+    assert(draft.call("POST","/api/hardware","token=11&generation=1&driveInterface=2"+token,false).body.find("setup_drive_mismatch")!=std::string::npos);
     assert(draft.call("POST","/api/setup","action=end_save"+token,false).status==200);
     assert(draft.call("POST","/api/setup","action=drive&driveInterface=3&simulation=0&generation="+std::to_string(r.setup.generation)+token,false).status==200);
     assert(r.setup.drive==3&&r.controller.hardware==active);
@@ -329,11 +370,11 @@ int main(int argc,char **argv) {
     const auto token="&setupToken="+std::to_string(r.setupLease);
     assert(hardware.call("POST","/api/setup","action=begin_save"+token,false).status==200);
     const std::string body="token=11&generation=1&buttonActiveLow=0&mb.address=2";
-    assert(hardware.call("POST","/api/hardware",body+"&mb.invalid=3",false).status==400);
+    assert(hardware.call("POST","/api/hardware",body+"&mb.invalid=3"+token,false).status==400);
     Preferences::failedBytesKey="config1";
-    assert(hardware.call("POST","/api/hardware",body,false).status==503);
+    assert(hardware.call("POST","/api/hardware",body+token,false).status==503);
     Preferences::failedBytesKey.clear();
-    assert(hardware.call("POST","/api/hardware",body,false).status==200);
+    assert(hardware.call("POST","/api/hardware",body+token,false).status==200);
     Runtime modbusBoot;assert(hardware.storage.loadModbus(modbusBoot)&&modbusBoot.modbus.address==2);
     assert(r.hardwareRecord.candidate.buttonLow==false&&r.setupRestartRequired&&!hardware.restart.pending());
     assert(hardware.call("POST","/api/setup","action=apply"+token,false).status==200&&hardware.restart.pending());
@@ -712,7 +753,8 @@ int main(int argc,char **argv) {
     retry.storage.loadHardware(r);assert(!r.recovery && !r.hardwareTrial && !r.controller.configurationLocked);
     assert(r.controller.hardware==good && !r.controller.moving());
     assert(retry.call("POST","/api/hardware/confirm","token=11&generation=2",false).status==409);
-    assert(r.setup.equipment);assert(retry.storage.loadSetup(r) && r.setup.equipment);
+    assert(retry.storage.loadSetup(r) && !r.setup.equipment);
+    assert(retry.call("GET","/api/setup","",false).body.find("\"equipment\":true")!=std::string::npos);
   }
   {
     Fixture migration;HardwareRecord legacy;

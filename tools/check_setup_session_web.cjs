@@ -38,8 +38,36 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
      await route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});
     }finally{if(slow)--pendingPolls[key];}
    });
-   if(['hud-role','hud-hardware','hud-review'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/hud');
-   if(['simulation','motion','optional-drive'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/controller');
+   if(['hud-role','hud-hardware','hud-review','hud-fields'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/hud');
+   if(['simulation','motion','optional-drive','controller-fields','passive'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/controller');
+   if(process.env.SETUP_SESSION_SCENARIO==='passive'){
+    await rpc('POST','/api/setup','action=pause');
+    assert.equal((await rpc('POST','/api/move','d=R')).status,200);
+    await page.goto('http://setup-session.test/');
+    await page.waitForFunction(()=>wizard.loaded&&!wizard.active&&!!window._forkState);
+    const reads=()=>trace.filter(r=>r.path==='/api/setup'&&r.method!=='POST'&&!r.body.action).length;
+    const initialReads=reads();await wait(2800);assert.equal(reads(),initialReads,'Paused wizard must not add periodic API requests');
+    assert((await rpc('GET','/api/setup')).moving);
+    await page.evaluate(()=>forkPost('/api/settings',{rotorName:'Ordinary settings'}));
+    let current=await rpc('GET','/api/setup');assert(current.moving&&current.body.paused&&current.body.step===1);
+    await page.goto('http://setup-session.test/setup');
+    await page.waitForFunction(()=>wizard.active&&wizard.state?.token&&wizard.state.step===1);
+    assert((await rpc('GET','/api/setup')).moving,'Opening/resuming the guide must not stop existing movement');
+    await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===2);
+    assert((await rpc('GET','/api/setup')).moving,'Next must not stop existing movement');
+    await page.locator('#setupBack').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===1);
+    assert((await rpc('GET','/api/setup')).moving,'Back must not stop existing movement');
+    await page.locator('#setupPause').click();await page.waitForURL('http://setup-session.test/#settings');
+    await page.waitForFunction(()=>wizard.loaded&&!wizard.active);
+    current=await rpc('GET','/api/setup');assert(current.moving&&current.body.paused&&current.body.step===1);
+    const pausedReads=reads();await wait(2800);assert.equal(reads(),pausedReads);
+    const warning=await page.evaluate(()=>{selectTab('control',false);renderStatus({...window._forkState,configurationLocked:true,setupRequired:true});return !!document.getElementById('hardwareTrialNotice').getClientRects().length;});
+    assert(warning,'A bookmark must not hide actual hardware warnings');
+    if(process.env.ARTIFACT_DIR)await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`passive-${width}.png`)});
+    assert.deepEqual(errors,[]);
+    assert.equal((await rpc('POST','/api/move','d=S')).status,200);
+    console.log(`PASS: ${width}px, paused wizard has no background polling, normal settings preserve checkpoint, resume/Next/Back/pause preserve existing motion, hardware warnings remain visible`);continue;
+   }
    await page.goto('http://setup-session.test/setup');
    await page.waitForFunction(()=>wizard.active&&wizard.state?.token&&wizard.state.step===1);
    const session=await page.evaluate(()=>wizard.state.token);
@@ -55,24 +83,47 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     assert.match(await page.locator('#setupMessage').textContent(),/GPIO/);
     assert.deepEqual(errors,[]);console.log(`PASS: ${width}px, optional drive GPIO stay disconnected; active GPIO errors reach the wizard footer`);continue;
    }
+   if(['controller-fields','hud-fields'].includes(process.env.SETUP_SESSION_SCENARIO)){
+    await rpc('POST','/__fixture/step','3');await page.evaluate(async()=>{await upd(true);await pollSetup();});
+    const frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
+    await frame.waitForFunction(()=>typeof state!=='undefined'&&!!state&&typeof metadata!=='undefined'&&!!metadata);
+    await frame.evaluate(()=>{form.elements.bluetoothEnabled.value='0';dirty=true;updatePins();});
+    for(let i=0;i<3;++i){
+     await frame.evaluate(()=>refresh());await page.evaluate(()=>renderSetup());
+     assert(await frame.locator('[name=bluetoothMode]').isHidden(),'Disabled Bluetooth transport must stay hidden');
+     assert.equal(await frame.locator('#setup-motion').count(),0);
+    }
+    if(process.env.ARTIFACT_DIR)await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`${process.env.SETUP_SESSION_SCENARIO}-3-${width}.png`)});
+    await rpc('POST','/__fixture/step','4');await page.evaluate(()=>pollSetup());
+    await frame.waitForFunction(()=>hardwareStage===4);
+    for(let i=0;i<3;++i){
+     await frame.evaluate(()=>refresh());
+     const shown=await frame.evaluate(()=>[...document.querySelectorAll('fieldset')].filter(f=>f.getClientRects().length).map(f=>f.querySelector('legend')?.textContent));
+     assert.deepEqual(shown,['Кнопки и джойстик'],'Capabilities and stage updates must agree on visible sections');
+     await page.evaluate(()=>renderSetup());
+    }
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);
+    if(process.env.ARTIFACT_DIR)await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`${process.env.SETUP_SESSION_SCENARIO}-4-${width}.png`)});
+    console.log(`PASS: ${width}px, ${process.env.SETUP_SESSION_SCENARIO}, stable Bluetooth/stage fields across polling and parent messages, no movement-permission block`);continue;
+   }
    if(process.env.SETUP_SESSION_SCENARIO==='motion'){
     await rpc('POST','/__fixture/step','3');await page.evaluate(()=>pollSetup());
     const frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
-    await frame.waitForFunction(()=>typeof state!=='undefined'&&!!state&&typeof metadata!=='undefined'&&!!metadata);await frame.locator('#setup-motion').waitFor();
-    const allow=frame.locator('#setup-motion-save');assert(await allow.isDisabled());
-    await frame.locator('#setup-motion-confirm').check();await allow.click();
-    await frame.waitForFunction(()=>state.setupMotionConfirmed);await page.evaluate(()=>pollSetup());
-    assert(await page.locator('#setupPause').textContent()==='Сохранить и перейти к управлению');
-    if(process.env.ARTIFACT_DIR){await frame.locator('#setup-motion').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`physical-motion-${width}.png`)});}
-    await page.locator('#setupPause').click();await page.waitForFunction(()=>location.pathname==='/');
-    let state=await rpc('GET','/api/setup');assert(state.body.required&&state.body.paused&&state.body.motionConfirmed&&state.body.motionAllowed);
+    await frame.waitForFunction(()=>typeof state!=='undefined'&&!!state&&typeof metadata!=='undefined'&&!!metadata);
+    assert.equal(await frame.locator('#setup-motion').count(),0);
+    assert(await page.evaluate(()=>wizard.state.required&&wizard.state.motionAllowed));
     assert.equal((await rpc('POST','/api/move','d=R')).status,200);assert((await rpc('GET','/api/setup')).moving);
     assert.equal((await rpc('POST','/api/move','d=S')).status,200);assert(!(await rpc('GET','/api/setup')).moving);
-    await page.goto('http://setup-session.test/hardware');await page.waitForFunction(()=>state?.setupMotionConfirmed);
-    await page.locator('#setup-motion-save').click();await page.waitForFunction(()=>state&&!state.setupMotionConfirmed);
-    state=await rpc('GET','/api/setup');assert(state.body.required&&!state.body.motionConfirmed&&!state.body.motionAllowed);
-    assert.equal((await rpc('POST','/api/move','d=R')).status,503);assert.deepEqual(errors,[]);
-    console.log(`PASS: ${width}px, physical motion requires checkbox, persists with paused wizard, moves/stops, and revokes without completing setup`);continue;
+    assert.equal(await page.locator('#setupPause').textContent(),'Сохранить и перейти к управлению');
+    if(process.env.ARTIFACT_DIR)await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`physical-motion-${width}.png`)});
+    await page.locator('#setupPause').click();await page.waitForFunction(()=>location.pathname==='/');
+    let state=await rpc('GET','/api/setup');assert(state.body.required&&state.body.paused&&state.body.motionAllowed);
+    assert.equal((await rpc('POST','/api/move','d=R')).status,200);assert((await rpc('GET','/api/setup')).moving);
+    assert.equal((await rpc('POST','/api/move','d=S')).status,200);assert(!(await rpc('GET','/api/setup')).moving);
+    assert(!/движение заблокировано/.test(await page.locator('#setupNotice').textContent()));
+    await page.goto('http://setup-session.test/hardware');await page.waitForFunction(()=>typeof state!=='undefined'&&!!state);
+    assert.equal(await page.locator('#setup-motion').count(),0);assert.deepEqual(errors,[]);
+    console.log(`PASS: ${width}px, physical motion works during and after paused wizard, STOP works, permission checkbox/button absent`);continue;
    }
    if(process.env.SETUP_SESSION_SCENARIO==='simulation'){
     await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===2);
@@ -91,7 +142,7 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     }
     await page.waitForFunction(()=>wizard.state.step===4,{},{timeout:5000});
     await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===7);
-    assert(await page.evaluate(()=>wizard.state.required&&wizard.state.motionAllowed&&!wizard.state.motionConfirmed));
+    assert(await page.evaluate(()=>wizard.state.required&&wizard.state.motionAllowed));
     await page.locator('#setupPause').click();await page.waitForFunction(()=>location.pathname==='/');
     assert.equal((await rpc('POST','/api/move','d=R')).status,200);assert((await rpc('GET','/api/setup')).moving);
     assert.equal((await rpc('POST','/api/move','d=S')).status,200);assert(!(await rpc('GET','/api/setup')).moving);
@@ -172,13 +223,13 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     assert.equal(motion.body.controlPeriodMs,10);assert.equal(motion.body.axes[0].VelocityKp,1.23);assert.equal(motion.body.axes[1].VelocityKp,1.34);
     assert(!setup.moving&&!setup.testToken&&setup.body.required&&setup.body.step===7);
     if(process.env.ARTIFACT_DIR){await page.locator('#setupTitle').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`tuning-7-${width}.png`)});}
-    assert.equal(trace.filter(r=>r.body.action==='arm').length,0,'Saving regulators must not acquire motion access');
-    const blocked=await rpc('POST','/api/move',new URLSearchParams({d:'R',setupToken:session}).toString());assert.equal(blocked.status,503);
+    assert.equal(trace.filter(r=>r.body.action==='arm').length,0,'Saving regulators must not arm a movement test');
+    const manual=await rpc('POST','/api/move',new URLSearchParams({d:'R',setupToken:session}).toString());assert.equal(manual.status,200);await rpc('POST','/api/move','d=S');
     await page.locator('#setupBack').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===6);
     await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===7);
     assert(!trace.some(r=>r.path==='/api/settings'&&r.status!==200));assert.deepEqual(errors,[]);
     if(process.env.ARTIFACT_DIR)fs.writeFileSync(path.join(process.env.ARTIFACT_DIR,`tuning-${width}.json`),JSON.stringify(trace,null,2));
-    console.log(`PASS: ${width}px, BTS7960 setup with production DeviceApi: implicit frequency/PID save, Next to programs, revisit without edits, motion remains blocked`);
+    console.log(`PASS: ${width}px, BTS7960 setup with production DeviceApi: implicit frequency/PID save, Next to programs, revisit without edits, ordinary motion available`);
     continue;
    }
    await wait(1800);

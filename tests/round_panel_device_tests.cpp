@@ -55,16 +55,16 @@ int main() {
   auto setup=request("GET","/api/setup");
   assert(setup.status==200 && setup.body.find("\"manualOnly\":true")!=setup.body.npos);
   assert(setup.body.find("\"ready\":true")!=setup.body.npos);
-  assert(r.controller.jog(0,1,false,1000)==Result::Unavailable); // unfinished commissioning
+  assert(r.controller.jog(0,1,false,1000)==Result::Ok); // The guide is only a bookmark.
   for(auto expected:{SetupStep::Programs,SetupStep::Review,SetupStep::Done}) {
     const auto response=request("POST","/api/setup","action="+std::string(expected==SetupStep::Done?"complete":"advance")+"&generation="+std::to_string(r.setup.generation));
     assert(response.status==200 && r.setup.step==expected);
   }
-  assert(!r.setup.required && !r.controller.setupRequired);
+  assert(!r.setup.required && !r.controller.setupRequired && r.controller.moving());
   assert(!r.controller.axes[0].calibrated && r.controller.jog(0,1,false,1000)==Result::Ok);
   r.controller.stopNow(-1,1001);
   const auto status=request("GET","/api/status");
   assert(status.status==200 && status.body.find("\"drive\":\"YAESU\"")!=status.body.npos);
   assert(r.controller.target({90,0,true,false},false,1001)==Result::NotCalibrated);
-  std::puts("PASS: relay-only HTTP commissioning completes without fake calibration, preserves setup gates and reports local drive");
+  std::puts("PASS: relay-only HTTP commissioning completes without fake calibration, preserves ordinary motion and reports local drive");
 }

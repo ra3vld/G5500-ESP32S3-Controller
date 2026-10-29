@@ -283,7 +283,7 @@ bool Hardware::preparePwm(bool enable) {
   return true;
 }
 void Hardware::applyOutputs() {
-  if (runtime_.controller.configurationLocked || runtime_.controller.driveFault || (runtime_.setup.required && !runtime_.setup.equipment)) { outputsOff(); return; }
+  if (runtime_.controller.configurationLocked || runtime_.controller.driveFault) { outputsOff(); return; }
   if (runtime_.hud.isHud()) return;
   const auto &c = runtime_.controller.hardware;
   if(!c.simulation) for(unsigned i=0;i<2;++i)
@@ -348,7 +348,7 @@ void Hardware::applyOutputs() {
 }
 void Hardware::beginDirections() {
   const auto &c=runtime_.controller.hardware;
-  if(runtime_.recovery || (runtime_.setup.required && !runtime_.setup.equipment)) return;
+  if(runtime_.recovery) return;
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   crowpanel::beginBus();
 #endif
@@ -374,7 +374,7 @@ void Hardware::beginDirections() {
 }
 void Hardware::beginAdc() {
   const auto &p=runtime_.controller.hardware.pins;
-  if (runtime_.hud.isHud() || runtime_.recovery || (runtime_.setup.required && !runtime_.setup.equipment) || runtime_.controller.hardware.simulation || board::validateHardware(runtime_.controller.hardware)) return;
+  if (runtime_.hud.isHud() || runtime_.recovery || runtime_.controller.hardware.simulation || board::validateHardware(runtime_.controller.hardware)) return;
   analogReadResolution(12);
   sensors_.begin(runtime_.controller.hardware);
   // Arduino 3.3 configures the ADC channel on its first read, before per-pin attenuation.

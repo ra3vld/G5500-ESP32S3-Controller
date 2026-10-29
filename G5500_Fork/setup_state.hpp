@@ -8,7 +8,7 @@ struct SetupState {
   bool required = false, paused = false, equipment = false, fresh = false, pendingNext = false;
   int8_t drive = -1; // Unapplied drive choice; -1 inherits the hardware record.
   bool simulation = false;
-  bool motionConfirmed = false;
+  bool motionConfirmed = false; // Legacy v3 field; no longer gates movement.
   SetupStep step = SetupStep::Done;
   uint16_t checked = 0;
   uint32_t generation = 0;
