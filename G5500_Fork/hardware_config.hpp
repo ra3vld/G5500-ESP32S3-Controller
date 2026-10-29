@@ -104,8 +104,8 @@ inline bool automaticRecoveryReason(RecoveryReason r) {
       r == RecoveryReason::Allocation || r == RecoveryReason::Radio || r == RecoveryReason::Storage;
 }
 struct RecoveryHistory {
-  static constexpr uint8_t Limit = 3;
-  static constexpr uint32_t StableMs = 30u * 60u * 1000u;
+  static constexpr uint8_t Limit = 5;
+  static constexpr uint32_t StableMs = 15u * 60u * 1000u;
   uint8_t failures = 0;
   bool pending = false; // this fault was already counted before restarting
   RecoveryReason last = RecoveryReason::None;

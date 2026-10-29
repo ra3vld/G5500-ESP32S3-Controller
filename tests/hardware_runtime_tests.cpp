@@ -14,7 +14,7 @@ static void confirmedRetryNeedsNoTrial() {
   for(auto reason:{RecoveryReason::Requested,RecoveryReason::LowMemory,RecoveryReason::Invalid}) {
     assert(storage.enterRecovery(boot,reason));
     if(reason==RecoveryReason::LowMemory) {
-      assert(storage.enterRecovery(boot,reason));assert(storage.enterRecovery(boot,reason));
+      for(unsigned n=1;n<RecoveryHistory::Limit;++n) assert(storage.enterRecovery(boot,reason));
     }
     storage.loadHardware(boot);assert(boot.recovery);
     assert(storage.stageHardware(boot,good));
@@ -41,6 +41,7 @@ static void confirmedRetryNeedsNoTrial() {
   Preferences::database.clear();
 }
 static void recoveryPolicy() {
+  static_assert(RecoveryHistory::Limit==5 && RecoveryHistory::StableMs==900000);
   Storage s;Preferences::database.clear();Preferences::failedBytesKey.clear();
   MotionTestRuntime boot;s.loadHardware(boot);assert(s.finishHardwareBoot(boot));
   const auto good=boot.hardwareRecord.good;
@@ -53,8 +54,8 @@ static void recoveryPolicy() {
     assert(boot.hardwareRecord.good==good && !boot.controller.moving());
     if(!boot.recovery)assert(s.finishHardwareBoot(boot));
   }
-  MotionTestRuntime latched;s.loadHardware(latched);assert(latched.recovery && latched.recoveryHistory.failures==3);
-  assert(s.finishHardwareBoot(latched,RecoveryHistory::StableMs));assert(latched.recoveryHistory.failures==3);
+  MotionTestRuntime latched;s.loadHardware(latched);assert(latched.recovery && latched.recoveryHistory.failures==RecoveryHistory::Limit);
+  assert(s.finishHardwareBoot(latched,RecoveryHistory::StableMs));assert(latched.recoveryHistory.failures==RecoveryHistory::Limit);
   // Explicit retry starts a new series; ordinary short successful boots do not.
   assert(s.stageHardware(latched,good));assert(!latched.recoveryHistory.failures);
   MotionTestRuntime trial;s.loadHardware(trial);assert(!trial.hardwareTrial && !trial.recovery && s.finishHardwareBoot(trial));
@@ -92,11 +93,11 @@ static void recoveryPolicy() {
   for(unsigned i=0;i<history.size();++i){auto bad=history;bad[i]^=0x80;assert(!decodeRecovery(bad,decoded));}
   history[8]^=1;Preferences::database["hardware"]["recovery1"]=Preferences::Bytes(history.begin(),history.end());
   s.loadHardware(boot);assert(boot.recovery && boot.recoveryReason==RecoveryReason::Storage && boot.hardwareRecord.good==good);
-  // Repeated interrupted starts also use the three-event threshold.
+  // Repeated interrupted starts also use the five-event threshold.
   Preferences::database.clear();s.loadHardware(boot);
-  for(unsigned count=1;count<=3;++count) {
+  for(unsigned count=1;count<=RecoveryHistory::Limit;++count) {
     MotionTestRuntime next;s.loadHardware(next);assert(next.recoveryHistory.failures==count);
-    assert(next.recovery==(count==3));assert(!next.controller.moving());
+    assert(next.recovery==(count==RecoveryHistory::Limit));assert(!next.controller.moving());
   }
   Preferences::database.clear();
 }
@@ -357,8 +358,9 @@ int main() {
   assert(rolledBack.hardwareRecord.good==good && rolledBack.controller.hardware==good);
   assert(rolledBack.recoveryHistory.failures==1);
   MotionTestRuntime secondFailure;s.loadHardware(secondFailure);assert(!secondFailure.recovery && secondFailure.recoveryHistory.failures==2);
-  MotionTestRuntime persistentRecovery; s.loadHardware(persistentRecovery);
-  assert(persistentRecovery.recovery && persistentRecovery.recoveryHistory.failures==3);
+  MotionTestRuntime persistentRecovery;
+  for(unsigned n=3;n<=RecoveryHistory::Limit;++n) s.loadHardware(persistentRecovery);
+  assert(persistentRecovery.recovery && persistentRecovery.recoveryHistory.failures==RecoveryHistory::Limit);
   assert(s.stageHardware(persistentRecovery,candidate));
   MotionTestRuntime secondTrial; s.loadHardware(secondTrial);
   assert(s.confirmHardware(secondTrial));

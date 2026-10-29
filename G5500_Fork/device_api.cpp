@@ -276,6 +276,19 @@ void DeviceApi::configurationRestart(bool setupBatch) {
   if(setupBatch && runtime_.setupStorageOk)runtime_.setupRestartRequired=true;
   else restart_.request(millis());
 }
+bool DeviceApi::serviceHardwareConfirmation(uint32_t now) {
+  if (runtime_.recovery || runtime_.controller.configurationLocked || ota_.locked() || restart_.pending() ||
+      (!runtime_.hardwareInteraction && !runtime_.controller.targetMotionStarted) ||
+      !runtime_.memoryGuard.ready(now) || heapFreeBytes()<MemoryGuard::HealthyFree ||
+      heapMaxBlockBytes()<MemoryGuard::HealthyBlock ||
+      runtimeMetrics.allocationFailures.load()!=runtime_.memoryGuard.failures) return true;
+  if (!runtime_.hardwareTrial) return storage_.finishHardwareBoot(runtime_);
+  if (!runtime_.hardwareProbe) {
+    if (!storage_.probeHardwareStorage(runtime_)) return false;
+    runtime_.hardwareProbe = true;
+  }
+  return storage_.confirmHardware(runtime_);
+}
 void DeviceApi::serviceSetup(uint32_t now) {
   if(runtime_.setup.required && runtime_.setup.pendingNext && !runtime_.setup.paused &&
       !runtime_.setupSaving && !runtime_.setupRestartRequired && !restart_.pending() && setupReady(runtime_.setup.step)) {
@@ -316,6 +329,10 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
   const bool stop=path=="/api/move" && (web_.value("d")=="S" || web_.value("d")=="A" || web_.value("d")=="E");
   if(ota_.locked() && !stop && path!="/api/status" && path!="/api/diaglog" && path!="/api/diagnostics" && path.substr(0,8)!="/api/ota") { reply(503,"update_locked"); return; }
   if(runtime_.recovery && !stop && !hardwarePath && path!="/api/status" && path!="/api/network" && path!="/api/diagnostics" && path!="/api/diaglog" && path!="/api/resetreason" && path!="/api/resethistory" && path!="/api/wifi" && path!="/api/ap") { reply(409,"recovery_only"); return; }
+  if (path=="/api/hardware/activity") {
+    if (method!="POST") { reply(405,"method_not_allowed"); return; }
+    runtime_.noteUserActivity(); reply(200,""); return;
+  }
   serviceSetup(millis());
   uint32_t lease=0,testToken=0;
   const bool setupSession=!command && hardwareUnsigned(web_.value("setupToken"),lease) && lease && lease==runtime_.setupLease &&

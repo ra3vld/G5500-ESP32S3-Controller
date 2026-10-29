@@ -107,6 +107,24 @@ const background=(()=>{
  return {read,poll,visible,cancel:key=>entry(key).controller?.abort(),limited:()=>limited,setLimited:value=>{limited=!!value;}};
 })();
 /* END BOUNDED POLLING */
+/* BEGIN STARTUP ACTIVITY */
+// Report actual input, including navigation and edits that do not send commands.
+(()=>{
+ let pending=false,next=0;
+ function activity(event){
+  if(!event.isTrusted||document.hidden||pending||Date.now()<next)return;
+  // These buttons already confirm explicitly; avoid racing their POST request.
+  if(event.target.closest?.('#confirm,#hardwareTrialConfirm'))return;
+  pending=true;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),3000);
+  fetch('/api/hardware/activity',{method:'POST',signal:controller.signal})
+   .then(response=>{if(response.ok)next=Date.now()+10000;})
+   .catch(()=>{}).finally(()=>{clearTimeout(timer);pending=false;});
+ }
+ for(const type of ['pointerdown','click','keydown','input','change','wheel'])
+  document.addEventListener(type,activity,{capture:true,passive:true});
+})();
+/* END STARTUP ACTIVITY */
 let collect=true, azPts=[], elPts=[], MAXPTS=900, hasEl=true;
 function toggleCollect(){collect=!collect;collectBtn.textContent='AUTO COLLECT: '+(collect?'ON':'OFF');collectBtn.className='btn '+(collect?'good':'warn')}
 function clearData(){azPts=[];elPts=[];draw();azn.textContent='0';eln.textContent='0'}
@@ -289,6 +307,24 @@ const background=(()=>{
  return {read,poll,visible,cancel:key=>entry(key).controller?.abort(),limited:()=>limited,setLimited:value=>{limited=!!value;}};
 })();
 /* END BOUNDED POLLING */
+/* BEGIN STARTUP ACTIVITY */
+// Report actual input, including navigation and edits that do not send commands.
+(()=>{
+ let pending=false,next=0;
+ function activity(event){
+  if(!event.isTrusted||document.hidden||pending||Date.now()<next)return;
+  // These buttons already confirm explicitly; avoid racing their POST request.
+  if(event.target.closest?.('#confirm,#hardwareTrialConfirm'))return;
+  pending=true;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),3000);
+  fetch('/api/hardware/activity',{method:'POST',signal:controller.signal})
+   .then(response=>{if(response.ok)next=Date.now()+10000;})
+   .catch(()=>{}).finally(()=>{clearTimeout(timer);pending=false;});
+ }
+ for(const type of ['pointerdown','click','keydown','input','change','wheel'])
+  document.addEventListener(type,activity,{capture:true,passive:true});
+})();
+/* END STARTUP ACTIVITY */
 async function upd(){
   try{
     let j=await background.read('reset','/api/resetreason');
@@ -408,6 +444,24 @@ const background=(()=>{
  return {read,poll,visible,cancel:key=>entry(key).controller?.abort(),limited:()=>limited,setLimited:value=>{limited=!!value;}};
 })();
 /* END BOUNDED POLLING */
+/* BEGIN STARTUP ACTIVITY */
+// Report actual input, including navigation and edits that do not send commands.
+(()=>{
+ let pending=false,next=0;
+ function activity(event){
+  if(!event.isTrusted||document.hidden||pending||Date.now()<next)return;
+  // These buttons already confirm explicitly; avoid racing their POST request.
+  if(event.target.closest?.('#confirm,#hardwareTrialConfirm'))return;
+  pending=true;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),3000);
+  fetch('/api/hardware/activity',{method:'POST',signal:controller.signal})
+   .then(response=>{if(response.ok)next=Date.now()+10000;})
+   .catch(()=>{}).finally(()=>{clearTimeout(timer);pending=false;});
+ }
+ for(const type of ['pointerdown','click','keydown','input','change','wheel'])
+  document.addEventListener(type,activity,{capture:true,passive:true});
+})();
+/* END STARTUP ACTIVITY */
 let last='';
 let prevRawLines=[];
 let stampedLines=[];

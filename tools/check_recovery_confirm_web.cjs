@@ -43,7 +43,7 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    const saved=trace.findLast(r=>r.method==='POST'&&['/api/hardware','/api/hardware/rollback'].includes(r.path));
    assert.equal(saved.status,200);assert.equal(saved.body.confirmationRequired,action==='changed');
    const message=await page.locator('#message').textContent();
-   if(action==='changed')assert.match(message,/нажмите «Подтвердить и перезапустить»/);
+   if(action==='changed')assert.match(message,/действие на экране, в веб-интерфейсе или начало поворота к цели подтвердит запуск/);
    else assert.match(message,/Дополнительное подтверждение не требуется/);
    await rpc('POST','/__fixture/reboot');await page.reload();
    await page.waitForFunction(()=>!!state&&!!metadata);
@@ -52,7 +52,7 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
     assert(await page.locator('#confirm').isVisible());
     await page.locator('#confirm').click();
     await page.waitForFunction(()=>document.getElementById('message').textContent.includes('Настройки подтверждены'));
-    await rpc('POST','/__fixture/reboot');await page.reload();
+    await page.reload();
    }
    await page.waitForFunction(()=>state&&!state.recovery&&!state.trial);
    assert(await page.locator('#confirm').isHidden());
@@ -66,7 +66,7 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
     await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`${action}-${width}.png`)});
     fs.writeFileSync(path.join(process.env.ARTIFACT_DIR,`${action}-${width}.json`),JSON.stringify(trace,null,2));
    }
-   console.log(`PASS: ${width}px recovery ${action}: ${action==='changed'?'locked trial and explicit confirmation':'one reboot, no repeated confirmation'}`);
+   console.log(`PASS: ${width}px recovery ${action}: ${action==='changed'?'trial and confirmation without restart':'one reboot, no repeated confirmation'}`);
   }finally{await page.close();proc.stdin.end();proc.kill();}
  }}finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

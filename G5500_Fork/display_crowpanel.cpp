@@ -131,6 +131,7 @@ void Display::serviceKnob() {
   const bool healthy = crowpanel::readButton(down);
   inputHealthy_ = healthy;
   const int delta = crowpanel::encoderDelta();
+  if (healthy && (down || delta)) runtime_.noteUserActivity();
 #if CROWPANEL_USB_TRACE
   trace_.knob(healthy, down, delta, now);
 #endif

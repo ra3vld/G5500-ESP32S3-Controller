@@ -209,7 +209,7 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <a href="/resetdiag">RESET DIAG</a>
 <a href="/diaglog">DIAG CONSOLE</a>
 </nav>
-<div class="hardware-notice hide" id="hardwareTrialNotice" role="status"><strong>Была изменена конфигурация. Подтвердите, что всё в порядке, иначе настройки откатятся назад.</strong><div class="hardware-trial-actions"><button type="button" id="hardwareTrialConfirm">Подтверждаю, что всё ок</button><span id="hardwareTrialCountdown"></span><span id="hardwareTrialReady"></span></div><p id="hardwareTrialMessage"></p></div>
+<div class="hardware-notice hide" id="hardwareTrialNotice" role="status"><strong>Конфигурация изменена. Действие на экране, в веб-интерфейсе или начало поворота к цели подтвердит запуск. Без подтверждения настройки откатятся.</strong><div class="hardware-trial-actions"><button type="button" id="hardwareTrialConfirm">Подтверждаю, что всё ок</button><span id="hardwareTrialCountdown"></span><span id="hardwareTrialReady"></span></div><p id="hardwareTrialMessage"></p></div>
 <div id="forkMessage" role="status" aria-live="polite"></div>
 <main id="controlPanel" role="tabpanel" aria-labelledby="controlTab">
 <div id="selectedRotor" class="hint hide" role="status"></div>
@@ -556,6 +556,24 @@ const background=(()=>{
  return {read,poll,visible,cancel:key=>entry(key).controller?.abort(),limited:()=>limited,setLimited:value=>{limited=!!value;}};
 })();
 /* END BOUNDED POLLING */
+/* BEGIN STARTUP ACTIVITY */
+// Report actual input, including navigation and edits that do not send commands.
+(()=>{
+ let pending=false,next=0;
+ function activity(event){
+  if(!event.isTrusted||document.hidden||pending||Date.now()<next)return;
+  // These buttons already confirm explicitly; avoid racing their POST request.
+  if(event.target.closest?.('#confirm,#hardwareTrialConfirm'))return;
+  pending=true;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),3000);
+  fetch('/api/hardware/activity',{method:'POST',signal:controller.signal})
+   .then(response=>{if(response.ok)next=Date.now()+10000;})
+   .catch(()=>{}).finally(()=>{clearTimeout(timer);pending=false;});
+ }
+ for(const type of ['pointerdown','click','keydown','input','change','wheel'])
+  document.addEventListener(type,activity,{capture:true,passive:true});
+})();
+/* END STARTUP ACTIVITY */
 function setText(node,value){const text=String(value??'');if(node.textContent!==text)node.textContent=text;}
 let settingsActionSequence=0,settingsFeedbackTimer;
 const settingsRequests=new Set();

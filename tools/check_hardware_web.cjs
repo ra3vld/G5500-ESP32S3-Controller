@@ -9,13 +9,14 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
   for(const profile of (process.env.HARDWARE_PROFILES?.split(',')||['1','2','3','4','5','az',...['1','2','3','4'].flatMap(board=>[board+'-d1',board+'-d2'])])) for(const mobile of [false,true]){
    const fixture=JSON.parse(fs.readFileSync(path.join(root,`build/pin-map-${profile}.json`),'utf8'));
    const config={driveInterface:0,simulation:1,bluetoothEnabled:0,bluetoothMode:3,forceApSta:0,buttonGpio:fixture.buttonGpio,buttonActiveLow:1,buttonPullup:1,pwmInverted:0,pins:{...fixture.pins}};
-   let state={token:123,generation:2,recovery:true,trial:false,ready:false,reason:'low_memory',failureCount:2,failureLimit:3,failureResetMs:1800000,remainingMs:300000,heapFree:3000,heapMaxBlock:512,backend:'NONE',sppSupported:!!fixture.classicEsp32,classicEsp32:!!fixture.classicEsp32,crowpanel:!!fixture.crowpanel,crowpanelLocalDrive:profile==='az',separateDrive:profile!=='az',btsDrive:true,hasConfirmed:true,configured:config},probeFails=false;
+   let state={token:123,generation:2,recovery:true,trial:false,ready:false,reason:'low_memory',failureCount:2,failureLimit:5,failureResetMs:900000,remainingMs:300000,heapFree:3000,heapMaxBlock:512,backend:'NONE',sppSupported:!!fixture.classicEsp32,classicEsp32:!!fixture.classicEsp32,crowpanel:!!fixture.crowpanel,crowpanelLocalDrive:profile==='az',separateDrive:profile!=='az',btsDrive:true,hasConfirmed:true,configured:config},probeFails=false;
    const requests=[],errors=[];const mbState={pc:0,bus:0,address:1,node:201,first:201,count:1,owner:0,uart0Baud:9600,uart0Parity:0,uart0StopBits:1,uart1Baud:115200,uart1Parity:0,uart1StopBits:1};
    const page=await browser.newPage({viewport:{width:mobile?360:1100,height:900},locale:'ru-RU'});
    page.on('pageerror',e=>errors.push(e.message));
    await page.route('http://hardware.test/**',async route=>{
     const req=route.request(),u=new URL(req.url());
     if(u.pathname==='/hardware'||u.pathname==='/recovery')return route.fulfill({contentType:'text/html',body:html});
+    if(u.pathname==='/api/hardware/activity')return route.fulfill({contentType:'application/json',body:'{"ok":true}'});
     if(req.method()==='GET')return route.fulfill({contentType:'application/json',body:JSON.stringify(u.pathname==='/api/hardware/pins'?fixture.metadata:u.pathname==='/api/hardware/modbus'?mbState:state)});
     const body=Object.fromEntries(new URLSearchParams(req.postData()));requests.push({path:u.pathname,body});
     assert.equal(body.token,'123');assert.equal(body.generation,'2');
@@ -63,8 +64,8 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
     assert.deepEqual(errors,[]);assert.equal(requests.length,0);await page.close();console.log(`PASS: ${profile} ${mobile?'mobile':'desktop'} GPIO ordering, LCD before touch, adjacent data lines, axis grouping, metadata-order independence and geometry`);continue;
    }
    assert.match(await page.locator('#state').textContent(),/восстановления/);
-   assert.match(await page.locator('#failures').textContent(),/Сбои: 2 \/ 3/);
-   assert.match(await page.locator('#failures').textContent(),/30 минут/);
+   assert.match(await page.locator('#failures').textContent(),/Сбои: 2 \/ 5/);
+   assert.match(await page.locator('#failures').textContent(),/15 минут/);
    assert(await page.locator('#confirm').isDisabled());
    assert(await page.locator('#confirm').isHidden());
    assert.equal(await page.locator('fieldset').filter({has:page.locator('legend', {hasText:'Привод'})}).locator('select:visible').count(),1);
@@ -219,8 +220,8 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    await page.waitForFunction(()=>!busy);await page.evaluate(()=>{dirty=false;});
    state={...state,recovery:false,trial:true,ready:true,failureCount:0,heapFree:40000,heapMaxBlock:16000};
    probeFails=true;await page.evaluate(()=>refresh());
-   await page.waitForFunction(()=>document.getElementById('failures').textContent.includes('Сбои: 0 / 3')&&document.getElementById('confirm').disabled);
-   assert.match(await page.locator('#failures').textContent(),/Сбои: 0 \/ 3/);
+   await page.waitForFunction(()=>document.getElementById('failures').textContent.includes('Сбои: 0 / 5')&&document.getElementById('confirm').disabled);
+   assert.match(await page.locator('#failures').textContent(),/Сбои: 0 \/ 5/);
    assert(await page.locator('#confirm').isDisabled()); // light status alone never authorizes confirmation
    probeFails=false;await page.evaluate(()=>refresh());
    await page.waitForFunction(()=>!document.getElementById('confirm').disabled);
@@ -244,9 +245,9 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    state={...state,failureCount:undefined};await page.evaluate(()=>refresh());
    await page.waitForFunction(()=>document.getElementById('failures').textContent==='');
    assert.equal(await page.locator('#failures').textContent(),''); // older firmware remains readable
-   state={...state,failureCount:3};await page.evaluate(()=>refresh());
-   await page.waitForFunction(()=>document.getElementById('failures').textContent.includes('Сбои: 3 / 3'));
-   assert.match(await page.locator('#failures').textContent(),/Сбои: 3 \/ 3/);
+   state={...state,failureCount:5};await page.evaluate(()=>refresh());
+   await page.waitForFunction(()=>document.getElementById('failures').textContent.includes('Сбои: 5 / 5'));
+   assert.match(await page.locator('#failures').textContent(),/Сбои: 5 \/ 5/);
    await page.locator('#reset-pins').click();
    assert.equal(await page.locator('[name="pin.azAdc"]').inputValue(),'-1');
    assert.equal(await page.locator('[name=bluetoothMode] option[value="2"]').evaluate(el=>el.disabled),!fixture.classicEsp32);

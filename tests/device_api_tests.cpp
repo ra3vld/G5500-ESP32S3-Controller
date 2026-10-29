@@ -74,6 +74,66 @@ static void liveTrialConfirmationTests() {
     assert(r.memoryGuard.sample(MemoryGuard::TrialMs,60000,30000,0,r.hardwareTrial)==RecoveryReason::None);
   }
 }
+static void activityConfirmationTests() {
+  for (bool target:{false,true}) {
+    Fixture f;useLocalController(f);auto &r=f.runtime;
+    auto candidate=r.hardwareRecord.good;candidate.simulation=true;candidate.buttonLow=!candidate.buttonLow;
+    assert(f.storage.stageHardware(r,candidate));f.storage.loadHardware(r);f.ready();
+    r.recoveryHistory.record(RecoveryReason::LowMemory);
+    // Opening/polling any page, including the automatic storage probe, is passive.
+    for(const char *path:{"/api/status","/api/hardware","/api/setup"})
+      assert(f.call("GET",path,"",false).status==200);
+    assert(f.call("POST","/api/hardware/probe","token=11&generation=2",false).status==200);
+    assert(f.api.serviceHardwareConfirmation(fakeHardware.now)&&r.hardwareTrial);
+    r.memoryGuard.begin(0,0);r.memoryGuard.sample(0,40000,16000,0,true);fakeHardware.now=100;
+    if(target) {
+      r.controller.feedback(90,45,true,true);
+      assert(r.controller.target({200,0,true,false},true,fakeHardware.now)==Result::Pending);
+      assert(!r.controller.targetMotionStarted); // pending in manual mode
+      assert(f.api.serviceHardwareConfirmation(fakeHardware.now)&&r.hardwareTrial);
+      assert(r.controller.execute(fakeHardware.now)==Result::Ok);
+      assert(r.controller.targetMotionStarted);
+    } else {
+      assert(f.call("GET","/api/hardware/activity","",false).status==405);
+      assert(!r.hardwareInteraction);
+      assert(f.call("POST","/api/hardware/activity","",false).status==200&&r.hardwareInteraction);
+    }
+    const auto stop=r.controller.stopEpoch;
+    assert(f.api.serviceHardwareConfirmation(9999)&&r.hardwareTrial);
+    assert(f.api.serviceHardwareConfirmation(10000)&&!r.hardwareTrial);
+    assert(r.hardwareRecord.good==r.controller.hardware);
+    assert(r.controller.stopEpoch==stop&&!f.restart.pending());
+    assert(r.recoveryHistory.failures==1); // activity cannot erase the fault series
+    Runtime reboot;f.storage.loadHardware(reboot);
+    assert(!reboot.recovery&&!reboot.hardwareTrial&&!reboot.hardwareInteraction&&!reboot.controller.targetMotionStarted);
+  }
+  {
+    Fixture f;auto &r=f.runtime;auto candidate=r.hardwareRecord.good;candidate.buttonLow=!candidate.buttonLow;
+    assert(f.storage.stageHardware(r,candidate));f.storage.loadHardware(r);f.ready();r.noteUserActivity();
+    Preferences::failedBytesKey="config1";
+    assert(!f.api.serviceHardwareConfirmation(fakeHardware.now)&&r.hardwareTrial);
+    Preferences::failedBytesKey.clear();assert(f.api.serviceHardwareConfirmation(fakeHardware.now)&&!r.hardwareTrial);
+  }
+  {
+    Fixture f;auto &r=f.runtime;auto candidate=r.hardwareRecord.good;candidate.buttonLow=!candidate.buttonLow;
+    assert(f.storage.stageHardware(r,candidate));f.storage.loadHardware(r);f.ready();r.noteUserActivity();
+    fakeHeapBlock=MemoryGuard::HealthyBlock-1;
+    assert(f.api.serviceHardwareConfirmation(fakeHardware.now)&&r.hardwareTrial);
+    fakeHeapBlock=16384;
+    ++runtimeMetrics.allocationFailures;
+    assert(f.api.serviceHardwareConfirmation(fakeHardware.now)&&r.hardwareTrial);
+    --runtimeMetrics.allocationFailures;
+    // A newly staged edit must wait for its own reboot, even during a running trial.
+    assert(f.storage.stageHardware(r,r.hardwareRecord.good));r.controller.configurationLocked=true;
+    assert(f.api.serviceHardwareConfirmation(fakeHardware.now)&&r.hardwareTrial);
+  }
+  Fixture recovery;auto &r=recovery.runtime;
+  assert(recovery.storage.enterRecovery(r,RecoveryReason::Requested));recovery.storage.loadHardware(r);
+  assert(recovery.call("POST","/api/hardware/activity","",false).status==200);
+  r.controller.targetMotionStarted=true;
+  assert(recovery.api.serviceHardwareConfirmation(fakeHardware.now));
+  assert(r.recovery&&!r.hardwareInteraction&&r.controller.configurationLocked);
+}
 static void rs485DiscoveryApiTests() {
   {
     Fixture scan;scan.runtime.hud.config.role=DeviceRole::Hud;scan.runtime.hud.config.uart=true;scan.runtime.hud.begin(1,0x1234);scan.runtime.hud.begin(1,0x1234);
@@ -213,6 +273,7 @@ static void mqttApiTests() {
 int main(int argc,char **argv) {
   settingsOutputSafetyTests();
   liveTrialConfirmationTests();
+  activityConfirmationTests();
   hudBackgroundTests();
   mqttApiTests();
   {
@@ -243,6 +304,7 @@ int main(int argc,char **argv) {
       if(a==line.npos||b==line.npos||c==line.npos)return 2;
       fakeHardware.now=uint32_t(std::stoul(line.substr(0,a)));
       const auto method=line.substr(a+1,b-a-1),path=line.substr(b+1,c-b-1),body=line.substr(c+1);
+      assert(f.api.serviceHardwareConfirmation(fakeHardware.now));
       Response reply;
       if(path=="/__fixture/hud") {
         f.runtime.hud.config.role=DeviceRole::Hud;f.runtime.controller.remote=&f.runtime.hud;
@@ -813,8 +875,8 @@ int main(int argc,char **argv) {
     merged.runtime.recoveryHistory.record(RecoveryReason::LowMemory);
     const auto hardware=merged.call("GET","/api/hardware","",false).body;
     assert(hardware.find("\"failureCount\":1")!=hardware.npos);
-    assert(hardware.find("\"failureLimit\":3")!=hardware.npos);
-    assert(hardware.find("\"failureResetMs\":1800000")!=hardware.npos);
+    assert(hardware.find("\"failureLimit\":5")!=hardware.npos);
+    assert(hardware.find("\"failureResetMs\":900000")!=hardware.npos);
     assert(hardware.find("\"lastFailure\":\"low_memory\"")!=hardware.npos);
     assert(hardware.find("\"pins\":")!=hardware.npos);
     auto status=merged.call("GET","/api/status","",false).body;

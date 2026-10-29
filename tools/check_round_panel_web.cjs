@@ -11,7 +11,7 @@ const fixture=JSON.parse(fs.readFileSync(path.join(root,'build/pin-map-8.json'),
    const page=await browser.newPage({viewport:{width:mobile?360:1100,height:900},locale:'ru-RU'}),errors=[];
    page.on('pageerror',e=>errors.push(e.message));
    const config={driveInterface:0,simulation:0,bluetoothEnabled:0,bluetoothMode:3,forceApSta:0,buttonGpio:9,buttonActiveLow:1,buttonPullup:1,pwmInverted:0,pins:fixture.pins};
-   const state={token:123,generation:2,recovery:false,trial:false,ready:false,reason:'none',failureCount:0,failureLimit:3,failureResetMs:1800000,remainingMs:0,heapFree:80000,heapMaxBlock:50000,backend:'NONE',sppSupported:false,classicEsp32:false,crowpanel:false,crowpanelLocalDrive:false,separateDrive:true,btsDrive:true,hasConfirmed:true,configured:config};
+   const state={token:123,generation:2,recovery:false,trial:false,ready:false,reason:'none',failureCount:0,failureLimit:5,failureResetMs:900000,remainingMs:0,heapFree:80000,heapMaxBlock:50000,backend:'NONE',sppSupported:false,classicEsp32:false,crowpanel:false,crowpanelLocalDrive:false,separateDrive:true,btsDrive:true,hasConfirmed:true,configured:config};
    await page.route('http://hardware.test/**',async route=>{
     const u=new URL(route.request().url());
     if(u.pathname==='/hardware')return route.fulfill({contentType:'text/html',body:html});

@@ -60,6 +60,7 @@ void Display::serviceTouch() {
   const uint16_t x=sample.x,y=sample.y;
   touchHealthy_=sample.healthy;
   const bool touch=sample.down && sample.healthy && inputHealthy_;
+  if (touch) runtime_.noteUserActivity();
   const bool touchHealthy=sample.healthy && inputHealthy_;
   if (display_) {
     const bool hud = runtime_.hud.isHud();

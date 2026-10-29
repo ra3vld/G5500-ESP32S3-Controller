@@ -190,6 +190,7 @@ void Display::finishTouchCalibration() {
 }
 
 void Display::serviceTouchCalibration() {
+  if (touch->touched()) runtime_.noteUserActivity();
   if (tftPage != TFT_PAGE_TOUCH_CAL) {
     return;
   }
@@ -381,6 +382,7 @@ void Display::serviceCalibrationTouch() {
   auto &calibrationState=calibration_.state();
   if(tftPage==TFT_PAGE_TOUCH_CAL) {serviceTouchCalibration();return;}
   if(!touch->touched()) {touchWaitRelease=false;return;}
+  runtime_.noteUserActivity();
   if(touchWaitRelease) return;
   int x,y;if(!readCalibrationXY(x,y)) return;
   touchWaitRelease=true;

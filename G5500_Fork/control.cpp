@@ -213,6 +213,7 @@ Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
       axis.holdArmed = cascade && motionSettings[i].holdEnabled;
       const float difference = axis.target - axis.current;
       const int requested = std::abs(difference) <= tolerance(i) ? 0 : difference > 0 ? 1 : -1;
+      if (requested && !autoTune.internal) targetMotionStarted = true;
       if (!cascade) axis.wanted = requested;
       else if (!axis.direction) axis.wanted = requested;
       axis.tracking = cascade || requested != 0;

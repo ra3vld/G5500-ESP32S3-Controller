@@ -54,8 +54,9 @@ void Application::serviceConfigurationSafety() {
   const auto reason = runtime_.memoryGuard.sample(millis(), heapFreeBytes(), heapMaxBlockBytes(),
       runtimeMetrics.allocationFailures.load(), runtime_.hardwareTrial);
   if (reason != RecoveryReason::None) { failConfiguration(reason); return; }
+  if (!device_api_.serviceHardwareConfirmation(millis())) { failConfiguration(RecoveryReason::Storage); return; }
   if (!runtime_.hardwareTrial && runtime_.memoryGuard.ready(millis()) &&
-      !storage_.finishHardwareBoot(runtime_,uint32_t(millis()-runtime_.memoryGuard.started)))
+      !storage_.finishHardwareBoot(runtime_,uint32_t(millis()-runtime_.memoryGuard.healthyAt)))
     failConfiguration(RecoveryReason::Storage);
 }
 

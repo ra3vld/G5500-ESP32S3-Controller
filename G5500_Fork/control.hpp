@@ -263,6 +263,7 @@ public:
   std::array<Preset, 4> presets{};
   Target pending{};
   Target lastTarget{0, 0, false, false}; // Display/repeat only; never starts motion by itself.
+  bool targetMotionStarted = false; // Latched until the next boot, including short moves.
   bool pendingValid = false, presetActive = false, targetKnown = false;
   int presetSlot = -1;
   bool speedEnabled = DRIVE_INTERFACE != DRIVE_YAESU;

@@ -203,6 +203,9 @@ bool Storage::writeRecovery(const RecoveryHistory &history) {
   prefs_.end();return ok;
 }
 void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
+  runtime.hardwareInteraction = false;
+  runtime.controller.targetMotionStarted = false;
+  runtime.hardwareProbe = false;
   runtime.hardwareHudUart = runtime.hud.config.uart;
   runtime.hardwareHudRole = runtime.hud.isHud();
   HardwareRecord record;

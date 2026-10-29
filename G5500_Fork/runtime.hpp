@@ -30,6 +30,8 @@ struct Runtime {
   RecoveryHistory recoveryHistory;
   MemoryGuard memoryGuard;
   bool recovery = false, hardwareTrial = false, hardwareProbe = false;
+  bool hardwareInteraction = false;
+  void noteUserActivity() { if (!recovery) hardwareInteraction = true; }
   bool hardwareHudUart = false, hardwareHudRole = false;
   uint32_t hardwareToken = 0;
   RecoveryReason recoveryReason = RecoveryReason::None;
