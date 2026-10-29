@@ -8,6 +8,7 @@
 #include "rgb_indicator.hpp"
 #include "local_input.hpp"
 #include "position_sensors.hpp"
+#include "adc_millivolts.hpp"
 namespace forkrot {
 
 enum RgbState : uint8_t { RGB_IDLE, RGB_RX, RGB_TX, RGB_HEARTBEAT };
@@ -80,6 +81,7 @@ private:
   int pwmDirection_[2]{};
   PositionFilter filters_[2];
   PositionSensors sensors_;
+  AdcMillivolts adc_;
   bool positionValid_[2]{};
   uint32_t positionAttemptAt_[2]{};
   bool positionAttempted_[2]{};

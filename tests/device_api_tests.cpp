@@ -852,7 +852,11 @@ int main(int argc,char **argv) {
     char reply[COMMAND_REPLY_MAX+1];
     server.process(1,"@v=1&cid=1&method=GET&path=/api/hello&client=1",0,reply,sizeof reply);
     std::string request="@v=1&cid=2&sid=101&boot=0000000000000001&selection=0&page=0&method=POST&path=/api/hardware&token=11&generation=1&driveInterface=0&simulation=1&bluetoothEnabled=0&bluetoothMode=3&forceApSta=0&buttonGpio=0&buttonActiveLow=1&buttonPullup=1&pwmInverted=0";
-    for(const auto &d:pinDefinitions) request+='&'+std::string(d.field)+'='+std::to_string(PinMap{}.*d.member);
+    // Send the complete active map. Inactive roles grow with supported display
+    // types and need not consume the bounded UART command payload.
+    auto selected=HardwareConfig{};selected.simulation=true;selected.bluetooth=false;
+    for(const auto &d:pinDefinitions)if(board::pinActive(selected,d))
+      request+='&'+std::string(d.field)+'='+std::to_string(selected.pins.*d.member);
     assert(request.size()<COMMAND_INPUT_MAX);
     assert(server.process(1,request,1,reply,sizeof reply)>0);
     assert(std::string(reply).find("\"status\":200")!=std::string::npos);

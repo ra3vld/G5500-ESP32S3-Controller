@@ -34,7 +34,9 @@ int Hardware::adcAvgMv(int pin) {
     // adjacent reads aliases switching interference into a false shaft jump.
     // Four spaced reads leave time for both axes in the 5 ms control period.
     if(i) delayMicroseconds(200);
-    s += analogReadMilliVolts(pin);
+    const int value=adc_.read(pin);
+    if(value<0)return -1;
+    s += value;
   }
   return s / MotionAdcSamples;
   }
@@ -72,7 +74,7 @@ void Hardware::positionDiagRead(unsigned axis,int &raw,int &value,int *millivolt
     const int pin=axis?c.pins.elAdc:c.pins.azAdc;
     adcDiagRead(pin,raw,value);
     if(millivolts) *millivolts=value;
-    if(c.sensorInverted(axis) && !c.simulation && !runtime_.recovery && !runtime_.hud.isHud() && board::adc(pin)) value=3300-value;
+    if(value>=0 && c.sensorInverted(axis) && !c.simulation && !runtime_.recovery && !runtime_.hud.isHud() && board::adc(pin)) value=3300-value;
   }
 }
 bool Hardware::buttonReleased() const {
@@ -91,7 +93,9 @@ void Hardware::adcDiagRead(int pin, int &raw, int &mv) {
   uint32_t sr = 0, sm = 0;
   for (int i = 0; i < 25; i++) {
     sr += analogRead(pin);
-    sm += analogReadMilliVolts(pin);
+    const int value=adc_.read(pin);
+    if(value<0){raw=mv=-1;return;}
+    sm += value;
     delayMicroseconds(150);
   }
   raw = (int)(sr / 25);
@@ -378,6 +382,8 @@ void Hardware::beginAdc() {
     analogRead(p.azAdc); analogSetPinAttenuation(p.azAdc, ADC_11db);
   }
   if (!runtime_.controller.hardware.sensorType(1) && board::adc(p.elAdc)) { analogRead(p.elAdc); analogSetPinAttenuation(p.elAdc, ADC_11db); }
+  if((!runtime_.controller.hardware.sensorType(0) && board::adc(p.azAdc)) ||
+      (!runtime_.controller.hardware.sensorType(1) && board::adc(p.elAdc)))adc_.begin();
 }
 #if CROWPANEL_LOCAL_DRIVE
 void Hardware::crowpanelFault() {

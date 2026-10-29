@@ -113,6 +113,8 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I tests/f
 ./build/motion_settings_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/hardware_runtime_tests.cpp -o build/hardware_runtime_tests
 ./build/hardware_runtime_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp tests/adc_millivolts_tests.cpp -o build/adc_millivolts_tests
+./build/adc_millivolts_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp tests/reset_history_tests.cpp -o build/reset_history_tests
 ./build/reset_history_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/simulation_config_tests.cpp -o build/simulation_config_tests
