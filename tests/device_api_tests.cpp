@@ -1,4 +1,40 @@
 #include "device_service_fixture.hpp"
+static void liveTrialConfirmationTests() {
+  for(bool wire:{false,true}) {
+    Fixture f;auto &r=f.runtime;auto candidate=r.controller.hardware;
+    candidate.buttonLow=!candidate.buttonLow;
+    assert(f.storage.stageHardware(r,candidate));f.storage.loadHardware(r);f.ready();
+    assert(r.hardwareTrial&&!r.controller.configurationLocked&&!r.recovery);
+    if(!wire) {
+      r.setup.required=true;r.setup.paused=false;r.setup.step=SetupStep::Equipment;r.setup.pendingNext=true;
+      r.setupLease=7;r.setupSaving=true;
+    }
+    const std::string stamp="token=11&generation="+std::to_string(r.hardwareRecord.generation);
+    assert(f.call("GET","/api/status",{},wire).body.find("\"hardwareTrial\":{\"remainingMs\":289999,\"ready\":true}")!=std::string::npos);
+    assert(f.call("POST","/api/move","d=R",wire).status==200&&r.controller.moving());
+    const auto stop=r.controller.stopEpoch;
+    assert(f.call("POST","/api/hardware/confirm",stamp,wire).status==409);
+    assert(r.hardwareTrial&&r.controller.moving()&&r.controller.stopEpoch==stop&&!f.restart.pending());
+    assert(f.call("POST","/api/hardware/probe",stamp,wire).status==200);
+    Preferences::failedBytesKey="config1";
+    assert(f.call("POST","/api/hardware/confirm",stamp,wire).status==503);
+    assert(r.hardwareTrial&&r.controller.moving()&&r.controller.stopEpoch==stop&&!f.restart.pending());
+    Preferences::failedBytesKey.clear();
+    assert(f.call("POST","/api/hardware/confirm",stamp+(!wire?"&setupToken=7":""),wire).status==200);
+    assert(!r.hardwareTrial&&!r.controller.configurationLocked&&r.controller.moving());
+    assert(r.controller.stopEpoch==stop&&!f.restart.pending()&&!r.setupRestartRequired);
+    if(!wire) {
+      assert(!r.setup.pendingNext&&r.setup.step==SetupStep::Equipment);
+      assert(f.call("POST","/api/setup","action=end_save&setupToken=7",false).status==200);
+      assert(f.call("POST","/api/setup","action=advance&setupToken=7&generation="+std::to_string(r.setup.generation),false).status==200);
+      assert(r.setup.step==SetupStep::Inputs&&r.controller.moving()&&r.controller.stopEpoch==stop);
+    }
+    assert(f.call("GET","/api/status",{},wire).body.find("\"hardwareTrial\":null")!=std::string::npos);
+    Runtime reboot;f.storage.loadHardware(reboot);
+    assert(!reboot.hardwareTrial&&!reboot.recovery&&reboot.controller.hardware==candidate);
+    assert(r.memoryGuard.sample(MemoryGuard::TrialMs,60000,30000,0,r.hardwareTrial)==RecoveryReason::None);
+  }
+}
 static void rs485DiscoveryApiTests() {
   {
     Fixture scan;scan.runtime.hud.config.role=DeviceRole::Hud;scan.runtime.hud.config.uart=true;scan.runtime.hud.begin(1,0x1234);scan.runtime.hud.begin(1,0x1234);
@@ -114,6 +150,7 @@ static void mqttApiTests() {
 #endif
 }
 int main(int argc,char **argv) {
+  liveTrialConfirmationTests();
   hudBackgroundTests();
   mqttApiTests();
   {
@@ -1011,7 +1048,7 @@ int main(int argc,char **argv) {
   Preferences::failedBytesKey.clear();
   assert(f.call("POST","/api/hardware/probe",stamp).status==200);
   assert(f.call("POST","/api/hardware/confirm",stamp).status==200);
-  assert(r.controller.configurationLocked);
+  assert(!r.controller.configurationLocked);
   f.storage.loadHardware(r);assert(!r.hardwareTrial && !r.recovery);assert(f.storage.finishHardwareBoot(r));
   assert(f.call("POST","/api/hardware/probe","token=11&generation=1").status==409);
   const auto otaStatus=f.call("GET","/api/ota");assert(otaStatus.status==200 && otaStatus.body.size()<=COMMAND_PAGE_MAX);

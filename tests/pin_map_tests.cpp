@@ -193,7 +193,7 @@ int main(int argc,char **argv) {
   auto candidate=migrated.controller.hardware; candidate.buttonGpio=-1; candidate.pins.led=0;
   assert(storage.stageHardware(migrated,candidate));
   MotionTestRuntime trial; storage.loadHardware(trial);
-  assert(trial.hardwareTrial && trial.controller.hardware.pins.led==0 && trial.controller.configurationLocked);
+  assert(trial.hardwareTrial && trial.controller.hardware.pins.led==0 && !trial.controller.configurationLocked);
   assert(storage.confirmHardware(trial));
   MotionTestRuntime confirmed; storage.loadHardware(confirmed);
   assert(!confirmed.recovery && confirmed.controller.hardware.pins.led==0);

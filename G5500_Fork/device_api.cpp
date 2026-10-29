@@ -14,6 +14,15 @@
 namespace forkrot {
 using namespace board;
 namespace {
+void writeHardwareTrial(JsonWriter &j, const Runtime &runtime) {
+  j << ",\"hardwareTrial\":";
+  if(!runtime.hardwareTrial) { j << "null"; return; }
+  const auto elapsed=uint32_t(millis()-runtime.memoryGuard.started);
+  const bool ready=runtime.memoryGuard.ready(millis()) && heapFreeBytes()>=MemoryGuard::HealthyFree &&
+    heapMaxBlockBytes()>=MemoryGuard::HealthyBlock && runtimeMetrics.allocationFailures.load()==runtime.memoryGuard.failures;
+  j << "{\"remainingMs\":" << (elapsed<MemoryGuard::TrialMs?MemoryGuard::TrialMs-elapsed:0u)
+    << ",\"ready\":" << (ready?"true":"false") << '}';
+}
 void writePreviousAllocation(JsonWriter &j,unsigned index) {
   const auto &r=runtimeMetrics.previousFailures[index];
   j << "{\"ready\":" << (allocationRecordValid(r)?"true":"false");
@@ -234,7 +243,7 @@ bool DeviceApi::setupReady(SetupStep step) const {
   }
 }
 bool DeviceApi::setupMotionAllowed() const {
-  return !runtime_.recovery && !runtime_.hardwareTrial && !runtime_.controller.movementBlocked();
+  return !runtime_.recovery && !runtime_.controller.movementBlocked();
 }
 void DeviceApi::writeSetup(JsonWriter &j) const {
   const auto &s=runtime_.setup;
@@ -453,8 +462,8 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
     if(!saved && modbusChanged)storage_.saveModbus(runtime_.modbus);
   } else if(path=="/api/hardware/confirm") {
     if(runtime_.recovery || !runtime_.hardwareTrial || !runtime_.hardwareProbe || !runtime_.memoryGuard.ready(millis()) || heapFreeBytes()<MemoryGuard::HealthyFree || heapMaxBlockBytes()<MemoryGuard::HealthyBlock || runtimeMetrics.allocationFailures.load()!=runtime_.memoryGuard.failures) { reply(409,"not_ready"); return; }
-    stopForConfiguration(); saved=storage_.confirmHardware(runtime_);
-    if(saved && setupBatch) {auto next=runtime_.setup;next.equipment=true;next.step=SetupStep::Equipment;++next.generation;
+    saved=storage_.confirmHardware(runtime_);
+    if(saved && setupBatch) {auto next=runtime_.setup;next.equipment=true;next.step=SetupStep::Equipment;next.pendingNext=false;++next.generation;
       runtime_.setupStorageOk=storage_.saveSetup(next);if(runtime_.setupStorageOk)runtime_.setup=next;}
   } else if(path=="/api/hardware/rollback") {
     if(!runtime_.hardwareRecord.hasConfirmed) { reply(409,"no_confirmed_configuration"); return; }
@@ -478,7 +487,8 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
   if(!saved) { reply(503,"storage_failed"); return; }
   output << "{\"ok\":true,\"error\":\"\",\"confirmationRequired\":"
     << (runtime_.hardwareRecord.phase==ConfigPhase::Pending?"true":"false") << '}';
-  configurationRestart(setupBatch); return;
+  if(path!="/api/hardware/confirm")configurationRestart(setupBatch);
+  return;
 }
 
 void DeviceApi::executeGeneral(std::string_view method, std::string_view path, FormView arguments,
@@ -667,7 +677,9 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       << ",\"fault\":" << jsonQuoted(c.fault) << ",\"recovery\":" << (runtime_.recovery?"true":"false")
       << ",\"reason\":" << jsonQuoted(recoveryReasonName(runtime_.recoveryReason))
       << ",\"configurationLocked\":" << (c.configurationLocked?"true":"false")
-      << ",\"commandPort\":" << runtime_.loggerSettings.commandPort << ",\"axes\":[";
+      << ",\"commandPort\":" << runtime_.loggerSettings.commandPort;
+    writeHardwareTrial(output,runtime_);
+    output << ",\"axes\":[";
     for(unsigned i=0;i<2;++i) {
       if(i)output << ',';
       const auto &a=c.axes[i];
@@ -1161,6 +1173,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     }
     j << ']';
     runtime_.hud.writeStatus(j);
+    writeHardwareTrial(j,runtime_);
     if (!writeStateJson(j, runtime_.controller, runtime_.protocol, runtime_.loggerSettings, millis(), true)) {
       web_.send(503, "application/json", "{\"error\":\"status_too_large\"}");
       return;

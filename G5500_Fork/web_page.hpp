@@ -52,7 +52,7 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 @media(max-width:700px){.grid{grid-template-columns:1fr}.big{font-size:46px}.targetbig{font-size:30px}.sep{font-size:26px}}
 .manual-drive{display:grid;grid-template-columns:minmax(0,1fr);gap:12px 18px;align-items:center}.manual-drive.has-speeds{grid-template-columns:minmax(0,6.2fr) minmax(0,1fr)}.manual-speeds{display:grid;gap:10px;min-width:0}.manual-speed label{display:grid;gap:2px;font-size:13px}.manual-speed output{font-variant-numeric:tabular-nums;white-space:nowrap}.manual-speed input{width:100%;min-height:44px;padding:0;accent-color:var(--a);touch-action:pan-y}#manualSpeedHelp{grid-column:1/-1;margin:0}.manual-drive:not(.has-speeds) #manualSpeedHelp{display:none}@media(max-width:600px){.manual-drive.has-speeds{grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px}.manual-drive.has-speeds .controls{gap:6px}.manual-drive.has-speeds .controls .btn{font-size:14px}}
 .hint{color:var(--m);font-size:13px;line-height:1.5;overflow-wrap:anywhere}
-.hardware-notice{padding:14px 16px;border:2px solid #e5bd67;border-radius:12px;background:#302719;color:#ffe4ac;line-height:1.5;overflow-wrap:anywhere}.hardware-notice p{margin:8px 0}.hardware-notice a{display:inline-flex;align-items:center;min-height:44px;color:#b9e5ff;max-width:100%;text-underline-offset:3px}
+.hardware-notice{padding:14px 16px;border:2px solid #e5bd67;border-radius:12px;background:#302719;color:#ffe4ac;line-height:1.5;overflow-wrap:anywhere}.hardware-notice p{margin:8px 0}.hardware-trial-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;margin-top:10px}.hardware-trial-actions button{min-height:44px;max-width:100%;white-space:normal;background:#14775f;color:white;border:1px solid #35b56e;border-radius:8px;padding:10px 14px;font:inherit;cursor:pointer}.hardware-notice a{display:inline-flex;align-items:center;min-height:44px;color:#b9e5ff;max-width:100%;text-underline-offset:3px}
 .device-panel h2{font-size:20px;line-height:1.35;margin:0;overflow-wrap:anywhere}.device-panel #hudLink:empty{display:none}.device-panel #hudLink:not(:empty){margin-top:8px}
 .device-section{margin-top:14px;border-top:1px solid var(--b);padding-top:14px}.device-section summary{line-height:1.4;padding:4px 0}.device-section[open] summary{margin-bottom:14px}
 .device-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.device-fields .field{min-width:0}.device-fields label{display:block;margin-bottom:7px;color:var(--m);font-size:14px;line-height:1.4}.device-fields input,.device-fields select{min-height:44px;max-width:100%}
@@ -211,7 +211,7 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <a href="/resetdiag">RESET DIAG</a>
 <a href="/diaglog">DIAG CONSOLE</a>
 </nav>
-<div class="hardware-notice hide" id="hardwareTrialNotice" role="status"><strong>Управление заблокировано на время применения оборудования.</strong><p>Новая аппаратная конфигурация проходит пробный запуск. Откройте настройки оборудования и нажмите «Подтвердить и перезапустить» вверху страницы.</p><a href="/hardware">Открыть подтверждение оборудования →</a></div>
+<div class="hardware-notice hide" id="hardwareTrialNotice" role="status"><strong>Была изменена конфигурация. Подтвердите, что всё в порядке, иначе настройки откатятся назад.</strong><div class="hardware-trial-actions"><button type="button" id="hardwareTrialConfirm">Подтверждаю, что всё ок</button><span id="hardwareTrialCountdown"></span><span id="hardwareTrialReady"></span></div><p id="hardwareTrialMessage"></p></div>
 <div id="forkMessage" role="status" aria-live="polite"></div>
 <main id="controlPanel" role="tabpanel" aria-labelledby="controlTab">
 <div id="selectedRotor" class="hint hide" role="status"></div>
@@ -1249,7 +1249,7 @@ function updateFork(j){
  const btBackend=j.build?.bluetoothBackend||(j.build?.bluetooth===false?'NONE':'HC05');
  const btName=btBackend==='ESP32_SPP'?'Встроенный Bluetooth SPP':btBackend==='HC05'?'HC-05':'Bluetooth отключён';
  const nativeBt=btBackend==='ESP32_SPP';
- document.getElementById('hardwareTrialNotice').classList.toggle('hide',!j.configurationLocked||!!window.setupCommissioning);
+ updateHardwareTrial(j);
  setText(document.getElementById('buildInfo'),j.build?`${j.build.board} · ${j.build.drive} · ${j.build.display} · ${btName}`:'');
  setText(document.getElementById('btlabel'),nativeBt?'Канал SPP':btName);
  setText(document.getElementById('bttransport'),btBackend==='ESP32_SPP'?'G5500-Rotator · SPP / виртуальный COM':btBackend==='HC05'?'HC-05 UART: 9600 baud':'');
@@ -1555,6 +1555,38 @@ function currentPosition(j,axis){
  if(j.axes?.[axis==='az'?0:1]?.calibrated===false)return 'NC';
  return Number.isFinite(j[axis])?Number(j[axis]).toFixed(1):'—';
 }
+let hardwareTrialStamp=null,hardwareTrialUntil=0,hardwareTrialBusy=false;
+function renderHardwareTrial(){
+ const trial=hardwareTrialStamp;
+ document.getElementById('hardwareTrialNotice').classList.toggle('hide',!trial);
+ if(!trial)return;
+ document.getElementById('hardwareTrialCountdown').textContent='До отката: '+Math.max(0,Math.ceil((hardwareTrialUntil-Date.now())/1000))+' с.';
+ document.getElementById('hardwareTrialConfirm').disabled=hardwareTrialBusy||!trial.ready;
+ document.getElementById('hardwareTrialReady').textContent=trial.ready?'':'Проверка устройства…';
+}
+function updateHardwareTrial(j){
+ if(j.hardwareTrial!==hardwareTrialStamp){hardwareTrialStamp=j.hardwareTrial||null;hardwareTrialUntil=Date.now()+(hardwareTrialStamp?.remainingMs||0);}
+ renderHardwareTrial();
+}
+document.getElementById('hardwareTrialConfirm').onclick=async()=>{
+ if(hardwareTrialBusy)return;
+ hardwareTrialBusy=true;renderHardwareTrial();
+ const message=document.getElementById('hardwareTrialMessage');message.textContent='Подтверждаем настройки…';
+ const request=async(path,body)=>{
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);
+  try{const response=await fetch(path,body?{method:'POST',body:new URLSearchParams(body),signal:controller.signal}:{signal:controller.signal});
+   const result=await response.json();if(!response.ok)throw Error(result.error==='not_ready'?'Проверка устройства ещё не завершена. Попробуйте через несколько секунд.':result.error==='storage_failed'?'Не удалось сохранить подтверждение. Попробуйте ещё раз.':result.error||'Не удалось подтвердить настройки.');return result;
+  }finally{clearTimeout(timer);}
+ };
+ try{
+  const state=await request('/api/hardware?view=form');
+  if(state.trial){const stamp={token:state.token,generation:state.generation};await request('/api/hardware/probe',stamp);await request('/api/hardware/confirm',stamp);}
+  if(httpState)httpState.hardwareTrial=null;
+  updateHardwareTrial({hardwareTrial:null});message.textContent='';await upd(true);
+ }catch(e){message.textContent=e.name==='AbortError'?'Нет ответа от устройства. Проверьте связь и повторите подтверждение.':e.message;await upd(true);}
+ finally{hardwareTrialBusy=false;renderHardwareTrial();}
+};
+setInterval(renderHardwareTrial,1000);
 function renderStatus(j){
 updateCamera(j);
 setText(az,currentPosition(j,'az'));setText(el,currentPosition(j,'el'));

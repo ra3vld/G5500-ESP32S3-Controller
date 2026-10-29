@@ -20,6 +20,7 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
     const body=Object.fromEntries(new URLSearchParams(req.postData()));requests.push({path:u.pathname,body});
     assert.equal(body.token,'123');assert.equal(body.generation,'2');
     const failed=probeFails&&u.pathname==='/api/hardware/probe';
+    if(u.pathname==='/api/hardware/confirm'&&!failed)state={...state,trial:false,hasConfirmed:true};
     return route.fulfill({status:failed?409:200,contentType:'application/json',body:JSON.stringify(failed?{error:'not_ready'}:{ok:true})});
    });
    await page.goto('http://hardware.test/recovery');
@@ -188,6 +189,8 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    await page.waitForFunction(()=>!document.getElementById('confirm').disabled);
    assert(!(await page.locator('#confirm').isDisabled()));
    assert(await page.locator('#confirm').isVisible());
+   assert.equal(await page.locator('#confirm').textContent(),'Подтверждаю, что всё ок');
+   assert.doesNotMatch(await page.locator('#state').textContent(),/заблокировано/);
    assert.match(await page.locator('#state').textContent(),/До отката: 300 с/);
    assert(await page.locator('#confirm').evaluate(el=>el.closest('#hardware-status')!==null));
    await page.evaluate(()=>window.scrollTo(0,0));

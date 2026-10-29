@@ -24,12 +24,12 @@ static void confirmedRetryNeedsNoTrial() {
     assert(!resumed.recoveryHistory.failures && !storage.confirmHardware(resumed));
     assert(storage.finishHardwareBoot(resumed));storage.loadHardware(boot);assert(storage.finishHardwareBoot(boot));
   }
-  // A real hardware edit still requires a locked trial and can roll back.
+  // A real hardware edit still requires a trial and can roll back.
   auto changed=good;changed.buttonLow=!good.buttonLow;
   assert(storage.enterRecovery(boot,RecoveryReason::Requested));storage.loadHardware(boot);
   assert(storage.stageHardware(boot,changed));
   MotionTestRuntime trial;storage.loadHardware(trial);
-  assert(trial.hardwareTrial && trial.controller.configurationLocked && trial.controller.hardware==changed);
+  assert(trial.hardwareTrial && !trial.controller.configurationLocked && trial.controller.hardware==changed);
   MotionTestRuntime rolledBack;storage.loadHardware(rolledBack);
   assert(!rolledBack.recovery && !rolledBack.hardwareTrial && rolledBack.controller.hardware==good);
   assert(storage.finishHardwareBoot(rolledBack));
@@ -305,6 +305,11 @@ int main() {
       for (const auto &event : fakeHardware.events)
         assert(event.pin!=board::PIN_LEFT && event.pin!=board::PIN_AZ_ADC);
     }
+    r.hardwareTrial=true;
+    assert(r.controller.jog(0,1,false,0)==Result::Ok);
+    r.controller.tick(20);h.applyOutputs();assert(r.controller.moving()&&!r.controller.driveFault);
+    if(!simulation && drive==DRIVE_YAESU)assert(fakeHardware.levels[cfg.pins.azPositive]==HIGH);
+    r.controller.stopNow(-1,20);h.applyOutputs();
     r.controller.configurationLocked=true;
     assert(r.controller.target({90,0,true,false},false,0)==Result::Unavailable);
     assert(r.controller.jog(0,1,false,0)==Result::Unavailable);
@@ -339,7 +344,7 @@ int main() {
   const auto good=first.hardwareRecord.good;
   assert(s.stageHardware(first,candidate));
   MotionTestRuntime trial; s.loadHardware(trial);
-  assert(trial.hardwareTrial && !trial.recovery && trial.controller.configurationLocked);
+  assert(trial.hardwareTrial && !trial.recovery && !trial.controller.configurationLocked);
   assert(trial.controller.hardware==candidate && trial.hardwareRecord.good==good);
   // Writing identical bytes is insufficient proof that NVS still accepts writes.
   Preferences::failedBytesKey="config1";
@@ -357,7 +362,7 @@ int main() {
   assert(s.stageHardware(persistentRecovery,candidate));
   MotionTestRuntime secondTrial; s.loadHardware(secondTrial);
   assert(s.confirmHardware(secondTrial));
-  assert(secondTrial.controller.configurationLocked); // queues are cleared only by reboot
+  assert(!secondTrial.controller.configurationLocked); // confirmation does not interrupt operation
   MotionTestRuntime confirmed; s.loadHardware(confirmed);
   assert(!confirmed.recovery && !confirmed.hardwareTrial && confirmed.controller.hardware==candidate);
   assert(s.finishHardwareBoot(confirmed));

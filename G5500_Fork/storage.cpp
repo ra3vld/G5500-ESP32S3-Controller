@@ -311,14 +311,14 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
     if(invalidStored(record.good))effective.pins.uartRx=effective.pins.uartTx=-1;
   }
   runtime.controller.configureHardware(effective);
-  runtime.controller.configurationLocked = runtime.recovery || runtime.hardwareTrial;
+  runtime.controller.configurationLocked = runtime.recovery;
 }
 bool Storage::stageHardware(Runtime &runtime, const HardwareConfig &config) {
   if (validateHardware(config, runtime.hardwareHudUart,runtime.configuredAsHud())) return false;
   auto next = runtime.hardwareRecord;
   next.candidate = config; next.candidate.releaseSimulationPins();
   // Retrying the exact confirmed map is already authorized. Only an untested
-  // configuration needs a locked trial and a second confirmation/reboot.
+  // configuration needs a trial with automatic rollback until confirmed.
   next.phase = next.hasConfirmed && next.candidate == next.good ? ConfigPhase::Confirmed : ConfigPhase::Pending;
   next.reason = RecoveryReason::None;
   if (!++next.generation) ++next.generation;
@@ -336,7 +336,7 @@ bool Storage::confirmHardware(Runtime &runtime) {
   next.phase = ConfigPhase::Confirmed; next.reason = RecoveryReason::None;
   if (!writeHardware(next)) return false;
   runtime.hardwareRecord = next; runtime.hardwareTrial = false;
-  // Stay stopped until the subsequent reboot clears all transport queues.
+  // The candidate is already running; confirmation only makes it persistent.
   return true;
 }
 bool Storage::enterRecovery(Runtime &runtime, RecoveryReason reason) {

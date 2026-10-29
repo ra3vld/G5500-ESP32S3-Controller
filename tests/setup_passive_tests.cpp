@@ -106,10 +106,10 @@ static void progressFailureDoesNotCancelOrdinaryWork() {
     assert(f.call("POST","/api/setup","action=start",false).status==200);
     const auto token="&setupToken="+std::to_string(r.setupLease);
     assert(f.call("POST","/api/setup","action=begin_save"+token,false).status==200);
-    r.hardwareRecord.phase=ConfigPhase::Testing;r.hardwareTrial=true;r.hardwareProbe=true;r.controller.configurationLocked=true;
+    r.hardwareRecord.phase=ConfigPhase::Testing;r.hardwareTrial=true;r.hardwareProbe=true;r.controller.configurationLocked=false;
     Preferences::failedBytesKey="state1";
     assert(f.call("POST","/api/hardware/confirm","token=11&generation=1"+token,false).status==200);
-    assert(!r.setupStorageOk&&!r.hardwareTrial&&r.hardwareRecord.phase==ConfigPhase::Confirmed&&f.restart.pending());
+    assert(!r.setupStorageOk&&!r.hardwareTrial&&r.hardwareRecord.phase==ConfigPhase::Confirmed&&!f.restart.pending());
   }
   {
     Fixture f;auto &r=f.runtime;

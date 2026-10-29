@@ -40,6 +40,34 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
    });
    if(['hud-role','hud-hardware','hud-review','hud-fields'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/hud');
    if(['simulation','motion','optional-drive','controller-fields','passive'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/controller');
+   if(process.env.SETUP_SESSION_SCENARIO==='trial-inline'){
+    await rpc('POST','/api/setup','action=pause');
+    const stage=async()=>{const h=(await rpc('GET','/api/hardware')).body;assert.equal((await rpc('POST','/api/hardware',new URLSearchParams({token:h.token,generation:h.generation,simulation:1,buttonActiveLow:h.configured.buttonActiveLow?0:1}).toString())).status,200);await rpc('POST','/__fixture/reboot');};
+    await stage();await page.goto('http://setup-session.test/');
+    await page.waitForFunction(()=>!!window._forkState?.hardwareTrial&&!wizard.active);
+    const banner=page.locator('#hardwareTrialNotice'),confirm=page.locator('#hardwareTrialConfirm');
+    assert(await banner.isVisible());assert(await confirm.isEnabled());
+    assert.match(await banner.textContent(),/Была изменена конфигурация/);assert.equal(await confirm.textContent(),'Подтверждаю, что всё ок');
+    assert(!(await rpc('GET','/api/status')).body.configurationLocked);
+    const before=await page.locator('#hardwareTrialCountdown').textContent();await wait(1200);assert.notEqual(await page.locator('#hardwareTrialCountdown').textContent(),before);
+    assert(await page.locator('.movebtn[data-dir=R]').isEnabled());
+    assert.equal((await rpc('POST','/api/move','d=R')).status,200);
+    await page.route('**/api/hardware/confirm',async route=>{await page.unroute('**/api/hardware/confirm');await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'storage_failed'})});});
+    await confirm.click();await page.waitForFunction(()=>!hardwareTrialBusy);
+    assert(await banner.isVisible());assert.match(await page.locator('#hardwareTrialMessage').textContent(),/Не удалось сохранить/);
+    assert((await rpc('GET','/api/status')).moving);
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    if(process.env.ARTIFACT_DIR)await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`trial-control-${width}.png`)});
+    await confirm.click();await page.waitForFunction(()=>!hardwareTrialBusy&&!window._forkState.hardwareTrial);
+    assert(await banner.isHidden());let status=await rpc('GET','/api/status');assert(status.moving&&!status.body.configurationLocked);
+    await stage();await page.reload();await page.waitForFunction(()=>!!window._forkState?.hardwareTrial);
+    await page.locator('#settingsTab').click();assert(await banner.isVisible());
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    if(process.env.ARTIFACT_DIR)await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`trial-settings-${width}.png`)});
+    await confirm.click();await page.waitForFunction(()=>!hardwareTrialBusy&&!window._forkState.hardwareTrial);assert(await banner.isHidden());
+    assert.equal(new URL(page.url()).pathname,'/');assert(!page.frames().some(f=>f.url().includes('/hardware')));
+    assert.deepEqual(errors,[]);console.log(`PASS: ${width}px, inline trial countdown, movement during trial, failed confirmation retry, live confirmation on control/settings without reboot or hardware page`);continue;
+   }
    if(process.env.SETUP_SESSION_SCENARIO==='passive'){
     await rpc('POST','/api/setup','action=pause');
     assert.equal((await rpc('POST','/api/move','d=R')).status,200);
@@ -61,7 +89,7 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     await page.waitForFunction(()=>wizard.loaded&&!wizard.active);
     current=await rpc('GET','/api/setup');assert(current.moving&&current.body.paused&&current.body.step===1);
     const pausedReads=reads();await wait(2800);assert.equal(reads(),pausedReads);
-    const warning=await page.evaluate(()=>{selectTab('control',false);renderStatus({...window._forkState,configurationLocked:true,setupRequired:true});return !!document.getElementById('hardwareTrialNotice').getClientRects().length;});
+    const warning=await page.evaluate(()=>{selectTab('control',false);renderStatus({...window._forkState,configurationLocked:false,setupRequired:true,hardwareTrial:{remainingMs:254000,ready:true}});return !!document.getElementById('hardwareTrialNotice').getClientRects().length;});
     assert(warning,'A bookmark must not hide actual hardware warnings');
     if(process.env.ARTIFACT_DIR)await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`passive-${width}.png`)});
     assert.deepEqual(errors,[]);
@@ -172,12 +200,11 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     await rpc('POST','/__fixture/reboot');await page.evaluate(()=>pollSetup());await page.waitForFunction(()=>!wizard.waiting);
     frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
     await frame.waitForFunction(()=>state?.trial&&!!probe);
-    await page.locator('#setupNext').click();await page.waitForFunction(()=>wizard.waiting);
+    await page.locator('#setupNext').click();
+    await page.waitForFunction(()=>!wizard.waiting&&!wizard.busy&&wizard.state.step===4);
     assert(trace.some(r=>r.path==='/api/hardware/confirm'&&r.status===200));
-    await rpc('POST','/__fixture/reboot');await page.evaluate(()=>pollSetup());
-    await page.waitForFunction(()=>!wizard.waiting&&wizard.state.step===4);
     const hw=await rpc('GET','/api/hardware');assert(!hw.body.trial&&!hw.body.recovery&&hw.body.failureCount===0);
-    assert.deepEqual(errors,[]);console.log(`PASS: ${width}px, HUD hardware apply, trial probe, explicit confirm, second reboot, next step without failures`);continue;
+    assert.deepEqual(errors,[]);console.log(`PASS: ${width}px, HUD hardware apply, trial probe, live confirmation without a second reboot, next step without failures`);continue;
    }
    if(process.env.SETUP_SESSION_SCENARIO==='hud-role'){
     await page.waitForFunction(()=>window._forkState?.deviceRole==='hud');

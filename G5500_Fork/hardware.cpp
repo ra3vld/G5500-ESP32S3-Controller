@@ -449,7 +449,7 @@ void Hardware::cancelJoystickCalibration() {
 
   if(!calibrating_) return;
   calibrating_=false;
-  runtime_.controller.configurationLocked=runtime_.recovery || runtime_.hardwareTrial;
+  runtime_.controller.configurationLocked=runtime_.recovery;
   localInput_.sample(0,0,0,false,millis());
 
 #else

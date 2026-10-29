@@ -77,8 +77,8 @@ python3 tools/controller_api.py --serial /dev/ttyUSB0 --watch 10 --duration 8640
 
 1. Прочитайте GET `/api/hardware`. Ответ содержит `token`, `generation`, `configured`, `trial`, `recovery`, `reason`, `ready`. Параметр `view=confirmed` или `view=effective` выбирает подтверждённую или действующую конфигурацию.
 2. Передайте POST `/api/hardware` с `token`, `generation` и изменяемыми аппаратными полями из [описания API оборудования](index.md#http-api-оборудования). Для сборки без Bluetooth укажите `bluetoothEnabled=0`.
-3. После перезапуска повторно прочитайте `/api/hardware`: токен запуска изменился. Пока идёт пробный запуск, движение заблокировано.
-4. Дождитесь `ready=true`, выполните POST `/api/hardware/probe` с текущими `token` и `generation`, затем POST `/api/hardware/confirm` с теми же значениями. После подтверждения устройство перезапустится.
+3. После перезапуска повторно прочитайте `/api/hardware`: токен запуска изменился. Во время пробного запуска управление доступно; без подтверждения за пять минут настройки откатятся.
+4. Дождитесь `ready=true`, выполните POST `/api/hardware/probe` с текущими `token` и `generation`, затем POST `/api/hardware/confirm` с теми же значениями. Подтверждение сохраняет работающую конфигурацию без остановки движения и перезапуска.
 
 Для переназначения GPIO передавайте `pin.<имя>=GPIO`, например `pin.azAdc=1`. `GET /api/hardware/pins` возвращает доступные GPIO, встроенные соединения и значения по умолчанию. Частичные изменения и чтение `configured.pins` доступны через те же операции, что и в HTTP API.
 
