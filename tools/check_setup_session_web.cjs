@@ -43,7 +43,7 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     }finally{if(slow)--pendingPolls[key];}
    });
    if(['hud-role','hud-hardware','hud-review','hud-fields'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/hud');
-   if(['simulation','motion','optional-drive','controller-fields','passive','audit-fixes'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/controller');
+   if(['simulation','mechanics','motion','optional-drive','controller-fields','passive','audit-fixes'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/controller');
    if(process.env.SETUP_SESSION_SCENARIO==='trial-inline'){
     await rpc('POST','/api/setup','action=pause');
     const stage=async()=>{const h=(await rpc('GET','/api/hardware')).body;assert.equal((await rpc('POST','/api/hardware',new URLSearchParams({token:h.token,generation:h.generation,simulation:1,buttonActiveLow:h.configured.buttonActiveLow?0:1}).toString())).status,200);await rpc('POST','/__fixture/reboot');};
@@ -220,14 +220,17 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     assert.equal(await page.locator('#setup-motion').count(),0);assert.deepEqual(errors,[]);
     console.log(`PASS: ${width}px, physical motion works during and after paused wizard, STOP works, permission checkbox/button absent`);continue;
    }
-   if(process.env.SETUP_SESSION_SCENARIO==='simulation'){
+   if(['simulation','mechanics'].includes(process.env.SETUP_SESSION_SCENARIO)){
     await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===2);
-    await page.locator('#setupDriveKind').selectOption('SIMULATION');
+    const mechanical=process.env.SETUP_SESSION_SCENARIO==='mechanics';
+    await page.locator('#setupDriveKind').selectOption(mechanical?'MECHANICS':'SIMULATION');
+    if(mechanical&&process.env.ARTIFACT_DIR)await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`mechanics-model-${width}.png`)});
     await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===3);
+    assert.equal(await page.evaluate(()=>wizard.state.simulationMode),mechanical?2:1);
     const frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
     await frame.waitForFunction(()=>typeof state!=='undefined'&&!!state&&typeof metadata!=='undefined'&&!!metadata);
     await page.waitForFunction(()=>wizard.hardwareCanApply,{},{timeout:5000});
-    assert.equal(await frame.locator('[name=simulation]').inputValue(),'1');
+    assert.equal(await frame.locator('[name=simulation]').inputValue(),mechanical?'2':'1');
     assert.equal(await frame.locator('#pin-validation').textContent(),'');
     for(let attempt=0;attempt<3&&await page.evaluate(()=>wizard.state.step===3);++attempt){
      await page.locator('#setupNext').click({timeout:5000});await page.waitForFunction(()=>!wizard.busy);

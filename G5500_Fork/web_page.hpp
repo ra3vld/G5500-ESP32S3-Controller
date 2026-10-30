@@ -1191,7 +1191,7 @@ function autoTuneSummary(t,r){
  return stages+selected+tracking+plan+(r.minimumVelocity>0?`\nПроверенная минимальная скорость: ${n(r.minimumVelocity)} °/с; выход: ${n(r.minimumOutput)}%.${r.minimumSetpoint>0?` Уставка: ${n(r.minimumSetpoint)} ${t.mode==='cascade'?'°/с':'%'}.`:''} После применения выбирается эта уставка.`:'')+`\nМаксимальный выход: ${n(r.OutputLimitPercent)}%; пуск: ${n(r.KickPercent)}%, нарастание ${r.KickMs} мс, ожидание до ${Math.max(r.KickMs,r.StallMs||0)} мс; снятие ${r.KickReleaseMs} мс\nПодтверждение движения: ${n(r.MovementDegrees)}°; порог остановки: ${n(r.StoppedVelocity)} °/с\nОшибка проверочного наведения: ${Number(t.validationError).toFixed(2)}°. Удержание ${r.holdEnabled?'сохранено включённым':'выключено'}.`;
 }
 function renderMotionStatus(j){
- if(document.getElementById('coastSettings')){const fixed=[0,1].filter(i=>(i===0||j.model==='G5500')&&j.axes?.[i]&&!j.axes[i].speedEnabled&&j.deviceRole==='controller'&&j.build?.drive!=='SIMULATED');const select=document.getElementById('coastAxis');document.getElementById('coastSettings').hidden=!fixed.length;for(const option of select.options){option.disabled=!fixed.includes(Number(option.value));option.hidden=option.value==='1'&&j.model!=='G5500';}if(!fixed.includes(Number(select.value))&&fixed.length)select.value=String(fixed[0]);}
+ if(document.getElementById('coastSettings')){const fixed=[0,1].filter(i=>(i===0||j.model==='G5500')&&j.axes?.[i]&&!j.axes[i].speedEnabled&&j.deviceRole==='controller'&&!['SIMULATED','SIMULATED_MECHANICS'].includes(j.build?.drive));const select=document.getElementById('coastAxis');document.getElementById('coastSettings').hidden=!fixed.length;for(const option of select.options){option.disabled=!fixed.includes(Number(option.value));option.hidden=option.value==='1'&&j.model!=='G5500';}if(!fixed.includes(Number(select.value))&&fixed.length)select.value=String(fixed[0]);}
  document.getElementById('controlFrequencyForm').querySelector('button').disabled=!!j.autotune?.active||!!j.configurationLocked;
  const hud=j.deviceRole==='hud';document.getElementById('motionSettings').classList.toggle('hide',hud||j.build?.drive==='NONE');
  const phases={idle:'Остановлен',kick:'Страгивание',run:'Движение',braking:'Торможение',holding:'Удержание',fault:'Ошибка'};
@@ -1275,7 +1275,7 @@ function renderManualSpeeds(j){
  let visible=false;
  for(const [i,axis] of ['az','el'].entries()){
   const a=j?.axes?.[i],input=document.getElementById(axis+'ManualSpeed'),control=document.getElementById(axis+'ManualSpeedControl'),p=manualSpeedRequests[axis];
-  const available=j?.deviceRole==='controller'&&['YAESU','SEPARATE_PWM','BTS7960','DIR_PWM','SIMULATED'].includes(j.build?.drive)&&a?.speedEnabled===true&&a.speedAdjustable===true&&(i===0||j.model==='G5500')&&Number.isFinite(a.speedLimit)&&a.speedLimit>0&&Number.isFinite(a.speedSetpoint);
+  const available=j?.deviceRole==='controller'&&['YAESU','SEPARATE_PWM','BTS7960','DIR_PWM','SIMULATED','SIMULATED_MECHANICS'].includes(j.build?.drive)&&a?.speedEnabled===true&&a.speedAdjustable===true&&(i===0||j.model==='G5500')&&Number.isFinite(a.speedLimit)&&a.speedLimit>0&&Number.isFinite(a.speedSetpoint);
   control.classList.toggle('hide',!available);visible|=available;
   const context=[j?.deviceRole,j?.model,j?.hudSelectionEpoch,a?.regulatorMode,available,j?.autotune?.active,j?.configurationLocked].join(':');
   if(p.context!==context){p.context=context;p.pending=null;clearTimeout(p.timer);p.timer=null;++p.epoch;}
@@ -1312,7 +1312,7 @@ function updateFork(j){
  j.presets.forEach((p,i)=>{const b=buttons.children[i];setText(b,p.label);b.disabled=!p.valid;b.classList.toggle('active',j.presetSlot===i&&j.presetActive)});
  const elNodes=[document.getElementById('el').closest('.card'),document.getElementById('tel').closest('.field'),...document.querySelectorAll('.el-setting,.movebtn[data-dir="U"],.movebtn[data-dir="D"]')];
  [...elNodes,...document.querySelectorAll('.el-help')].forEach(n=>{if(n)n.classList.toggle('hide',g800)});
- const independent=['SEPARATE_PWM','BTS7960','DIR_PWM','SIMULATED'].includes(j.build?.drive);
+ const independent=['SEPARATE_PWM','BTS7960','DIR_PWM','SIMULATED','SIMULATED_MECHANICS'].includes(j.build?.drive);
  document.getElementById('speedSettings').classList.toggle('hide',j.build?.drive!=='YAESU'||!g800);
  document.getElementById('analogSpeedToggle').classList.toggle('hide',independent);
  document.getElementById('speedEnabled-help').classList.toggle('hide',independent);
@@ -1888,27 +1888,27 @@ peerBody.insertAdjacentHTML('afterbegin','<p id="setupPeerReadiness" role="statu
 const hudTitle=document.querySelector('#hudPanel summary h2');hudTitle.firstChild.textContent='Роль и связь';
 document.querySelector('#motionSettings summary h2').firstChild.textContent='Регуляторы и остановка';
 const driveForm=document.createElement('form');driveForm.id='setupDriveForm';driveForm.className='settings-pane';driveForm.dataset.setupOnly='1';
-driveForm.innerHTML='<div class="field"><label for="setupDriveKind">Поворотка и привод</label><select id="setupDriveKind" name="kind" aria-describedby="setupDriveHint"><option value="G5500">G-5500</option><option value="G800DXA">G-800DXA</option><option value="G800SA">G-800SA</option><option value="DIR_PWM">DIR + SPEED_PWM</option><option value="SEPARATE_PWM">LEFT / RIGHT + SPEED_PWM</option><option value="BTS7960">LEFT_PWM / RIGHT_PWM (+ ENABLE)</option><option value="SIMULATION">Имитация</option></select><input type="hidden" name="driveInterface"><input type="hidden" name="simulation"><p id="setupDriveHint" class="field-help"></p></div>';
+driveForm.innerHTML='<div class="field"><label for="setupDriveKind">Поворотка и привод</label><select id="setupDriveKind" name="kind" aria-describedby="setupDriveHint"><option value="G5500">G-5500</option><option value="G800DXA">G-800DXA</option><option value="G800SA">G-800SA</option><option value="DIR_PWM">DIR + SPEED_PWM</option><option value="SEPARATE_PWM">LEFT / RIGHT + SPEED_PWM</option><option value="BTS7960">LEFT_PWM / RIGHT_PWM (+ ENABLE)</option><option value="SIMULATION">Имитация</option><option value="MECHANICS">Имитация с симуляцией механики</option></select><input type="hidden" name="driveInterface"><input type="hidden" name="simulation"><p id="setupDriveHint" class="field-help"></p></div>';
 document.querySelector('#rotorSettings .settings-content').append(driveForm);
 sharedForm.elements.model.closest('.row').dataset.setupHide='1';
 driveForm.oninput=()=>{
  const kind=driveForm.elements.kind.value,model=['G5500','G800DXA','G800SA'].includes(kind);
  if(model&&sharedForm.elements.model.value!==kind){sharedForm.elements.model.value=kind;sharedForm.dataset.dirty='1';}
- if(kind!=='SIMULATION')driveForm.elements.driveInterface.value=String(model?0:kind==='DIR_PWM'?3:kind==='SEPARATE_PWM'?1:2);
- driveForm.elements.simulation.value=kind==='SIMULATION'?'1':'0';
+ if(!['SIMULATION','MECHANICS'].includes(kind))driveForm.elements.driveInterface.value=String(model?0:kind==='DIR_PWM'?3:kind==='SEPARATE_PWM'?1:2);
+ driveForm.elements.simulation.value=kind==='MECHANICS'?'2':kind==='SIMULATION'?'1':'0';
  driveForm.dataset.dirty='1';renderSetup();
 };
 function renderSetupDrive(){
  const state=wizard.state;if(!state)return;
  if(!driveForm.dataset.dirty){
   const drive=state.driveInterface??0;
-  driveForm.elements.driveInterface.value=String(drive);driveForm.elements.simulation.value=state.simulation?'1':'0';
-  driveForm.elements.kind.value=state.simulation?'SIMULATION':drive===3?'DIR_PWM':drive===1?'SEPARATE_PWM':drive===2?'BTS7960':sharedForm.elements.model.value;
+  driveForm.elements.driveInterface.value=String(drive);driveForm.elements.simulation.value=String(state.simulationMode??(state.simulation?1:0));
+  driveForm.elements.kind.value=state.simulationMode===2?'MECHANICS':state.simulation?'SIMULATION':drive===3?'DIR_PWM':drive===1?'SEPARATE_PWM':drive===2?'BTS7960':sharedForm.elements.model.value;
  }
  const select=driveForm.elements.kind;
  select.querySelector('[value="G5500"]').disabled=sharedForm.elements.model.options[0].disabled;
  for(const kind of ['DIR_PWM','SEPARATE_PWM'])select.querySelector('[value="'+kind+'"]').disabled=state.separateDrive===false;
- const hints={G5500:'Штатный блок Yaesu; оси AZ и EL.',G800DXA:'Штатный блок Yaesu; ось AZ. Для регулирования скорости нужен внешний модуль с входом 0–5 В.',G800SA:'Штатный блок Yaesu; ось AZ. Обратная связь A/B подключается через дифференциальный согласующий каскад. Для регулирования скорости нужен внешний модуль с входом 0–5 В.',DIR_PWM:'На каждую ось: один DIR (HIGH — положительное направление, LOW — отрицательное) и один SPEED_PWM. PWM = 0 останавливает привод. При необходимости назначьте дополнительный ENABLE.',SEPARATE_PWM:'На каждую ось: отдельные выходы LEFT и RIGHT, плюс SPEED_PWM. ENABLE необязателен.',BTS7960:'На каждую ось: LEFT_PWM и RIGHT_PWM; ENABLE необязателен. Подходит для BTS7960 / IBT-2.',SIMULATION:'Движение моделируется программно; моторные GPIO и датчики положения не используются.'};
+ const hints={G5500:'Штатный блок Yaesu; оси AZ и EL.',G800DXA:'Штатный блок Yaesu; ось AZ. Для регулирования скорости нужен внешний модуль с входом 0–5 В.',G800SA:'Штатный блок Yaesu; ось AZ. Обратная связь A/B подключается через дифференциальный согласующий каскад. Для регулирования скорости нужен внешний модуль с входом 0–5 В.',DIR_PWM:'На каждую ось: один DIR (HIGH — положительное направление, LOW — отрицательное) и один SPEED_PWM. PWM = 0 останавливает привод. При необходимости назначьте дополнительный ENABLE.',SEPARATE_PWM:'На каждую ось: отдельные выходы LEFT и RIGHT, плюс SPEED_PWM. ENABLE необязателен.',BTS7960:'На каждую ось: LEFT_PWM и RIGHT_PWM; ENABLE необязателен. Подходит для BTS7960 / IBT-2.',SIMULATION:'Движение моделируется программно; моторные GPIO и датчики положения не используются.',MECHANICS:'Модель учитывает инерцию, трение, выбег после STOP и люфт при реверсе. Моторные GPIO и датчики положения не используются.'};
  document.getElementById('setupDriveHint').textContent=hints[select.value]||'';
 }
 equipmentBody.querySelector('#equipmentFrame').insertAdjacentHTML('beforebegin','<p id="equipmentDriveSummary" class="hint"></p>');
@@ -2050,7 +2050,7 @@ function renderSetupSummary(state,j){
  'Плата: '+(j.build?.board||'—')+'; дисплей: '+(j.build?.display||'—')+'; Bluetooth: '+(j.build?.bluetooth?'включён':'выключен')];
  if(n)lines.push('Сеть: '+(['Wi-Fi через роутер','AP устройства','Общая AP','Клиент общей AP','Ethernet'][n.choice]||'Wi-Fi')+'; STA '+(n.staIp||'—')+'; ETH '+(n.ethIp||'—')+'; AP '+(n.apIp||'—'));
  if(hud)lines.push('Адресат: '+(j.hudName||j.hudSelected||'не выбран')+'; '+(j.hudOnline?'на связи':'нет связи'));
- else lines.push((j.model==='G800SA'?'G-800SA':j.model!=='G5500'?'G-800DXA':'G-5500')+' · '+(state.simulation?'Имитация':'Физический привод'));
+ else lines.push((j.model==='G800SA'?'G-800SA':j.model!=='G5500'?'G-800DXA':'G-5500')+' · '+(state.simulationMode===2?'Имитация с симуляцией механики':state.simulation?'Имитация':'Физический привод'));
  lines.push('Диапазон AZ: '+j.azStart+'…'+j.azMax+'°'+(j.model==='G5500'?'; EL: '+j.elStart+'…'+j.elMax+'°':''),axisText);
  if(!hud&&!state.manualOnly)for(const [i,a] of axes.entries())lines.push((i?'EL':'AZ')+': '+(a.speedEnabled?'регулируемая скорость':'фиксированная скорость; упреждение '+(j[i?'elCoastDegrees':'azCoastDegrees']??0)+'°'));
  lines.push('Режим: '+(j.controlMode==='manual'?'ручной':'автоматический')+'; порты N1MM '+j.n1mmPort+', PstRotator '+j.pstPort+', команды '+j.commandPort);
@@ -2068,7 +2068,7 @@ function renderSetup(){
  document.getElementById('equipmentDisplay').textContent='Дисплей: '+(j.build?.display||'нет данных')+'. Тип выбирается при сборке; GPIO внешнего экрана задаются в оборудовании.';
  const frame=document.getElementById('equipmentFrame'),stage=wizard.active&&[3,4].includes(state.step)?state.step:-1;
  frame.hidden=stage<0;if(stage>=0&&!frame.src)frame.src='/hardware?setup=1';
- if(frame.getAttribute('src'))frame.contentWindow?.postMessage({type:'hardwareStage',step:stage,driveInterface:state.driveInterface,simulation:state.simulation},location.origin);
+ if(frame.getAttribute('src'))frame.contentWindow?.postMessage({type:'hardwareStage',step:stage,driveInterface:state.driveInterface,simulation:state.simulation,simulationMode:state.simulationMode},location.origin);
  if(!wizard.active){testCard.hidden=true;return;}renderSetupDrive();
  selectTab('settings',false);document.body.dataset.setupStep=String(state.step);
  const ids={0:['networkStatus','networkSettings'],1:['hudPanel'],2:['rotorSettings'],3:['equipmentSettings'],4:['equipmentSettings'],5:['calibrationSettings','setupTests'],6:['motionSettings','setupTests'],7:['programSettings'],8:['peersSettings'],9:['presetSettings','setupTests']};
@@ -2077,7 +2077,7 @@ function renderSetup(){
  const sequence=state.role==='hud'?[0,1,3,4,8,7,9]:(state.simulation||state.manualOnly)?[0,1,2,3,4,7,9]:[0,1,2,3,4,5,6,7,9];
  document.getElementById('setupProgress').textContent='Шаг '+(sequence.indexOf(state.step)+1)+' из '+sequence.length+' · '+(state.role==='hud'?'HUD':'Контроллер');
  document.getElementById('setupTitle').textContent=setupTitles[state.step]||'Настройка завершена';document.getElementById('setupHint').textContent=state.role==='hud'&&state.step===3?'Настройте Bluetooth, местные органы управления и GPIO пульта. Тип дисплея определяется прошивкой. Нажмите «Далее» для применения оборудования, затем для подтверждения пробного запуска.':state.role==='hud'&&state.step===9?'Проверьте выбранного контроллера и итоговую конфигурацию. MQTT и предустановки необязательны. После завершения управление доступно на обычном экране HUD.':setupHints[state.step]||'';
- if([3,4].includes(state.step)){document.getElementById('equipmentDriveSummary').textContent=state.role==='hud'?'':'Выбранный привод: '+(state.simulation?'Имитация движения':['Штатный блок Yaesu','LEFT / RIGHT + SPEED_PWM','LEFT_PWM / RIGHT_PWM (+ ENABLE)','DIR + SPEED_PWM'][state.driveInterface??0]);}
+ if([3,4].includes(state.step)){document.getElementById('equipmentDriveSummary').textContent=state.role==='hud'?'':'Выбранный привод: '+(state.simulationMode===2?'Имитация с симуляцией механики':state.simulation?'Имитация движения':['Штатный блок Yaesu','LEFT / RIGHT + SPEED_PWM','LEFT_PWM / RIGHT_PWM (+ ENABLE)','DIR + SPEED_PWM'][state.driveInterface??0]);}
  document.getElementById('setupReconnect').hidden=!wizard.waiting;document.getElementById('setupBack').disabled=state.step===0||wizard.busy||wizard.waiting;document.getElementById('setupNext').disabled=wizard.busy||wizard.waiting||(!state.ready&&!setupUnsaved()&&!([3,4].includes(state.step)&&wizard.hardwareCanApply)&&!state.restartRequired);document.getElementById('setupReset').disabled=wizard.busy||wizard.waiting||!setupUnsaved();document.getElementById('setupPause').disabled=wizard.busy||wizard.waiting;
  document.getElementById('setupNext').textContent=state.step===9?'Завершить настройку':state.step===7&&!setupUnsaved()?'Пропустить':'Далее';
  document.getElementById('setupPause').textContent='Сохранить и выйти';
@@ -2178,7 +2178,7 @@ async function renewSetupTest(){
  finally{wizard.renewing=false;}
 }
 setInterval(renewSetupTest,400);
-window.addEventListener('message',event=>{if(event.origin!==location.origin||event.source!==document.getElementById('equipmentFrame').contentWindow)return;if(event.data?.type==='hardwareState'){wizard.hardwareDirty=!!event.data.dirty;wizard.hardwareCanApply=!!event.data.canApply;wizard.hardwareError=event.data.error||'';renderSetup();}if(event.data?.type==='hardwareResult'){const pending=wizard.hardwarePending.get(event.data.id);if(pending){clearTimeout(pending.timer);wizard.hardwarePending.delete(event.data.id);event.data.error?pending.reject(new Error(event.data.error)):pending.resolve(event.data);}}if(event.data?.type==='hardwareReady')event.source.postMessage({type:'hardwareStage',step:wizard.state?.step,driveInterface:wizard.state?.driveInterface,simulation:wizard.state?.simulation},location.origin);if(event.data?.type==='hardwareHeight')document.getElementById('equipmentFrame').style.height=Math.max(400,Number(event.data.height)||400)+'px';});
+window.addEventListener('message',event=>{if(event.origin!==location.origin||event.source!==document.getElementById('equipmentFrame').contentWindow)return;if(event.data?.type==='hardwareState'){wizard.hardwareDirty=!!event.data.dirty;wizard.hardwareCanApply=!!event.data.canApply;wizard.hardwareError=event.data.error||'';renderSetup();}if(event.data?.type==='hardwareResult'){const pending=wizard.hardwarePending.get(event.data.id);if(pending){clearTimeout(pending.timer);wizard.hardwarePending.delete(event.data.id);event.data.error?pending.reject(new Error(event.data.error)):pending.resolve(event.data);}}if(event.data?.type==='hardwareReady')event.source.postMessage({type:'hardwareStage',step:wizard.state?.step,driveInterface:wizard.state?.driveInterface,simulation:wizard.state?.simulation,simulationMode:wizard.state?.simulationMode},location.origin);if(event.data?.type==='hardwareHeight')document.getElementById('equipmentFrame').style.height=Math.max(400,Number(event.data.height)||400)+'px';});
 pollSetup();setInterval(pollSetupBackground,2500);
 
 

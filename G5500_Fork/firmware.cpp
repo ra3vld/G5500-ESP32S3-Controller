@@ -170,6 +170,7 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrint(DISPLAY_KIND == DISPLAY_ST77916 ? "ST77916" : DISPLAY_KIND == DISPLAY_ST7796 ? "ST7796" : DISPLAY_KIND == DISPLAY_GC9A01 ? "GC9A01" : DISPLAY_KIND == DISPLAY_CROWPANEL_21 ? "CROWPANEL_21" : DISPLAY_KIND == DISPLAY_ILI9341 ? "ILI9341" : DISPLAY_KIND == DISPLAY_LCD1602 ? "LCD1602" : "NONE");
   diagnostics_.dbgPrint(" | drive=");
   diagnostics_.dbgPrintln(runtime_.hud.isHud() ? "HUD remote drive"
+                          : runtime_.controller.hardware.simulation==SimulationMechanics ? "SIMULATED MECHANICS"
                           : runtime_.controller.hardware.simulation ? "SIMULATED 13.4 deg/s"
                           : !runtime_.controller.hardware.hasDirections(0) ? "NONE"
                           : runtime_.controller.hardware.drive == DRIVE_YAESU   ? "YAESU"

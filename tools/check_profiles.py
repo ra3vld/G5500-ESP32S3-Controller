@@ -61,11 +61,11 @@ for display, drive in itertools.product(range(3), range(4)):
     compile_case(['BOARD_PROFILE=4', f'DISPLAY_KIND={display}', f'DRIVE_INTERFACE={drive}', 'BLUETOOTH_ENABLED=1', 'BLUETOOTH_MODE=BT_HC05'], True)
 for flags in [
     ['BLUETOOTH_ENABLED=1', 'BLUETOOTH_MODE=BT_ESP32_SPP'],
-    ['BLUETOOTH_MODE=4'], ['BLUETOOTH_MODE=0'], ['DRIVE_SIMULATION=2'],
+    ['BLUETOOTH_MODE=4'], ['BLUETOOTH_MODE=0'], ['DRIVE_SIMULATION=3'],
     ['BOARD_PROFILE=4', 'BLUETOOTH_ENABLED=1', 'BLUETOOTH_MODE=BT_HC05', 'USER_BUTTON_GPIO=5'],
 ]: compile_case(flags, False)
 for board in range(1, 6):
-    for simulation in (0, 1):
+    for simulation in (0, 1, 2):
         compile_case((crow if board == 5 else [f'BOARD_PROFILE={board}']) + [f'DRIVE_SIMULATION={simulation}'], True)
 compile_case(['BOARD_PROFILE=1','USER_BUTTON_GPIO=46'],True)
 compile_case(['BOARD_PROFILE=2','USER_BUTTON_GPIO=46'],False)
@@ -129,7 +129,7 @@ for flags in [
     panel+['LOCAL_INPUT_MODE=1','LOCAL_AZ_NEG_GPIO=8','LOCAL_AZ_POS_GPIO=9'],
 ]: compile_case(flags,False)
 headless=['BOARD_PROFILE=9','DISPLAY_KIND=0']
-for drive,bt,simulation in itertools.product(range(4),range(2),range(2)):
+for drive,bt,simulation in itertools.product(range(4),range(2),range(3)):
     compile_case(headless+[f'DRIVE_INTERFACE={drive}',f'BLUETOOTH_ENABLED={bt}',
                           f'DRIVE_SIMULATION={simulation}','CONFIG_IDF_TARGET_ESP32C3=1'],True)
 for pin in range(9):

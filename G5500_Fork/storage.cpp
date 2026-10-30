@@ -976,7 +976,7 @@ void Storage::loadMotionSettings(Runtime &runtime) {
   runtime.controller.motionSettings = {};
   prefs_.begin("forkmotion",true);
   for(unsigned i=0;i<2;++i) {
-    char key[12]; std::snprintf(key,sizeof key,"%c%u%u%u",runtime.controller.hardware.simulation?'s':'r',
+    char key[12]; std::snprintf(key,sizeof key,"%c%u%u%u",runtime.controller.hardware.simulation==SimulationMechanics?'m':runtime.controller.hardware.simulation?'s':'r',
         unsigned(runtime.controller.hardware.drive),unsigned(runtime.controller.model),i);
     DriveRecord record{}; MotionSettings settings; SpeedSettings speed;
     const size_t storedSize=prefs_.getBytesLength(key);
@@ -1077,7 +1077,7 @@ bool Storage::saveForkSettings(const Runtime &runtime) {
   putUInt("controlhz",1000/runtime.controller.controlPeriodMs());
 
   for(unsigned i=0;i<2;++i) {
-    char key[12]; std::snprintf(key,sizeof key,"%c%u%u%u",runtime.controller.hardware.simulation?'s':'r',
+    char key[12]; std::snprintf(key,sizeof key,"%c%u%u%u",runtime.controller.hardware.simulation==SimulationMechanics?'m':runtime.controller.hardware.simulation?'s':'r',
         unsigned(runtime.controller.hardware.drive),unsigned(runtime.controller.model),i);
     const auto record=encodeDrive(reportedMotion(runtime.controller,i),reportedSpeed(runtime.controller,i));
     const auto written=prefs_.putBytes(key,record.data(),record.size()); DriveRecord check{};

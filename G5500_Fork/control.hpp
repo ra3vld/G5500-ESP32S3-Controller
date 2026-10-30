@@ -6,6 +6,7 @@
 #include "motion.hpp"
 #include "runtime_speeds.hpp"
 #include "coast_measurement.hpp"
+#include "mechanical_simulation.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -376,6 +377,7 @@ private:
   uint32_t lastSpeedUpdateAt_ = 0;
   bool speedUpdateStarted_ = false;
   std::array<MotionRuntime, 2> motion_{};
+  std::array<MechanicalSimulation, 2> mechanics_{};
   unsigned controlPeriodMs_ = MotionControlPeriodMs;
   void cancelMotion(unsigned axis, bool retainTarget = false);
   void motionFault(unsigned axis, MotionError, uint32_t now);

@@ -277,6 +277,7 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &configu
   const auto &c=configured;
 #endif
   const bool physical=!hud && !c.simulation;
+  if(c.simulation>SimulationMechanics)return {"invalid_hardware","simulation"};
   for(unsigned i=0;!hud && i<2;++i) {
     const auto at=i*3;
     if(c.sensors[6+i]>1 || c.sensorType(i)>2 || c.sensorAddress(i)<1 || c.sensorAddress(i)>127 ||

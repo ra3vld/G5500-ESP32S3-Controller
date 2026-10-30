@@ -29,6 +29,7 @@ void Controller::configureHardware(const HardwareConfig &config) {
   speeds = {};
   motionSettings = {};
   motion_ = {};
+  mechanics_ = {};
   speeds[1].slowdownDegrees = 2;
   speedEnabled = hardware.drive != DRIVE_YAESU;
   if (hardware.drive == DRIVE_YAESU) speeds[0] = {50, 25, 25, 2000, 1500, 10};
@@ -86,6 +87,7 @@ Controller &Controller::operator=(const Controller &other) {
   speeds = other.speeds;
   motionSettings = other.motionSettings;
   motion_ = other.motion_;
+  mechanics_ = other.mechanics_;
   autoTune = other.autoTune;
   driveFault = other.driveFault;
   stopEpoch = other.stopEpoch;
@@ -837,7 +839,10 @@ float Controller::runtimeSpeedLimit(unsigned i) const {
       std::min(100.f, motionSettings[i].outputLimitPercent);
 }
 unsigned Controller::runtimeSpeedIndex(unsigned i) const {
-  return ((((unsigned(hardware.simulation) * 3 + unsigned(hardware.drive)) * 2 +
+  // The mechanical model has one virtual PWM driver, independent of the
+  // physical interface retained for switching back. Reuse its simulation bank.
+  const unsigned drive=hardware.simulation==SimulationMechanics?0:unsigned(hardware.drive);
+  return ((((unsigned(hardware.simulation!=0) * 3 + drive) * 2 +
       unsigned(model)) * 2 + i) * 2 + unsigned(motionSettings[i].mode));
 }
 void Controller::resetRuntimeSpeed(unsigned i, uint32_t now) {
@@ -946,6 +951,12 @@ void Controller::tick(uint32_t now) {
   // Motor GPIO are disabled; all protocols share these simulated positions.
   for (unsigned i = 0; i < 2; ++i) {
     auto &axis = axes[i];
+    if(hardware.simulation==SimulationMechanics) {
+      if(i==0 || model==Model::G5500)
+        axis.current=mechanics_[i].step(axis.current,driveFault?0:axis.direction*axis.speedOutputPercent,
+                                      float(elapsed)/1000,range(i).start,range(i).end);
+      continue;
+    }
     if (!driveFault && axis.direction && (i == 0 || model == Model::G5500)) {
       float step = 13.4f * (axis.speedOutputPercent / 100.f) * (float(elapsed) / 1000.f);
       const float distance = axis.target - axis.current;

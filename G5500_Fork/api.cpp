@@ -154,6 +154,7 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"bluetooth\":" << (controller.hardware.bluetooth ? "true" : "false")
        << ",\"bluetoothBackend\":" << jsonQuoted(controller.hardware.backendName()) << ",\"drive\":"
        << jsonQuoted(controller.remote                      ? "HUD"
+                     : controller.hardware.simulation==SimulationMechanics ? "SIMULATED_MECHANICS"
                      : controller.hardware.simulation                     ? "SIMULATED"
                      : !controller.hardware.hasDirections(0) ? "NONE"
                      : controller.hardware.drive == DRIVE_YAESU       ? "YAESU"

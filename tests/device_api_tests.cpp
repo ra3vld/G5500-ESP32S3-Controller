@@ -619,6 +619,10 @@ int main(int argc,char **argv) {
     assert(draft.call("POST","/api/setup","action=drive&driveInterface=3&simulation=0&generation="+std::to_string(r.setup.generation)+token,false).status==200);
     assert(r.setup.drive==3&&r.controller.hardware==active);
     assert(draft.storage.loadSetup(restored)&&restored.setup.drive==3);
+    assert(draft.call("POST","/api/setup","action=drive&driveInterface=3&simulation=2&generation="+std::to_string(r.setup.generation)+token,false).status==200);
+    assert(r.setup.simulation==2 && r.controller.hardware==active);
+    assert(draft.storage.loadSetup(restored)&&restored.setup.simulation==2);
+    assert(draft.call("GET","/api/setup").body.find("\"simulationMode\":2")!=std::string::npos);
     assert(draft.call("POST","/api/setup","action=drive&driveInterface=4&simulation=0&generation="+std::to_string(r.setup.generation)+token,false).status==400);
     assert(draft.call("POST","/api/setup","action=drive&driveInterface=2&simulation=1&generation=0"+token,false).status==409);
   }
@@ -1098,12 +1102,12 @@ int main(int argc,char **argv) {
     assert(incompatible.runtime.hardwareTrial && incompatible.runtime.hardwareRecord.hasConfirmed);
     assert(incompatible.storage.confirmHardware(incompatible.runtime));
   }
-  {
+  for(unsigned mode:{1u,2u}) {
     Fixture simulation;
     const auto confirmed=simulation.runtime.hardwareRecord.good;
-    assert(simulation.call("POST","/api/hardware","token=11&generation=1&simulation=1&pin.azAdc=25&pin.azNegative=25&pin.azSensorSda=25&azSensor=1",false).status==200);
+    assert(simulation.call("POST","/api/hardware","token=11&generation=1&simulation="+std::to_string(mode)+"&pin.azAdc=25&pin.azNegative=25&pin.azSensorSda=25&azSensor=1",false).status==200);
     const auto &candidate=simulation.runtime.hardwareRecord.candidate;
-    assert(candidate.simulation && simulation.runtime.hardwareRecord.good==confirmed);
+    assert(candidate.simulation==mode && simulation.runtime.hardwareRecord.good==confirmed);
     for(const auto &d:pinDefinitions)
       if(d.group==PinGroup::Drive || d.group==PinGroup::SensorAz || d.group==PinGroup::SensorEl)
         assert(candidate.pins.*d.member==-1);

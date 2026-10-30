@@ -7,6 +7,7 @@
 #include <cstring>
 #include <string_view>
 namespace forkrot {
+enum SimulationMode : uint8_t { SimulationOff, SimulationSimple, SimulationMechanics };
 inline constexpr const char *localSettingNames[] = {"localInputMode", "localAzInvert", "localElInvert",
   "localAzMin", "localAzCenter", "localAzMax", "localElMin", "localElCenter", "localElMax", "localDeadzone", "localHysteresis"};
 using LocalSettings = std::array<uint16_t,11>;
@@ -25,7 +26,7 @@ struct HardwareConfig {
   }
   PinMap pins;
   uint8_t drive = DRIVE_INTERFACE;
-  bool simulation = DRIVE_SIMULATION;
+  uint8_t simulation = DRIVE_SIMULATION;
   bool bluetooth = BLUETOOTH_ENABLED;
   uint8_t bluetoothMode = BLUETOOTH_MODE;
   bool forceAp = ESP32_FORCE_AP_STA;
@@ -153,10 +154,11 @@ using RadioHardwareBytes = std::array<uint8_t,196>; // version 6, 44 GPIO roles
 using InvertedSensorHardwareBytes = std::array<uint8_t,204>; // version 7, sensor inversion
 using EnableHardwareBytes = std::array<uint8_t,208>; // version 8, independent ENABLE
 using HardwareBytes = std::array<uint8_t,40 + pinDefinitions.size()*2 + LocalSettings{}.size()*4 + SensorSettings{}.size()*4>;
-template<size_t N> inline std::array<uint8_t,N> encodeHardwareRecord(const HardwareRecord &r) {
+template<size_t N> inline std::array<uint8_t,N> encodeHardwareRecord(const HardwareRecord &r, uint8_t version=0) {
   static_assert(N==40 || N==98 || N==154 || N==162 || N==194 || N==196 || N==204 || N==208 || N==HardwareBytes{}.size(), "Unknown hardware format");
   std::array<uint8_t,N> b{};
-  b[0]='H'; b[1]='W'; b[2]=N==40?1:N==98?2:N==154?3:N==162?4:N==194?5:N==196?6:N==204?7:N==208?8:9; b[3]=SELECTED_BOARD; b[4]=DISPLAY_KIND;
+  b[0]='H'; b[1]='W'; b[2]=version?version:N==40?1:N==98?2:N==154?3:N==162?4:N==194?5:N==196?6:N==204?7:N==208?8:
+    (r.good.simulation==SimulationMechanics || r.candidate.simulation==SimulationMechanics)?10:9; b[3]=SELECTED_BOARD; b[4]=DISPLAY_KIND;
   b[5]=uint8_t(r.phase); b[6]=uint8_t(r.reason); b[7]=r.hasConfirmed;
   for(unsigned i=0;i<4;++i) b[8+i]=uint8_t(r.generation>>(8*i));
   auto put=[&](unsigned at,const HardwareConfig &c) {
@@ -188,7 +190,7 @@ template<size_t N> inline std::array<uint8_t,N> encodeHardwareRecord(const Hardw
 }
 inline HardwareBytes encodeHardware(const HardwareRecord &r) { return encodeHardwareRecord<HardwareBytes{}.size()>(r); }
 template<size_t N> inline bool decodeHardware(const std::array<uint8_t,N> &b,HardwareRecord &r) {
-  if(b[0]!='H' || b[1]!='W' || b[2]!=(N==40?1:N==98?2:N==154?3:N==162?4:N==194?5:N==196?6:N==204?7:N==208?8:9) || b[3]!=SELECTED_BOARD || b[4]!=DISPLAY_KIND ||
+  if(b[0]!='H' || b[1]!='W' || (b[2]!=(N==40?1:N==98?2:N==154?3:N==162?4:N==194?5:N==196?6:N==204?7:N==208?8:9) && !(N==HardwareBytes{}.size() && b[2]==10)) || b[3]!=SELECTED_BOARD || b[4]!=DISPLAY_KIND ||
       b[5]>uint8_t(ConfigPhase::Starting) || b[6]>uint8_t(RecoveryReason::Initial) || b[7]>1) return false;
   HardwareRecord next;
   next.phase=ConfigPhase(b[5]); next.reason=RecoveryReason(b[6]); next.hasConfirmed=b[7];
@@ -196,7 +198,8 @@ template<size_t N> inline bool decodeHardware(const std::array<uint8_t,N> &b,Har
   for(unsigned i=0;i<4;++i) { next.generation|=uint32_t(b[8+i])<<(8*i); next.probeCounter|=uint32_t(b[30+i])<<(8*i); }
   if(!next.generation) return false;
   auto get=[&](unsigned at,HardwareConfig &c) {
-    for(unsigned i:{1u,2u,4u,6u,7u,8u}) if(b[at+i]>1) return false;
+    if(b[at+1]>(b[2]==10?SimulationMechanics:SimulationSimple))return false;
+    for(unsigned i:{2u,4u,6u,7u,8u}) if(b[at+i]>1) return false;
     c.drive=b[at]; c.simulation=b[at+1]; c.bluetooth=b[at+2]; c.bluetoothMode=b[at+3];
     c.forceAp=b[at+4]; c.buttonGpio=int8_t(b[at+5]); c.buttonLow=b[at+6];
     c.buttonPullup=b[at+7]; c.pwmInverted=b[at+8]; return true;
@@ -215,7 +218,7 @@ template<size_t N> inline bool decodeHardware(const std::array<uint8_t,N> &b,Har
     const auto at=36+count*2+LocalSettings{}.size()*4+(c*(N==194 || N==196?6:SensorSettings{}.size())+i)*2;
     (c?next.candidate:next.good).sensors[i]=uint16_t(b[at])|(uint16_t(b[at+1])<<8);
   }
-  if(encodeHardwareRecord<N>(next)!=b) return false;
+  if(encodeHardwareRecord<N>(next,b[2])!=b) return false;
   if constexpr(N==40) {
     // Old CrowPanel firmware gave the external UART exclusively to HC-05.
     if(SELECTED_BOARD==BOARD_CROWPANEL_21) for(auto *c:{&next.good,&next.candidate}) {

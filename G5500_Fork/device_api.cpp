@@ -269,6 +269,7 @@ void DeviceApi::writeSetup(JsonWriter &j) const {
     << ",\"driveInterface\":" << unsigned(s.drive<0?runtime_.controller.hardware.drive:s.drive)
     << ",\"separateDrive\":" << (CROWPANEL_LOCAL_DRIVE?"false":"true")
     << ",\"simulation\":" << ((s.drive<0?runtime_.controller.hardware.simulation:s.simulation)?"true":"false")
+    << ",\"simulationMode\":" << unsigned(s.drive<0?runtime_.controller.hardware.simulation:s.simulation)
     << ",\"manualOnly\":" << (runtime_.controller.hardware.manualWithoutFeedback()?"true":"false")
     << ",\"testToken\":" << runtime_.setupTestToken << ",\"token\":" << runtime_.setupLease << ",\"storageOk\":" << (runtime_.setupStorageOk?"true":"false")
     << ",\"restartRequired\":" << (runtime_.setupRestartRequired?"true":"false") << ",\"pendingNext\":" << (s.pendingNext?"true":"false") << ",\"problems\":[";
@@ -758,9 +759,9 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       if(!lease || lease!=runtime_.setupLease || !next.required || next.paused || next.step!=SetupStep::Model){reply(409,"setup_step_not_ready");return;}
       if(!hardwareUnsigned(web_.value("generation"),generation)||generation!=next.generation){reply(409,"stale_setup");return;}
       if(!hardwareUnsigned(web_.value("driveInterface"),drive)||drive>DRIVE_DIR_PWM ||
-          !hardwareUnsigned(web_.value("simulation"),simulation)||simulation>1 || (CROWPANEL_LOCAL_DRIVE && (drive==DRIVE_SEPARATE_PWM || drive==DRIVE_DIR_PWM))) {reply(400,"invalid_hardware");return;}
+          !hardwareUnsigned(web_.value("simulation"),simulation)||simulation>SimulationMechanics || (CROWPANEL_LOCAL_DRIVE && (drive==DRIVE_SEPARATE_PWM || drive==DRIVE_DIR_PWM))) {reply(400,"invalid_hardware");return;}
       next.drive=int8_t(drive);next.simulation=simulation;
-      if(drive!=runtime_.controller.hardware.drive || bool(simulation)!=runtime_.controller.hardware.simulation){next.equipment=false;next.motionConfirmed=false;}
+      if(drive!=runtime_.controller.hardware.drive || simulation!=runtime_.controller.hardware.simulation){next.equipment=false;next.motionConfirmed=false;}
     } else if(action=="start" || action=="resume") {
       if(!next.required) {next.required=true;next.motionConfirmed=false;next.equipment=runtime_.hardwareRecord.hasConfirmed;next.checked=0;next.step=SetupStep::Network;}
       next.paused=false;

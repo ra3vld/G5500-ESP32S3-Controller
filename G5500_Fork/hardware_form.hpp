@@ -70,11 +70,11 @@ public:
       case 0: next.token=value; break;
       case 1: next.generation=value; break;
       case 2: if (value>DRIVE_DIR_PWM) return false; next.config.drive=value; break;
+      case 3: if (value>SimulationMechanics) return false; next.config.simulation=uint8_t(value); break;
       case 5: if (value<1 || value>3) return false; next.config.bluetoothMode=value; break;
       case 7: if (value>48) return false; next.config.buttonGpio=value; break;
       default:
         if (value>1) return false;
-        if (key==3) next.config.simulation=value;
         if (key==4) next.config.bluetooth=value;
         if (key==6) next.config.forceAp=value;
         if (key==8) next.config.buttonLow=value;

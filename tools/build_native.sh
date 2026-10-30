@@ -128,6 +128,10 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $C
 ./build/reset_history_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/simulation_config_tests.cpp -o build/simulation_config_tests
 ./build/simulation_config_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/mechanical_simulation_tests.cpp -o build/mechanical_simulation_tests
+./build/mechanical_simulation_tests
+${CXX:-g++} -std=c++17 -DBOARD_PROFILE=9 -DDISPLAY_KIND=0 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/mechanical_simulation_tests.cpp -o build/c3_mechanical_simulation_tests
+./build/c3_mechanical_simulation_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=5 -DDISPLAY_KIND=3 -DUSER_BUTTON_GPIO=-1 -DBLUETOOTH_ENABLED=0 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/simulation_config_tests.cpp -o build/crowpanel_simulation_config_tests
 ./build/crowpanel_simulation_config_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=8 -DDISPLAY_KIND=4 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/simulation_config_tests.cpp -o build/round_simulation_config_tests
