@@ -60,7 +60,7 @@ python3 tools/controller_api.py --serial /dev/ttyUSB0 --watch 10 --duration 8640
 | Сброс калибровки | POST `/api/calreset axis=az mode=2`; `axis=el`, `mode=multi` выбирают другую таблицу |
 | Состояние Wi-Fi, IP-адреса, RSSI и порты | GET `/api/network` |
 | Подключение к Wi-Fi | POST `/api/wifi ssid=… pass=…`; применяется без перезапуска |
-| Пароль AP | POST `/api/ap pass=…`; устройство перезапускается |
+| Пароль AP | POST `/api/ap`, поле `pass` в теле формы; устройство перезапускается. GET возвращает 405 без изменения настроек |
 | Роль, поиск и каталог HUD | GET/POST `/api/device`, GET/POST `/api/hud/peers`, POST `/api/hud/discover`, `/api/hud/select` |
 | Результат команды HUD | GET `/api/hud/command id=…` |
 | ADC, память и отказы выделения | GET `/api/adcdiag`, `/api/diagnostics`; `failure=0` или `1` возвращает сохранённый отказ малого или большого выделения |

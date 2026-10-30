@@ -1053,7 +1053,8 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
 
     return;
   }
-  if(path=="/api/ap" && (method=="GET" || method=="POST")) {
+  if(path=="/api/ap") {
+    if(method!="POST") { web_.send(405,"text/plain","Use POST"); return; }
     String p = web_.arg("pass");
     if (p.length() != 0 && (p.length() < 8 || p.length() > 63)) {
       web_.send(400, "text/plain", "AP password must be empty or 8..63 characters");

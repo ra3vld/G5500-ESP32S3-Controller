@@ -56,9 +56,9 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   await page.locator('#wifiSaveButton').click();await result('pending','Wi-Fi');assert(await page.locator('#wifiSaveButton').isDisabled());
   await result('success','Настройки Wi-Fi сохранены');assert.equal(await page.locator('#pass').inputValue(),'');await dismiss();
   const ap=page.locator('#apSaveButton');
-  await page.route('**/api/ap?*',r=>r.fulfill({status:200,body:'AP password saved'}));
+  await page.route('**/api/ap',r=>r.fulfill({status:200,body:'AP password saved'}));
   await page.locator('#appass').fill('test password');await ap.click();await result('success','Настройки точки доступа сохранены');assert.equal(await page.locator('#appass').inputValue(),'');await dismiss();
-  await page.unroute('**/api/ap?*');await page.route('**/api/ap?*',r=>r.fulfill({status:503,body:'failed'}));
+  await page.unroute('**/api/ap');await page.route('**/api/ap',r=>r.fulfill({status:503,body:'failed'}));
   await ap.click();await result('error','Не удалось сохранить настройки точки доступа');
   for(const width of [320,390,1100]){
    await page.setViewportSize({width,height:850});
@@ -66,12 +66,12 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
    const bounds=await notice.boundingBox();assert(bounds.x>=0&&bounds.x+bounds.width<=width&&bounds.y>=0&&bounds.y+bounds.height<=850);
    await page.screenshot({path:path.join(output,`error-${width}.png`)});
   }
-  await dismiss();await page.unroute('**/api/ap?*');
+  await dismiss();await page.unroute('**/api/ap');
   // A hung response must unlock the button and must never be announced as saved.
   await page.evaluate(()=>{const original=window.setTimeout;window.setTimeout=(fn,ms,...args)=>original(fn,ms===12000?100:ms,...args);});
-  await page.route('**/api/ap?*',async r=>{await delay(400);await r.fulfill({status:200,body:'late'}).catch(()=>{});});
+  await page.route('**/api/ap',async r=>{await delay(400);await r.fulfill({status:200,body:'late'}).catch(()=>{});});
   await ap.click();await result('error','Подтверждение не получено');assert(await ap.isEnabled());
-  await dismiss();await page.unroute('**/api/ap?*');
+  await dismiss();await page.unroute('**/api/ap');
   await page.route('**/api/settings',async r=>{await delay(500);await r.fulfill({status:200,json:{ok:true,result:'ok'}});});
   await save.click();await result('pending','подтверждение');
   await page.getByRole('tab',{name:'Управление',exact:true}).click();await delay(700);

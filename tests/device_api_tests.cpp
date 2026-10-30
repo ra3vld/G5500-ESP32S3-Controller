@@ -3,6 +3,24 @@ static void useLocalController(Fixture &f) {
   auto &r=f.runtime;r.hud.config.role=DeviceRole::Controller;r.controller.remote=nullptr;
   r.controller.driveFault=false;r.controller.fault.clear();r.controller.feedback(90,45,true,true);
 }
+static void apPasswordMethodTests() {
+  for(bool wire:{false,true}) {
+    Fixture f;useLocalController(f);
+    assert(f.storage.saveApPassword("before-password"));
+    assert(f.call("POST","/api/move","d=R",wire).status==200);
+    const auto saved=Preferences::database;const auto epoch=f.runtime.controller.stopEpoch;
+    for(const char *fields:{"pass=after-password","pass="}) {
+      assert(f.call("GET","/api/ap",fields,wire).status==405);
+      assert(Preferences::database==saved&&!f.restart.pending());
+      assert(f.runtime.controller.stopEpoch==epoch&&f.runtime.controller.moving());
+    }
+    assert(f.call("POST","/api/ap","pass=short",wire).status==400);
+    assert(Preferences::database==saved&&!f.restart.pending());
+    assert(f.call("POST","/api/ap","pass=after-password",wire).status==200);
+    assert(std::get<String>(Preferences::database["g5500"]["appass"])=="after-password");
+    assert(!f.runtime.controller.moving()&&f.restart.pending());
+  }
+}
 static void settingsOutputSafetyTests() {
   for(bool wire:{false,true})for(const char *fields:{"azCoastDegrees=3","azMotionVelocityKp=1.23","model=G800SA","speedEnabled=1","controlHz=100","rotorName=Running"}) {
     Fixture f;auto &c=f.runtime.controller;auto config=c.hardware;
@@ -271,6 +289,7 @@ static void mqttApiTests() {
 #endif
 }
 int main(int argc,char **argv) {
+  apPasswordMethodTests();
   settingsOutputSafetyTests();
   liveTrialConfirmationTests();
   activityConfirmationTests();
@@ -314,6 +333,8 @@ int main(int argc,char **argv) {
         f.runtime.controller.driveFault=false;f.runtime.controller.fault.clear();
         f.runtime.controller.configureHardware(f.runtime.hardwareRecord.good);
         reply={200,"{}"};
+      } else if(path=="/__fixture/inputs") {
+        f.hardware.beginInputs();reply={200,"{}"};
       } else if(path=="/__fixture/reboot") {
         auto &r=f.runtime;
         assert(f.restart.pending());f.restart=RestartDelay{};

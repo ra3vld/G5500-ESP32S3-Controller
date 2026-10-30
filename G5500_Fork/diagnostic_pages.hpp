@@ -13,6 +13,7 @@ static constexpr char ADC_TEST_PAGE[] PROGMEM = R"HTML(
 .wrap{max-width:980px;margin:auto;padding:16px}.card{background:var(--p);border:1px solid var(--b);border-radius:16px;padding:16px;margin-top:14px}
 h1{margin:.25em 0}.muted{color:var(--m)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .kv{display:grid;grid-template-columns:1fr 1fr;gap:8px}.kv div{background:#0b1720;padding:10px;border-radius:9px}
+.stale .val{opacity:.5}#adcStatus[data-stale="true"]{color:#ffb347}
 .val{font-size:25px;font-weight:700}.az{color:var(--az)}.el{color:var(--el)}
 .btn{border:0;border-radius:12px;min-height:42px;padding:8px 14px;background:#235b78;color:white;font-size:15px;font-weight:700;cursor:pointer}
 .good{background:#167a5c}.warn{background:#81541d}
@@ -31,7 +32,8 @@ a{color:#24d18d;text-decoration:none;font-weight:700}
 <div style="margin-top:10px"><button id="collectBtn" class="btn good" onclick="toggleCollect()">AUTO COLLECT: ON</button> <button class="btn warn" onclick="clearData()">CLEAR GRAPH</button></div>
 </div>
 
-<div class="grid">
+<p id="adcStatus" class="muted" role="status">Ожидаем измерения…</p>
+<div id="adcReadings" class="grid stale">
 <div class="card"><div class="az"><b id="azPin">AZ — ADC</b></div><div class="kv" style="margin-top:10px">
 <div>RAW ADC<br><span id="azraw" class="val az">-</span></div>
 <div>CAL mV<br><span id="azmv" class="val az">-</span></div>
@@ -174,8 +176,17 @@ function draw(){
   x.fillStyle='#33b8ff';x.fillText('AZ',right-95,top+14);x.fillStyle='#ffb347';if(hasEl)x.fillText('EL',right-60,top+14);x.fillStyle='#96a9b7';x.fillText('RAW ADC',right-80,bottom+32);
 }
 const axisSources={az:'ADC',el:'ADC'};
+let lastAdcAt=0,adcFailed=false;
+function adcFreshness(){
+ const fresh=lastAdcAt&&!adcFailed&&navigator.onLine!==false&&Date.now()-lastAdcAt<2000;
+ const status=document.getElementById('adcStatus');status.dataset.stale=String(!fresh);
+ status.textContent=(fresh?'Данные актуальны. ':lastAdcAt?'Нет свежих данных. Показаны последние измерения. ':'Ожидаем измерения. ')+(lastAdcAt?'Последний ответ: '+new Date(lastAdcAt).toLocaleTimeString()+'.':'')+(navigator.onLine===false?' Нет связи.':'');
+ document.getElementById('adcReadings').classList.toggle('stale',!fresh);
+}
+for(const event of ['online','offline'])window.addEventListener(event,adcFreshness);
+document.addEventListener('visibilitychange',adcFreshness);
 async function upd(){
-  try{
+  adcFreshness();try{
     let j=await background.read('adc','/api/adcdiag');
     hasEl=j.hasEl!==false;
     for(const id of ['adcElCard','adcElHelp','adcElLegend'])document.getElementById(id).style.display=hasEl?'':'none';
@@ -185,8 +196,8 @@ async function upd(){
     if(hasEl&&axisSources.el==='ADC')addPoint(elPts,j.elRaw,j.elMv);
     updateAxis('az',j.azRaw,j.azValue??j.azMv,azPts); if(hasEl)updateAxis('el',j.elRaw,j.elValue??j.elMv,elPts);
     chart.closest('.card').hidden=axisSources.az!=='ADC'&&(!hasEl||axisSources.el!=='ADC');
-    draw();
-  }catch(e){}
+    lastAdcAt=Date.now();adcFailed=false;draw();
+  }catch(e){if(e.name!=='PollingDeferred')adcFailed=true;}finally{adcFreshness();}
 }
 background.read('status','/api/status').then(j=>{const p=j.build?.pins;if(p){azPin.textContent='AZ — GPIO'+p.azAdc;elPin.textContent='EL — GPIO'+p.elAdc}}).catch(()=>{});
 background.poll('adc',upd,500);draw();
