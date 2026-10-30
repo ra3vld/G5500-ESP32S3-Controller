@@ -30,6 +30,7 @@ public:
   bool enterRecovery(Runtime &runtime, RecoveryReason reason);
   bool finishHardwareBoot(Runtime &runtime, uint32_t uptime = 0);
   bool probeHardwareStorage(Runtime &runtime);
+  void writeHardwareStorageJson(JsonWriter &j, std::string_view view = {});
   void loadHud(Runtime &runtime, bool peers = true);
   bool saveHudConfig(const HudConfig &config);
   bool saveHudPeers(const Hud &hud);
@@ -56,6 +57,18 @@ public:
   void persistRssiYear(const RssiHistory &history);
 
 private:
+  bool compactResetHistory();
+  static constexpr size_t SettingsReserveEntries = 32;
+  static bool diagnosticStorageRoom(size_t entries);
+  bool writeHardwareBlob(const char *key, const uint8_t *bytes, size_t size);
+  bool hardwareStorageFailure(const char *operation, const char *key, int32_t error,
+                              size_t expected = 0, size_t actual = 0);
+  struct {
+    const char *operation = "none", *key = "";
+    int32_t error = 0;
+    size_t expected = 0, actual = 0;
+    uint32_t count = 0;
+  } hardwareStorageFailure_;
   bool writeHardware(const HardwareRecord &record);
   bool writeRecovery(const RecoveryHistory &history);
   const char *calNamespace(const Runtime &runtime);

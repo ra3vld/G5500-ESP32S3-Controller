@@ -436,6 +436,11 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
   }
   if(method=="GET" && path=="/api/hardware/pins") { writePinCapabilities(output,runtime_.hardwareHudUart); return; }
   if(method=="GET" && path=="/api/hardware") { writeHardwareStatus(output,command,web_.value("view")); return; }
+  if(method=="GET" && path=="/api/hardware/storage") {
+    const auto view=web_.value("view");
+    if(!view.empty() && view!="records"){reply(400,"invalid_view");return;}
+    storage_.writeHardwareStorageJson(output,view);return;
+  }
   if(method=="GET" && path=="/api/hardware/reboots") {
     output << "{\"current\":{\"reason\":" << jsonQuoted(diagnostics_.bootReasonText().c_str())
       << ",\"code\":" << diagnostics_.bootReasonCode() << "},\"recoveryReason\":"
@@ -458,6 +463,11 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
       (!MODBUS_RTU_SUPPORT && !(modbus==runtime_.modbus)) ||
       (!RS485_SUPPORT && (form.config.pins.uartDe!=base.pins.uartDe || form.config.pins.hudDe!=base.pins.hudDe)))) {reply(501,"feature_disabled");return;}
   if(form.token!=runtime_.hardwareToken || form.generation!=runtime_.hardwareRecord.generation) { reply(409,"stale_configuration"); return; }
+  if(path=="/api/hardware/storage/probe") {
+    if(!runtime_.recovery || runtime_.controller.moving()){reply(409,"recovery_required");return;}
+    status=storage_.probeHardwareStorage(runtime_)?200:503;
+    storage_.writeHardwareStorageJson(output);return;
+  }
   if(path=="/api/hardware/joystick/start" || path=="/api/hardware/joystick/poll" || path=="/api/hardware/joystick/cancel") {
     if(path=="/api/hardware/joystick/cancel") { hardware_.cancelJoystickCalibration(); reply(200,""); return; }
     const bool ok=path=="/api/hardware/joystick/start"?hardware_.startJoystickCalibration():hardware_.pollJoystickCalibration();

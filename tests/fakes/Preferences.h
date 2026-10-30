@@ -14,8 +14,24 @@ public:
   inline static bool beginSucceeds = true, readOnlyBeginSucceeds = true;
   inline static std::string failedStringKey, corruptStringKey, failedBytesKey;
   inline static std::string failedKey, failedBeginNamespace;
+  inline static std::string failedRemoveKey;
+  inline static size_t totalEntries = 630, reservedEntries = 126;
   inline static std::function<void(const char *)> beforeBytesWrite;
   inline static std::function<void(const char *)> beforeWrite;
+  inline static std::function<void(const char *)> beforeRemove;
+  static size_t entryCost(const Value &value) {
+    if(const auto text=std::get_if<String>(&value))return 1+(text->length()+1+31)/32;
+    if(const auto bytes=std::get_if<Bytes>(&value))return 2+(bytes->size()+31)/32;
+    return 1;
+  }
+  static size_t usedEntries() {
+    size_t used=database.size();
+    for(const auto &[name,space]:database){(void)name;for(const auto &[key,value]:space){(void)key;used+=entryCost(value);}}
+    return used;
+  }
+  static size_t availableEntries() {
+    const auto occupied=usedEntries()+reservedEntries;return totalEntries>occupied?totalEntries-occupied:0;
+  }
 
   bool begin(const char *name, bool readOnly = false) {
     if (active_) { throw std::runtime_error("nested NVS begin"); }
@@ -28,6 +44,11 @@ public:
   }
   void end() { active_ = false; }
   void clear() { writable(); database[name_].clear(); }
+  bool remove(const char *key) {
+    writable();if(beforeRemove)beforeRemove(key);
+    if(failedRemoveKey==key)return false;
+    return database[name_].erase(key)!=0;
+  }
 
   uint8_t getUChar(const char *key, uint8_t fallback = 0) { return get(key, fallback); }
   uint16_t getUShort(const char *key, uint16_t fallback = 0) { return get(key, fallback); }
@@ -91,6 +112,8 @@ private:
     writable();
     if(beforeWrite)beforeWrite(key);
     if(failedKey==key)return false;
+    const Value next(value);
+    if(availableEntries()<entryCost(next)+(database.count(name_)?0:1))return false;
     database[name_].insert_or_assign(key, Value(std::move(value)));
     return true;
   }

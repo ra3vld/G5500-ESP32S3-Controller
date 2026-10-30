@@ -1,4 +1,36 @@
 #include "device_service_fixture.hpp"
+#include <nvs.h>
+static void hardwareStorageApiTests() {
+  for(bool wire:{false,true}) {
+    Fixture f;f.runtime.recovery=true;f.runtime.controller.configurationLocked=true;
+    const auto before=Preferences::database;const auto epoch=f.runtime.controller.stopEpoch;
+    for(const char *fields:{"","view=records"}) {
+      const auto response=f.call("GET","/api/hardware/storage",fields,wire);
+      assert(response.status==200);
+      assert(response.body.find(fields[0]?"\"valid\":true":"\"lastFailure\":")!=std::string::npos);
+      assert(response.body.size()<=COMMAND_PAGE_MAX); // coherent USB response in one page
+    }
+    assert(f.call("GET","/api/hardware/storage","view=unknown",wire).status==400);
+    assert(Preferences::database==before&&!f.restart.pending()&&f.runtime.controller.stopEpoch==epoch);
+    fakeNvsSetError=ESP_ERR_NVS_NOT_ENOUGH_SPACE;
+    assert(!f.storage.probeHardwareStorage(f.runtime));fakeNvsSetError=ESP_OK;
+    const auto failed=f.call("GET","/api/hardware/storage","",wire);
+    assert(failed.status==200&&failed.body.find("ESP_ERR_NVS_NOT_ENOUGH_SPACE")!=std::string::npos);
+    assert(failed.body.size()<=COMMAND_PAGE_MAX&&Preferences::database==before);
+    assert(f.call("POST","/api/hardware/storage/probe","token=12&generation=1",wire).status==409);
+    fakeNvsSetError=ESP_ERR_NVS_NOT_ENOUGH_SPACE;
+    assert(f.call("POST","/api/hardware/storage/probe","token=11&generation=1",wire).status==503);
+    fakeNvsSetError=ESP_OK;
+    assert(Preferences::database==before);
+    assert(f.call("POST","/api/hardware/storage/probe","token=11&generation=1",wire).status==200);
+    assert(f.runtime.recovery&&f.runtime.controller.configurationLocked&&!f.restart.pending());
+    assert(f.runtime.controller.stopEpoch==epoch&&f.runtime.hardwareRecord.generation==1);
+    f.runtime.recovery=false;
+    const auto tested=Preferences::database;
+    assert(f.call("POST","/api/hardware/storage/probe","token=11&generation=1",wire).status==409);
+    assert(Preferences::database==tested);
+  }
+}
 static void useLocalController(Fixture &f) {
   auto &r=f.runtime;r.hud.config.role=DeviceRole::Controller;r.controller.remote=nullptr;
   r.controller.driveFault=false;r.controller.fault.clear();r.controller.feedback(90,45,true,true);
@@ -289,6 +321,7 @@ static void mqttApiTests() {
 #endif
 }
 int main(int argc,char **argv) {
+  hardwareStorageApiTests();
   apPasswordMethodTests();
   settingsOutputSafetyTests();
   liveTrialConfirmationTests();

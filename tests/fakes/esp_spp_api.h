@@ -1,7 +1,7 @@
 #pragma once
 #include "Arduino.h"
-using esp_err_t = int;
-inline constexpr int ESP_OK = 0, ESP_SPP_SUCCESS = 0;
+#include "esp_err.h"
+inline constexpr int ESP_SPP_SUCCESS = 0;
 enum esp_spp_cb_event_t { ESP_SPP_INIT_EVT, ESP_SPP_START_EVT, ESP_SPP_DATA_IND_EVT, ESP_SPP_SRV_OPEN_EVT, ESP_SPP_CLOSE_EVT, ESP_SPP_WRITE_EVT, ESP_SPP_CONG_EVT };
 struct esp_spp_cb_param_t {
   struct { int status = ESP_SPP_SUCCESS; } init, start;

@@ -3,6 +3,10 @@
 #include "calibration_record.hpp"
 #include "motion_json.hpp"
 #include "board.hpp"
+#include "project_version.hpp"
+#include "reset_history_record.hpp"
+#include <nvs.h>
+#include <esp_err.h>
 #include <time.h>
 #include <cstdlib>
 #include <cstring>
@@ -186,23 +190,121 @@ bool Storage::saveModbus(const ModbusConfig &config) {
 }
 bool Storage::writeHardware(const HardwareRecord &record) {
   const auto bytes = encodeHardware(record);
-  if (!prefs_.begin("hardware", false)) { prefs_.end(); return false; }
-  prefs_.putBytes("config1", bytes.data(), bytes.size());
-  HardwareBytes verified{};
-  const bool ok = prefs_.getBytesLength("config1") == verified.size() &&
-      prefs_.getBytes("config1", verified.data(), verified.size()) == verified.size() && verified == bytes;
-  prefs_.end(); return ok;
+  return writeHardwareBlob("config1", bytes.data(), bytes.size());
 }
 bool Storage::writeRecovery(const RecoveryHistory &history) {
   const auto bytes=encodeRecovery(history);
-  if (!prefs_.begin("hardware",false)) { prefs_.end(); return false; }
-  prefs_.putBytes("recovery1",bytes.data(),bytes.size());
-  RecoveryBytes verified{};
-  const bool ok=prefs_.getBytesLength("recovery1")==verified.size() &&
-      prefs_.getBytes("recovery1",verified.data(),verified.size())==verified.size() && verified==bytes;
-  prefs_.end();return ok;
+  return writeHardwareBlob("recovery1", bytes.data(), bytes.size());
+}
+bool Storage::hardwareStorageFailure(const char *operation, const char *key, int32_t error,
+                                    size_t expected, size_t actual) {
+  hardwareStorageFailure_.operation=operation;hardwareStorageFailure_.key=key;
+  hardwareStorageFailure_.error=error;hardwareStorageFailure_.expected=expected;
+  hardwareStorageFailure_.actual=actual;++hardwareStorageFailure_.count;
+  return false;
+}
+bool Storage::writeHardwareBlob(const char *key, const uint8_t *bytes, size_t size) {
+  nvs_handle_t handle;
+  auto error=nvs_open("hardware",NVS_READWRITE,&handle);
+  if(error!=ESP_OK)return hardwareStorageFailure("open_write",key,error,size);
+  error=nvs_set_blob(handle,key,bytes,size);
+  if(error!=ESP_OK){nvs_close(handle);return hardwareStorageFailure("set_blob",key,error,size);}
+  error=nvs_commit(handle);nvs_close(handle);
+  if(error!=ESP_OK)return hardwareStorageFailure("commit",key,error,size);
+  // Verify through a new read-only handle, including a successful commit.
+  // Keep the last error even if the fallback recovery write succeeds.
+  error=nvs_open("hardware",NVS_READONLY,&handle);
+  if(error!=ESP_OK)return hardwareStorageFailure("open_verify",key,error,size);
+  HardwareBytes verified{};size_t actual=0;
+  error=nvs_get_blob(handle,key,nullptr,&actual);
+  if(error!=ESP_OK){nvs_close(handle);return hardwareStorageFailure("get_length",key,error,size,actual);}
+  if(actual!=size){nvs_close(handle);return hardwareStorageFailure("length",key,ESP_ERR_INVALID_SIZE,size,actual);}
+  error=nvs_get_blob(handle,key,verified.data(),&actual);nvs_close(handle);
+  if(error!=ESP_OK)return hardwareStorageFailure("get_blob",key,error,size,actual);
+  if(actual!=size)return hardwareStorageFailure("length",key,ESP_ERR_INVALID_SIZE,size,actual);
+  if(std::memcmp(bytes,verified.data(),size))return hardwareStorageFailure("compare",key,ESP_ERR_INVALID_CRC,size,actual);
+  return true;
+}
+void Storage::writeHardwareStorageJson(JsonWriter &j, std::string_view view) {
+  // These reads must neither create a namespace nor replace malformed records.
+  if(view!="records") {
+    nvs_stats_t stats{};const auto error=nvs_get_stats(nullptr,&stats);
+    const auto &failure=hardwareStorageFailure_;
+    j << "{\"namespace\":\"hardware\",\"firmware\":" << jsonQuoted(firmware::VERSION)
+      << ",\"stats\":{\"error\":" << int(error) << ",\"name\":" << jsonQuoted(esp_err_to_name(error))
+      << ",\"used\":" << unsigned(stats.used_entries) << ",\"free\":" << unsigned(stats.free_entries)
+      << ",\"available\":" << unsigned(stats.available_entries) << ",\"total\":" << unsigned(stats.total_entries)
+      << ",\"namespaces\":" << unsigned(stats.namespace_count) << ",\"settingsReserve\":" << unsigned(SettingsReserveEntries)
+      << "},\"lastFailure\":{\"count\":" << failure.count
+      << ",\"operation\":" << jsonQuoted(failure.operation) << ",\"key\":" << jsonQuoted(failure.key)
+      << ",\"error\":" << failure.error << ",\"name\":" << jsonQuoted(esp_err_to_name(failure.error))
+      << ",\"expected\":" << unsigned(failure.expected) << ",\"actual\":" << unsigned(failure.actual) << "}}";
+    return;
+  }
+  nvs_handle_t handle;const auto error=nvs_open("hardware",NVS_READONLY,&handle);
+  j << "{\"openError\":" << int(error) << ",\"openName\":" << jsonQuoted(esp_err_to_name(error));
+  for(const auto *key:{"config1","recovery1"}) {
+    HardwareBytes bytes{};size_t size=0;
+    auto read=error==ESP_OK?nvs_get_blob(handle,key,nullptr,&size):error;
+    if(read==ESP_OK) {
+      if(size>bytes.size())read=ESP_ERR_NVS_INVALID_LENGTH;
+      else read=nvs_get_blob(handle,key,bytes.data(),&size);
+    }
+    j << ',' << jsonQuoted(key) << ":{\"error\":" << int(read) << ",\"name\":" << jsonQuoted(esp_err_to_name(read))
+      << ",\"bytes\":" << unsigned(size) << ",\"expectedBytes\":"
+      << unsigned(key[0]=='c'?HardwareBytes{}.size():RecoveryBytes{}.size());
+    if(read==ESP_OK) {
+      bool valid=false;
+      if(key[0]=='c') {
+        HardwareRecord record;
+        auto decode=[&](auto raw){if(size!=raw.size())return false;std::copy_n(bytes.begin(),raw.size(),raw.begin());return decodeHardware(raw,record);};
+        valid=decode(LegacyHardwareBytes{}) || decode(PinHardwareBytes{}) || decode(LocalHardwareBytes{}) ||
+          decode(UartHardwareBytes{}) || decode(SensorHardwareBytes{}) || decode(RadioHardwareBytes{}) ||
+          decode(InvertedSensorHardwareBytes{}) || decode(EnableHardwareBytes{}) || decode(HardwareBytes{});
+        j << ",\"version\":" << unsigned(bytes[2]);
+        if(valid)j << ",\"generation\":" << record.generation << ",\"phase\":" << unsigned(record.phase)
+          << ",\"reason\":" << jsonQuoted(recoveryReasonName(record.reason)) << ",\"hasConfirmed\":" << (record.hasConfirmed?"true":"false");
+      } else if(size==RecoveryBytes{}.size()) {
+        RecoveryBytes raw{};std::copy_n(bytes.begin(),raw.size(),raw.begin());RecoveryHistory history;
+        valid=decodeRecovery(raw,history);
+        if(valid)j << ",\"failures\":" << unsigned(history.failures) << ",\"pending\":" << (history.pending?"true":"false");
+      }
+      j << ",\"valid\":" << (valid?"true":"false");
+    }
+    j << '}';
+  }
+  if(error==ESP_OK)nvs_close(handle);
+  j << '}';
+}
+bool Storage::diagnosticStorageRoom(size_t entries) {
+  nvs_stats_t stats{};
+  return nvs_get_stats(nullptr,&stats)==ESP_OK && stats.available_entries>=SettingsReserveEntries+entries;
+}
+bool Storage::compactResetHistory() {
+  // Do not create an unused namespace. A scalar update needs just one entry,
+  // so legacy history can be migrated even when a larger settings blob cannot.
+  if(!prefs_.begin("g5500rst",true)){prefs_.end();return true;}
+  prefs_.end();
+  if(!prefs_.begin("g5500rst",false)){prefs_.end();return false;}
+  for(unsigned i=0;i<RESET_HISTORY_MAX;++i) {
+    char kt[8],kr[8],kc[8];
+    std::snprintf(kt,sizeof kt,"t%02u",i);std::snprintf(kr,sizeof kr,"r%02u",i);std::snprintf(kc,sizeof kc,"c%02u",i);
+    if(!prefs_.isKey(kt))continue;
+    const auto stored=prefs_.getULong64(kt,UINT64_MAX);uint64_t epoch=0;int code=0;
+    if(!unpackResetHistory(stored,epoch,code)) {
+      char reason[32]{};uint64_t packed;
+      if(!prefs_.isKey(kc) || !prefs_.getString(kr,reason,sizeof reason) ||
+          !packResetHistory(stored,prefs_.getInt(kc,INT32_MIN),reason,packed))continue;
+      if(prefs_.putULong64(kt,packed)!=sizeof packed || prefs_.getULong64(kt,0)!=packed) {prefs_.end();return false;}
+    }
+    // Once tNN contains the whole event, it is authoritative. Deleting the
+    // redundant keys is restartable, including a reset between the two erases.
+    for(const auto *key:{kr,kc})if(prefs_.isKey(key) && (!prefs_.remove(key) || prefs_.isKey(key))) {prefs_.end();return false;}
+  }
+  prefs_.end();return true;
 }
 void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
+  compactResetHistory(); // Reclaim redundant diagnostics before a mandatory migration.
   runtime.hardwareInteraction = false;
   runtime.controller.targetMotionStarted = false;
   runtime.hardwareProbe = false;
@@ -973,6 +1075,7 @@ bool Storage::addResetHistoryEntry(int bootResetReason, const String &bootResetR
 #if RESET_HISTORY_SUPPORT
 
   resetHistorySlot_=-1;
+  if(!compactResetHistory() || !diagnosticStorageRoom(7))return false;
   if(!prefs_.begin("g5500rst", false)) { prefs_.end(); return false; }
 
   uint8_t head = prefs_.getUChar("head", 0);
@@ -992,16 +1095,23 @@ bool Storage::addResetHistoryEntry(int bootResetReason, const String &bootResetR
   snprintf(kr, sizeof(kr), "r%02u", head);
   snprintf(kc, sizeof(kc), "c%02u", head);
 
-  prefs_.putULong64(kt, epoch);
   char reason[32];
   const auto length=std::min(bootResetReasonText.length(),sizeof reason-1);
   std::memcpy(reason,bootResetReasonText.c_str(),length);reason[length]=0;
-  const auto written=prefs_.putString(kr,reason);
-  prefs_.putInt(kc, (int)bootResetReason);
-  char verified[32]{};
-  if(written!=length || !prefs_.getString(kr,verified,sizeof verified) ||
-      std::strcmp(reason,verified) || prefs_.getULong64(kt,UINT64_MAX)!=epoch ||
-      prefs_.getInt(kc,INT32_MIN)!=bootResetReason) { prefs_.end();return false; }
+  uint64_t packed;
+  if(packResetHistory(epoch,bootResetReason,reason,packed)) {
+    if(prefs_.putULong64(kt,packed)!=sizeof packed || prefs_.getULong64(kt,0)!=packed) {prefs_.end();return false;}
+    for(const auto *key:{kr,kc})if(prefs_.isKey(key) && (!prefs_.remove(key) || prefs_.isKey(key))) {prefs_.end();return false;}
+  } else {
+    // Retain custom/unknown historical text without narrowing its code/time.
+    const bool timeSaved=prefs_.putULong64(kt,epoch)==sizeof epoch;
+    const auto written=prefs_.putString(kr,reason);
+    const bool codeSaved=prefs_.putInt(kc,bootResetReason)==sizeof(int32_t);
+    char verified[32]{};
+    if(!timeSaved || !codeSaved || written!=length || !prefs_.getString(kr,verified,sizeof verified) ||
+        std::strcmp(reason,verified) || prefs_.getULong64(kt,UINT64_MAX)!=epoch ||
+        prefs_.getInt(kc,INT32_MIN)!=bootResetReason) { prefs_.end();return false; }
+  }
   const auto slot=head;
   head = (head + 1) % RESET_HISTORY_MAX;
   if (count < RESET_HISTORY_MAX) {
@@ -1025,10 +1135,13 @@ bool Storage::updateResetHistoryTime() {
 
   const time_t now=time(nullptr);
   if(resetHistorySlot_<0 || now<=1700000000)return false;
+  if(!diagnosticStorageRoom(1))return false;
   if(!prefs_.begin("g5500rst",false)) { prefs_.end();return false; }
   char key[8];snprintf(key,sizeof key,"t%02u",unsigned(resetHistorySlot_));
-  prefs_.putULong64(key,uint64_t(now));
-  const bool saved=prefs_.getULong64(key,0)==uint64_t(now);
+  uint64_t epoch=0,value=uint64_t(now);int code=0;
+  if(unpackResetHistory(prefs_.getULong64(key,0),epoch,code) &&
+      !packResetHistory(value,code,resetHistoryReasonName(unsigned(code)),value)) {prefs_.end();return false;}
+  const bool saved=prefs_.putULong64(key,value)==sizeof value && prefs_.getULong64(key,0)==value;
   prefs_.end();return saved;
 
 #else
@@ -1065,8 +1178,12 @@ bool Storage::writeResetHistoryJson(JsonWriter &j) {
 
     uint64_t epoch = prefs_.getULong64(kt, 0ULL);
     char reason[32]{};
-    if(!prefs_.getString(kr,reason,sizeof reason))std::strcpy(reason,"UNKNOWN");
-    int code = prefs_.getInt(kc, 0);
+    int code=0;
+    if(unpackResetHistory(epoch,epoch,code))std::strcpy(reason,resetHistoryReasonName(unsigned(code)));
+    else {
+      if(!prefs_.getString(kr,reason,sizeof reason))std::strcpy(reason,"UNKNOWN");
+      code=prefs_.getInt(kc,0);
+    }
 
     if (n) {
       j << ',';
@@ -1115,7 +1232,8 @@ void Storage::loadRssiYear(RssiHistory &history) {
   prefs_.end();
 }
 void Storage::persistRssiYear(const RssiHistory &history) {
-  prefs_.begin("g5500rssi", false);
+  if(!diagnosticStorageRoom(17))return;
+  if(!prefs_.begin("g5500rssi",false)){prefs_.end();return;}
   prefs_.putBytes("year", history.rssiYear, sizeof(history.rssiYear));
   prefs_.putUShort("ypos", history.rssiYearPos);
   prefs_.putUShort("ycnt", history.rssiYearCount);

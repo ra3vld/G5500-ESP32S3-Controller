@@ -2,10 +2,108 @@
 #include "storage.hpp"
 #include "hardware.hpp"
 #include "hardware_form.hpp"
+#include "reset_history_record.hpp"
+#include <nvs.h>
 #include <cassert>
 #include <iostream>
 #include <vector>
 using namespace forkrot;
+static void nearFullNvsHistoryMigration() {
+  auto history=[]() {Storage s;char bytes[6000];JsonWriter j(bytes,sizeof bytes);assert(s.writeResetHistoryJson(j));return std::string(j.data(),j.size());};
+  auto fillTo=[](size_t available) {
+    auto &space=Preferences::database["user-data"];
+    for(unsigned i=0;Preferences::availableEntries()>available;++i)space["x"+std::to_string(i)]=uint32_t(i);
+    assert(Preferences::availableEntries()==available);
+  };
+  for(unsigned interruption=0;interruption<5;++interruption) {
+    Preferences::database.clear();
+    HardwareRecord old;old.hasConfirmed=true;old.generation=21;
+    const auto bytes=encodeHardwareRecord<208>(old);
+    Preferences::database["hardware"]["config1"]=Preferences::Bytes(bytes.begin(),bytes.end());
+    auto &space=Preferences::database["g5500rst"];space["head"]=uint8_t(5);space["count"]=uint8_t(20);
+    for(unsigned i=0;i<20;++i) {
+      char t[8],r[8],c[8];std::snprintf(t,sizeof t,"t%02u",i);std::snprintf(r,sizeof r,"r%02u",i);std::snprintf(c,sizeof c,"c%02u",i);
+      const unsigned code=i%11+1;
+      space[t]=uint64_t(1700000000+i);space[r]=String(resetHistoryReasonName(code));space[c]=int32_t(code);
+    }
+    fillTo(8);const auto original=Preferences::database;const auto before=history();
+    if(interruption==0)Preferences::failedKey="t00";
+    if(interruption==1)Preferences::failedRemoveKey="r00";
+    if(interruption==2||interruption==3)Preferences::beforeRemove=[&](const char *key) {
+      if(std::string(key)==(interruption==2?"r00":"c00"))throw std::runtime_error("power cut");
+    };
+    try {Storage s;MotionTestRuntime boot;s.loadHardware(boot);if(!boot.recovery)assert(s.finishHardwareBoot(boot));}
+    catch(const std::runtime_error &e){assert(std::string(e.what())=="power cut");}
+    Preferences::failedKey.clear();Preferences::failedRemoveKey.clear();Preferences::beforeRemove={};
+    assert(history()==before); // Complete events survive every migration interruption.
+    assert(Preferences::database["user-data"]==original.at("user-data"));
+    Storage resumed;MotionTestRuntime boot;resumed.loadHardware(boot);
+    assert(!boot.recovery&&!boot.hardwareTrial&&boot.hardwareRecord.hasConfirmed);
+    assert(boot.hardwareRecord.generation==21&&boot.hardwareRecord.good==old.good);
+    assert(resumed.finishHardwareBoot(boot)&&history()==before);
+    assert(std::get<Preferences::Bytes>(Preferences::database["hardware"]["config1"]).size()==HardwareBytes{}.size());
+    assert(Preferences::availableEntries()==68);
+    for(unsigned i=0;i<20;++i) {
+      char t[8],r[8],c[8];std::snprintf(t,sizeof t,"t%02u",i);std::snprintf(r,sizeof r,"r%02u",i);std::snprintf(c,sizeof c,"c%02u",i);
+      uint64_t epoch=0;int code=0;assert(unpackResetHistory(std::get<uint64_t>(space[t]),epoch,code));
+      assert(epoch==1700000000+i&&code==int(i%11+1));assert(!space.count(r)&&!space.count(c));
+    }
+    // Future diagnostic writes cannot consume the settings reserve.
+    fillTo(38);const auto reserved=Preferences::database;
+    assert(!resumed.addResetHistoryEntry(1,"POWERON"));assert(!resumed.updateResetHistoryTime());
+    RssiHistory rssi{};resumed.persistRssiYear(rssi);assert(Preferences::database==reserved);
+    assert(resumed.probeHardwareStorage(boot)); // A critical write still fits.
+  }
+  // A timestamp update preserves the reason in the packed scalar.
+  Preferences::database.clear();Storage s;
+  assert(s.addResetHistoryEntry(4,"PANIC"));assert(s.updateResetHistoryTime());
+  uint64_t epoch=0;int code=0;
+  assert(unpackResetHistory(std::get<uint64_t>(Preferences::database["g5500rst"]["t00"]),epoch,code));
+  assert(epoch>1700000000&&code==4);
+  uint64_t packed=0;assert(packResetHistory(ResetHistoryEpochMask,255,"UNKNOWN",packed));
+  assert(unpackResetHistory(packed,epoch,code)&&epoch==ResetHistoryEpochMask&&code==255);
+  assert(!packResetHistory(ResetHistoryEpochMask+1,4,"PANIC",packed));
+  assert(!packResetHistory(1,4,"custom reason",packed));
+  Preferences::database.clear();fillTo(49);RssiHistory rssi{};s.persistRssiYear(rssi);
+  assert(Preferences::availableEntries()==32); // Includes the new namespace and both scalar indices.
+  Preferences::database.clear();
+}
+static void hardwareStorageDiagnostics() {
+  Preferences::database.clear();Storage s;MotionTestRuntime boot;
+  auto report=[&](const char *view="") {char bytes[1600];JsonWriter j(bytes,sizeof bytes);s.writeHardwareStorageJson(j,view);assert(j.good());return std::string(j.data(),j.size());};
+  const auto empty=Preferences::database;
+  assert(report("records").find("ESP_ERR_NVS_NOT_FOUND")!=std::string::npos);
+  assert(Preferences::database==empty); // diagnosis never creates/repairs a namespace
+  s.loadHardware(boot);assert(s.finishHardwareBoot(boot));
+  auto changed=boot.hardwareRecord.good;changed.buttonLow=!changed.buttonLow;
+  const auto saved=Preferences::database;
+  fakeNvsSetError=ESP_ERR_NVS_NOT_ENOUGH_SPACE;
+  assert(!s.stageHardware(boot,changed));assert(Preferences::database==saved);
+  auto full=report();assert(full.find("\"operation\":\"set_blob\"")!=std::string::npos);
+  assert(full.find("ESP_ERR_NVS_NOT_ENOUGH_SPACE")!=std::string::npos);
+  assert(full.find("\"key\":\"config1\"")!=std::string::npos);
+  fakeNvsSetError=ESP_OK;
+  assert(s.stageHardware(boot,changed));assert(report()==full); // success cannot hide a prior failure
+  fakeNvsCommitError=ESP_FAIL;
+  assert(!s.probeHardwareStorage(boot));assert(report().find("\"operation\":\"commit\"")!=std::string::npos);
+  fakeNvsCommitError=ESP_OK;fakeNvsReadError=ESP_FAIL;
+  assert(!s.probeHardwareStorage(boot));assert(report().find("\"operation\":\"get_length\"")!=std::string::npos);
+  fakeNvsReadError=ESP_OK;fakeNvsCorruptRead=true;
+  assert(!s.probeHardwareStorage(boot));assert(report().find("ESP_ERR_INVALID_CRC")!=std::string::npos);
+  fakeNvsCorruptRead=false;
+  // Inspect legacy/current encodings and corruption without replacing stored bytes.
+  const auto original=boot.hardwareRecord;
+  auto inspect=[&](auto raw) {
+    Preferences::database["hardware"]["config1"]=Preferences::Bytes(raw.begin(),raw.end());
+    const auto db=Preferences::database;const auto text=report("records");
+    assert(text.find("\"valid\":true")!=std::string::npos&&Preferences::database==db);
+    raw.back()^=1;Preferences::database["hardware"]["config1"]=Preferences::Bytes(raw.begin(),raw.end());
+    const auto bad=Preferences::database;
+    assert(report("records").find("\"valid\":false")!=std::string::npos&&Preferences::database==bad);
+  };
+  inspect(encodeHardwareRecord<40>(original));inspect(encodeHardwareRecord<208>(original));inspect(encodeHardware(original));
+  Preferences::database.clear();
+}
 static void confirmedRetryNeedsNoTrial() {
   Storage storage;Preferences::database.clear();Preferences::failedBytesKey.clear();
   MotionTestRuntime boot;storage.loadHardware(boot);assert(storage.finishHardwareBoot(boot));
@@ -291,6 +389,8 @@ static void directionPwm() {
   assert(storage.confirmHardware(trial));storage.loadHardware(boot);assert(boot.controller.hardware==cfg&&!boot.recovery);
 }
 int main() {
+  nearFullNvsHistoryMigration();
+  hardwareStorageDiagnostics();
   confirmedRetryNeedsNoTrial();confirmedRecoveryPreservesRecord();recoveryPolicy();directionPwm();optionalPwmEnable();
   // Each runtime driver/simulation combination is exercised in this one binary.
   for (unsigned drive=0; drive<4; ++drive) for (bool simulation : {false,true}) {
