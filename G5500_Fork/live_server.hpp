@@ -75,6 +75,8 @@ class LiveServer {
   uint32_t workRuns_=0, framesSent_=0, queueErrors_=0, sendErrors_=0, sendDeferred_=0;
   uint32_t memoryDeferred_=0, socketDeferred_=0, sendMemoryRetries_=0, ackDeferred_=0, ackTimeouts_=0;
   uint32_t handshakeTimeouts_=0, admissionRejected_=0;
+  uint32_t pressureCloses_=0;
+  bool pressureReliefPending_=false;
   // Preserve the last failed socket write: the HTTPD return code alone loses
   // errno and whether a frame was cut short by the bounded retry deadline.
   uint32_t sendTimeouts_=0, sendRetryErrors_=0, sendElapsedMs_=0;
@@ -103,12 +105,14 @@ class LiveServer {
   void reply(Client &,uint32_t,const char *);
   void cancelTarget(Client &,uint32_t);
   void speedCommands(uint32_t now);
+  void trimTelemetry();
 public:
   explicit LiveServer(Runtime &r):runtime_(r) {}
   bool begin();
   // Call before applying GPIO outputs, and publish after all command sources.
   void commands(uint32_t now);
   void publish(uint32_t now);
+  void relieveMemory(uint32_t free, uint32_t largest);
   bool started() const {return server_!=nullptr;}
   void writeDiagnostics(JsonWriter &);
 };
@@ -122,6 +126,7 @@ public:
   bool begin() { return true; }
   void commands(uint32_t) {}
   void publish(uint32_t) {}
+  void relieveMemory(uint32_t, uint32_t) {}
   bool started() const { return false; }
   void writeDiagnostics(JsonWriter &) {}
 };

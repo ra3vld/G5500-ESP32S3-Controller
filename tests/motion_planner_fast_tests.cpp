@@ -7,6 +7,7 @@
 namespace forkrot {
 unsigned motionPlannerCalculations();
 bool testMotionProfileStep(bool,float &,float &,float &,float,float,float,float,float,float);
+bool testCachedMotionProfileStep(MotionVelocityProfile &,float &,float &,float &,float,float,float,float,float,float);
 }
 using namespace forkrot;
 static void compare(float p,float v,float a,float target,float limit,float up,float down,float jerk,float dt,bool steady) {
@@ -29,6 +30,68 @@ int main() {
   float p=1,v=20,a=0;
   assert(!testMotionProfileStep(false,p,v,a,20,100,50,50,100,.005f));
   assert(prepareMotionPlanner());
+  // Compare continued paths to Ruckig's original trajectory at actual elapsed
+  // times, including jitter, nonzero acceleration and virtual-position resets.
+  unsigned cachedSteps=0,solves=0;
+  for(float start:{-2.f,0.f,2.f})for(float target:{-3.f,.5f,3.f})
+    for(float acceleration:{-.25f,0.f,.25f})for(float dt:{.005f,.01f,.02f}) {
+      MotionVelocityProfile cache;
+      float p=10,v=start,a=acceleration;
+      ruckig::Ruckig<1> solver;ruckig::InputParameter<1> input;ruckig::Trajectory<1> trajectory;
+      input.control_interface=ruckig::ControlInterface::Velocity;
+      input.current_position={0};input.current_velocity={v};input.current_acceleration={a};
+      input.target_velocity={target};input.max_velocity={4};
+      input.max_acceleration={v<0?3.:2.};input.min_acceleration=std::array<double,1>{v<0?-2.:-3.};input.max_jerk={8};
+      assert(solver.calculate(input,trajectory)>=0);
+      double elapsed=0,position=0;
+      const auto before=motionPlannerCalculations();
+      // Stay on the same velocity side: crossing zero changes asymmetric
+      // acceleration bounds and deliberately requires a fresh solution.
+      for(unsigned step=0;step<20;++step) {
+        const float interval=step%2?dt*1.1f:dt*.9f;
+        const bool negative=v<0;
+        p=0;
+        assert(testCachedMotionProfileStep(cache,p,v,a,target,4,2,3,8,interval));
+        ++cachedSteps;elapsed=std::min(elapsed+interval,trajectory.get_duration());
+        std::array<double,1> rp{},rv{},ra{};trajectory.at_time(elapsed,rp,rv,ra);
+        assert(std::abs(v-rv[0])<.00002 && std::abs(a-ra[0])<.00002);
+        assert(std::abs(p-(rp[0]-position))<.00002);position=rp[0];
+        if((v<0)!=negative)break;
+      }
+      solves+=motionPlannerCalculations()-before;
+      // Any state/intent/constraint change must invalidate the cached path.
+      auto original=cache;float bp=p,bv=v,ba=a;
+      for(unsigned change=0;change<7;++change) {
+        cache=original;p=bp;v=bv;a=ba;
+        float goal=target,limit=4,up=2,down=3,jerk=8;
+        if(change==0)goal+=.01f;
+        if(change==1)limit+=1;
+        if(change==2)up+=1;
+        if(change==3)down+=1;
+        if(change==4)jerk+=1;
+        if(change==5)v+=.001f;
+        if(change==6)a+=.001f;
+        const auto count=motionPlannerCalculations();
+        assert(testCachedMotionProfileStep(cache,p,v,a,goal,limit,up,down,jerk,dt));
+        assert(motionPlannerCalculations()==count+1);
+      }
+    }
+  assert(solves<cachedSteps/4);
+  std::cout<<"Continued velocity paths: "<<solves<<" solves / "<<cachedSteps<<" steps\n";
+  // Rounded terminal acceleration must settle to exact zero, so an exhausted
+  // cached path never adds work forever at constant commanded speed.
+  for(float target:{-2.5f,-1.5f,.5f,1.5f,2.5f}) {
+    MotionVelocityProfile cache;float position=0,velocity=0,acceleration=0;
+    for(unsigned n=0;n<400;++n) {
+      position=0;
+      assert(testCachedMotionProfileStep(cache,position,velocity,acceleration,target,3,2,2,8,n%2?.004f:.006f));
+    }
+    assert(velocity==target && acceleration==0);
+    const auto before=motionPlannerCalculations();
+    for(unsigned n=0;n<400;++n)
+      assert(testCachedMotionProfileStep(cache,position,velocity,acceleration,target,3,2,2,8,.005f));
+    assert(motionPlannerCalculations()==before);
+  }
   for(float speed:{-100.f,-1.f,0.f,1.f,100.f})
     for(float dt:{.005f,.01f,.02f})
       for(float accel:{.1f,50.f})compare(10,speed,0,speed,100,accel,2*accel,100,dt,true);
@@ -68,5 +131,25 @@ int main() {
   for(unsigned at=2005;at<=3000;at+=5)step(at);
   assert(motionPlannerCalculations()==settled); // Real control ticks reach the fast path after a ramp.
   controller.stopNow(-1,3001);assert(!controller.axes[0].direction);
+  // Controller copies are used by settings/preview validation. A mid-ramp
+  // copy must continue both axes independently of the shared solver scratch.
+  Controller original;auto config=original.hardware;config.simulation=SimulationMechanics;
+  original.configureHardware(config);original.feedback(100,90,true,true);
+  for(unsigned axis=0;axis<2;++axis) {
+    original.motionSettings[axis].mode=RegulatorMode::Cascade;
+    assert(original.setRuntimeSpeed(axis,1.5f,0)==Result::Ok);
+    assert(original.jog(axis,1,false,0)==Result::Ok);
+  }
+  for(unsigned at=0;at<=100;at+=5)original.tick(at);
+  Controller copied=original;
+  for(unsigned at=105;at<=1500;at+=5) {
+    original.tick(at);copied.tick(at);
+    for(unsigned axis=0;axis<2;++axis) {
+      assert(original.axes[axis].current==copied.axes[axis].current);
+      assert(original.axes[axis].speedOutputPercent==copied.axes[axis].speedOutputPercent);
+    }
+  }
+  original.stopNow(-1,1501);copied.tick(1520);
+  assert(!original.moving() && copied.moving());
   std::cout<<"PASS: exact Ruckig parity, invalid limits, jerk tails, speed changes; 1000 steady ticks without replanning\n";
 }

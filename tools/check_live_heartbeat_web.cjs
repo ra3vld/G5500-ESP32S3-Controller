@@ -6,7 +6,7 @@ const root=path.resolve(__dirname,'..');
 const html=fs.readFileSync(path.join(root,'G5500_Fork/web_page.hpp'),'utf8').split('R"HTML(')[1].split(')HTML";')[0];
 const sample=JSON.parse(execFileSync(path.join(root,'build/simulator'),{input:'step 0\n',encoding:'utf8'}).trim()).state;
 (async()=>{
- const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox','--disable-background-timer-throttling']});
+ const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox','--disable-background-timer-throttling']});
  try{
   const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>{
@@ -47,7 +47,17 @@ const sample=JSON.parse(execFileSync(path.join(root,'build/simulator'),{input:'s
   });await page.waitForTimeout(350);
   assert(await page.evaluate(()=>live.socket===retainedTelemetry&&!liveFresh()),'local RAM throttling keeps the socket while coordinates remain stale');
   await page.clock.install();
-  await page.evaluate(()=>{controlLive.socket=null;controlLive.ready=false;live.failures=0;live.stableAt=0;disconnectLive(live.socket,81);});
+  const retainedControl=await page.evaluate(()=>{
+   window.retainedControl=controlLive.socket;
+   live.socket.readyState=3;live.socket.onclose();
+   return live.socket===null&&controlLive.socket===retainedControl&&controlLive.ready;
+  });
+  assert(retainedControl,'server shedding telemetry must retain the independent command channel');
+  await page.evaluate(()=>{
+   clearTimeout(live.retry);live.retry=null;
+   controlLive.socket=null;controlLive.ready=false;live.failures=0;live.stableAt=0;
+   live.socket=new WebSocket('ws://heartbeat.test:81/api/live');disconnectLive(live.socket,81);
+  });
   for(const delay of [1000,2000,4000,8000,15000]){
    const opened=await page.evaluate(()=>testSockets.length);
    await page.clock.runFor(delay*0.8);assert.equal(await page.evaluate(()=>testSockets.length),opened);
@@ -58,6 +68,6 @@ const sample=JSON.parse(execFileSync(path.join(root,'build/simulator'),{input:'s
   await page.evaluate(()=>{live.stableAt=Date.now()-11000;disconnectLive(live.socket,81);});
   await page.clock.runFor(1200);assert.equal(await page.evaluate(()=>testSockets.length),opened+1,'stable connection resets retry backoff');
   assert.deepEqual(errors,[]);
-  console.log('PASS: negotiated heartbeat/freshness, 2Hz RAM throttle, healthy control channel, retry backoff/reset and old firmware compatibility');
+  console.log('PASS: negotiated heartbeat/freshness, 2Hz RAM throttle, critical telemetry close retains control, retry backoff/reset and old firmware compatibility');
  }finally{await browser.close()}
 })().catch(error=>{console.error(error);process.exit(1)});

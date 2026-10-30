@@ -931,6 +931,15 @@ void Controller::tickCoast(uint32_t now) {
     } else coast.settledAt=0;
   }
 }
+bool Controller::controlDue(uint32_t now) const {
+  if(remote)return false;
+  for(unsigned i=0;i<(model==Model::G5500?2u:1u);++i) {
+    const auto &axis=axes[i];const auto &motion=motion_[i];
+    if((axis.wanted || axis.direction || axis.tracking || axis.holdArmed) &&
+        (!motion.started || int32_t(now-motion.nextAt)>=0))return true;
+  }
+  return false;
+}
 void Controller::tick(uint32_t now) {
   tickCoast(now);
   // HUD outputs are remote: the operation that locks configuration sends STOP once.
@@ -968,8 +977,15 @@ void Controller::tick(uint32_t now) {
     }
   }
   }
-  if (hardware.simulation) for (unsigned i=0; i<2; ++i)
-    if (i==0 || model==Model::G5500) feedbackAt(i,axes[i].current,true,now);
+  if (hardware.simulation) for (unsigned i=0; i<2; ++i) {
+    auto &r=motion_[i];
+    // Integrate the plant at real loop times, but estimate velocity only from
+    // sensor-rate samples. Oversampling at every interface/checkpoint wastes
+    // work and truncates the bounded history below the requested time window.
+    if ((i==0 || model==Model::G5500) && (!r.feedback.timed ||
+        uint32_t(now-r.feedback.at)>=controlPeriodMs() ||
+        (r.started && int32_t(now-r.nextAt)>=0))) feedbackAt(i,axes[i].current,true,now);
+  }
   if (!sequence_.empty() && uint32_t(now - sequenceAdvancedAt_) >= sequenceIntervalMs_) {
     if (++sequenceIndex_ >= sequence_.size()) {
       sequence_.clear();

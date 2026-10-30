@@ -59,9 +59,11 @@ int main() {
   state.feedback.staticCoastFactor={.2f,.3f};state.feedback.rejectedTotal=17;
   state.timing.record(30);state.targetTimed=true;state.targetChangedAt=42;
   state.positionPid.integral=5;state.started=true;state.referenceVelocity=7;
+  state.velocityProfile.valid=true;state.velocityProfile.elapsed=.2;
   state.cancel(true);
   assert(state.targetTimed && state.targetChangedAt==42 && !state.started && !state.referenceVelocity);
   assert(state.positionPid.integral==0 && state.feedback.count==2 && state.feedback.samples[1].position==11);
+  assert(!state.velocityProfile.valid && state.velocityProfile.elapsed==0);
   assert(state.feedback.staticCoastFactor[1]==.3f && state.feedback.rejectedTotal==17);
   assert(state.timing.steps==1 && state.timing.maxIntervalMs==30 && state.timing.lateSteps==1);
   state.cancel();assert(!state.targetTimed && state.targetChangedAt==0 && state.feedback.count==2);

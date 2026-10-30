@@ -51,8 +51,18 @@ uint32_t checksum(const uint8_t *b, size_t n) {
 // Scratch belongs to the single controller thread. Each axis owns only its
 // numerical boundary state, so Controller/HUD copies do not copy a solver or
 // allocate. Recalculate changing profiles from that state, never from zero.
+void velocityProfileAt(const MotionVelocityProfile &profile, double time,
+                       double &p, double &v, double &a) {
+  unsigned segment=0;
+  while(segment<2 && time>=profile.times[segment])time-=profile.times[segment++];
+  // Sample only the current segment; reintegrating completed segments adds
+  // software-double work on ESP32 even though their boundaries are known.
+  std::tie(p,v,a)=ruckig::integrate(time,profile.positions[segment],profile.velocities[segment],
+                                  profile.accelerations[segment],profile.jerks[segment]);
+}
 bool profileStep(bool positionControl, float &p, float &v, float &a, float target,
-                 float velocity, float acceleration, float deceleration, float jerk, float dt) {
+                 float velocity, float acceleration, float deceleration, float jerk, float dt,
+                 MotionVelocityProfile *cached=nullptr) {
   auto &scratch=sharedPlanner();
   if(!scratch) return false;
   // A velocity profile already at its target has zero duration: at_time(0)
@@ -63,6 +73,25 @@ bool profileStep(bool positionControl, float &p, float &v, float &a, float targe
       std::isfinite(velocity) && velocity>=std::abs(v) &&
       std::isfinite(acceleration) && acceleration>0 && std::isfinite(deceleration) && deceleration>0 &&
       std::isfinite(jerk) && jerk>0 && std::isfinite(dt) && dt>=0)return true;
+  // A changed command, constraint, velocity sign or boundary invalidates the
+  // path immediately. Position is a free coordinate in velocity control: some
+  // callers deliberately re-anchor it to the latest shaft measurement.
+  if(cached && !positionControl && cached->valid && std::isfinite(p) &&
+      std::isfinite(dt) && dt>=0 && v==cached->expectedVelocity && a==cached->expectedAcceleration &&
+      target==cached->target && velocity==cached->limit && acceleration==cached->acceleration &&
+      deceleration==cached->deceleration && jerk==cached->jerk && (v<0)==cached->negative) {
+    const double duration=cached->times[0]+cached->times[1]+cached->times[2];
+    cached->elapsed=std::min(cached->elapsed+double(dt),duration);
+    double np,nv,na;velocityProfileAt(*cached,cached->elapsed,np,nv,na);
+    p=float(double(p)+np-cached->displacement);v=float(nv);a=float(na);
+    cached->displacement=np;cached->expectedVelocity=v;cached->expectedAcceleration=a;
+    // Let Ruckig resolve the rounded terminal boundary once. Replaying an
+    // exhausted path can retain a tiny nonzero acceleration indefinitely and
+    // prevent the exact steady-velocity fast path above from taking over.
+    if(cached->elapsed>=duration)cached->valid=false;
+    return std::isfinite(p) && std::isfinite(v) && std::isfinite(a);
+  }
+  if(cached)cached->valid=false;
   auto &solver=scratch->solver;auto &input=scratch->input;auto &trajectory=scratch->trajectory;
   input.control_interface = positionControl ? ruckig::ControlInterface::Position : ruckig::ControlInterface::Velocity;
   input.current_position = {p}; input.current_velocity = {v}; input.current_acceleration = {a};
@@ -78,9 +107,28 @@ bool profileStep(bool positionControl, float &p, float &v, float &a, float targe
   ++plannerCalculations;
 #endif
   if (solver.calculate(input, trajectory) < 0) return false;
+  if(cached && !positionControl) {
+    const auto &profile=trajectory.profiles_view()[0][0];
+    // The compact cache covers the ordinary three-segment velocity solution.
+    // Unusual/recovery paths remain on Ruckig's original sampling path.
+    if(trajectory.get_duration()>double(dt) && profile.brake.duration==0 && profile.t[3]==0 && profile.t[4]==0 &&
+        profile.t[5]==0 && profile.t[6]==0) {
+      for(unsigned i=0;i<3;++i) {
+        cached->times[i]=profile.t[i];cached->jerks[i]=profile.j[i];
+        cached->positions[i]=profile.p[i]-profile.p[0];
+        cached->velocities[i]=profile.v[i];cached->accelerations[i]=profile.a[i];
+      }
+      cached->elapsed=std::min(double(dt),trajectory.get_duration());
+      cached->target=target;cached->limit=velocity;cached->acceleration=acceleration;
+      cached->deceleration=deceleration;cached->jerk=jerk;cached->negative=v<0;
+      cached->valid=true;
+    }
+  }
   std::array<double, 1> np{}, nv{}, na{};
   trajectory.at_time(std::min(double(dt), trajectory.get_duration()), np, nv, na);
+  if(cached && cached->valid)cached->displacement=np[0]-double(p);
   p = float(np[0]); v = float(nv[0]); a = float(na[0]);
+  if(cached) {cached->expectedVelocity=v;cached->expectedAcceleration=a;}
   return std::isfinite(p) && std::isfinite(v) && std::isfinite(a);
 }
 int sign(float n) { return (n > 0) - (n < 0); }
@@ -112,6 +160,10 @@ unsigned motionPlannerCalculations() {return plannerCalculations;}
 bool testMotionProfileStep(bool positionControl,float &p,float &v,float &a,float target,
                            float velocity,float acceleration,float deceleration,float jerk,float dt) {
   return profileStep(positionControl,p,v,a,target,velocity,acceleration,deceleration,jerk,dt);
+}
+bool testCachedMotionProfileStep(MotionVelocityProfile &profile,float &p,float &v,float &a,float target,
+                                 float velocity,float acceleration,float deceleration,float jerk,float dt) {
+  return profileStep(false,p,v,a,target,velocity,acceleration,deceleration,jerk,dt,&profile);
 }
 #endif
 bool prepareMotionPlanner() {
@@ -626,7 +678,7 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
     float virtualPosition=0;
     const float duration=target>=r.ramp ? up : down;
     return profileStep(false, virtualPosition, r.ramp, r.rampRate, target, 100,
-                       2*work/up, 2*work/down, 4*work/(duration*duration), dt);
+                       2*work/up, 2*work/down, 4*work/(duration*duration), dt,&r.velocityProfile);
   };
   if (axis.direction && desired && axis.direction != desired) {
     if (axis.motionPhase != MotionPhase::Braking && std::abs(r.ramp-axis.speedOutputPercent)>.001f) {
@@ -711,7 +763,7 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
           streamFade*std::clamp(r.targetVelocity,-velocityLimit,velocityLimit),
           m.positionKp,m.positionKi,m.positionKd,dt,filter,-velocityLimit,velocityLimit,!r.releasing);
       if(!profileStep(false,r.referencePosition,r.commandVelocity,r.commandAcceleration,velocity,
-                      m.velocity,m.acceleration,m.deceleration,m.jerk,dt)) { motionFault(i,MotionError::Planner,now); return; }
+                      m.velocity,m.acceleration,m.deceleration,m.jerk,dt,&r.velocityProfile)) { motionFault(i,MotionError::Planner,now); return; }
       r.referencePosition=axis.current;r.referenceVelocity=r.commandVelocity;r.referenceAcceleration=r.commandAcceleration;
     } else if(axis.tracking) {
       if(!r.profileTracking || velocityLimit!=r.plannedSpeedLimit) {
@@ -736,7 +788,7 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
                        feasibleLimit,m.acceleration,m.deceleration,m.jerk,dt)) { motionFault(i,MotionError::Planner,now); return; }
       if(feasibleLimit>velocityLimit+.0001f) {
         if(!profileStep(false,speedPosition,speedVelocity,speedAcceleration,velocityLimit*desired,
-                        m.velocity,m.acceleration,m.deceleration,m.jerk,dt)) { motionFault(i,MotionError::Planner,now); return; }
+                        m.velocity,m.acceleration,m.deceleration,m.jerk,dt,&r.velocityProfile)) { motionFault(i,MotionError::Planner,now); return; }
         if(speedVelocity*desired<r.referenceVelocity*desired) {
           r.referencePosition=speedPosition;r.referenceVelocity=speedVelocity;r.referenceAcceleration=speedAcceleration;
         }
@@ -754,12 +806,12 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
       const float accelerationLead=std::copysign(r.referenceAcceleration*r.referenceAcceleration/(2*m.jerk),r.referenceAcceleration);
       const float velocityBoundary=std::clamp(velocity+accelerationLead,-m.velocity,m.velocity);
       if (!profileStep(false,virtualPosition,r.commandVelocity,r.commandAcceleration,velocityBoundary,
-                       m.velocity,m.acceleration,m.deceleration,m.jerk,dt)) { motionFault(i,MotionError::Planner,now); return; }
+                       m.velocity,m.acceleration,m.deceleration,m.jerk,dt,&r.velocityProfile)) { motionFault(i,MotionError::Planner,now); return; }
     } else {
       // Jog selects a velocity directly. One S-curve preserves acceleration
       // and jerk when the slider or proportional manual input changes.
       if (!profileStep(false,r.referencePosition,r.commandVelocity,r.commandAcceleration,
-                       manualSpeed()*desired,m.velocity,m.acceleration,m.deceleration,m.jerk,dt)) {
+                       manualSpeed()*desired,m.velocity,m.acceleration,m.deceleration,m.jerk,dt,&r.velocityProfile)) {
         motionFault(i,MotionError::Planner,now); return;
       }
       r.referenceVelocity=r.commandVelocity;r.referenceAcceleration=r.commandAcceleration;

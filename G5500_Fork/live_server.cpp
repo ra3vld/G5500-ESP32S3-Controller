@@ -333,11 +333,30 @@ void LiveServer::commands(uint32_t now) {
       reply(client,p.cid,body);p={};
     }}
   }
+  trimTelemetry();
+}
+void LiveServer::relieveMemory(uint32_t free, uint32_t largest) {
+  pressureReliefPending_=free<MemoryGuard::CriticalFree || largest<MemoryGuard::CriticalBlock;
+}
+void LiveServer::trimTelemetry() {
+  if(!pressureReliefPending_ || !server_ || !clients_)return;
+  pressureReliefPending_=false;
+  Guard lock(mutex_);
+  // Pause ordinary pressure; shed telemetry only at the existing critical
+  // guard thresholds. Keep the dedicated command/STOP channel alive.
+  for(auto &client:*clients_)if(client.fd>=0 && !client.controlOnly && !client.closing) {
+    if(client.buffers && client.buffers->stop.size) {pressureReliefPending_=true;continue;}
+    client.closing=true;++pressureCloses_;
+  }
+  for(auto &state:states_)if(state && !state->users)state.reset();
+  if(!states_[stateIndex_])stateSize_=0;
+  if(!states_[metadataIndex_])metadataSize_=0;
+  // Called after commands(): queued STOP wins over releasing telemetry.
 }
 void LiveServer::publish(uint32_t now) {
   if(!server_)return;
   bool any=false,legacy=false,binary=false,missingState=false;{Guard lock(mutex_);
-    for(auto &c:*clients_)if(c.fd>=0&&c.buffers) {
+    for(auto &c:*clients_)if(c.fd>=0&&c.buffers&&!c.closing) {
       any=true;legacy|=!c.controlOnly&&!c.binary;binary|=!c.controlOnly&&c.binary;
     }
     // Keep only current projections with consumers; slow peers retain their
@@ -433,6 +452,7 @@ void LiveServer::writeDiagnostics(JsonWriter &j) {
    <<",\"liveControlChecks\":"<<controlChecks_<<",\"liveStateEncodes\":"<<stateEncodes_<<",\"liveMetadataEncodes\":"<<metadataEncodes_
    <<",\"liveStateBuffers\":"<<states<<",\"liveBufferBytes\":"<<(sizeof(Clients)+buffers*sizeof(ClientBuffers)+stateBytes)
    <<",\"liveHandshakeTimeouts\":"<<handshakeTimeouts_<<",\"liveAdmissionRejected\":"<<admissionRejected_
+   <<",\"livePressureCloses\":"<<pressureCloses_
    <<",\"networkMemoryLimited\":"<<(networkLowMemory()?"true":"false")<<",\"telemetryIntervalMs\":"<<(networkLowMemory()?500:WebPositionIntervalMs)
    <<",\"liveWorkRuns\":"<<workRuns_<<",\"liveFrames\":"<<framesSent_
    <<",\"liveSendDeferred\":"<<sendDeferred_<<",\"liveQueueErrors\":"<<queueErrors_<<",\"liveSendErrors\":"<<sendErrors_

@@ -571,6 +571,39 @@ int main(){
  for(const auto &m:fakeServer.sent)freshMetadata|=m.first==1000&&m.second.find("\"type\":\"metadata\"")!=std::string::npos;
  assert(freshMetadata);httpd_sess_trigger_close(&fakeServer,1000);httpd_sess_trigger_close(&fakeServer,1001);
  assert(bufferMetric("liveStateBuffers")==0);
+ // Ordinary pressure pauses telemetry; critical pressure releases its RAM
+ // before MemoryGuard's restart deadline. Preserve dedicated control and an
+ // already queued STOP even when HTTPD work from the previous turn is pending.
+ for(int fd=1000;fd<1004;++fd)if(fakeServer.websocketFds.count(fd))httpd_sess_trigger_close(&fakeServer,fd);
+ fakeServer.sent.clear();fakeHeapFree=65536;fakeHeapBlock=32768;
+ const auto criticalStop=[&](unsigned id) {
+   char boot[17];liveBootText(boot,runtime.hud.boot);
+   return "v=1&boot="+std::string(boot)+"&selection="+std::to_string(runtime.hud.selectionEpoch)+
+       "&cid="+std::to_string(id)+"&path=/api/move&d=S";
+ };
+ assert(connect(1000)==ESP_OK&&command(1000,"v=2&telemetry=1")==ESP_OK);
+ assert(connect(1001)==ESP_OK&&command(1001,"v=1&control=1")==ESP_OK);
+ fakeEspTimeUs=97000000;server.publish(97000);pumpLive();
+ const auto pressureCloses=bufferMetric("livePressureCloses");
+ server.relieveMemory(MemoryGuard::CriticalFree,MemoryGuard::CriticalBlock);server.commands(97001);
+ server.publish(97005);pumpLive();assert(bufferMetric("liveClients")==2);
+ c.feedback(100,90,true,true);assert(c.jog(0,1,false,97006)==Result::Ok);c.tick(97006);assert(c.moving());
+ assert(command(1000,criticalStop(1))==ESP_OK);
+ server.publish(97010); // HTTPD may run before commands() again.
+ server.relieveMemory(MemoryGuard::CriticalFree-1,32768);pumpLive();
+ assert(fakeServer.websocketFds.count(1000)&&c.moving());
+ server.commands(97011);assert(!c.moving());server.publish(97015);pumpLive();
+ assert(!fakeServer.websocketFds.count(1000)&&fakeServer.websocketFds.count(1001));
+ assert(bufferMetric("livePressureCloses")==pressureCloses+1);
+ assert(command(1001,criticalStop(1))==ESP_OK);server.commands(97016);
+ assert(!c.moving());server.publish(97020);pumpLive();
+ httpd_sess_trigger_close(&fakeServer,1001);
+ fakeHeapFree=65536;fakeHeapBlock=32768;
+ assert(connect(1000)==ESP_OK&&command(1000,"v=2&telemetry=1")==ESP_OK);
+ server.publish(97025);pumpLive();
+ server.relieveMemory(65536,MemoryGuard::CriticalBlock-1);server.commands(97026);server.publish(97030);pumpLive();
+ assert(!fakeServer.websocketFds.count(1000)&&bufferMetric("livePressureCloses")==pressureCloses+2);
+ std::cout<<"PASS: critical heap/fragmentation sheds telemetry, retains control and queued STOP before socket close\n";
  std::cout<<"PASS: binary 160 B, no idle hashing, metadata only on change, no fast JSON, mixed consumers, partial metadata/context, STOP, reconnect, unchanged 200/500 ms\n";
  fakeEspTimeUs=-1;
  std::cout<<"PASS: HUD manual renewals and release receive one deferred admission without false completion errors\n";

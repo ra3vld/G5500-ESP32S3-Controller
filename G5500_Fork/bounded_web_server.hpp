@@ -27,6 +27,10 @@ public:
   void setStopHandler(StopHandler handler, void *context) { stopHandler_ = handler; stopContext_ = context; }
   using RequestHandler = bool (*)(void *, std::string_view);
   void setRequestHandler(RequestHandler handler, void *context) { requestHandler_ = handler; requestContext_ = context; }
+  // Runs on the controller thread at safe transport boundaries, never from
+  // inside a command handler. It must not re-enter this server.
+  using ServiceHandler = void (*)(void *);
+  void setServiceHandler(ServiceHandler handler, void *context) { serviceHandler_=handler;serviceContext_=context; }
   std::string_view argumentName(size_t i) const { return {_currentArgs[i].key.c_str(), _currentArgs[i].key.length()}; }
   std::string_view argumentValue(size_t i) const { return {_currentArgs[i].value.c_str(), _currentArgs[i].value.length()}; }
   // Set only after OTA has stopped motion and accepted the upload.
@@ -142,6 +146,7 @@ public:
         _contentLength = CONTENT_LENGTH_NOT_SET;
         _responseCode = 0;
         _clearResponseHeaders();
+        serviceControl();
         if (requestHandler_(requestContext_, {requestBuffer_, requestSize})) {
           ++diagnostics_.requests;
           if (page_) servicePage();
@@ -161,6 +166,7 @@ public:
         _contentLength = CONTENT_LENGTH_NOT_SET;
         _responseCode = 0;
         _clearResponseHeaders();
+        serviceControl();
         if (_chain) _chain->runChain(*this, [this]() { return _handleRequest(); });
         else _handleRequest();
       }
@@ -210,7 +216,7 @@ protected:
           if (result >= 0) return result;
           writeError = errno;
           return retryableWrite(writeError) ? -2 : -1;
-        }, [] { return millis(); }, [] { delay(1); });
+        }, [] { return millis(); }, [this] { serviceControl();delay(1); });
     if (sent != size) failWrite("api", writeError ? writeError : ETIMEDOUT, sent, size);
     return sent;
   }
@@ -218,6 +224,9 @@ protected:
     return _currentClientWrite(data, size); // ESP32 maps PROGMEM into its address space.
   }
 private:
+  void serviceControl() { if(serviceHandler_)serviceHandler_(serviceContext_); }
+  ServiceHandler serviceHandler_=nullptr;
+  void *serviceContext_=nullptr;
   bool requestFitsMemory(size_t size) const {
     const std::string_view request(requestBuffer_, size);
     if (request.substr(0, 4) == "GET ") {
@@ -269,6 +278,7 @@ private:
     // and 512-byte progress under memory pressure or a small transport queue.
     size_t budget=4096;
     for(unsigned attempt=0;attempt<8 && budget;++attempt) {
+      serviceControl();
       size_t chunk = std::min({pageSize_ - pageSent_, budget, size_t(TCP_MSS)});
       if(pageRetryErrno_==ENOMEM || pageRetryErrno_==ENOBUFS)chunk=std::min(chunk,size_t(512));
       // Small control/recovery replies remain writable below the bulk reserve.

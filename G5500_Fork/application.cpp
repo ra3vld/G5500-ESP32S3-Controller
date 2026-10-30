@@ -18,7 +18,6 @@ void Application::updatePosition() {
   runtime_.controller.tick(millis());
   runtime_.currentAz = runtime_.controller.axes[0].current;
   runtime_.currentEl = runtime_.controller.model == Model::G5500 ? runtime_.controller.axes[1].current : 0.f;
-  runtime_.controller.feedback(runtime_.currentAz, runtime_.currentEl, true, true);
   } else {
   auto &calibrationState = calibration_.state();
   // factory-calibrated ESP32-S3 millivolts -> selected mechanical calibration -> angle.

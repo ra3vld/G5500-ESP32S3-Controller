@@ -36,6 +36,16 @@ public:
           return BoundedWebServer::StopResult{};
         },
         this);
+    web_.setServiceHandler([](void *context) {
+      auto &self=*static_cast<WebInterface *>(context);
+      if(self.runtime_.recovery || self.ota_.locked() || self.runtime_.hud.isHud())return;
+      const uint32_t now=millis();
+      if(self.controlServiced_ && now==self.controlServicedAt_)return;
+      if(!self.runtime_.controller.controlDue(now))return;
+      self.controlServiced_=true;self.controlServicedAt_=now;
+      self.actions_.updatePosition();
+      self.hardware_.controlRotator();
+    },this);
     web_.setRequestBuffer(statusBuffer_, sizeof statusBuffer_);
     static const char *const lowMemoryPaths[] = {"/", "/api/status", "/diaglog", "/resetdiag", "/adc",
                                                 "/api/rssi?range=hour", "/api/rssi?range=day", "/api/rssi?range=week",
@@ -55,6 +65,7 @@ public:
   void writeDiagnostics(JsonWriter &j) { j << "\"livePort\":" << (live_.started()?81:0); live_.writeDiagnostics(j); camera_.writeStatus(j); }
   void serviceLiveCommands() { live_.commands(millis()); }
   void publishLive() { live_.publish(millis()); }
+  void relieveMemory(uint32_t free, uint32_t largest) { live_.relieveMemory(free,largest); }
 
 private:
   bool handleHardwareRequest(std::string_view request);
@@ -78,6 +89,8 @@ private:
   RestartDelay &restart_;
   Ota &ota_;
   char statusBuffer_[STATUS_JSON_CAPACITY];
+  uint32_t controlServicedAt_=0;
+  bool controlServiced_=false;
 };
 } // namespace forkrot
 
@@ -90,6 +103,7 @@ public:
   void service() {}
   void serviceLiveCommands() {}
   void publishLive() {}
+  void relieveMemory(uint32_t, uint32_t) {}
   void abortForRecovery() {}
   void writeDiagnostics(JsonWriter &j) { j << "\"livePort\":0"; }
 };

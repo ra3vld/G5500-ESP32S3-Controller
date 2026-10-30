@@ -76,6 +76,16 @@ struct MotionPid {
   float step(float error, float measurement, float feedforward, float kp, float ki, float kd,
              float dt, float filterSeconds, float lo, float hi, bool integrate = true);
 };
+// A velocity S-curve has three constant-jerk segments. Keep only that bounded
+// numerical path on each axis; the large solver scratch remains shared.
+// Constraint-recovery/braking paths continue through the full planner.
+struct MotionVelocityProfile {
+  std::array<double, 3> times{}, jerks{}, positions{}, velocities{}, accelerations{};
+  double elapsed = 0, displacement = 0;
+  float target = 0, limit = 0, acceleration = 0, deceleration = 0, jerk = 0;
+  float expectedVelocity = 0, expectedAcceleration = 0;
+  bool valid = false, negative = false;
+};
 // Timestamped, bounded least-squares velocity estimator; unchanged samples are real
 // zero-motion evidence only when a new ADC conversion has actually occurred.
 struct MotionFeedback {
@@ -105,6 +115,7 @@ struct MotionFeedback {
 // timing have a separate lifetime and must never be copied through the stack.
 struct MotionState {
   MotionPid positionPid, velocityPid;
+  MotionVelocityProfile velocityProfile;
   bool started = false, profileValid = false, settling = false, releasing = false, arriving = false;
   bool progressValid = false, kickDone = false, streamingTarget = false, profileTracking = false;
   bool streamCoasting = false;

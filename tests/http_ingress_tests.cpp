@@ -47,8 +47,12 @@ int main() {
   connect(request+request);web.handleClient();
   assert(testSocket.parsedRequest==request && testSocket.heapBufferReads==0);
   connect(request);testSocket.respond=true;testSocket.blockWrites=true;
+  unsigned serviced=0;
+  web.setServiceHandler([](void *context) {++*static_cast<unsigned *>(context);},&serviced);
   const auto beforeWrite=fakeHardware.now;
   web.handleClient();assert(web.writeFailed() && testSocket.reset && fakeHardware.now-beforeWrite==5);
+  assert(serviced>=5); // Control continues while TCP is backpressured.
+  web.setServiceHandler(nullptr,nullptr);
   // A full hardware map, local/sensor settings and UART parameters fit the bounded parser.
   std::string allFields;
   for(unsigned i=0;i<96;++i)allFields+=(i?"&":"")+std::string("p")+std::to_string(i)+"=1";

@@ -53,6 +53,7 @@ void Application::serviceConfigurationSafety() {
   sampleNetworkMemory(now, heap);
   runtime_.hud.setMemoryLimited(networkLowMemory());
   if (runtime_.recovery) return;
+  web_server_.relieveMemory(heap.free,heap.largest);
   const auto reason = runtime_.memoryGuard.sample(now, heap.free, heap.largest,
       runtimeMetrics.allocationFailures.load(), runtime_.hardwareTrial);
   if (reason != RecoveryReason::None) { failConfiguration(reason); return; }

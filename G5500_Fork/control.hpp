@@ -278,6 +278,7 @@ public:
   Result applyCoast(unsigned axis,uint32_t now);
   void tickCoast(uint32_t now);
   unsigned controlPeriodMs() const { return controlPeriodMs_; }
+  bool controlDue(uint32_t now) const;
   Result setControlFrequency(unsigned hz, uint32_t now);
   Result centerForAutoTune(unsigned axis, uint32_t now);
   Result startAutoTune(unsigned axis, RegulatorMode mode, float travel, float outputLimit, uint32_t now, const AutoTuneOptions &options = {});

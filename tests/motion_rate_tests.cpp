@@ -24,6 +24,25 @@ int main() {
     assert(c.setControlFrequency(201,1002)==Result::Invalid);
   }
   // Same full physical window at every rate, including clock rollover.
+  for(unsigned hz:{50u,100u,200u})for(uint32_t epoch:{0u,0xffffff00u}) {
+    Controller c;auto config=c.hardware;config.simulation=SimulationMechanics;c.configureHardware(config);
+    c.feedback(100,90,true,true);assert(c.setControlFrequency(hz,epoch)==Result::Ok);
+    assert(c.jog(0,1,false,epoch)==Result::Ok);
+    for(unsigned t=0;t<=1000;++t) {
+      assert(c.controlDue(epoch+t)==(t%(1000/hz)==0));
+      c.tick(epoch+t);assert(!c.controlDue(epoch+t));c.tick(epoch+t);
+    }
+    const auto &feedback=c.motionFeedback(0);
+    assert(feedback.count==std::min(hz+1,unsigned(feedback.samples.size())));
+    assert(feedback.at==uint32_t(epoch+1000) && c.motionTiming(0).steps==hz+1);
+    unsigned oldest=0;
+    for(unsigned i=0;i<feedback.count;++i)oldest=std::max(oldest,uint32_t(feedback.at-feedback.samples[i].at));
+    assert(oldest>=c.motionSettings[0].velocityWindowMs);
+    c.stopNow(-1,epoch+1000);c.tick(epoch+1001);
+    assert(!c.controlDue(epoch+1001));
+    assert(!c.axes[0].direction && !c.axes[0].speedOutputPercent);
+    assert(c.axes[0].motionError==MotionError::None);
+  }
   for(unsigned window:{40u,80u,200u,600u}) {
     MotionFeedback f;
     const uint32_t epoch=0xffffff00u;

@@ -250,6 +250,12 @@ public:
         return profiles;
     }
 
+    // G5500 extension: borrow the immutable result without copying the large
+    // profile array onto the controller task's bounded stack.
+    const Container<Vector<Profile>>& profiles_view() const {
+        return profiles;
+    }
+
     //! Get the duration of the (synchronized) trajectory
     double get_duration() const {
         return duration;
