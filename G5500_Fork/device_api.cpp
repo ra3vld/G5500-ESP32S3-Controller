@@ -222,6 +222,7 @@ bool DeviceApi::setupReady(SetupStep step) const {
   if(runtime_.recovery || runtime_.hardwareTrial)return false;
   switch(step) {
     case SetupStep::Network: {
+      if(runtime_.networkTrial)return false;
       if(!WIFI_SUPPORT && !ETHERNET_SUPPORT)return COMMAND_API_SUPPORT;
       switch(network_.credentials().network.choice) {
         case NetworkChoice::Ap: case NetworkChoice::SharedHost:return (radioWifi.getMode()&WIFI_AP) && uint32_t(radioWifi.softAPIP());
@@ -270,7 +271,41 @@ void DeviceApi::writeSetup(JsonWriter &j) const {
     << ",\"simulation\":" << ((s.drive<0?runtime_.controller.hardware.simulation:s.simulation)?"true":"false")
     << ",\"manualOnly\":" << (runtime_.controller.hardware.manualWithoutFeedback()?"true":"false")
     << ",\"testToken\":" << runtime_.setupTestToken << ",\"token\":" << runtime_.setupLease << ",\"storageOk\":" << (runtime_.setupStorageOk?"true":"false")
-    << ",\"restartRequired\":" << (runtime_.setupRestartRequired?"true":"false") << ",\"pendingNext\":" << (s.pendingNext?"true":"false") << '}';
+    << ",\"restartRequired\":" << (runtime_.setupRestartRequired?"true":"false") << ",\"pendingNext\":" << (s.pendingNext?"true":"false") << ",\"problems\":[";
+  bool comma=false;auto problem=[&](const char *name){if(comma)j << ',';j << jsonQuoted(name);comma=true;};
+  const auto &c=runtime_.controller;
+  if(s.step==SetupStep::Network || s.step==SetupStep::Review)if(!setupReady(SetupStep::Network))problem("network");
+  if(s.step==SetupStep::Equipment || s.step==SetupStep::Review)if(!setupReady(SetupStep::Equipment))problem("equipment");
+  if(runtime_.hud.isHud()) {if((s.step==SetupStep::Peers || s.step==SetupStep::Review)&&!setupReady(SetupStep::Peers))problem("peer");}
+  else if(!c.hardware.simulation && !c.hardware.manualWithoutFeedback()) {
+    for(unsigned i=0;i<(c.model==Model::G5500?2u:1u);++i) {
+      if((s.step==SetupStep::Calibration || s.step==SetupStep::Review)&&!c.axes[i].calibrated)problem(i?"el_calibration":"az_calibration");
+      if((s.step==SetupStep::Tuning || s.step==SetupStep::Review) && (c.variableSpeed(i)?(!c.motionSettings[i].ready||!c.motionSettings[i].valid()):(s.fresh&&!(s.checked&(1u<<(12+i))))))problem(i?"el_tuning":"az_tuning");
+    }
+  }
+  if(c.hasDriveError() || c.autoTune.active() || c.coast.active())problem("motion");
+  j << "]}";
+}
+namespace {
+HudWifi networkHudMode(NetworkChoice choice) {
+  return choice==NetworkChoice::Ap || choice==NetworkChoice::SharedHost?HudWifi::Host:
+    choice==NetworkChoice::SharedClient?HudWifi::Client:HudWifi::Existing;
+}
+}
+void DeviceApi::serviceNetworkTrial(uint32_t now) {
+  if(!runtime_.networkTrial || !runtime_.networkTrialBooted || runtime_.recovery ||
+      int32_t(now-runtime_.networkTrialUntil)<0 || restart_.pending())return;
+  auto previous=network_.credentials().network;
+  if(!storage_.rollbackNetwork(previous)) {
+    runtime_.controller.fault="network_rollback_failed";runtime_.networkTrialUntil=now+5000;return;
+  }
+  auto hud=runtime_.hud.config;hud.wifi=networkHudMode(previous.choice);
+  if(!storage_.saveHudConfig(hud) || !storage_.confirmNetwork()) {
+    runtime_.controller.fault="network_rollback_failed";runtime_.networkTrialUntil=now+5000;return;
+  }
+  runtime_.controller.stopNow(-1,now);hardware_.applyOutputs();
+  // Keep the service AP alive until the restart has actually happened.
+  network_.credentials().network=previous;restart_.request(now);
 }
 void DeviceApi::configurationRestart(bool setupBatch) {
   if(setupBatch && runtime_.setupStorageOk)runtime_.setupRestartRequired=true;
@@ -326,7 +361,7 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
   };
   if(!featurePathEnabled(path)) { reply(501,"feature_disabled"); return; }
   const bool hardwarePath=path=="/api/hardware" || path.substr(0,14)=="/api/hardware/";
-  const bool stop=path=="/api/move" && (web_.value("d")=="S" || web_.value("d")=="A" || web_.value("d")=="E");
+  const bool stop=path=="/api/hardware/stop" || (path=="/api/move" && (web_.value("d")=="S" || web_.value("d")=="A" || web_.value("d")=="E"));
   if(ota_.locked() && !stop && path!="/api/status" && path!="/api/diaglog" && path!="/api/diagnostics" && path.substr(0,8)!="/api/ota") { reply(503,"update_locked"); return; }
   if(runtime_.recovery && !stop && !hardwarePath && path!="/api/status" && path!="/api/network" && path!="/api/diagnostics" && path!="/api/diaglog" && path!="/api/resetreason" && path!="/api/resethistory" && path!="/api/wifi" && path!="/api/ap") { reply(409,"recovery_only"); return; }
   if (path=="/api/hardware/activity") {
@@ -343,6 +378,8 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
   // Keep the general API's temporary buffers off recovery and hardware paths.
   const bool setupBatch=setupSession && runtime_.setupSaving;
   if(hardwarePath)executeHardware(method,path,arguments,output,status,type,command,setupBatch);
+  else if(path=="/api/network" || path=="/api/network/confirm" || path=="/api/network/rollback" || path=="/api/wifi" || path=="/api/ap")
+    executeNetwork(method,path,arguments,output,status,type,setupBatch);
   else executeGeneral(method,path,arguments,output,status,type,command,lease,setupBatch);
 }
 
@@ -353,6 +390,20 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
     status=code; type="application/json";
     output << "{\"ok\":" << (code==200?"true":"false") << ",\"error\":" << jsonQuoted(reason) << '}';
   };
+  if(path=="/api/hardware/stop" && method=="POST") {
+    const FormArgument stop[]={{"d","S"}};
+    const auto result=callApi("/api/move",{stop,1});runtime_.controller.tick(millis());hardware_.applyOutputs();
+    web_.send(result.status,"application/json",result.body.c_str());return;
+  }
+  if(path=="/api/hardware/network" || path=="/api/hardware/wifi" || path=="/api/hardware/ap") {
+    if(!runtime_.recovery){reply(409,"recovery_only");return;}
+    if(method=="POST") {
+      uint32_t token=0,generation=0;
+      if(!hardwareUnsigned(web_.value("token"),token) || !hardwareUnsigned(web_.value("generation"),generation) ||
+          token!=runtime_.hardwareToken || generation!=runtime_.hardwareRecord.generation){reply(409,"stale_configuration");return;}
+    } else if(method!="GET" || path!="/api/hardware/network"){reply(405,"method_not_allowed");return;}
+    executeNetwork(method,path=="/api/hardware/network"?"/api/network":path=="/api/hardware/ap"?"/api/ap":"/api/wifi",arguments,output,status,type,false);return;
+  }
   if(path=="/api/hardware/display") {
     const auto &current=runtime_.displaySettings;
     if(method=="GET") {
@@ -501,8 +552,13 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
     saved=!hardwareChanged || storage_.stageHardware(runtime_,form.config);
     if(!saved && modbusChanged)storage_.saveModbus(runtime_.modbus);
   } else if(path=="/api/hardware/confirm") {
-    if(runtime_.recovery || !runtime_.hardwareTrial || !runtime_.hardwareProbe || !runtime_.memoryGuard.ready(millis()) || heapFreeBytes()<MemoryGuard::HealthyFree || heapMaxBlockBytes()<MemoryGuard::HealthyBlock || runtimeMetrics.allocationFailures.load()!=runtime_.memoryGuard.failures) { reply(409,"not_ready"); return; }
-    saved=storage_.confirmHardware(runtime_);
+    // A browser click can confirm the trial through /activity before its
+    // explicit confirmation arrives. Accept that same running, saved map.
+    const bool confirmed=!runtime_.hardwareTrial && r.phase==ConfigPhase::Confirmed &&
+      r.hasConfirmed && runtime_.controller.hardware==r.good;
+    if(runtime_.recovery || runtime_.controller.configurationLocked ||
+       (!confirmed && (!runtime_.hardwareTrial || !runtime_.hardwareProbe)) || !runtime_.memoryGuard.ready(millis()) || heapFreeBytes()<MemoryGuard::HealthyFree || heapMaxBlockBytes()<MemoryGuard::HealthyBlock || runtimeMetrics.allocationFailures.load()!=runtime_.memoryGuard.failures) { reply(409,"not_ready"); return; }
+    saved=confirmed || storage_.confirmHardware(runtime_);
     if(saved && setupBatch) {auto next=runtime_.setup;next.equipment=true;next.step=SetupStep::Equipment;next.pendingNext=false;++next.generation;
       runtime_.setupStorageOk=storage_.saveSetup(next);if(runtime_.setupStorageOk)runtime_.setup=next;}
   } else if(path=="/api/hardware/rollback") {
@@ -529,6 +585,139 @@ void DeviceApi::executeHardware(std::string_view method, std::string_view path, 
     << (runtime_.hardwareRecord.phase==ConfigPhase::Pending?"true":"false") << '}';
   if(path!="/api/hardware/confirm")configurationRestart(setupBatch);
   return;
+}
+
+void DeviceApi::executeNetwork(std::string_view method, std::string_view path, FormView arguments,
+                               JsonWriter &output, int &status, const char *&type, bool setupBatch) {
+  ApiContext web_(arguments,output,status,type);
+  auto reply=[&](int code,const char *reason) {
+    status=code;type="application/json";
+    output << "{\"ok\":" << (code==200?"true":"false") << ",\"error\":" << jsonQuoted(reason) << '}';
+  };
+  if((path=="/api/network/confirm" || path=="/api/network/rollback") && method=="POST") {
+    uint32_t token=0;
+    if(!hardwareUnsigned(web_.value("token"),token) || token!=runtime_.hardwareToken){reply(409,"stale_configuration");return;}
+    if(!runtime_.networkTrial){reply(409,"no_network_trial");return;}
+    if(path=="/api/network/rollback") {
+      runtime_.networkTrialBooted=true;runtime_.networkTrialUntil=millis();serviceNetworkTrial(millis());
+      reply(restart_.pending()?200:503,restart_.pending()?"":"network_rollback_failed");return;
+    }
+    const auto choice=network_.credentials().network.choice;
+    const bool ap=choice==NetworkChoice::Ap || choice==NetworkChoice::SharedHost,eth=choice==NetworkChoice::Ethernet;
+    const auto address=ap?radioWifi.softAPIP():eth?ethernetIP():radioWifi.localIP();
+    const bool connected=ap?(radioWifi.getMode()&WIFI_AP):eth?ethernetConnected():radioWifi.status()==WL_CONNECTED;
+    const auto &configured=eth?network_.credentials().network.ethernet:network_.credentials().network.wifi;
+    char expected[16];formatIpv4(configured.address,expected);
+    if(!runtime_.networkTrialBooted || !connected || !uint32_t(address) || (!ap&&!configured.automatic&&address.toString()!=expected) || web_.value("address")!=address.toString().c_str()) {reply(409,"network_not_verified");return;}
+    if(!storage_.confirmNetwork()){reply(503,"network_storage_failed");return;}
+    runtime_.networkTrial=false;runtime_.networkTrialBooted=false;reply(200,"");return;
+  }
+  if(path=="/api/network" && method=="POST") {
+    NetworkConfig next=network_.credentials().network;uint32_t choice=0;
+    if(web_.hasArg("choice")) {
+      if(!hardwareUnsigned(web_.value("choice"),choice)||choice>4 || (choice==4&&!ETHERNET_SUPPORTED)){reply(400,"invalid_network_choice");return;}
+      next.choice=NetworkChoice(choice);
+    }
+    const char *prefixes[]={"wifi","eth"};IpConfig *interfaces[]={&next.wifi,&next.ethernet};
+    for(unsigned i=0;i<2;++i) {
+      const std::string prefix=prefixes[i];auto &ip=*interfaces[i];
+      const auto mode=web_.value(prefix+"Mode");
+      if(!mode.empty()) {if(mode!="dhcp"&&mode!="static"){reply(400,"invalid_ip_mode");return;}ip.automatic=mode=="dhcp";}
+      const char *fields[]={"Address","Mask","Gateway","Dns1","Dns2"};uint32_t *values[]={&ip.address,&ip.mask,&ip.gateway,&ip.dns1,&ip.dns2};
+      for(unsigned f=0;f<5;++f)if(web_.hasArg(prefix+fields[f])) {
+        const auto value=web_.value(prefix+fields[f]);
+        if(value.empty()&&f>=2)*values[f]=0;
+        else if(!parseIpv4(value,*values[f])){reply(400,"invalid_ipv4");return;}
+      }
+      if(const auto error=ip.validate()){reply(400,error);return;}
+    }
+    auto hud=runtime_.hud.config;hud.wifi=networkHudMode(next.choice);
+    if(runtime_.recovery){hud.role=runtime_.hardwareHudRole?DeviceRole::Hud:DeviceRole::Controller;hud.uart=runtime_.hardwareHudUart;}
+    runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
+    const bool hadTrial=runtime_.networkTrial;
+    if(!(runtime_.recovery?storage_.saveNetwork(next):storage_.stageNetwork(network_.credentials().network,next))){reply(503,"network_storage_failed");return;}
+    if(!storage_.saveHudConfig(hud)){
+      const bool restored=storage_.saveNetwork(network_.credentials().network);
+      if(!hadTrial && restored)storage_.confirmNetwork();
+      reply(503,"network_storage_failed");return;
+    }
+    if(runtime_.recovery && !storage_.confirmNetwork()){reply(503,"network_storage_failed");return;}
+    invalidateSetup(SetupStep::Network);
+    network_.credentials().network=next;
+    if(!runtime_.recovery) {
+      runtime_.hud.config.wifi=hud.wifi;runtime_.networkTrial=true;runtime_.networkTrialBooted=false;
+      configurationRestart(setupBatch);
+    } else runtime_.networkTrial=false;
+    reply(200,"");return;
+  }
+  if(path=="/api/network" && method=="GET") {
+    const bool connected=radioWifi.status()==WL_CONNECTED;
+    const String sta=radioWifi.localIP().toString(),ap=radioWifi.softAPIP().toString();
+    output << "{\"wifiMode\":" << unsigned(radioWifi.getMode()) << ",\"wifiStatus\":" << int(radioWifi.status()) << ",\"wifiConnecting\":" << (network_.wifiConnecting()?"true":"false") << ",\"connected\":" << (connected?"true":"false")
+      << ",\"ssid\":" << jsonQuoted(network_.credentials().wifiSsid.c_str())
+      << ",\"staIp\":" << jsonQuoted(sta.c_str()) << ",\"apIp\":" << jsonQuoted(ap.c_str())
+      << ",\"apAlwaysOn\":" << (network_.apAlwaysOn()?"true":"false") << ",\"rssi\":";
+    if(connected)output << radioWifi.RSSI();else output << "null";
+    output << ",\"ethernetSupported\":" << (ETHERNET_SUPPORTED?"true":"false")
+      << ",\"ethStarted\":" << (network_.ethernetStarted()?"true":"false")
+      << ",\"ethLink\":" << (ethernetLinkUp()?"true":"false")
+      << ",\"ethConnected\":" << (ethernetConnected()?"true":"false")
+      << ",\"ethIp\":" << jsonQuoted(ethernetIP().toString().c_str());
+    const auto &nc=network_.credentials().network;
+    output << ",\"choice\":" << unsigned(nc.choice)
+      << ",\"trial\":" << (runtime_.networkTrial?"true":"false")
+      << ",\"trialBooted\":" << (runtime_.networkTrialBooted?"true":"false")
+      << ",\"trialRemainingMs\":" << (runtime_.networkTrialBooted && int32_t(runtime_.networkTrialUntil-millis())>0?runtime_.networkTrialUntil-millis():0)
+      << ",\"token\":" << runtime_.hardwareToken;
+    const char *names[]={"wifi","eth"};const IpConfig *ips[]={&nc.wifi,&nc.ethernet};
+    for(unsigned i=0;i<2;++i){const auto &ip=*ips[i];char a[16],m[16],g[16],d1[16],d2[16];formatIpv4(ip.address,a);formatIpv4(ip.mask,m);formatIpv4(ip.gateway,g);formatIpv4(ip.dns1,d1);formatIpv4(ip.dns2,d2);
+      output << ',' << jsonQuoted(names[i]) << ":{\"mode\":" << jsonQuoted(ip.automatic?"dhcp":"static") << ",\"address\":" << jsonQuoted(a)
+        << ",\"mask\":" << jsonQuoted(m) << ",\"gateway\":" << jsonQuoted(g) << ",\"dns1\":" << jsonQuoted(d1) << ",\"dns2\":" << jsonQuoted(d2) << '}';}
+    output << ",\"n1mmPort\":" << runtime_.loggerSettings.n1mmPort << ",\"pstPort\":" << runtime_.loggerSettings.pstPort
+      << ",\"hudPort\":" << runtime_.hud.config.port << ",\"commandPort\":" << runtime_.loggerSettings.commandPort << '}';return;
+  }
+  if(path=="/api/ap") {
+    if(method!="POST") { web_.send(405,"text/plain","Use POST"); return; }
+    String p = web_.arg("pass");
+    if (p.length() != 0 && (p.length() < 8 || p.length() > 63)) {
+      web_.send(400, "text/plain", "AP password must be empty or 8..63 characters");
+      return;
+    }
+    runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
+    if(!storage_.saveApPassword(p)){web_.send(503,"text/plain","Не удалось сохранить пароль AP.");return;}
+    web_.send(200, "text/plain", p.length() ? "AP password saved" : "AP set to open");
+    if(runtime_.recovery)network_.credentials().apPass=p;else configurationRestart(setupBatch);
+
+    return;
+  }
+  if(path=="/api/wifi" && (method=="GET" || method=="POST")) {
+    if (runtime_.hud.config.wifi == HudWifi::Host && !setupBatch && !runtime_.recovery) {
+      web_.send(409, "text/plain; charset=utf-8", "Для подключения к роутеру выберите обычный режим Wi-Fi в разделе «Пульт и связь».");
+      return;
+    }
+    const String ssid = web_.arg("ssid"), password = web_.arg("pass");
+    const auto result = storage_.saveWifi(ssid, password);
+    if (result != WifiSaveResult::Ok) {
+      diagnostics_.dbgPrintln(String("[WIFI NVS] save failed, stage=") +
+                             (result == WifiSaveResult::InvalidSsid ? "invalid_ssid" :
+                              result == WifiSaveResult::InvalidPassword ? "invalid_password" :
+                              result == WifiSaveResult::OpenFailed ? "open" :
+                              result == WifiSaveResult::WriteFailed ? "write" : "verify"));
+      const bool invalid = result == WifiSaveResult::InvalidSsid || result == WifiSaveResult::InvalidPassword;
+      const char *message = result == WifiSaveResult::InvalidSsid ? "SSID должен содержать от 1 до 32 байт." :
+                            result == WifiSaveResult::InvalidPassword ? "Пароль должен содержать 8–63 символа, 64 шестнадцатеричные цифры или быть пустым для открытой сети." :
+                            "Не удалось сохранить настройки Wi-Fi. Подключение не изменено.";
+      web_.send(invalid ? 400 : 500, "text/plain; charset=utf-8", message);
+      return;
+    }
+    diagnostics_.dbgPrintln("[WIFI NVS] credentials saved and verified; connecting with setup AP retained");
+    if(runtime_.recovery){network_.credentials().wifiSsid=ssid;network_.credentials().wifiPass=password;}
+    else if(setupBatch)configurationRestart(setupBatch);
+    else network_.connectWifi(ssid, password);
+    web_.send(200, "text/plain; charset=utf-8", "Настройки Wi-Fi сохранены. Подключаемся к сети; полученный IP появится на этой странице.");
+    return;
+  }
+  reply(405,"method_not_allowed");
 }
 
 void DeviceApi::executeGeneral(std::string_view method, std::string_view path, FormView arguments,
@@ -618,36 +807,6 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       if(runtime_.setupRestartRequired)restart_.request(millis());
     }
     writeSetup(output);return;
-  }
-  if(path=="/api/network" && method=="POST") {
-    NetworkConfig next=network_.credentials().network;uint32_t choice=0;
-    if(web_.hasArg("choice")) {
-      if(!hardwareUnsigned(web_.value("choice"),choice)||choice>4 || (choice==4&&!ETHERNET_SUPPORTED)){reply(400,"invalid_network_choice");return;}
-      next.choice=NetworkChoice(choice);
-    }
-    const char *prefixes[]={"wifi","eth"};IpConfig *interfaces[]={&next.wifi,&next.ethernet};
-    for(unsigned i=0;i<2;++i) {
-      const std::string prefix=prefixes[i];auto &ip=*interfaces[i];
-      const auto mode=web_.value(prefix+"Mode");
-      if(!mode.empty()) {if(mode!="dhcp"&&mode!="static"){reply(400,"invalid_ip_mode");return;}ip.automatic=mode=="dhcp";}
-      const char *fields[]={"Address","Mask","Gateway","Dns1","Dns2"};uint32_t *values[]={&ip.address,&ip.mask,&ip.gateway,&ip.dns1,&ip.dns2};
-      for(unsigned f=0;f<5;++f)if(web_.hasArg(prefix+fields[f])) {
-        const auto value=web_.value(prefix+fields[f]);
-        if(value.empty()&&f>=2)*values[f]=0;
-        else if(!parseIpv4(value,*values[f])){reply(400,"invalid_ipv4");return;}
-      }
-      if(const auto error=ip.validate()){reply(400,error);return;}
-    }
-    auto hud=runtime_.hud.config;
-    hud.wifi=next.choice==NetworkChoice::Ap || next.choice==NetworkChoice::SharedHost?HudWifi::Host:
-        next.choice==NetworkChoice::SharedClient?HudWifi::Client:HudWifi::Existing;
-    runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
-    if(!storage_.saveNetwork(next)){reply(503,"network_storage_failed");return;}
-    if(!storage_.saveHudConfig(hud)){storage_.saveNetwork(network_.credentials().network);reply(503,"network_storage_failed");return;}
-    invalidateSetup(SetupStep::Network);
-    runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
-    network_.credentials().network=next;runtime_.hud.config.wifi=hud.wifi;
-    reply(200,"");configurationRestart(setupBatch);return;
   }
   if(path=="/api/motion/coast") {
     auto &c=runtime_.controller;auto &m=c.coast;
@@ -785,28 +944,6 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       << ",\"x\":" << panelMetrics.touchX << ",\"y\":" << panelMetrics.touchY << '}';
 #endif
     output << '}';return;
-  }
-  if(path=="/api/network" && method=="GET") {
-    const bool connected=radioWifi.status()==WL_CONNECTED;
-    const String sta=radioWifi.localIP().toString(),ap=radioWifi.softAPIP().toString();
-    output << "{\"wifiMode\":" << unsigned(radioWifi.getMode()) << ",\"wifiStatus\":" << int(radioWifi.status()) << ",\"wifiConnecting\":" << (network_.wifiConnecting()?"true":"false") << ",\"connected\":" << (connected?"true":"false")
-      << ",\"ssid\":" << jsonQuoted(network_.credentials().wifiSsid.c_str())
-      << ",\"staIp\":" << jsonQuoted(sta.c_str()) << ",\"apIp\":" << jsonQuoted(ap.c_str())
-      << ",\"apAlwaysOn\":" << (network_.apAlwaysOn()?"true":"false") << ",\"rssi\":";
-    if(connected)output << radioWifi.RSSI();else output << "null";
-    output << ",\"ethernetSupported\":" << (ETHERNET_SUPPORTED?"true":"false")
-      << ",\"ethStarted\":" << (network_.ethernetStarted()?"true":"false")
-      << ",\"ethLink\":" << (ethernetLinkUp()?"true":"false")
-      << ",\"ethConnected\":" << (ethernetConnected()?"true":"false")
-      << ",\"ethIp\":" << jsonQuoted(ethernetIP().toString().c_str());
-    const auto &nc=network_.credentials().network;
-    output << ",\"choice\":" << unsigned(nc.choice);
-    const char *names[]={"wifi","eth"};const IpConfig *ips[]={&nc.wifi,&nc.ethernet};
-    for(unsigned i=0;i<2;++i){const auto &ip=*ips[i];char a[16],m[16],g[16],d1[16],d2[16];formatIpv4(ip.address,a);formatIpv4(ip.mask,m);formatIpv4(ip.gateway,g);formatIpv4(ip.dns1,d1);formatIpv4(ip.dns2,d2);
-      output << ',' << jsonQuoted(names[i]) << ":{\"mode\":" << jsonQuoted(ip.automatic?"dhcp":"static") << ",\"address\":" << jsonQuoted(a)
-        << ",\"mask\":" << jsonQuoted(m) << ",\"gateway\":" << jsonQuoted(g) << ",\"dns1\":" << jsonQuoted(d1) << ",\"dns2\":" << jsonQuoted(d2) << '}';}
-    output << ",\"n1mmPort\":" << runtime_.loggerSettings.n1mmPort << ",\"pstPort\":" << runtime_.loggerSettings.pstPort
-      << ",\"hudPort\":" << runtime_.hud.config.port << ",\"commandPort\":" << runtime_.loggerSettings.commandPort << '}';return;
   }
   if(path=="/api/config" && method=="GET") {writeConfiguration(output);return;}
   if(path=="/api/diaglog" && method=="GET") {
@@ -1061,20 +1198,6 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     else calibration_.resetEl(mode == "multi");
     const bool saved=actions_.saveCal();
     web_.send(saved?200:503,"text/plain",saved?"RESET OK":"CALIBRATION SAVE FAILED");
-
-    return;
-  }
-  if(path=="/api/ap") {
-    if(method!="POST") { web_.send(405,"text/plain","Use POST"); return; }
-    String p = web_.arg("pass");
-    if (p.length() != 0 && (p.length() < 8 || p.length() > 63)) {
-      web_.send(400, "text/plain", "AP password must be empty or 8..63 characters");
-      return;
-    }
-    runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
-    if(!storage_.saveApPassword(p)){web_.send(503,"text/plain","Не удалось сохранить пароль AP.");return;}
-    web_.send(200, "text/plain", p.length() ? "AP password saved" : "AP set to open");
-    configurationRestart(setupBatch);
 
     return;
   }
@@ -1541,32 +1664,6 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       << ",\"result\":" << jsonQuoted(Controller::resultName(reply.result)) << '}';
     web_.finish(reply.result == Result::Deferred ? 202 : 200,"application/json");
 
-    return;
-  }
-  if(path=="/api/wifi" && (method=="GET" || method=="POST")) {
-    if (runtime_.hud.config.wifi == HudWifi::Host && !setupBatch) {
-      web_.send(409, "text/plain; charset=utf-8", "Для подключения к роутеру выберите обычный режим Wi-Fi в разделе «Пульт и связь».");
-      return;
-    }
-    const String ssid = web_.arg("ssid"), password = web_.arg("pass");
-    const auto result = storage_.saveWifi(ssid, password);
-    if (result != WifiSaveResult::Ok) {
-      diagnostics_.dbgPrintln(String("[WIFI NVS] save failed, stage=") +
-                             (result == WifiSaveResult::InvalidSsid ? "invalid_ssid" :
-                              result == WifiSaveResult::InvalidPassword ? "invalid_password" :
-                              result == WifiSaveResult::OpenFailed ? "open" :
-                              result == WifiSaveResult::WriteFailed ? "write" : "verify"));
-      const bool invalid = result == WifiSaveResult::InvalidSsid || result == WifiSaveResult::InvalidPassword;
-      const char *message = result == WifiSaveResult::InvalidSsid ? "SSID должен содержать от 1 до 32 байт." :
-                            result == WifiSaveResult::InvalidPassword ? "Пароль должен содержать 8–63 символа, 64 шестнадцатеричные цифры или быть пустым для открытой сети." :
-                            "Не удалось сохранить настройки Wi-Fi. Подключение не изменено.";
-      web_.send(invalid ? 400 : 500, "text/plain; charset=utf-8", message);
-      return;
-    }
-    diagnostics_.dbgPrintln("[WIFI NVS] credentials saved and verified; connecting with setup AP retained");
-    if(setupBatch)configurationRestart(setupBatch);
-    else network_.connectWifi(ssid, password);
-    web_.send(200, "text/plain; charset=utf-8", "Настройки Wi-Fi сохранены. Подключаемся к сети; полученный IP появится на этой странице.");
     return;
   }
   if(method=="POST" && (path=="/api/mode" || path=="/api/execute" || path=="/api/preset" || path=="/api/preset/run" || path=="/api/settings" || path=="/api/motion/reset" || path=="/api/motion/autotune" || path=="/api/speed")) {

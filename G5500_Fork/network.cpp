@@ -678,10 +678,10 @@ void Network::restoreApOnlyAfterReconnectFail() {
   }
   const IPAddress apMask(255, 255, 255, 0);
   char apName[33];
-  std::snprintf(apName, sizeof apName, "G5500-%s-%06llX", runtime_.hud.isHud() ? "HUD" : "Rotator",
+  std::snprintf(apName, sizeof apName, "G5500-%s-%06llX", runtime_.recovery ? "Recovery" : runtime_.hud.isHud() ? "HUD" : "Rotator",
                 static_cast<unsigned long long>(runtime_.hud.id & 0xffffff));
   const bool configured = radioWifi.softAPConfig(apIP, apIP, apMask);
-  const bool started = credentials_.apPass.length() >= 8 ? radioWifi.softAP(apName, credentials_.apPass.c_str())
+  const bool started = !runtime_.recovery && credentials_.apPass.length() >= 8 ? radioWifi.softAP(apName, credentials_.apPass.c_str())
                                                          : radioWifi.softAP(apName);
   heapAfterAp_ = heapFreeBytes(); // zero means AP has not been started this boot
   diagnostics_.dbgPrintln(configured && started ? String("[WIFI] AP ready at ") + apIP.toString()
@@ -697,7 +697,7 @@ void Network::serviceApSubnet() {
 
   // The setup browser still uses the original AP address. Defer an overlap
   // adjustment until reboot so DHCP success cannot move that page out of reach.
-  if (wifiSetupAp_ || (!ethernetConnected() && radioWifi.status() != WL_CONNECTED) || !(radioWifi.getMode() & WIFI_AP))
+  if (runtime_.recovery || wifiSetupAp_ || (!ethernetConnected() && radioWifi.status() != WL_CONNECTED) || !(radioWifi.getMode() & WIFI_AP))
     return;
   const bool wifi=radioWifi.status()==WL_CONNECTED;
   const uint32_t sta=wifi?uint32_t(radioWifi.localIP()):0, mask=wifi?uint32_t(radioWifi.subnetMask()):0;

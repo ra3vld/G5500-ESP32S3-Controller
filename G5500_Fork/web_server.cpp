@@ -97,7 +97,9 @@ void WebInterface::setupWeb() {
     "/api/wifi",
     "/api/config",
     "/api/diagnostics",
-    "/api/network"}) {
+    "/api/network",
+    "/api/network/confirm",
+    "/api/network/rollback"}) {
     web_.on(path,HTTP_ANY,[this,path] {
       std::array<FormArgument,HTTP_MAX_ARGUMENTS> arguments;
       const size_t count=web_.args();

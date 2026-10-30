@@ -15,10 +15,13 @@ public:
   void execute(std::string_view method, std::string_view path, FormView arguments,
                JsonWriter &output, int &status, const char *&type, bool command = false);
   void serviceSetup(uint32_t now);
+  void serviceNetworkTrial(uint32_t now);
   bool serviceHardwareConfirmation(uint32_t now, HeapSnapshot heap = captureHeapSnapshot());
 private:
   void executeHardware(std::string_view method, std::string_view path, FormView arguments,
                        JsonWriter &output, int &status, const char *&type, bool command, bool setupBatch);
+  void executeNetwork(std::string_view method, std::string_view path, FormView arguments,
+                      JsonWriter &output, int &status, const char *&type, bool setupBatch);
   void executeGeneral(std::string_view method, std::string_view path, FormView arguments,
                       JsonWriter &output, int &status, const char *&type, bool command, uint32_t lease, bool setupBatch);
   bool setupReady(SetupStep step) const;

@@ -63,6 +63,15 @@ void Application::serviceConfigurationSafety() {
 }
 
 void Application::controllerSetup() {
+  const auto reset = esp_reset_reason();
+  bool requestedRecovery=false;
+  if(storage_.beginResetSequence(reset==ESP_RST_POWERON || reset==ESP_RST_EXT,requestedRecovery)) {
+    // Use a separate Preferences handle. Wi-Fi/NTP startup can outlast this
+    // window; flash writes must not run in the timer-service callback.
+    if(xTaskCreate([](void *){vTaskDelay(pdMS_TO_TICKS(5000));Storage marker;
+        marker.clearResetSequence();vTaskDelete(nullptr);},"reset-window",2048,nullptr,1,nullptr)!=pdPASS)
+      storage_.clearResetSequence();
+  }
   beginRuntimeMetrics(&recoveryLatch, RecoveryCookie,allocationRecords,
       esp_app_get_description()->app_elf_sha256,esp_reset_reason()!=ESP_RST_POWERON);
   diagnostics_.readBootReason();
@@ -71,11 +80,10 @@ void Application::controllerSetup() {
   runtime_.setupStorageOk=storage_.loadSetup(runtime_);
   runtime_.controller.setupRequired=runtime_.setup.required;
   storage_.loadHud(runtime_, false);
-  const auto reset = esp_reset_reason();
   const bool unexpected = reset == ESP_RST_PANIC || reset == ESP_RST_INT_WDT ||
       reset == ESP_RST_TASK_WDT || reset == ESP_RST_WDT || reset == ESP_RST_BROWNOUT;
   storage_.loadHardware(runtime_, (!HUD_SUPPORT && runtime_.hud.isHud()) || unexpected || (reset != ESP_RST_POWERON &&
-      __atomic_load_n(&recoveryLatch, __ATOMIC_RELAXED) == RecoveryCookie));
+      __atomic_load_n(&recoveryLatch, __ATOMIC_RELAXED) == RecoveryCookie),requestedRecovery);
   const bool modbusReadable=storage_.loadModbus(runtime_);
   __atomic_store_n(&recoveryLatch, 0u, __ATOMIC_RELAXED);
   if(!modbusReadable || (!runtime_.recovery &&
@@ -136,6 +144,7 @@ void Application::controllerSetup() {
   if (!runtime_.recovery) display_.initLocalDisplay();
   if (runtime_.recovery) storage_.loadPrefs(runtime_, calibration_, network_.credentials(), true);
   else { storage_.loadForkSettings(runtime_); loadPrefs(); }
+  if(!storage_.loadNetworkTrial(runtime_) && !runtime_.recovery) {failConfiguration(RecoveryReason::Storage);return;}
   if (!runtime_.recovery && !runtime_.hud.isHud() && !runtime_.controller.prepareMotion()) {
     failConfiguration(RecoveryReason::Allocation); return;
   }
@@ -277,6 +286,7 @@ void Application::controllerLoop() {
   const uint32_t startedUs = micros();
   ota_.service();
   network_.serviceCommandReplies();
+  device_api_.serviceNetworkTrial(millis());
   if(restart_.consume(millis()) || ota_.readyToRestart()) {
     if (!storage_.serviceRuntimeSpeeds(runtime_,millis(),true))
       diagnostics_.dbgPrintln("[Speed NVS] save before restart failed");

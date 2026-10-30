@@ -154,6 +154,15 @@ static void activityConfirmationTests() {
     assert(r.hardwareRecord.good==r.controller.hardware);
     assert(r.controller.stopEpoch==stop&&!f.restart.pending());
     assert(r.recoveryHistory.failures==1); // activity cannot erase the fault series
+    // A wizard click sends activity before its explicit confirmation. The
+    // completed trial must still let that request finish the equipment step.
+    fakeHardware.now=10000;
+    r.setup.required=true;r.setup.paused=false;r.setup.step=SetupStep::Equipment;
+    r.setup.equipment=false;r.setupLease=7;r.setupSaving=true;
+    const auto stamp="token=11&generation="+std::to_string(r.hardwareRecord.generation);
+    assert(f.call("POST","/api/hardware/confirm",stamp+"&setupToken=7",false).status==200);
+    assert(r.setup.equipment&&!r.hardwareTrial&&r.controller.stopEpoch==stop&&!f.restart.pending());
+    assert(f.call("POST","/api/hardware/confirm","token=11&generation=1",false).status==409);
     Runtime reboot;f.storage.loadHardware(reboot);
     assert(!reboot.recovery&&!reboot.hardwareTrial&&!reboot.hardwareInteraction&&!reboot.controller.targetMotionStarted);
   }
@@ -323,7 +332,49 @@ static void mqttApiTests() {
   }
 #endif
 }
+static void networkRecoveryTests() {
+  {
+    Fixture f;auto &r=f.runtime;
+    auto old=f.network.credentials().network;old.choice=NetworkChoice::Ap;f.network.credentials().network=old;
+    assert(f.storage.saveNetwork(old));
+    assert(f.call("POST","/api/network","choice=0&wifiMode=static&wifiAddress=10.2.3.4&wifiMask=255.255.255.0&ethMode=dhcp",false).status==200);
+    assert(r.networkTrial&&!r.networkTrialBooted&&f.network.apAlwaysOn()&&f.restart.pending());
+    assert(f.call("POST","/api/network/confirm","token=11&address="+std::string(WiFi.localIP().toString().c_str()),false).status==409);
+    f.restart=RestartDelay{};assert(f.storage.loadNetworkTrial(r));
+    assert(f.call("POST","/api/network/confirm","token=11&address=10.0.0.123",false).status==409);
+    Preferences::failedBytesKey="ipv4v1";fakeHardware.now=r.networkTrialUntil;
+    f.api.serviceNetworkTrial(fakeHardware.now);assert(!f.restart.pending()&&r.networkTrial&&f.network.apAlwaysOn());
+    Preferences::failedBytesKey.clear();fakeHardware.now=r.networkTrialUntil;
+    f.api.serviceNetworkTrial(fakeHardware.now);assert(f.restart.pending());
+    NetworkConfig restored;assert(f.storage.loadNetwork(restored));assert(restored.choice==old.choice&&restored.wifi.automatic);
+    Runtime boot;assert(f.storage.loadNetworkTrial(boot)&&!boot.networkTrial);
+  }
+  {
+    Fixture f;auto &r=f.runtime;WiFi.connectionStatus=WL_CONNECTED;
+    assert(f.call("POST","/api/network","choice=0&wifiMode=dhcp&ethMode=dhcp",false).status==200);
+    assert(f.storage.loadNetworkTrial(r));f.restart=RestartDelay{};
+    const auto confirm="token=11&address="+std::string(WiFi.localIP().toString().c_str());
+    Preferences::failedRemoveKey="trial1";assert(f.call("POST","/api/network/confirm",confirm,false).status==503);assert(r.networkTrial);
+    Preferences::failedRemoveKey.clear();assert(f.call("POST","/api/network/confirm",confirm,false).status==200);assert(!r.networkTrial);
+    fakeHardware.now+=Runtime::NetworkTrialMs;f.api.serviceNetworkTrial(fakeHardware.now);assert(!f.restart.pending());
+  }
+  {
+    Fixture f;auto &r=f.runtime;r.hud.config.role=DeviceRole::Hud;r.hud.config.uart=true;
+    f.storage.loadHardware(r,false,true);r.hud.config.role=DeviceRole::Controller;r.hud.config.wifi=HudWifi::Host;r.hud.config.uart=false;
+    assert(r.recovery&&r.hardwareHudRole&&r.hardwareHudUart);
+    const auto credentials="token=11&generation="+std::to_string(r.hardwareRecord.generation);
+    assert(f.call("GET","/api/hardware/network","",false).status==200);
+    assert(f.call("POST","/api/hardware/network","choice=0",false).status==409);
+    assert(f.call("POST","/api/hardware/wifi",credentials+"&ssid=Fixed&pass=password123",false).status==200);
+    assert(f.call("POST","/api/hardware/network",credentials+"&choice=0&wifiMode=dhcp&ethMode=dhcp",false).status==200);
+    assert(f.call("POST","/api/hardware/ap",credentials+"&pass=",false).status==200);
+    assert(!f.restart.pending()&&r.recovery&&!f.network.wifiConnecting()&&!r.controller.moving());
+    Runtime boot;f.storage.loadHud(boot,false);assert(boot.hud.isHud()&&boot.hud.config.uart&&boot.hud.config.wifi==HudWifi::Existing);
+    assert(f.call("POST","/api/hardware/stop","",false).status==200);
+  }
+}
 int main(int argc,char **argv) {
+  networkRecoveryTests();
   hardwareStorageApiTests();
   apPasswordMethodTests();
   settingsOutputSafetyTests();
@@ -359,6 +410,7 @@ int main(int argc,char **argv) {
       if(a==line.npos||b==line.npos||c==line.npos)return 2;
       fakeHardware.now=uint32_t(std::stoul(line.substr(0,a)));
       const auto method=line.substr(a+1,b-a-1),path=line.substr(b+1,c-b-1),body=line.substr(c+1);
+      f.api.serviceNetworkTrial(fakeHardware.now);
       assert(f.api.serviceHardwareConfirmation(fakeHardware.now));
       Response reply;
       if(path=="/__fixture/hud") {
@@ -369,13 +421,16 @@ int main(int argc,char **argv) {
         f.runtime.controller.driveFault=false;f.runtime.controller.fault.clear();
         f.runtime.controller.configureHardware(f.runtime.hardwareRecord.good);
         reply={200,"{}"};
+      } else if(path=="/__fixture/recovery") {
+        f.storage.loadHardware(f.runtime,false,true);f.runtime.hud.config.wifi=HudWifi::Host;
+        reply={200,"{}"};
       } else if(path=="/__fixture/inputs") {
         f.hardware.beginInputs();reply={200,"{}"};
       } else if(path=="/__fixture/reboot") {
         auto &r=f.runtime;
         assert(f.restart.pending());f.restart=RestartDelay{};
         r.setupLease=0;r.setupTestToken=0;r.setupSaving=false;r.setupRestartRequired=false;r.hardwareProbe=false;++r.hardwareToken;
-        assert(f.storage.loadSetup(r));f.storage.loadHardware(r);
+        assert(f.storage.loadSetup(r));f.storage.loadHardware(r);assert(f.storage.loadNetworkTrial(r));
         r.memoryGuard.begin(fakeHardware.now-10001,0);r.memoryGuard.sample(fakeHardware.now-10001,60000,30000,0,r.hardwareTrial);
         reply={200,"{}"};
       } else if(path=="/__fixture/tuning") {
@@ -387,7 +442,10 @@ int main(int argc,char **argv) {
         f.runtime.setup.step=SetupStep(std::stoul(body));f.runtime.setup.pendingNext=false;
         reply={200,"{}"};
       } else reply=f.call(method.c_str(),path.c_str(),body,false);
-      std::cout << "{\"status\":" << reply.status << ",\"body\":" << reply.body
+      char encoded[16000];JsonWriter encodedBody(encoded,sizeof encoded);
+      if(!reply.body.empty()&&(reply.body[0]=='{'||reply.body[0]=='['))encodedBody << std::string_view(reply.body);
+      else encodedBody << jsonQuoted(reply.body.c_str());
+      std::cout << "{\"status\":" << reply.status << ",\"body\":" << encodedBody.data()
         << ",\"moving\":" << (f.runtime.controller.moving()?"true":"false")
         << ",\"testToken\":" << f.runtime.setupTestToken << "}\n" << std::flush;
     }
@@ -580,7 +638,10 @@ int main(int argc,char **argv) {
     Runtime boot;assert(batch.storage.loadSetup(boot)&&boot.setup.pendingNext); // power loss retains continuation
     assert(batch.restart.consume(fakeHardware.now+1500));r.setupRestartRequired=false;r.setupLease=0;
     WiFi.connectionStatus=0;batch.api.serviceSetup(fakeHardware.now);assert(r.setup.step==SetupStep::Network);
-    WiFi.connectionStatus=WL_CONNECTED;batch.api.serviceSetup(fakeHardware.now);assert(r.setup.step==SetupStep::Role&&!r.setup.pendingNext);
+    WiFi.connectionStatus=WL_CONNECTED;batch.api.serviceSetup(fakeHardware.now);assert(r.setup.step==SetupStep::Network);
+    assert(batch.storage.loadNetworkTrial(r));
+    assert(batch.call("POST","/api/network/confirm","token=11&address="+std::string(WiFi.localIP().toString().c_str()),false).status==200);
+    batch.api.serviceSetup(fakeHardware.now);assert(r.setup.step==SetupStep::Role&&!r.setup.pendingNext);
   }
   {
     Fixture hardware;auto &r=hardware.runtime;
@@ -1217,7 +1278,7 @@ int main(int argc,char **argv) {
   }
   assert(f.call("GET","/api/diagnostics","axis=bad").status==400);
   assert(f.call("POST","/api/wifi","ssid=station&pass=12345678").status==200 && !f.restart.pending());
-  assert(f.network.wifiConnecting() && f.network.apAlwaysOn());
+  assert(!f.network.wifiConnecting() && f.network.apAlwaysOn()); // recovery stays on its service AP
   f.restart.consume(fakeHardware.now+2000);assert(!f.restart.pending());
   std::string fields="token=11&generation="+std::to_string(r.hardwareRecord.generation)+
     "&driveInterface=2&simulation=1&bluetoothEnabled=0&bluetoothMode=3&forceApSta=0&buttonGpio=-1&buttonActiveLow=1&buttonPullup=0&pwmInverted=1";

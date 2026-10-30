@@ -69,6 +69,53 @@ bool Storage::loadNetwork(NetworkConfig &config) {
   const bool ok=!found || (prefs_.getBytesLength("ipv4v1")==bytes.size() && prefs_.getBytes("ipv4v1",bytes.data(),bytes.size())==bytes.size() && decodeNetwork(bytes,config));
   prefs_.end();return ok;
 }
+bool Storage::stageNetwork(const NetworkConfig &previous, const NetworkConfig &next) {
+  if(next.wifi.validate() || next.ethernet.validate())return false;
+  if(!prefs_.begin("netcfg",false)){prefs_.end();return false;}
+  const auto bytes=encodeNetwork(previous);NetworkBytes verify{};
+  const bool exists=prefs_.isKey("trial1");
+  const bool ok=(exists || prefs_.putBytes("trial1",bytes.data(),bytes.size())==bytes.size()) &&
+    prefs_.getBytesLength("trial1")==verify.size() && prefs_.getBytes("trial1",verify.data(),verify.size())==verify.size();
+  NetworkConfig old;const bool valid=ok && decodeNetwork(verify,old) && (exists || bytes==verify);
+  prefs_.end();return valid && saveNetwork(next);
+}
+bool Storage::loadNetworkTrial(Runtime &runtime) {
+  if(!prefs_.begin("netcfg",true)){prefs_.end();return true;}
+  runtime.networkTrial=prefs_.isKey("trial1");NetworkBytes bytes{};NetworkConfig old;
+  const bool ok=!runtime.networkTrial || (prefs_.getBytesLength("trial1")==bytes.size() &&
+    prefs_.getBytes("trial1",bytes.data(),bytes.size())==bytes.size() && decodeNetwork(bytes,old));
+  prefs_.end();runtime.networkTrialBooted=runtime.networkTrial;
+  runtime.networkTrialUntil=millis()+Runtime::NetworkTrialMs;return ok;
+}
+bool Storage::confirmNetwork() {
+  if(!prefs_.begin("netcfg",false)){prefs_.end();return false;}
+  const bool ok=!prefs_.isKey("trial1") || (prefs_.remove("trial1") && !prefs_.isKey("trial1"));
+  prefs_.end();return ok;
+}
+bool Storage::rollbackNetwork(NetworkConfig &config) {
+  if(!prefs_.begin("netcfg",true)){prefs_.end();return false;}
+  const bool exists=prefs_.isKey("trial1");NetworkBytes bytes{};NetworkConfig old;
+  const bool ok=exists && prefs_.getBytesLength("trial1")==bytes.size() &&
+    prefs_.getBytes("trial1",bytes.data(),bytes.size())==bytes.size() && decodeNetwork(bytes,old);
+  prefs_.end();
+  if(!exists)return loadNetwork(config);
+  if(!ok || !saveNetwork(old))return false;
+  // The caller also restores HUD topology before deleting the backup. A reset
+  // between those writes must leave the service AP and rollback available.
+  config=old;return true;
+}
+bool Storage::beginResetSequence(bool externalReset, bool &requested) {
+  requested=false;
+  if(!prefs_.begin("bootkeys",false)){prefs_.end();return false;}
+  const uint8_t count=externalReset?std::min<unsigned>(prefs_.getUChar("reset",0)+1,3):0;
+  const bool ok=prefs_.putUChar("reset",count)==1 && prefs_.getUChar("reset",255)==count;
+  prefs_.end();requested=ok && count==3;return ok;
+}
+bool Storage::clearResetSequence() {
+  if(!prefs_.begin("bootkeys",false)){prefs_.end();return false;}
+  const bool ok=prefs_.putUChar("reset",0)==1 && prefs_.getUChar("reset",255)==0;
+  prefs_.end();return ok;
+}
 
 using namespace board;
 namespace {
@@ -303,7 +350,7 @@ bool Storage::compactResetHistory() {
   }
   prefs_.end();return true;
 }
-void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
+void Storage::loadHardware(Runtime &runtime, bool forceRecovery, bool requestedRecovery) {
   compactResetHistory(); // Reclaim redundant diagnostics before a mandatory migration.
   runtime.hardwareInteraction = false;
   runtime.controller.targetMotionStarted = false;
@@ -396,6 +443,7 @@ void Storage::loadHardware(Runtime &runtime, bool forceRecovery) {
     record.phase = record.hasConfirmed ? ConfigPhase::Starting : ConfigPhase::Recovery;
     if (!record.hasConfirmed) record.reason = RecoveryReason::Initial;
   }
+  if(requestedRecovery){record.phase=ConfigPhase::Recovery;record.reason=RecoveryReason::Requested;}
   record.good.releaseSimulationPins();
   record.candidate.releaseSimulationPins();
   // A failed read or undecodable record is not permission to overwrite NVS

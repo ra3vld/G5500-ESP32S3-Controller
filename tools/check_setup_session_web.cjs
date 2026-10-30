@@ -89,7 +89,7 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     assert((await rpc('GET','/api/setup')).moving,'Next must not stop existing movement');
     await page.locator('#setupBack').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===1);
     assert((await rpc('GET','/api/setup')).moving,'Back must not stop existing movement');
-    await page.locator('#setupPause').click();await page.waitForURL('http://setup-session.test/#settings');
+    await page.locator('#setupPause').click();await page.waitForURL('http://setup-session.test/#control');
     await page.waitForFunction(()=>wizard.loaded&&!wizard.active);
     current=await rpc('GET','/api/setup');assert(current.moving&&current.body.paused&&current.body.step===1);
     const pausedReads=reads();await wait(2800);assert.equal(reads(),pausedReads);
@@ -208,7 +208,7 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     assert(await page.evaluate(()=>wizard.state.required&&wizard.state.motionAllowed));
     assert.equal((await rpc('POST','/api/move','d=R')).status,200);assert((await rpc('GET','/api/setup')).moving);
     assert.equal((await rpc('POST','/api/move','d=S')).status,200);assert(!(await rpc('GET','/api/setup')).moving);
-    assert.equal(await page.locator('#setupPause').textContent(),'Сохранить и перейти к управлению');
+    assert.equal(await page.locator('#setupPause').textContent(),'Сохранить и выйти');
     if(process.env.ARTIFACT_DIR)await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`physical-motion-${width}.png`)});
     await page.locator('#setupPause').click();await page.waitForFunction(()=>location.pathname==='/');
     let state=await rpc('GET','/api/setup');assert(state.body.required&&state.body.paused&&state.body.motionAllowed);

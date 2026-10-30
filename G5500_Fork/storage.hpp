@@ -16,6 +16,12 @@ public:
   bool saveSetup(const SetupState &state);
   bool loadNetwork(NetworkConfig &config);
   bool saveNetwork(const NetworkConfig &config);
+  bool stageNetwork(const NetworkConfig &previous, const NetworkConfig &next);
+  bool loadNetworkTrial(Runtime &runtime);
+  bool confirmNetwork();
+  bool rollbackNetwork(NetworkConfig &config);
+  bool beginResetSequence(bool externalReset, bool &requested);
+  bool clearResetSequence();
   bool loadModbus(Runtime &runtime);
   bool saveModbus(const ModbusConfig &config);
   bool loadDisplay(Runtime &runtime);
@@ -24,7 +30,7 @@ public:
   bool loadMqtt(MqttConfig &config);
   bool saveMqtt(const MqttConfig &config);
 #endif
-  void loadHardware(Runtime &runtime, bool forceRecovery = false);
+  void loadHardware(Runtime &runtime, bool forceRecovery = false, bool requestedRecovery = false);
   bool stageHardware(Runtime &runtime, const HardwareConfig &config);
   bool confirmHardware(Runtime &runtime);
   bool enterRecovery(Runtime &runtime, RecoveryReason reason);

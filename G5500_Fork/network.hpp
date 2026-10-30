@@ -39,7 +39,7 @@ public:
   void selectionChanged() override { resetHudInputs(); }
   bool hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned report) const;
   bool apAlwaysOn() const {
-    return WIFI_SUPPORT && (credentials_.network.choice==NetworkChoice::Ap || credentials_.network.choice==NetworkChoice::SharedHost || wifiSetupAp_ || runtime_.recovery || runtime_.hud.config.wifi == HudWifi::Host ||
+    return WIFI_SUPPORT && (credentials_.network.choice==NetworkChoice::Ap || credentials_.network.choice==NetworkChoice::SharedHost || wifiSetupAp_ || runtime_.networkTrial || runtime_.recovery || runtime_.hud.config.wifi == HudWifi::Host ||
            (runtime_.hud.config.wifi == HudWifi::Existing && runtime_.controller.hardware.forceAp));
   }
 

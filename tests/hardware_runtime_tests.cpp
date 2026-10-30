@@ -388,7 +388,37 @@ static void directionPwm() {
   assert(trial.hardwareTrial&&trial.controller.hardware.drive==DRIVE_DIR_PWM&&trial.controller.hardware.singleAxis());
   assert(storage.confirmHardware(trial));storage.loadHardware(boot);assert(boot.controller.hardware==cfg&&!boot.recovery);
 }
+static void resetSequenceRecovery() {
+  Preferences::database.clear();Storage storage;bool requested=false;
+  MotionTestRuntime original;storage.loadHardware(original);assert(storage.finishHardwareBoot(original));
+  const auto good=original.hardwareRecord.good;
+  for(unsigned i=1;i<=3;++i){assert(storage.beginResetSequence(true,requested));assert(requested==(i==3));}
+  MotionTestRuntime recovered;storage.loadHardware(recovered,false,requested);
+  assert(recovered.recovery&&recovered.recoveryReason==RecoveryReason::Requested&&recovered.controller.configurationLocked);
+  assert(recovered.hardwareRecord.hasConfirmed&&recovered.hardwareRecord.good==good&&!recovered.controller.moving());
+  assert(storage.clearResetSequence());assert(storage.beginResetSequence(true,requested)&&!requested);
+  assert(storage.beginResetSequence(false,requested)&&!requested); // software restart breaks the sequence
+  assert(storage.beginResetSequence(true,requested)&&!requested);
+  assert(storage.clearResetSequence());assert(storage.beginResetSequence(true,requested)&&!requested);
+  Preferences::failedKey="reset";assert(!storage.beginResetSequence(true,requested)&&!requested);Preferences::failedKey.clear();
+  assert(storage.stageHardware(recovered,good));MotionTestRuntime resumed;storage.loadHardware(resumed);
+  assert(!resumed.recovery&&resumed.hardwareRecord.good==good);
+}
+static void networkTrialPersistence() {
+  Preferences::database.clear();Storage storage;NetworkConfig old,next;old.choice=NetworkChoice::Ap;next.choice=NetworkChoice::Wifi;
+  next.wifi.automatic=false;assert(parseIpv4("10.1.2.3",next.wifi.address));assert(parseIpv4("255.255.255.0",next.wifi.mask));
+  assert(storage.saveNetwork(old));Preferences::failedBytesKey="trial1";assert(!storage.stageNetwork(old,next));
+  NetworkConfig saved;assert(storage.loadNetwork(saved)&&saved.choice==old.choice);Preferences::failedBytesKey.clear();
+  assert(storage.stageNetwork(old,next));Runtime boot;assert(storage.loadNetworkTrial(boot)&&boot.networkTrial);
+  assert(storage.stageNetwork(next,old)); // subsequent edit must retain the first backup
+  assert(storage.rollbackNetwork(saved)&&saved.choice==old.choice);assert(storage.loadNetworkTrial(boot)&&boot.networkTrial);
+  assert(storage.confirmNetwork());assert(storage.loadNetworkTrial(boot)&&!boot.networkTrial);
+  assert(storage.stageNetwork(old,next));auto &record=std::get<Preferences::Bytes>(Preferences::database["netcfg"]["trial1"]);record[0]^=1;
+  assert(!storage.loadNetworkTrial(boot)&&boot.networkTrial);assert(!storage.rollbackNetwork(saved));
+  assert(storage.confirmNetwork()); // explicit recovery can replace a corrupt trial
+}
 int main() {
+  resetSequenceRecovery();networkTrialPersistence();
   nearFullNvsHistoryMigration();
   hardwareStorageDiagnostics();
   confirmedRetryNeedsNoTrial();confirmedRecoveryPreservesRecord();recoveryPolicy();directionPwm();optionalPwmEnable();

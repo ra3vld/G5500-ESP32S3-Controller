@@ -24,6 +24,9 @@ struct Runtime {
   static constexpr uint32_t SetupTestTimeoutMs = 1500;
   uint32_t setupLease = 0, setupRenewed = 0, setupTestToken = 0, setupTestEpoch = 0;
   bool setupSaving = false, setupRestartRequired = false;
+  static constexpr uint32_t NetworkTrialMs = 180000;
+  bool networkTrial = false, networkTrialBooted = false;
+  uint32_t networkTrialUntil = 0;
   ModbusConfig modbus;
   ModbusStatus modbusStatus;
   HardwareRecord hardwareRecord;

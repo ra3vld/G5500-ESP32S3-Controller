@@ -183,7 +183,7 @@ body.settings-view .nav{position:static}
 #equipmentFrame{box-sizing:border-box;width:100%;border:0;display:block;margin-top:16px;min-height:400px;background:#101721}
 #equipmentFrame[hidden]{display:none}body[data-setup-step="4"] #hardwareSettings,body[data-setup-step="4"] #encoderSettings{display:none!important}
 body.setup-view #settingsPanel>.settings-section:not(.setup-visible){display:none!important}
-body.setup-view #settingsPanel>.settings-section>details>summary{display:none}
+body.setup-view:not([data-setup-step="9"]) #settingsPanel>.settings-section>details>summary{display:none}
 body.setup-view .nav,body.setup-view #setupEntry,body.setup-view [data-setup-save],body.setup-view [data-setup-hide]{display:none!important}
 #setupEntry{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:16px}
 #setupEntry p{margin:0;flex:1;min-width:180px}
@@ -194,7 +194,9 @@ body.setup-view #settingsPanel .settings-content{padding:16px}
 body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 @media(max-width:600px){#settingsPanel .field-action,#settingsPanel .device-address .device-fields{grid-template-columns:minmax(0,1fr)}#settingsPanel .field-action>.btn,#settingsPanel .device-address .device-fields .btn{justify-self:start;margin-top:0;width:auto}#settingsPanel .device-address .field-action>.btn{grid-column:1;grid-row:3}#settingsPanel .device-address .field-action>.field-help{grid-row:4}#settingsPanel .setup-navigation .btn,#settingsPanel .form-actions>.btn{width:auto;max-width:100%}#settingsPanel .setup-navigation{gap:10px}#settingsPanel .row .ip-interface{width:100%}}
 
-</style></head><body><div class="wrap">
+.safety-bar{box-sizing:border-box;position:fixed;inset:0 0 auto;z-index:60;display:flex;align-items:center;gap:12px;padding:8px max(12px,calc((100vw - 960px)/2));background:#132532;border-bottom:2px solid #7e4248;min-height:64px}.safety-bar button{min-width:100px;min-height:44px}.safety-bar span{font-size:14px;overflow-wrap:anywhere}body{padding-top:68px;box-sizing:border-box}body.setup-view>.wrap{padding-bottom:220px}body.setup-view .page-header h1{font-size:18px;line-height:1.35}body.setup-view #setupWizard p{margin:8px 0}body.setup-view #setupFooter{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:calc(100% - 24px);max-width:960px;z-index:35;background:#132532;border:1px solid #355063;border-radius:12px 12px 0 0;padding:10px}#setupFooter .setup-navigation{gap:8px}#setupExit{margin-left:auto}#setupReconnect{min-height:44px}body.setup-view .action-feedback{bottom:190px}#setupFooter .btn{min-height:44px;padding:8px 12px}@media(max-width:600px){#setupFooter .setup-navigation{display:grid;grid-template-columns:1fr 1fr}#setupFooter .btn{width:100%;margin:0;font-size:13px}#setupExit{grid-column:1/-1}body.setup-view .action-feedback{bottom:200px}}
+</style></head><body>
+<div class="safety-bar" role="region" aria-label="Остановка движения"><button class="btn stop" type="button" id="globalStop" onclick="globalStop()">STOP</button><span id="globalDriveStatus" role="status">Проверяем состояние привода…</span></div><div class="wrap">
 <header class="page-header">
 <h1 id="modelTitle">YAESU G-5500 / ESP32</h1>
 <div id="rotatorConnection" class="connection-status" data-state="pending" role="status" aria-live="polite" aria-atomic="true">Проверяем связь…</div>
@@ -235,8 +237,8 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 </div>
 </div>
 <div class="target-controls"><div class="label">Задать угол</div><div class="row" style="margin-top:8px">
-<div class="field"><label id="tazlbl">AZ 0..450°</label><input id="taz" type="number" step="0.1" min="0" max="450"></div>
-<div class="field"><label id="tellbl">EL 0…180°</label><input id="tel" type="number" step="0.1" min="0" max="180"></div>
+<div class="field"><label id="tazlbl" for="taz">AZ 0..450°</label><input id="taz" type="number" step="0.1" min="0" max="450"></div>
+<div class="field"><label id="tellbl" for="tel">EL 0…180°</label><input id="tel" type="number" step="0.1" min="0" max="180"></div>
 <button class="btn good" onclick="go()">Повернуть</button></div></div>
 <div class="control-mode">
 <div class="label">Режим управления</div>
@@ -659,7 +661,9 @@ function updateCamera(state){
  refreshCamera();
 }
 document.addEventListener('visibilitychange',refreshCamera);
+function editingControl(target=document.activeElement){return !!target?.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"])');}
 function focusMovementButtons(){
+ if(editingControl())return;
  if(!document.hidden&&!document.getElementById('controlPanel').hidden)document.getElementById('movementButtons').focus({preventScroll:true});
 }
 function selectTab(name,updateHash=true){
@@ -816,6 +820,7 @@ function updateConnection(){
  const addresses=networkAddresses(j);
  if(addresses.length)text+=' · '+(reachable?'':'Последние адреса: ')+addresses.join(' · ');
  node.dataset.state=state;node.title=hint;setText(node,text);
+ document.getElementById('globalDriveStatus').textContent=state==='online'?(driveFaultMessages(j).join('; ')||(j.moving?'Привод движется':'Привод остановлен')):text;
  updateConnectionFavicon(state==='online');
 }
 function liveFresh(){return live.ready&&Date.now()-live.last<=1000}
@@ -1341,6 +1346,11 @@ function updateFork(j){
 
 async function q(u){try{if((live.ready||window._forkState?.deviceRole==='hud')&&(u.startsWith('/api/move?')||u.startsWith('/api/target?'))){const url=new URL(u,location.origin);await forkPost(url.pathname,Object.fromEntries(url.searchParams));return ''}return (await controlRequest(u,{cache:'no-store'})).text}catch(e){return''}}
 async function st(){releaseKeyboardAxes();await q('/api/move?d=S')}
+async function globalStop(){
+ stopTest();releaseKeyboardAxes();
+ const status=document.getElementById('globalDriveStatus');status.textContent='Отправляем STOP…';
+ const ok=await forkPost('/api/move',{d:'S'});status.textContent=ok?'STOP принят':'Нет подтверждения STOP. Проверьте связь.';
+}
 async function go(){
  const body={},g800=window._forkState?.model!=='G5500';
  for(const [key,id] of g800?[['az','taz']]:[['az','taz'],['el','tel']]){
@@ -1355,6 +1365,8 @@ async function go(){
  if(await forkPost('/api/target',body))focusMovementButtons();
 }
 for(const id of ['taz','tel'])document.getElementById(id).addEventListener('keydown',event=>{
+ if(event.key==='Tab'&&!event.shiftKey&&id==='taz'&&document.getElementById('tel').getClientRects().length){event.preventDefault();document.getElementById('tel').focus();return;}
+ if(event.key==='Tab'&&event.shiftKey&&id==='tel'){event.preventDefault();document.getElementById('taz').focus();return;}
  if(event.key!=='Enter'||event.isComposing)return;
  event.preventDefault();if(!event.repeat)go();
 });
@@ -1445,7 +1457,7 @@ function startManualAxis(axis,input){
 }
 document.addEventListener('keydown',event=>{
  const direction=arrowDirections[event.key];
- if(!direction||document.hidden||document.getElementById('controlPanel').hidden)return;
+ if(!direction||editingControl(event.target)||document.hidden||document.getElementById('controlPanel').hidden)return;
  if(event.altKey||event.ctrlKey||event.metaKey||event.shiftKey||event.isComposing)return;
  event.preventDefault();event.stopPropagation();focusMovementButtons();
  if(event.repeat)return;
@@ -1465,11 +1477,13 @@ window.addEventListener('pagehide',releaseKeyboardAxes);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseKeyboardAxes();else focusMovementButtons();});
 document.addEventListener('focusin',event=>{if(event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])'))releaseKeyboardAxes();});
 document.addEventListener('click',event=>{if(!event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])'))focusMovementButtons();});
-document.getElementById('controlPanel').addEventListener('change',focusMovementButtons);
+// Keep native Tab/Shift+Tab and select/input keyboard navigation intact.
 async function cal(p){await calibrationAction('/api/cal?p='+p,'Точка '+p.slice(0,2).toUpperCase()+' '+p.slice(2)+'° запомнена')}
 async function cal2(p){await calibrationAction('/api/cal2?p='+p,(p[0]==='f'?'Конец':'Начало')+' диапазона '+(p.endsWith('2')?'EL':'AZ')+' запомнено')}
 async function setCalMode(m){await calibrationAction('/api/calmode?m='+m,m==='multi'?'Выбрана многоточечная калибровка':'Выбрана двухточечная калибровка')}
 async function calibrationAction(path,success){
+ const url=new URL(path,location.origin),point=url.searchParams.get('p');
+ if(point){const axis=point.startsWith('el')||point.endsWith('2')?'el':'az';if(document.getElementById(axis+'RangeForm').dataset.dirty){settingsFeedback('Сначала примените диапазон '+axis.toUpperCase()+', затем запишите положения.');return false;}}
  const notice=beginSettingsAction('Сохранение калибровки…',path);if(!notice)return false;
  try{const r=await settingsRequest(path);if(!r.ok){notice.finish(false,r.status===403?'Калибровка доступна на контроллере поворотки':'Не удалось сохранить калибровку. Повторите после проверки устройства.');return false;}
  notice.finish(true,success);await upd(true);await Promise.all([loadAzCalibration(),loadElCalibration()]);return true;
@@ -1483,7 +1497,7 @@ async function resetCal(axis,cm){
   await calibrationAction('/api/calreset?axis='+axis+'&mode='+cm,'Калибровка '+axis.toUpperCase()+' сброшена');
 }
 function azEndPreview(){const f=document.getElementById('azRangeForm');azRangeEnd.textContent=(Number(f.elements.start.value)+Number(f.elements.span.value)).toFixed(1)+'°'}
-document.getElementById('azRangeForm').addEventListener('input',e=>{e.currentTarget.dataset.dirty='1';azEndPreview()});
+document.getElementById('azRangeForm').addEventListener('input',e=>{e.currentTarget.dataset.dirty='1';azEndPreview();renderAxisCalibration('az',window._forkState)});
 function calibrationContext(axis){const j=window._forkState;return j?[j.deviceRole,j.model,j[axis+'Profile'],j[axis+'RangeRevision']].join(':'):''}
 const calibrationLoads={};
 async function loadAxisCalibration(axis){
@@ -1505,16 +1519,17 @@ async function loadAzCalibration(){return loadAxisCalibration('az')}
 function renderCalibrationPoints(axis,mode,points,custom,storageFault){
  const encoder=window._forkState?.[axis+'Sensor']&&window._forkState[axis+'Sensor']!=='ADC',unit=encoder?'отсч.':'мВ';
  const prefix=axis+(mode==='2'?'2':''),list=document.getElementById(prefix+'PointList');
- const key=JSON.stringify([points,custom,storageFault,unit]);if(list.dataset.points===key)return;
+ const pending=!!document.getElementById(axis+'RangeForm').dataset.dirty;
+ const key=JSON.stringify([points,custom,storageFault,unit,pending]);if(list.dataset.points===key)return;
  list.dataset.points=key;list.replaceChildren();
  const captured=points.filter(p=>p.mv>=0).length;
  const differences=points.slice(1).map((p,i)=>p.mv-points[i].mv);
  const valid=captured===points.length&&(mode==='2'?Math.abs(differences[0])>100:differences.every(v=>v>0)||differences.every(v=>v<0));
- document.getElementById(prefix+'CalProgress').textContent='Записано '+captured+' из '+points.length+'. '+(storageFault?'Ошибка сохранённой калибровки.':captured<points.length?'Запомните оставшиеся положения.':valid?'Калибровка готова.':mode==='2'?'Разница показаний должна превышать 100 '+unit+'.':'Показания должны последовательно расти или убывать.');
+ document.getElementById(prefix+'CalProgress').textContent=(pending?'Диапазон изменён. Нажмите «Применить диапазон», затем записывайте положения. ':'')+'Записано '+captured+' из '+points.length+'. '+(storageFault?'Ошибка сохранённой калибровки.':captured<points.length?'Запомните оставшиеся положения.':valid?'Калибровка готова.':mode==='2'?'Разница показаний должна превышать 100 '+unit+'.':'Показания должны последовательно расти или убывать.');
  for(const [i,p] of points.entries()){
   const row=document.createElement('div');row.className='point-row';row.dataset.angle=p.angle;
   const label=document.createElement('span');label.textContent=(i===0?'Начало':i===points.length-1?'Конец':'Точка '+(i+1))+' · '+p.angle+'° · '+(p.mv<0?'не записано':p.mv+' '+unit);row.append(label);
-  const capture=document.createElement('button');capture.className='btn '+(p.mv>=0?'good':'warn');capture.textContent='Запомнить положение';
+  const capture=document.createElement('button');capture.className='btn '+(p.mv>=0?'good':'warn');capture.textContent='Запомнить положение';capture.disabled=pending;capture.title=pending?'Сначала примените диапазон':'';
   if(mode==='2'){const command=(i===0?'o':'f')+(axis==='el'?'2':'');capture.id='b2_'+axis+(i===0?'o':'f');capture.onclick=()=>cal2(command)}
   else capture.onclick=()=>custom?axisCalibrationPost(axis,'/api/'+axis+'cal',{op:'capture',angle:p.angle}):cal(axis+p.angle);
   const actions=document.createElement('div');actions.className='point-actions';actions.append(capture);row.append(actions);
@@ -1533,7 +1548,7 @@ function renderAxisCalibration(axis,j){
  }else{const list=document.getElementById(axis+'PointList');list.replaceChildren();delete list.dataset.points;document.getElementById(axis+'CalProgress').textContent='Загрузка точек…';}
 }
 async function axisCalibrationPost(axis,path,body,notice=null){
- const rangeForm=document.getElementById(axis+'RangeForm');if(wizard.active&&path!=='/api/'+axis+'range'&&rangeForm.dataset.dirty){if(!await axisCalibrationPost(axis,'/api/'+axis+'range',{profile:'custom',start:rangeForm.elements.start.value,span:rangeForm.elements.span.value}))return false;}
+ const rangeForm=document.getElementById(axis+'RangeForm');if(path!=='/api/'+axis+'range'&&rangeForm.dataset.dirty){settingsFeedback('Сначала примените диапазон '+axis.toUpperCase()+', затем запишите положения.');return false;}
  const label=axis.toUpperCase();notice=notice||beginSettingsAction('Сохранение '+label+'…',path+JSON.stringify(body));if(!notice)return false;
  notice.update('Сохранение '+label+'…');
  const message=document.getElementById(axis+'RangeMessage'),revision=setupDraftRevision(rangeForm);
@@ -1555,7 +1570,7 @@ async function useCustomAxisRange(axis){
 async function useCustomRange(){return useCustomAxisRange('az')}
 async function addAzPoint(e){e.preventDefault();if(await azPost('/api/azcal',{op:'add_capture',angle:azPointAngle.value}))azPointAngle.value=''}
 function elEndPreview(){const f=document.getElementById('elRangeForm');elRangeEnd.textContent=(Number(f.elements.start.value)+Number(f.elements.span.value)).toFixed(1)+'°'}
-document.getElementById('elRangeForm').addEventListener('input',e=>{e.currentTarget.dataset.dirty='1';elEndPreview()});
+document.getElementById('elRangeForm').addEventListener('input',e=>{e.currentTarget.dataset.dirty='1';elEndPreview();renderAxisCalibration('el',window._forkState)});
 async function loadElCalibration(){return loadAxisCalibration('el')}
 async function elPost(path,body){return axisCalibrationPost('el',path,body)}
 async function saveElRange(e){e.preventDefault();const f=e.target;await elPost('/api/elrange',{profile:'custom',start:f.elements.start.value,span:f.elements.span.value})}
@@ -1832,17 +1847,17 @@ function updateHud(j){
 }
 
 // The wizard projects the same settings forms; no second copy of their fields.
-const wizard={state:null,active:false,busy:false,renewing:false,loaded:false,step:null,hardwareDirty:false,hardwareCanApply:false,hardwareError:'',hardwareRpc:0,hardwarePending:new Map(),error:'',waiting:false};
+const wizard={state:null,active:false,busy:false,renewing:false,loaded:false,step:null,hardwareDirty:false,hardwareCanApply:false,hardwareError:'',hardwareRpc:0,hardwarePending:new Map(),error:'',waiting:false,actionEpoch:0,actionAbort:null};
 const setupTitles=['Сеть','Роль устройства и связь','Поворотка и привод','Оборудование и GPIO','Местные органы управления','Диапазоны и калибровка','Регуляторы и остановка','Внешние программы','Поворотки HUD','Проверка и завершение'];
 const setupHints=[
  'Выберите подключение. Для Wi-Fi введите SSID и пароль. «Далее» сохранит параметры; после подключения дождитесь адреса STA. Для Ethernet проверьте кабель и адрес ETH. Интернет не требуется.',
  'Выберите роль, имя и используемую связь. Сетевая топология наследуется из шага сети. UART и RS-485 требуют соответствующих GPIO. Имя сохраняется без перезагрузки. При изменении роли или связи устройство перезапустится.',
  'Выберите поворотку или схему управления. G-5500, G-800DXA и G-800SA подключаются через штатный блок Yaesu. GPIO выбранного варианта проверим на следующем шаге.',
- 'Выберите привод, датчики, Bluetooth и местные входы, затем сверьте GPIO. Проводку меняйте при отключённом питании; проверьте напряжения. «Далее» применит оборудование. После пробного запуска нажмите «Далее» для его подтверждения.',
+ 'Проверьте датчики и входы. GPIO и дополнительные интерфейсы — в раскрываемых разделах. «Далее» применит настройки; после перезапуска подтвердите запуск.',
  'Проверьте кнопки, направление энкодера и сенсорный экран. Для джойстика отключите силовое питание и измерьте центр и крайние положения. Верните ручку в центр. «Далее» сохранит результаты и применит изменения.',
- 'Задайте диапазоны, проверьте направления коротким удержанием кнопок, затем запишите углы. Ориентируйтесь на физическое положение антенны. После калибровки проверьте промежуточную точку.',
+ 'Сначала задайте диапазоны и нажмите «Применить диапазон». Проверьте направления коротким удержанием кнопок, затем запишите углы. Ориентируйтесь на физическое положение антенны. После калибровки проверьте промежуточную точку.',
  'Для регулируемых осей выберите простой регулятор или каскад и настройте параметры вручную либо автотюном. Для фиксированной скорости измерьте выбег в обоих направлениях.',
- 'Выберите поведение протоколов, порты, имя N1MM и трактовку угла AZ. Программы на HUD управляют выбранной повороткой.',
+ 'Необязательный шаг: настройте внешние программы или нажмите «Пропустить». Выберите поведение протоколов, порты и трактовку угла AZ. Программы на HUD управляют выбранной повороткой.',
  'Найдите контроллер, сохраните запись и явно выберите её. Проверьте доступность, углы и ошибки. Калибровка положения и регуляторы настраиваются на самом контроллере.',
  'Проверьте STOP, ручное управление и короткое наведение. MQTT и предустановки необязательны. Завершение разрешается при готовности оборудования и калибровки.'
 ];
@@ -1907,10 +1922,10 @@ document.addEventListener('input',event=>{if(event.target.form===sharedForm){sha
 const addressForm=document.getElementById('hudAddress').closest('form');
 const addressButton=addressForm.lastElementChild,addressField=addressForm.querySelector('.field');addressField.classList.add('field-action');addressField.append(addressButton);
 const shell=document.createElement('section');shell.id='setupWizard';shell.className='card';shell.hidden=true;
-shell.innerHTML='<p id="setupProgress" class="hint"></p><h2 id="setupTitle" tabindex="-1"></h2><p id="setupHint"></p><p id="setupMessage" role="status" aria-live="polite"></p>';
+shell.innerHTML='<p id="setupProgress" class="hint"></p><h2 id="setupTitle" tabindex="-1"></h2><p id="setupHint"></p><p id="setupMessage" role="status" aria-live="polite"></p><div id="setupReconnect" hidden><p>После смены сети подключитесь к новому адресу. Если адрес недоступен, подключитесь к сервисной AP или нажмите Reset три раза с интервалом 1–3 секунды.</p><button class="btn" type="button" onclick="pollSetup()">Проверить связь</button><a class="btn" href="/recovery">Открыть восстановление</a></div>';
 setupRoot.prepend(shell);
 const footer=document.createElement('section');footer.id='setupFooter';footer.className='card';footer.hidden=true;
-footer.innerHTML='<div class="setup-navigation"><button class="btn" id="setupBack">Назад</button><button class="btn good" id="setupNext">Далее</button><button class="btn" id="setupReset" title="Отменить несохранённые изменения этого шага">Вернуть к исходному</button><button class="btn" id="setupPause">Сохранить и продолжить позже</button></div>';
+footer.innerHTML='<div class="setup-navigation"><button class="btn" id="setupBack">Назад</button><button class="btn good" id="setupNext">Далее</button><button class="btn" id="setupReset" title="Отменить несохранённые изменения этого шага">Отменить ввод</button><button class="btn" id="setupPause">Сохранить и выйти</button><button class="btn" id="setupExit" type="button">Выйти без сохранения</button></div>';
 setupRoot.append(footer);
 const wizardLink=document.createElement('a');wizardLink.href='/setup';wizardLink.className='btn';wizardLink.textContent='Мастер настройки';const setupEntry=document.createElement('section');setupEntry.id='setupEntry';setupEntry.className='card';setupEntry.innerHTML='<p>Пошаговая настройка контроллера или HUD</p>';setupEntry.prepend(wizardLink);setupRoot.prepend(setupEntry);
 const nameForm=document.createElement('form');nameForm.id='setupNameForm';nameForm.className='settings-pane';nameForm.innerHTML='<div class="field-action"><div class="field"><label for="setupDeviceName">Имя устройства / имя в N1MM</label><input id="setupDeviceName" maxlength="31" required></div><button class="btn" type="submit">Сохранить имя</button></div>';
@@ -1926,13 +1941,31 @@ for(const [prefix,title] of [['wifi','Wi-Fi STA'],['eth','Ethernet']]){
  box.append(fields);mode.onchange=()=>{fields.hidden=mode.value!=='static';for(const input of fields.querySelectorAll('input'))input.required=mode.value==='static'&&['Address','Mask'].some(s=>input.name.endsWith(s));};mode.onchange();document.getElementById('networkChoice');ipForm.querySelector('#ipInterfaces').append(box);
 }
 document.querySelector('#networkSettings .settings-content').prepend(ipForm);
+const trialNotice=document.createElement('section');trialNotice.id='networkTrial';trialNotice.className='card';trialNotice.hidden=true;
+trialNotice.innerHTML='<h2>Проверьте новое подключение</h2><p id="networkTrialText" role="status"></p><a class="btn" id="networkTrialLink">Открыть новый адрес</a> <button class="btn good" id="networkConfirm" type="button">Подтвердить этот адрес</button> <button class="btn" id="networkRollback" type="button">Вернуть прежнюю сеть</button><p id="networkTrialMessage" role="status"></p>';
+document.querySelector('.wrap').prepend(trialNotice);
+function renderNetworkTrial(n){
+ trialNotice.hidden=!n.trial;if(!n.trial)return;
+ const address=[1,2].includes(n.choice)?n.apIp:n.choice===4?n.ethIp:n.staIp;
+ const valid=/^(\d{1,3}\.){3}\d{1,3}$/.test(address||'')&&address!=='0.0.0.0';
+ document.getElementById('networkTrialText').textContent=n.trialBooted?'Откройте устройство через выбранную сеть и подтвердите доступ. Через '+Math.ceil(n.trialRemainingMs/1000)+' с без подтверждения вернутся прежние IP-настройки. Сервисная точка доступа остаётся включённой.':'Настройки записаны. После перезапуска проверьте доступ по новому адресу; на подтверждение будет 3 минуты.';
+ const link=document.getElementById('networkTrialLink');link.hidden=!valid;link.href=valid?'http://'+address+(location.port?':'+location.port:'')+(wizard.active?'/setup':'/?setup=skip#control'):'#';
+ const confirm=document.getElementById('networkConfirm');confirm.disabled=!n.trialBooted||!valid||location.hostname!==address;confirm.title=confirm.disabled?'Откройте новый адрес, чтобы проверить подключение.':'';
+}
+async function networkTrialAction(action){try{await setupRequest('/api/network/'+action,{token:wizard.network.token,address:location.hostname});document.getElementById('networkTrialMessage').textContent=action==='confirm'?'Подключение подтверждено.':'Возвращаем прежнюю сеть. Дождитесь перезапуска.';await loadNetworkConfig();await pollSetup();}catch(e){document.getElementById('networkTrialMessage').textContent=e.message;}}
+document.getElementById('networkConfirm').onclick=()=>networkTrialAction('confirm');document.getElementById('networkRollback').onclick=()=>networkTrialAction('rollback');
+
 ipForm.oninput=()=>ipForm.dataset.dirty='1';
 ipForm.onsubmit=async e=>{e.preventDefault();const revision=setupDraftRevision(ipForm);settingsFeedback('Сохранение настроек сети…','pending');try{await setupRequest('/api/network',networkDraft());clearSavedSetupDraft(ipForm,revision);document.getElementById('networkIpMessage').textContent='Сохранено. Перезапуск; после подключения продолжим с сохранённого шага.';settingsFeedback(document.getElementById('networkIpMessage').textContent,'success');}catch(e){document.getElementById('networkIpMessage').textContent=e.message;settingsFeedback(e.message);}};
-const coastCard=document.createElement('section');coastCard.id='coastSettings';coastCard.className='settings-pane';coastCard.innerHTML='<h3>Выбег при фиксированной скорости</h3><p>После калибровки выберите свободный участок вдали от границ. Измерьте оба направления оси; затем сохраните угол раннего отключения.</p><form id="coastForm"><div class="row"><div class="field"><label for="coastAxis">Ось</label><select id="coastAxis"><option value="0">AZ</option><option value="1">EL</option></select></div><div class="field"><label for="coastTravel">Пробный ход, °</label><input id="coastTravel" type="number" min="5" max="90" value="10" required></div></div><div class="form-actions"><button class="btn" type="submit" value="0">Измерить −</button><button class="btn" type="submit" value="1">Измерить +</button><button class="btn" type="button" id="coastCancel">Остановить измерение</button><button class="btn good" type="button" id="coastApply">Применить результат</button></div></form><p id="coastResult" role="status"></p>';
+const coastCard=document.createElement('section');coastCard.id='coastSettings';coastCard.className='settings-pane';coastCard.innerHTML='<h3>Выбег при фиксированной скорости</h3><p>После калибровки выберите свободный участок вдали от границ. Измерьте оба направления оси; затем сохраните угол раннего отключения.</p><form id="coastForm"><div class="row"><div class="field"><label for="coastAxis">Ось</label><select id="coastAxis"><option value="0">AZ</option><option value="1">EL</option></select></div><div class="field"><label for="coastTravel">Пробный ход, °</label><input id="coastTravel" type="number" min="5" max="90" value="10" required></div></div><div class="form-actions"><button class="btn" type="submit" value="0">Измерить −</button><button class="btn" type="submit" value="1">Измерить +</button><button class="btn" type="button" id="coastCancel">Остановить измерение</button><button class="btn good" type="button" id="coastApply" disabled>Применить результат</button></div></form><p id="coastResult" role="status"></p>';
 document.querySelector('#motionSettings .settings-content').append(coastCard);
 async function coastAction(action,direction){try{const result=await setupRequest('/api/motion/coast',{action,axis:document.getElementById('coastAxis').value,direction,travel:document.getElementById('coastTravel').value});renderCoast(result);}catch(e){document.getElementById('coastResult').textContent=e.message;}}
 document.getElementById('coastForm').onsubmit=e=>{e.preventDefault();coastAction('start',e.submitter.value);};document.getElementById('coastCancel').onclick=()=>coastAction('cancel');document.getElementById('coastApply').onclick=()=>coastAction('apply');
-function renderCoast(result){const a=Number(document.getElementById('coastAxis').value),r=result.results[a];document.getElementById('coastResult').textContent=({idle:'Ожидание',running:'Пробный ход',coasting:'Измерение после отключения',complete:'Измерение завершено',failed:'Измерение прервано',cancelled:'Измерение отменено'}[result.phase]||result.phase)+(result.reason?' · '+({measurement_interrupted:'проверка прервана: проверьте датчик и состояние привода',measurement_timeout:'истекло время измерения',range_margin:'ось подошла к границе диапазона',no_movement:'движение не обнаружено',wrong_direction:'направление показаний не совпало с командой',cancelled:'остановлено пользователем'}[result.reason]||result.reason):'')+'; − '+r.degrees[0].toFixed(1)+'° / '+r.seconds[0].toFixed(2)+' с; + '+r.degrees[1].toFixed(1)+'° / '+r.seconds[1].toFixed(2)+' с';document.getElementById('coastApply').disabled=r.measured!==3||result.phase!=='complete';}
+let coastState=null;
+function renderCoast(result){coastState=result;const a=Number(document.getElementById('coastAxis').value),r=result.results[a];document.getElementById('coastResult').textContent=({idle:'Ожидание',running:'Пробный ход',coasting:'Измерение после отключения',complete:'Измерение завершено',failed:'Измерение прервано',cancelled:'Измерение отменено'}[result.phase]||result.phase)+(result.reason?' · '+({measurement_interrupted:'проверка прервана: проверьте датчик и состояние привода',measurement_timeout:'истекло время измерения',range_margin:'ось подошла к границе диапазона',no_movement:'движение не обнаружено',wrong_direction:'направление показаний не совпало с командой',cancelled:'остановлено пользователем'}[result.reason]||result.reason):'')+'; − '+r.degrees[0].toFixed(1)+'° / '+r.seconds[0].toFixed(2)+' с; + '+r.degrees[1].toFixed(1)+'° / '+r.seconds[1].toFixed(2)+' с';document.getElementById('coastApply').disabled=r.measured!==3||result.phase!=='complete';}
+function coastVisible(){return !document.hidden&&!setupRoot.hidden&&!!document.getElementById('coastSettings').getClientRects().length;}
+async function pollCoast(){if(!coastVisible())return;try{renderCoast(await background.read('coast','/api/motion/coast','json',coastVisible));}catch(e){if(e.name!=='PollingDeferred')document.getElementById('coastResult').textContent='Нет свежих результатов. Проверьте связь с устройством.';}}
+document.getElementById('coastAxis').onchange=()=>{if(coastState)renderCoast(coastState);pollCoast();};setInterval(pollCoast,1000);
 const testCard=document.createElement('section');testCard.id='setupTests';testCard.className='card settings-section';testCard.hidden=true;
 testCard.innerHTML='<div class="settings-content"><div id="setupReview"><h3>Выбранная конфигурация</h3><ul id="setupReviewList"></ul><p id="setupReviewProblems" role="status"></p></div><div id="setupMovementCheck"><h3>Проверка движения</h3><p>Удерживайте направление для короткой проверки. Отпускание и STOP прекращают управление. Во время калибровки ориентируйтесь на физическое положение антенны.</p><div class="setup-test-buttons"><button class="btn" type="button" data-setup-axis="0" data-direction="-1">AZ −</button><button class="btn" type="button" data-setup-axis="0" data-direction="1">AZ +</button><button class="btn el-setting" type="button" data-setup-axis="1" data-direction="-1">EL −</button><button class="btn el-setting" type="button" data-setup-axis="1" data-direction="1">EL +</button><button class="btn stop" id="setupStop" type="button">STOP</button></div><form id="setupTargetForm"><div class="field-action"><div class="field"><label for="setupTarget">Проверочный угол AZ, °</label><input id="setupTarget" type="number" step="0.1" required></div><button class="btn" type="submit">Проверить наведение</button></div></form><p id="setupTestResult" role="status"></p></div></div>';
 setupRoot.insertBefore(testCard,footer);
@@ -1966,7 +1999,7 @@ document.getElementById('setupStop').onclick=()=>{stopTest();setupRequest('/api/
 document.getElementById('setupTargetForm').onsubmit=async e=>{e.preventDefault();try{await setupRequest('/api/target',{az:document.getElementById('setupTarget').value,selection:window._forkState?.hudSelectionEpoch});document.getElementById('setupTestResult').textContent='Проверочная цель принята';}catch(e){document.getElementById('setupTestResult').textContent=e.message;}};
 window.addEventListener('blur',stopTest);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopTest();});
 document.getElementById('protocolDefaults').onclick=async()=>{for(const name of ['n1mmManualFollow','gs232ManualFollow','rotctldManualFollow'])sharedForm.elements[name].value='true';sharedForm.elements.pstManualFollow.value='false';sharedForm.dataset.dirty='1';if(await forkPost('/api/mode',{mode:'manual'})&&!wizard.active)sharedForm.requestSubmit();if(wizard.active)renderSetup();};
-for(const selector of ['#setupNameForm button[type=submit]','#networkIpForm .form-actions','#hudConfig > .form-actions','#forkSettings > .form-actions','#programSettings button[type=submit]','#azRangeForm .form-actions','#elRangeForm .form-actions','#controlFrequencyForm .form-actions','#presetEditor .form-actions','#wifiSaveButton','#apSaveButton'])for(const el of document.querySelectorAll(selector))el.dataset.setupSave='1';
+for(const selector of ['#setupNameForm button[type=submit]','#networkIpForm .form-actions','#hudConfig > .form-actions','#forkSettings > .form-actions','#programSettings button[type=submit]','#controlFrequencyForm .form-actions','#presetEditor .form-actions','#wifiSaveButton','#apSaveButton'])for(const el of document.querySelectorAll(selector))el.dataset.setupSave='1';
 for(const id of ['wifiSaveButton','apSaveButton'])document.getElementById(id).parentElement.dataset.setupSave='1';
 for(const id of ['ssid','pass','appass'])document.getElementById(id).addEventListener('input',e=>e.target.dataset.dirty='1');
 document.getElementById('presetEditor').addEventListener('input',e=>e.currentTarget.dataset.dirty='1');
@@ -1997,13 +2030,14 @@ window.fetch=async(input,options={})=>{
  }
  return originalFetch(input,options);
 };
-async function setupRequest(path,body){const options=body?{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(Object.entries(body).filter(([,v])=>v!==undefined))}:{cache:'no-store'};const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);try{const response=body?await fetch(path,{...options,signal:controller.signal}):await background.read('setup:'+path,path,'reply',path==='/api/network'&&networkConfigVisible()?networkConfigVisible:()=>true);const result=await response.json();if(result.error==='recovery_only'){location.replace('/recovery');throw new Error('Устройство в режиме восстановления.');}if(!response.ok||result.ok===false)throw new Error(({setup_step_not_ready:'Завершите настройку и проверку текущего шага.',stale_setup:'Настройки изменились. Обновляем этап.',setup_lease_expired:'Сессия настройки изменилась. Обновляем состояние.',setup_test_expired:'Проверка остановлена из-за задержки связи. Запустите её повторно.',not_calibrated:'Сначала откалибруйте ось.',unavailable:'Проверьте готовность, калибровку и ошибки оси.',invalid:'Проверьте значения и свободный ход.',invalid_address:'Укажите допустимый адрес узла в своей подсети.',invalid_dns:'Проверьте адрес DNS.',invalid_network_choice:'Выберите поддерживаемое сетевое подключение.',invalid_ipv4:'Проверьте запись IPv4-адреса.',invalid_netmask:'Проверьте маску подсети.',invalid_gateway:'Шлюз должен находиться в той же подсети.',network_storage_failed:'Не удалось сохранить сеть.',storage_failed:'Не удалось записать настройки. Повторите сохранение.',setup_storage_failed:'Не удалось записать этап настройки.',invalid_range:'Проверьте начало и полный ход оси.',invalid_or_port_conflict:'Проверьте режим связи и конфликты портов.'})[result.error||result.result]||result.error||result.result||'Ошибка запроса');return result;}finally{clearTimeout(timeout);}}
+async function setupRequest(path,body,textReply=false){const options=body?{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(Object.entries(body).filter(([,v])=>v!==undefined))}:{cache:'no-store'};const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);const parent=body&&!setupMotionPath(path)?wizard.actionAbort?.signal:null,abort=()=>controller.abort();if(parent?.aborted)abort();parent?.addEventListener('abort',abort,{once:true});try{const response=body?await fetch(path,{...options,signal:controller.signal}):await background.read('setup:'+path,path,'reply',path==='/api/network'&&networkConfigVisible()?networkConfigVisible:()=>true);if(textReply){const text=await response.text();if(!response.ok)throw new Error(text||'Не удалось сохранить настройки сети.');return {ok:true};}const result=await response.json();if(result.error==='recovery_only'){location.replace('/recovery');throw new Error('Устройство в режиме восстановления.');}if(!response.ok||result.ok===false)throw new Error(({setup_step_not_ready:'Завершите настройку и проверку текущего шага.',stale_setup:'Настройки изменились. Обновляем этап.',setup_lease_expired:'Сессия настройки изменилась. Обновляем состояние.',setup_test_expired:'Проверка остановлена из-за задержки связи. Запустите её повторно.',not_calibrated:'Сначала откалибруйте ось.',unavailable:'Проверьте готовность, калибровку и ошибки оси.',invalid:'Проверьте значения и свободный ход.',invalid_address:'Укажите допустимый адрес узла в своей подсети.',invalid_dns:'Проверьте адрес DNS.',invalid_network_choice:'Выберите поддерживаемое сетевое подключение.',invalid_ipv4:'Проверьте запись IPv4-адреса.',invalid_netmask:'Проверьте маску подсети.',invalid_gateway:'Шлюз должен находиться в той же подсети.',network_not_verified:'Откройте устройство по новому адресу и подтвердите подключение после перезапуска.',network_rollback_failed:'Не удалось вернуть сеть. Сервисная точка доступа остаётся включённой; откройте восстановление.',no_network_trial:'Настройки сети уже подтверждены или отменены. Обновите страницу.',network_storage_failed:'Не удалось сохранить сеть.',storage_failed:'Не удалось записать настройки. Повторите сохранение.',setup_storage_failed:'Не удалось записать этап настройки.',invalid_range:'Проверьте начало и полный ход оси.',invalid_or_port_conflict:'Проверьте режим связи и конфликты портов.'})[result.error||result.result]||result.error||result.result||'Ошибка запроса');return result;}catch(e){throw new Error(setupError(e));}finally{clearTimeout(timeout);parent?.removeEventListener('abort',abort);}}
+function setupError(e){return e.name==='AbortError'?'Ответ не получен за 10 секунд. Проверьте связь и сохранённые параметры перед повтором.':e instanceof TypeError?'Связь с устройством прервана. Восстановите подключение и проверьте сохранённые параметры.':e.message;}
 let networkConfigRequest=null;
 function loadNetworkConfig(){
  if(!networkConfigRequest)networkConfigRequest=readNetworkConfig().finally(()=>networkConfigRequest=null);
  return networkConfigRequest;
 }
-async function readNetworkConfig(){try{const n=await setupRequest('/api/network');wizard.network=n;const message=document.getElementById('networkLinkStatus');message.textContent=n.choice===4?(!n.ethLink?'Подключите Ethernet-кабель.':n.ethConnected?'ETH: '+n.ethIp:'Ожидаем IP-адрес Ethernet.'):n.choice===1||n.choice===2?'AP: '+n.apIp:n.connected?'STA: '+n.staIp:n.wifiConnecting?'Подключаемся к Wi-Fi…':({1:'Сеть Wi-Fi не найдена. Проверьте SSID и доступность точки доступа.',4:'Не удалось подключиться к Wi-Fi. Проверьте пароль и параметры точки доступа.',5:'Связь с Wi-Fi потеряна.'}[n.wifiStatus]||'Wi-Fi не подключён. Проверьте SSID и пароль; сервисная AP доступна.');if(!ipForm.dataset.dirty){ipForm.elements.choice.value=String(n.choice??0);ipForm.elements.choice.options[4].disabled=!n.ethernetSupported;for(const prefix of ['wifi','eth']){const c=n[prefix]||{mode:'dhcp'};ipForm.elements[prefix+'Mode'].value=c.mode;for(const field of ['Address','Mask','Gateway','Dns1','Dns2'])ipForm.elements[prefix+field].value=c[field[0].toLowerCase()+field.slice(1)]||'';ipForm.elements[prefix+'Mode'].onchange();}document.getElementById('ethIpSettings').hidden=!n.ethernetSupported;}return n;}catch(e){document.getElementById('networkIpMessage').textContent=e.message;}}
+async function readNetworkConfig(){try{const n=await setupRequest('/api/network');wizard.network=n;renderNetworkTrial(n);const message=document.getElementById('networkLinkStatus');message.textContent=n.choice===4?(!n.ethLink?'Подключите Ethernet-кабель.':n.ethConnected?'ETH: '+n.ethIp:'Ожидаем IP-адрес Ethernet.'):n.choice===1||n.choice===2?'AP: '+n.apIp:n.connected?'STA: '+n.staIp:n.wifiConnecting?'Подключаемся к Wi-Fi…':({1:'Сеть Wi-Fi не найдена. Проверьте SSID и доступность точки доступа.',4:'Не удалось подключиться к Wi-Fi. Проверьте пароль и параметры точки доступа.',5:'Связь с Wi-Fi потеряна.'}[n.wifiStatus]||'Wi-Fi не подключён. Проверьте SSID и пароль; сервисная AP доступна.');if(!ipForm.dataset.dirty){ipForm.elements.choice.value=String(n.choice??0);ipForm.elements.choice.options[4].disabled=!n.ethernetSupported;for(const prefix of ['wifi','eth']){const c=n[prefix]||{mode:'dhcp'};ipForm.elements[prefix+'Mode'].value=c.mode;for(const field of ['Address','Mask','Gateway','Dns1','Dns2'])ipForm.elements[prefix+field].value=c[field[0].toLowerCase()+field.slice(1)]||'';ipForm.elements[prefix+'Mode'].onchange();}document.getElementById('ethIpSettings').hidden=!n.ethernetSupported;}return n;}catch(e){document.getElementById('networkIpMessage').textContent=e.message;}}
 function renderSetupSummary(state,j){
  const hud=state.role==='hud',axes=(j.axes||[]).slice(0,j.model!=='G5500'?1:2);
  const axisText=state.manualOnly?'Датчик положения не подключён; доступны ручные направления.':axes.map((a,i)=>(i?'EL':'AZ')+': '+(a.calibrated?'калибровка есть':'нет калибровки')+(a.motionError&&a.motionError!=='none'?' · '+a.motionError:'')).join('; ');
@@ -2021,9 +2055,10 @@ function renderSetupSummary(state,j){
  if(!hud&&!state.manualOnly)for(const [i,a] of axes.entries())lines.push((i?'EL':'AZ')+': '+(a.speedEnabled?'регулируемая скорость':'фиксированная скорость; упреждение '+(j[i?'elCoastDegrees':'azCoastDegrees']??0)+'°'));
  lines.push('Режим: '+(j.controlMode==='manual'?'ручной':'автоматический')+'; порты N1MM '+j.n1mmPort+', PstRotator '+j.pstPort+', команды '+j.commandPort);
  const list=document.getElementById('setupReviewList');list.replaceChildren(...lines.filter(Boolean).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
- const issues=[];if(!state.storageOk)issues.push('Не удалось сохранить этап.');if(!state.equipment)issues.push('Оборудование не подтверждено.');if(j.fault)issues.push('Ошибка: '+j.fault+'.');if(hud&&!j.hudOnline)issues.push('Нет связи с выбранным контроллером.');if(!state.simulation&&!state.manualOnly&&axes.some(a=>!a.calibrated))issues.push('Не завершена калибровка углов.');if(!state.ready&&!issues.length)issues.push('Проверьте подключение сети, оборудование и настройку осей.');
+ const issues=[];if(!state.storageOk)issues.push('Не удалось сохранить этап.');if(!state.equipment)issues.push('Оборудование не подтверждено.');if(j.fault)issues.push('Ошибка: '+j.fault+'.');if(hud&&!j.hudOnline)issues.push('Нет связи с выбранным контроллером.');if(!state.simulation&&!state.manualOnly&&axes.some(a=>!a.calibrated))issues.push('Не завершена калибровка углов.');if(!state.ready)issues.push(setupProblems(state)||'Проверьте подключение сети, оборудование и настройку осей.');
  document.getElementById('setupReviewProblems').textContent=issues.length?issues.join(' '):hud?'Обязательные настройки готовы. Можно завершить настройку HUD.':'Обязательные настройки готовы. Выполните завершающие проверки и подтвердите результат.';
 }
+function setupProblems(state){const labels={network:'Сеть: подключитесь к выбранной сети и подтвердите новый адрес.',equipment:'Оборудование: примените настройки и дождитесь подтверждения запуска.',az_calibration:'AZ: запишите калибровку диапазона.',el_calibration:'EL: запишите калибровку диапазона.',az_tuning:'AZ: сохраните корректные параметры движения или измерьте выбег в обе стороны.',el_tuning:'EL: сохраните корректные параметры движения или измерьте выбег в обе стороны.',motion:'Остановите измерение/автотюн и сбросьте ошибки привода.',peer:'Выберите сохранённый контроллер на связи с готовой калибровкой.'};return (state.problems||[]).map(p=>labels[p]||p).join(' ');}
 function renderSetup(){
  const state=wizard.state,j=window._forkState||{};if(!state)return;renderSetupSummary(state,j);
  shell.hidden=footer.hidden=!wizard.active;document.body.classList.toggle('setup-view',wizard.active);window.setupCommissioning=wizard.active;
@@ -2037,17 +2072,17 @@ function renderSetup(){
  if(!wizard.active){testCard.hidden=true;return;}renderSetupDrive();
  selectTab('settings',false);document.body.dataset.setupStep=String(state.step);
  const ids={0:['networkStatus','networkSettings'],1:['hudPanel'],2:['rotorSettings'],3:['equipmentSettings'],4:['equipmentSettings'],5:['calibrationSettings','setupTests'],6:['motionSettings','setupTests'],7:['programSettings'],8:['peersSettings'],9:['presetSettings','setupTests']};
- for(const id of ids[state.step]||[]){const card=document.getElementById(id);card.classList.add('setup-visible');const details=card.querySelector(':scope > details');if(details)details.open=true;}
+ for(const id of ids[state.step]||[]){const card=document.getElementById(id);card.classList.add('setup-visible');const details=card.querySelector(':scope > details');if(details&&state.step!==9)details.open=true;}
  testCard.hidden=![5,6,9].includes(state.step);document.getElementById('setupMovementCheck').hidden=state.role==='hud';document.getElementById('setupTargetForm').hidden=state.step!==9;
  const sequence=state.role==='hud'?[0,1,3,4,8,7,9]:(state.simulation||state.manualOnly)?[0,1,2,3,4,7,9]:[0,1,2,3,4,5,6,7,9];
  document.getElementById('setupProgress').textContent='Шаг '+(sequence.indexOf(state.step)+1)+' из '+sequence.length+' · '+(state.role==='hud'?'HUD':'Контроллер');
  document.getElementById('setupTitle').textContent=setupTitles[state.step]||'Настройка завершена';document.getElementById('setupHint').textContent=state.role==='hud'&&state.step===3?'Настройте Bluetooth, местные органы управления и GPIO пульта. Тип дисплея определяется прошивкой. Нажмите «Далее» для применения оборудования, затем для подтверждения пробного запуска.':state.role==='hud'&&state.step===9?'Проверьте выбранного контроллера и итоговую конфигурацию. MQTT и предустановки необязательны. После завершения управление доступно на обычном экране HUD.':setupHints[state.step]||'';
  if([3,4].includes(state.step)){document.getElementById('equipmentDriveSummary').textContent=state.role==='hud'?'':'Выбранный привод: '+(state.simulation?'Имитация движения':['Штатный блок Yaesu','LEFT / RIGHT + SPEED_PWM','LEFT_PWM / RIGHT_PWM (+ ENABLE)','DIR + SPEED_PWM'][state.driveInterface??0]);}
- document.getElementById('setupBack').disabled=state.step===0||wizard.busy;document.getElementById('setupNext').disabled=wizard.busy||wizard.waiting||(!state.ready&&!setupUnsaved()&&!([3,4].includes(state.step)&&wizard.hardwareCanApply)&&!state.restartRequired);document.getElementById('setupReset').disabled=wizard.busy||wizard.waiting||!setupUnsaved();document.getElementById('setupPause').disabled=wizard.busy;
- document.getElementById('setupNext').textContent=state.step===9?'Завершить настройку':'Далее';
- document.getElementById('setupPause').textContent=state.motionAllowed?'Сохранить и перейти к управлению':'Сохранить и продолжить позже';
+ document.getElementById('setupReconnect').hidden=!wizard.waiting;document.getElementById('setupBack').disabled=state.step===0||wizard.busy||wizard.waiting;document.getElementById('setupNext').disabled=wizard.busy||wizard.waiting||(!state.ready&&!setupUnsaved()&&!([3,4].includes(state.step)&&wizard.hardwareCanApply)&&!state.restartRequired);document.getElementById('setupReset').disabled=wizard.busy||wizard.waiting||!setupUnsaved();document.getElementById('setupPause').disabled=wizard.busy||wizard.waiting;
+ document.getElementById('setupNext').textContent=state.step===9?'Завершить настройку':state.step===7&&!setupUnsaved()?'Пропустить':'Далее';
+ document.getElementById('setupPause').textContent='Сохранить и выйти';
  if(wizard.step!==state.step){wizard.step=state.step;wizard.error='';document.getElementById('setupTitle').focus({preventScroll:true});document.querySelector('.wrap').scrollTop=0;if(state.step===5){loadAzCalibration();loadElCalibration();}if(state.step===6)loadMotionSettings();}
- if(!wizard.busy)setupMessage(wizard.error||(!state.storageOk?'Не удалось сохранить шаг мастера. Устройство продолжает работать.':'')||([3,4].includes(state.step)&&!wizard.hardwareCanApply&&wizard.hardwareError)||(wizard.waiting?'Параметры сохранены. Устройство перезапускается; мастер продолжится после подключения.':setupUnsaved()?'«Далее» сохранит изменения этого шага. «Вернуть к исходному» отменит несохранённый ввод.':!state.ready?(state.step===0?'Ожидаем выбранное сетевое подключение.':state.step===3?'Нажмите «Далее» для применения или подтверждения оборудования.':state.step===8?'Сохраните и выберите доступный откалиброванный контроллер.':'Проверьте готовность оборудования и калибровку.') : ''));
+ if(!wizard.busy)setupMessage(wizard.error||(!state.storageOk?'Не удалось сохранить шаг мастера. Устройство продолжает работать.':'')||([3,4].includes(state.step)&&!wizard.hardwareCanApply&&wizard.hardwareError)||(wizard.waiting?(Date.now()-(wizard.waitingSince||0)>15000?'Перезапуск занимает больше времени. Проверьте подключение или откройте восстановление.':'Параметры сохранены. Ожидаем перезапуска; выход доступен внизу.'):setupUnsaved()?'«Далее» сохранит изменения этого шага. «Отменить ввод» отменит несохранённый ввод.':!state.ready?(state.step===0?'Ожидаем выбранное сетевое подключение.':state.step===3?'Нажмите «Далее» для применения или подтверждения оборудования.':state.step===8?'Сохраните и выберите доступный откалиброванный контроллер.':setupProblems(state)||'Проверьте готовность оборудования и калибровку.') : ''));
 }
 function setupForms(){const step=wizard.state?.step;return (step===0?['networkIpForm']:step===1?['setupNameForm','hudConfig']:step===2?['forkSettings','setupDriveForm']:step===3||step===4||step===7?['forkSettings']:step===5?['azRangeForm','elRangeForm']:step===6?['forkSettings','azMotionForm','elMotionForm','controlFrequencyForm']:step===9?['presetEditor',...(featureAvailable('mqtt')?['mqttForm']:[])]:[]).map(id=>document.getElementById(id)).filter(Boolean);}
 function setupUnsaved(){return setupForms().some(f=>!!f.dataset.dirty)||(wizard.state?.step===0&&['ssid','pass','appass'].some(id=>!!document.getElementById(id).dataset.dirty))||([3,4].includes(wizard.state?.step)&&wizard.hardwareDirty);}
@@ -2057,17 +2092,18 @@ function clearSavedSetupDraft(el,revision){if(setupDraftRevision(el)!==revision)
 setupRoot.addEventListener('input',event=>{for(const el of [event.target,event.target.form])if(el)el.dataset.editRevision=String(setupDraftRevision(el)+1);if(wizard.active){wizard.error='';renderSetup();}});
 function hardwareCall(action){return new Promise((resolve,reject)=>{const id=++wizard.hardwareRpc,timer=setTimeout(()=>{wizard.hardwarePending.delete(id);reject(new Error('Нет ответа от страницы оборудования. Проверьте связь.'));},12000);wizard.hardwarePending.set(id,{resolve,reject,timer});document.getElementById('equipmentFrame').contentWindow.postMessage({type:'hardwareAction',action,id,needsConfirmation:!wizard.state.equipment,setupToken:wizard.state.token},location.origin);});}
 async function saveSetupCurrent(){
- const step=wizard.state.step;
+ const step=wizard.state.step,epoch=wizard.actionEpoch;
+ const req=async(...args)=>{if(epoch!==wizard.actionEpoch)throw new Error('Выход из мастера');const value=await setupRequest(...args);if(epoch!==wizard.actionEpoch)throw new Error('Выход из мастера');return value;};
  for(const f of setupForms())if(f.dataset.dirty)for(const el of f.elements)if(el.getClientRects().length&&!el.disabled&&el.reportValidity&&!el.reportValidity())throw new Error('Проверьте выделенное поле.');
  if(step===0){for(const id of ['ssid','pass','appass']){const el=document.getElementById(id);if(el.dataset.dirty&&!el.reportValidity())throw new Error('Проверьте параметры сети.');}}
  if([3,4].includes(step))await hardwareCall('validate');
- await setupRequest('/api/setup',{action:'begin_save'});
- const save=async(f,path,body)=>{const revision=f&&setupDraftRevision(f);await setupRequest(path,body);if(f)clearSavedSetupDraft(f,revision);};
+ await req('/api/setup',{action:'begin_save'});
+ const save=async(f,path,body)=>{const revision=f&&setupDraftRevision(f);await req(path,body);if(f)clearSavedSetupDraft(f,revision);};
  if(step===0){
   if(ipForm.dataset.dirty)await save(ipForm,'/api/network',networkDraft());
   for(const [path,ids] of [['/api/wifi',['ssid','pass']],['/api/ap',['appass']]])if(ids.some(id=>document.getElementById(id).dataset.dirty)){
    const revisions=ids.map(id=>setupDraftRevision(document.getElementById(id))),body=path==='/api/wifi'?{ssid:ssid.value,pass:pass.value}:{pass:appass.value};
-   const response=await fetch(path,{method:'POST',body:new URLSearchParams(body)});if(!response.ok)throw new Error(await response.text());
+   await req(path,body,true);
    ids.forEach((id,i)=>clearSavedSetupDraft(document.getElementById(id),revisions[i]));
   }
  }
@@ -2081,7 +2117,7 @@ async function saveSetupCurrent(){
   if(step===2){for(const key of Object.keys(body))if(key!=='model'&&(key!=='speedEnabled'||window._forkState?.build?.drive!=='YAESU'||sharedForm.elements.model.value==='G5500'))delete body[key];}
   if(Object.keys(body).length)await save(sharedForm,'/api/settings',body);else delete sharedForm.dataset.dirty;
  }
- if(step===2){wizard.state=await setupRequest('/api/setup');const revision=setupDraftRevision(driveForm);wizard.state=await setupRequest('/api/setup',{action:'drive',generation:wizard.state.generation,driveInterface:driveForm.elements.driveInterface.value,simulation:driveForm.elements.simulation.value});clearSavedSetupDraft(driveForm,revision);}
+ if(step===2){wizard.state=await req('/api/setup');const revision=setupDraftRevision(driveForm);wizard.state=await req('/api/setup',{action:'drive',generation:wizard.state.generation,driveInterface:driveForm.elements.driveInterface.value,simulation:driveForm.elements.simulation.value});clearSavedSetupDraft(driveForm,revision);}
  if([3,4].includes(step))await hardwareCall('save');
  if(step===5)for(const axis of ['az','el']){const f=document.getElementById(axis+'RangeForm');if(f.dataset.dirty)await save(f,'/api/'+axis+'range',{profile:'custom',start:f.elements.start.value,span:f.elements.span.value});}
  if(step===6){
@@ -2090,7 +2126,7 @@ async function saveSetupCurrent(){
   for(const axis of ['az','el']){const f=document.getElementById(axis+'MotionForm');if(!f.dataset.dirty)continue;const body=Object.fromEntries(new FormData(f));for(const key of ['KickEnabled','HoldEnabled'])body[axis+'Motion'+key]=f.dataset.variable==='false'?'false':String(f.elements[axis+'Motion'+key].checked);if(body[axis+'RegulatorMode']==='simple')body[axis+'MotionHoldEnabled']='false';await save(f,'/api/settings',body);}
  }
  if(step===9){const f=document.getElementById('presetEditor');if(f.dataset.dirty)await save(f,'/api/preset',Object.fromEntries(new FormData(f)));if(featureAvailable('mqtt')&&document.getElementById('mqttForm').dataset.dirty)await storeMqtt();}
- wizard.state=await setupRequest('/api/setup',{action:'end_save'});
+ wizard.state=await req('/api/setup',{action:'end_save'});
  if(setupUnsaved())throw new Error('Во время сохранения появились новые изменения. Сохраните их перед переходом дальше.');
 }
 async function resetSetupDraft(){if(wizard.busy)return;wizard.busy=true;stopTest();try{
@@ -2103,24 +2139,35 @@ async function resetSetupDraft(){if(wizard.busy)return;wizard.busy=true;stopTest
  if(wizard.state.step===9){fillPreset();if(featureAvailable('mqtt'))await loadMqtt(true);}
  wizard.error='';
  }catch(e){wizard.error=e.message;}finally{wizard.busy=false;renderSetup();}}
-async function setupAction(action){if(wizard.busy||wizard.waiting)return;wizard.busy=true;wizard.error='';stopTest();renderSetup();setupMessage('Сохраняем параметры шага…');try{
+async function setupAction(action){if(wizard.busy||wizard.waiting)return;const epoch=++wizard.actionEpoch;wizard.actionAbort=new AbortController();wizard.busy=true;wizard.error='';stopTest();renderSetup();setupMessage('Сохраняем параметры шага…');try{
  if(['advance','complete','pause'].includes(action))await saveSetupCurrent();
- if(wizard.state.restartRequired&&action!=='pause'&&action!=='complete'){wizard.state=await setupRequest('/api/setup',{action:'apply'});wizard.waiting=true;wizard.restartToken=wizard.state.token;return;}
+ if(epoch!==wizard.actionEpoch)return;
+ if(wizard.state.restartRequired&&action!=='pause'&&action!=='complete'){wizard.state=await setupRequest('/api/setup',{action:'apply'});wizard.waiting=true;wizard.waitingSince=Date.now();wizard.restartToken=wizard.state.token;return;}
  const s=await setupRequest('/api/setup',{action,generation:wizard.state?.generation});wizard.state=s;
- if(action==='pause'||!s.required){wizard.active=false;location.href='/#settings';return;}
- }catch(e){wizard.error=e.message;settingsFeedback(e.message);try{await setupRequest('/api/setup',{action:'end_save'});}catch(_){} }
- finally{wizard.busy=false;renderSetup();}}
+ if(action==='pause'||!s.required){wizard.active=false;location.href='/#control';return;}
+ }catch(e){if(epoch!==wizard.actionEpoch)return;wizard.error=e.message;settingsFeedback(e.message);try{await setupRequest('/api/setup',{action:'end_save'});}catch(_){} }
+ finally{if(epoch===wizard.actionEpoch){wizard.actionAbort=null;wizard.busy=false;renderSetup();}}}
+async function exitSetup(){
+ if(setupUnsaved()&&!confirm('Выйти без сохранения введённых изменений? Уже применённые настройки сохранятся.'))return;
+ const pauseToken=wizard.state?.token;
+ ++wizard.actionEpoch;wizard.actionAbort?.abort();wizard.actionAbort=null;wizard.active=false;wizard.busy=false;wizard.waiting=false;stopTest();
+ for(const pending of wizard.hardwarePending.values()){clearTimeout(pending.timer);pending.reject(new Error('Выход из мастера'));}wizard.hardwarePending.clear();
+ for(const f of setupForms())delete f.dataset.dirty;for(const id of ['ssid','pass','appass']){delete document.getElementById(id).dataset.dirty;if(id!=='ssid')document.getElementById(id).value='';}
+ history.replaceState(null,'','/?setup=skip#control');renderSetup();selectTab('control',false);
+ try{await setupRequest('/api/setup',{action:'pause',setupToken:pauseToken});}catch(e){document.getElementById('forkMessage').textContent='Мастер закрыт. Не удалось сохранить место остановки: '+e.message;}
+}
+document.getElementById('setupExit').onclick=exitSetup;
 document.getElementById('setupReset').onclick=resetSetupDraft;document.getElementById('setupBack').onclick=()=>setupAction('back');document.getElementById('setupNext').onclick=()=>setupAction(wizard.state.step===9?'complete':'advance');document.getElementById('setupPause').onclick=()=>setupAction('pause');
 // Enter in an ordinary settings form uses the same save-and-continue path.
-setupRoot.addEventListener('submit',event=>{if(!wizard.active)return;if(setupForms().includes(event.target)){event.preventDefault();event.stopImmediatePropagation();setupAction(wizard.state.step===9?'complete':'advance');}},true);
-async function pollSetup(){if(wizard.polling||wizard.busy||wizard.arming||wizard.renewing||wizard.loaded&&document.hidden)return;wizard.polling=true;const revision=wizard.sessionRevision||0;try{const s=await setupRequest('/api/setup');if(wizard.busy||wizard.arming||revision!==(wizard.sessionRevision||0))return;if(!wizard.loaded){wizard.loaded=true;wizard.state=s;if(location.pathname==='/setup'||s.required&&!s.paused){wizard.active=true;wizard.state=await setupRequest('/api/setup',{action:s.required?'resume':'start'});}}else{s.testToken=wizard.state?.token===s.token&&wizard.state?.testToken===s.testToken?s.testToken:0;wizard.state=s;if(wizard.waiting&&s.token!==wizard.restartToken){wizard.waiting=false;const frame=document.getElementById('equipmentFrame');if(frame.src)frame.src='/hardware?setup=1';}if(wizard.active&&s.required&&!s.paused&&!s.token)wizard.state=await setupRequest('/api/setup',{action:'resume'});}renderSetup();if(!ipForm.dataset.dirty&&(!wizard.network||wizard.active&&s.step===0||networkConfigVisible()))await loadNetworkConfig();if(wizard.active&&s.step===6)renderCoast(await setupRequest('/api/motion/coast'));}catch(e){if(wizard.active)setupMessage('Связь прервана. Переподключитесь к устройству; этап сохранён.');}finally{wizard.polling=false;}}
+setupRoot.addEventListener('submit',event=>{if(!wizard.active)return;if(setupForms().includes(event.target)&&!['azRangeForm','elRangeForm'].includes(event.target.id)){event.preventDefault();event.stopImmediatePropagation();setupAction(wizard.state.step===9?'complete':'advance');}},true);
+async function pollSetup(){if(wizard.polling||wizard.busy||wizard.arming||wizard.renewing||wizard.loaded&&document.hidden)return;wizard.polling=true;const revision=wizard.sessionRevision||0;try{const s=await setupRequest('/api/setup');if(wizard.busy||wizard.arming||revision!==(wizard.sessionRevision||0))return;if(!wizard.loaded){wizard.loaded=true;wizard.state=s;if(location.pathname==='/setup'||s.required&&!s.paused&&new URLSearchParams(location.search).get('setup')!=='skip'){wizard.active=true;wizard.state=await setupRequest('/api/setup',{action:s.required?'resume':'start'});}}else{s.testToken=wizard.state?.token===s.token&&wizard.state?.testToken===s.testToken?s.testToken:0;wizard.state=s;if(wizard.waiting&&s.token!==wizard.restartToken){wizard.waiting=false;const frame=document.getElementById('equipmentFrame');if(frame.src)frame.src='/hardware?setup=1';}if(wizard.active&&s.required&&!s.paused&&!s.token)wizard.state=await setupRequest('/api/setup',{action:'resume'});}renderSetup();if(!ipForm.dataset.dirty&&(!wizard.network||wizard.active&&s.step===0||networkConfigVisible()))await loadNetworkConfig();}catch(e){if(wizard.active)setupMessage('Связь прервана. Переподключитесь к устройству; этап сохранён.');}finally{wizard.polling=false;}}
 function networkConfigVisible(){return !document.hidden&&!setupRoot.hidden&&document.querySelector('#networkSettings > details').open;}
 function pollSetupBackground(){
  if(document.hidden||wizard.busy||wizard.arming||wizard.renewing)return;
  // Ordinary control uses live telemetry and the occasional full status. Only
  // an open wizard needs its own short-period HTTP state poll.
  if(!wizard.loaded||wizard.active)return pollSetup();
- if(networkConfigVisible()&&!ipForm.dataset.dirty)return loadNetworkConfig();
+ if(wizard.network?.trial||networkConfigVisible()&&!ipForm.dataset.dirty)return loadNetworkConfig();
 }
 async function renewSetupTest(){
  const session=wizard.state?.token,testToken=wizard.state?.testToken;
@@ -2139,7 +2186,7 @@ let mqttLoaded=false,mqttLoading=null;
 function featureAvailable(name){return window._forkState?.build?.features?.[name]!==false;}
 function renderMqttSettings(){
  const setup=!!window.setupCommissioning,parent=setup?document.getElementById('setupReview'):mqttAnchor.parentNode;
- if(mqttPanel.parentNode!==parent){if(setup)parent.append(mqttPanel);else mqttAnchor.after(mqttPanel);}
+ if((setup?mqttPanel.parentNode?.parentNode:mqttPanel.parentNode)!==parent){if(setup){let details=parent.querySelector('#optionalMqtt');if(!details){details=document.createElement('details');details.id='optionalMqtt';details.innerHTML='<summary>MQTT и Home Assistant · необязательно</summary>';parent.append(details);}details.append(mqttPanel);}else mqttAnchor.after(mqttPanel);}
  const shown=featureAvailable('mqtt')&&(!setup||wizard.state?.step===9);mqttPanel.hidden=!shown;
  if(shown&&(setup||document.querySelector('#networkSettings > details').open))loadMqtt();
 }
