@@ -49,9 +49,9 @@ void onePass() {
   c.stop(); CHECK(c.mode==Mode::Auto);
   c.target({180,120,true,true},false,800); c.tick(800);
   CHECK(c.axes[0].tracking && c.axes[1].tracking);
-  c.setMaximum(360); c.tick(820);
+  c.setRange({0,360},AZ_P36,800); c.tick(820);
   CHECK(!c.axes[0].direction && c.axes[1].tracking && c.axes[1].direction==1);
-  c.setMaximum(360); c.tick(840); CHECK(c.axes[1].direction==1);
+  c.setRange({0,360},AZ_P36,820); c.tick(840); CHECK(c.axes[1].direction==1);
   c.feedback(100,50,true,false); c.tick(860);
   CHECK(!c.axes[1].tracking && !c.axes[1].direction);
 }
@@ -86,7 +86,7 @@ void filters() {
   CHECK(h.filteredMv(0)==1200); CHECK(fakeHardware.readsMv==MotionAdcSamples);
   fakeHardware.millivolts[PIN_AZ_ADC]=3000;
   fakeHardware.now=MotionControlPeriodMs-1; CHECK(h.filteredMv(0)==1200); CHECK(fakeHardware.readsMv==MotionAdcSamples);
-  int raw=0,mv=0; h.adcDiagRead(PIN_AZ_ADC,raw,mv); CHECK(raw==3000 && mv==3000); CHECK(fakeHardware.readsRaw==25 && fakeHardware.readsMv==MotionAdcSamples+25);
+  int raw=0,mv=0; CHECK(!h.adcDiagRead(PIN_AZ_ADC,raw,mv)); CHECK(raw==-1 && mv==-1); CHECK(fakeHardware.readsRaw==0 && fakeHardware.readsMv==MotionAdcSamples);
   fakeHardware.now=20; h.filteredMv(0);
   for (unsigned t : {40u,60u,80u}) { fakeHardware.now=t; fakeHardware.millivolts[PIN_AZ_ADC]=1200; h.filteredMv(0); }
   fakeHardware.now=100; fakeHardware.millivolts[PIN_AZ_ADC]=3000; CHECK(h.filteredMv(0)==1200);

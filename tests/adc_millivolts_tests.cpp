@@ -25,7 +25,9 @@ int main() {
     fakeHardware.now+=100;fakeAdc.convertOk=false;
     hardware.filteredMv(0);
     assert(!hardware.positionValid(0) && hardware.sampledAt(0)==sampled);
-    int raw,mv;hardware.adcDiagRead(az,raw,mv);assert(raw==-1 && mv==-1);
+    int raw,mv;assert(!hardware.adcDiagRead(az,raw,mv) && raw==-1 && mv==-1);
+    hardware.positionValue(0);
+    assert(hardware.adcDiagRead(az,raw,mv) && raw==-1 && mv==-1);
     config.sensors[6]=1;runtime.controller.configureHardware(config);
     hardware.positionDiagRead(0,raw,mv);assert(raw==-1 && mv==-1);
     assert(fakeAdc.creates==1 && fakeAdc.live==1);

@@ -43,20 +43,18 @@ public:
   int adcAvgMv(int pin);
   int positionValue(unsigned axis);
   bool positionValid(unsigned axis) const { return positionValid_[axis]; }
-  void positionDiagRead(unsigned axis,int &raw,int &value,int *millivolts=nullptr);
+  bool positionDiagRead(unsigned axis,int &raw,int &value,int *millivolts=nullptr);
   int filteredMv(unsigned axis);
   uint32_t sampledAt(unsigned axis) const { return filters_[axis].sampledAt(); }
   uint32_t sampleMaxIntervalMs(unsigned axis) const { return filters_[axis].maxIntervalMs(); }
   uint32_t sampleCount(unsigned axis) const { return filters_[axis].conversions(); }
   bool buttonReleased() const;
-  void adcDiagRead(int pin, int &raw, int &mv);
+  bool adcDiagRead(int pin, int &raw, int &mv);
   void rgbSet(uint8_t r, uint8_t g, uint8_t b);
   void flashRx();
   void flashTx();
   void updateRgb();
-  void stopAzimuth();
   void allStop();
-  void moveDir(char d);
   String motion();
   void controlRotator();
   void applyOutputs();
@@ -82,6 +80,25 @@ private:
   PositionFilter filters_[2];
   PositionSensors sensors_;
   AdcMillivolts adc_;
+  struct AdcDiagnostic {
+    static constexpr uint32_t MaxAgeMs = 2000;
+    uint32_t requestedAt = 0, sampledAt = 0, rawSum = 0, mvSum = 0;
+    int raw = -1, mv = -1;
+    uint8_t count = 0;
+    bool requested = false, ready = false;
+    bool active(uint32_t now) const { return requested && uint32_t(now-requestedAt)<MaxAgeMs; }
+    void sample(int rawValue, int millivolts, uint32_t now) {
+      if (rawValue < 0 || millivolts < 0) {
+        raw = mv = -1; rawSum = mvSum = count = 0; sampledAt = now; ready = true; requested = false;
+      } else {
+        rawSum += unsigned(rawValue); mvSum += unsigned(millivolts);
+        if (++count == 25) {
+          raw = int(rawSum/25); mv = int(mvSum/25);
+          rawSum = mvSum = count = 0; sampledAt = now; ready = true; requested = false;
+        }
+      }
+    }
+  } adcDiagnostics_[2];
   bool positionValid_[2]{};
   uint32_t positionAttemptAt_[2]{};
   bool positionAttempted_[2]{};

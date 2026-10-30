@@ -3,9 +3,10 @@
 #include <cstdint>
 inline constexpr int MALLOC_CAP_INTERNAL=1, MALLOC_CAP_8BIT=2;
 inline size_t fakeHeapFree=32768, fakeHeapBlock=16384;
-inline size_t heap_caps_get_free_size(int) { return fakeHeapFree; }
+inline unsigned fakeHeapFreeReads=0, fakeHeapBlockReads=0;
+inline size_t heap_caps_get_free_size(int) { ++fakeHeapFreeReads; return fakeHeapFree; }
 inline size_t heap_caps_get_minimum_free_size(int) { return fakeHeapFree; }
-inline size_t heap_caps_get_largest_free_block(int) { return fakeHeapBlock; }
+inline size_t heap_caps_get_largest_free_block(int) { ++fakeHeapBlockReads; return fakeHeapBlock; }
 inline constexpr int ESP_OK = 0;
 using esp_alloc_failed_hook_t = void (*)(size_t, uint32_t, const char *);
 inline esp_alloc_failed_hook_t fakeAllocFailureHook = nullptr;

@@ -44,7 +44,7 @@ int main() {
   hw.applyOutputs();
   hw.controlRotator();
   hw.allStop();
-  hw.moveDir('R');
+  hud.controller.jog(0,1,false,millis()); hw.controlRotator();
   hud.controller.axes[0].current = 100;
   hud.controller.axes[0].direction = 1;
   hud.controller.axes[0].wanted = 1;

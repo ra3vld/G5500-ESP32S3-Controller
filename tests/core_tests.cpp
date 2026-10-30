@@ -30,7 +30,7 @@ int main(){try{
  CHECK(c.target(c.lastTarget,false,4)==Result::Ok);c.tick(304);CHECK(c.moving());
  c.feedback(170,30,true,true);c.tick(305);CHECK(!c.moving());CHECK(c.lastTarget.az==170);
  CHECK(c.target({600,0,true,false},false,306)==Result::Invalid);CHECK(c.lastTarget.az==170);
- c.setMaximum(360);CHECK(!c.lastTarget.hasAz);
+ c.setRange({0,360},AZ_P36,0);CHECK(!c.lastTarget.hasAz);
  c.target({90,45,true,true},false,307);c.setModel(Model::G800DXA);
  CHECK(!c.lastTarget.hasAz&&!c.lastTarget.hasEl);}
  {auto c=ready();Protocol p(c);Settings cfg;
@@ -109,7 +109,7 @@ int main(){try{
  {auto c=ready();c.jog(0,1,true,0);c.tick(0);c.jog(0,-1,true,10);c.tick(10);CHECK(c.axes[0].direction==0);c.tick(309);CHECK(c.axes[0].direction==0);c.tick(310);CHECK(c.axes[0].direction==-1);
  c.feedback(0,30,true,true);c.tick(311);CHECK(c.axes[0].direction==0);}
  {auto c=ready();CHECK(c.target({NAN,0,true,false},true,0)==Result::Invalid);CHECK(c.target({451,0,true,false},true,0)==Result::Invalid);
- c.setMaximum(360);CHECK(c.target({450,0,true,false},true,0)==Result::Invalid);CHECK(c.valid(c.presets[3].target));}
+ c.setRange({0,360},AZ_P36,0);CHECK(c.target({450,0,true,false},true,0)==Result::Invalid);CHECK(c.valid(c.presets[3].target));}
  {auto c=ready();Protocol p(c);CHECK(p.datagram(n1(180),0).result==Result::Pending);CHECK(c.pending.az==180);
  CHECK(p.datagram(n1(90,"OTHER"),1).result==Result::Ignored);CHECK(c.pending.az==180);
  CHECK(p.datagram(n1(90,"OTHER, G5500"),2).result==Result::Pending);CHECK(c.pending.az==90);

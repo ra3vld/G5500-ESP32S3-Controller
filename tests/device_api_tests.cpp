@@ -170,8 +170,11 @@ static void activityConfirmationTests() {
     fakeHeapBlock=MemoryGuard::HealthyBlock-1;
     assert(f.api.serviceHardwareConfirmation(fakeHardware.now)&&r.hardwareTrial);
     fakeHeapBlock=16384;
+    const auto heap=captureHeapSnapshot();
+    const auto blockReads=fakeHeapBlockReads,freeReads=fakeHeapFreeReads;
     ++runtimeMetrics.allocationFailures;
-    assert(f.api.serviceHardwareConfirmation(fakeHardware.now)&&r.hardwareTrial);
+    assert(f.api.serviceHardwareConfirmation(fakeHardware.now,heap)&&r.hardwareTrial);
+    assert(fakeHeapBlockReads==blockReads && fakeHeapFreeReads==freeReads);
     --runtimeMetrics.allocationFailures;
     // A newly staged edit must wait for its own reboot, even during a running trial.
     assert(f.storage.stageHardware(r,r.hardwareRecord.good));r.controller.configurationLocked=true;
@@ -630,7 +633,14 @@ int main(int argc,char **argv) {
   {
     Fixture pot;auto cfg=pot.runtime.controller.hardware;cfg.simulation=false;cfg.pins=PinMap{};cfg.sensors[6]=cfg.sensors[7]=1;
     pot.runtime.controller.configureHardware(cfg);fakeHardware.millivolts[cfg.pins.azAdc]=2000;fakeHardware.millivolts[cfg.pins.elAdc]=1000;
-    pot.hardware.beginAdc();const auto diag=pot.call("GET","/api/adcdiag","",false);
+    pot.hardware.beginAdc();
+    const auto reads=fakeHardware.readsRaw+fakeHardware.readsMv;
+    auto pending=pot.call("GET","/api/adcdiag","",false);
+    assert(pending.status==202 && pending.body=="{\"ready\":false}");
+    assert(fakeHardware.readsRaw+fakeHardware.readsMv==reads);
+    for(unsigned i=0;i<7;++i){fakeHardware.now+=20;pot.hardware.positionValue(0);pot.hardware.positionValue(1);}
+    const auto diag=pot.call("GET","/api/adcdiag","",false);
+    assert(diag.status==200 && diag.body.find("\"ready\":true")!=diag.body.npos);
     assert(diag.body.find("\"azMv\":2000")!=diag.body.npos && diag.body.find("\"azValue\":1300")!=diag.body.npos);
     assert(diag.body.find("\"elMv\":1000")!=diag.body.npos && diag.body.find("\"elValue\":2300")!=diag.body.npos);
   }

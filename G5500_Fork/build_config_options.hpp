@@ -6,6 +6,17 @@
 #include <sdkconfig.h>
 #endif
 
+// Prepared Arduino sketches carry the same partition defaults as PlatformIO.
+#if __has_include("build_capabilities.hpp")
+#include "build_capabilities.hpp"
+#endif
+#ifndef G5500_BUILD_FLASH_BYTES
+#define G5500_BUILD_FLASH_BYTES 0
+#endif
+#ifndef G5500_HAS_OTA_PARTITIONS
+#define G5500_HAS_OTA_PARTITIONS 1
+#endif
+
 #define BOARD_AUTO 0
 #define BOARD_S3 1
 #define BOARD_S2_LEGACY 2

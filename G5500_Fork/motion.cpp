@@ -31,6 +31,9 @@ bool MotionSettings::operator==(const MotionSettings &o) const {
   return true;
 }
 namespace {
+#ifdef MOTION_PLANNER_TEST
+unsigned plannerCalculations=0;
+#endif
 struct PlannerScratch {
   ruckig::Ruckig<1> solver;
   ruckig::InputParameter<1> input;
@@ -47,11 +50,19 @@ uint32_t checksum(const uint8_t *b, size_t n) {
 }
 // Scratch belongs to the single controller thread. Each axis owns only its
 // numerical boundary state, so Controller/HUD copies do not copy a solver or
-// allocate. Recalculate from that state, never from zero, on every control step.
+// allocate. Recalculate changing profiles from that state, never from zero.
 bool profileStep(bool positionControl, float &p, float &v, float &a, float target,
                  float velocity, float acceleration, float deceleration, float jerk, float dt) {
   auto &scratch=sharedPlanner();
   if(!scratch) return false;
+  // A velocity profile already at its target has zero duration: at_time(0)
+  // returns the same boundary. Avoid validating/solving it again each tick,
+  // including steady simple PWM. Keep invalid/degenerate inputs on the solver
+  // path and require exact equality so acceleration/jerk tails are preserved.
+  if(!positionControl && v==target && a==0 && std::isfinite(p) && std::isfinite(v) &&
+      std::isfinite(velocity) && velocity>=std::abs(v) &&
+      std::isfinite(acceleration) && acceleration>0 && std::isfinite(deceleration) && deceleration>0 &&
+      std::isfinite(jerk) && jerk>0 && std::isfinite(dt) && dt>=0)return true;
   auto &solver=scratch->solver;auto &input=scratch->input;auto &trajectory=scratch->trajectory;
   input.control_interface = positionControl ? ruckig::ControlInterface::Position : ruckig::ControlInterface::Velocity;
   input.current_position = {p}; input.current_velocity = {v}; input.current_acceleration = {a};
@@ -63,6 +74,9 @@ bool profileStep(bool positionControl, float &p, float &v, float &a, float targe
   const float negative = v < 0 ? acceleration : deceleration;
   input.max_acceleration = {positive}; input.min_acceleration = std::array<double, 1>{-negative};
   input.max_jerk = {jerk};
+#ifdef MOTION_PLANNER_TEST
+  ++plannerCalculations;
+#endif
   if (solver.calculate(input, trajectory) < 0) return false;
   std::array<double, 1> np{}, nv{}, na{};
   trajectory.at_time(std::min(double(dt), trajectory.get_duration()), np, nv, na);
@@ -93,10 +107,20 @@ bool autoTuneStartupExpired(const AutoTuneState &t, uint32_t elapsed, float disp
   return elapsed>=maximum || (elapsed>=observation && !partial);
 }
 }
+#ifdef MOTION_PLANNER_TEST
+unsigned motionPlannerCalculations() {return plannerCalculations;}
+bool testMotionProfileStep(bool positionControl,float &p,float &v,float &a,float target,
+                           float velocity,float acceleration,float deceleration,float jerk,float dt) {
+  return profileStep(positionControl,p,v,a,target,velocity,acceleration,deceleration,jerk,dt);
+}
+#endif
 bool prepareMotionPlanner() {
   auto &scratch=sharedPlanner();
   if(!scratch) scratch.reset(new(std::nothrow) PlannerScratch{});
   return bool(scratch);
+}
+bool Controller::prepareMotion() {
+  return remote || (!variableSpeed(0) && !variableSpeed(1)) || prepareMotionPlanner();
 }
 MotionRecord encodeMotionSettings(const MotionSettings &s) {
   MotionRecord b{}; b[0] = 'M'; b[1] = 'O'; b[2] = 3; b[3] = uint8_t(s.mode);
@@ -173,14 +197,12 @@ float MotionFeedback::velocityInWindow(unsigned window) const {
     sx+=x; sy+=y; sxx+=x*x; sxy+=x*y; ++n;
   }
   const float denominator = n*sxx-sx*sx;
-  return n>=2 && denominator>1e-10 ? float((n*sxy-sx*sy)/denominator) : 0;
+  return n>=2 && denominator>1e-10f ? float((n*sxy-sx*sy)/denominator) : 0;
 }
 void MotionRuntime::cancel(bool retainTarget) {
-  const auto saved = feedback;
-  const auto savedTiming = timing;
   const auto targetAt=targetChangedAt;
   const bool timed=targetTimed;
-  *this = {}; feedback = saved; timing = savedTiming;
+  static_cast<MotionState &>(*this) = {};
   if(retainTarget) {targetChangedAt=targetAt;targetTimed=timed;}
 }
 bool MotionFeedback::progressed(int direction, float degrees, unsigned window) const {
@@ -289,7 +311,7 @@ void Controller::feedbackAt(unsigned i, float position, bool calibrated, uint32_
   }
 }
 bool Controller::configureMotion(unsigned i, const MotionSettings &settings, uint32_t now) {
-  if (remote || i > 1 || !settings.valid() || (settings.ready && !prepareMotionPlanner())) return false;
+  if (remote || i > 1 || !settings.valid() || (variableSpeed(i) && !prepareMotionPlanner())) return false;
   if (motionSettings[i] != settings) {
     const auto &old=motionSettings[i];
     const bool speedProfileChanged=old.mode!=settings.mode || old.velocity!=settings.velocity ||
@@ -901,6 +923,7 @@ Result Controller::startAutoTune(unsigned i, RegulatorMode mode, float travel, f
       (!selected.has(TuneKick) && m.kickEnabled && m.kickPercent>limit)))return Result::Invalid;
   const float margin=std::max(2.f,speeds[i].coastDegrees);
   if (axes[i].current-travel < range(i).start+margin || axes[i].current+travel > range(i).end-margin) return Result::Invalid;
+  if (!prepareMotion()) return Result::Unavailable;
   const uint32_t id=autoTune.id+1;
   const float setpoint=runtimeSpeed(i);
   stopNow(-1,now);

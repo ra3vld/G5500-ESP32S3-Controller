@@ -48,13 +48,15 @@ void Application::failConfiguration(RecoveryReason reason) {
   ESP.restart();
 }
 void Application::serviceConfigurationSafety() {
-  sampleNetworkMemory(millis());
+  const auto now = millis();
+  const auto heap = captureHeapSnapshot();
+  sampleNetworkMemory(now, heap);
   runtime_.hud.setMemoryLimited(networkLowMemory());
   if (runtime_.recovery) return;
-  const auto reason = runtime_.memoryGuard.sample(millis(), heapFreeBytes(), heapMaxBlockBytes(),
+  const auto reason = runtime_.memoryGuard.sample(now, heap.free, heap.largest,
       runtimeMetrics.allocationFailures.load(), runtime_.hardwareTrial);
   if (reason != RecoveryReason::None) { failConfiguration(reason); return; }
-  if (!device_api_.serviceHardwareConfirmation(millis())) { failConfiguration(RecoveryReason::Storage); return; }
+  if (!device_api_.serviceHardwareConfirmation(now, heap)) { failConfiguration(RecoveryReason::Storage); return; }
   if (!runtime_.hardwareTrial && runtime_.memoryGuard.ready(millis()) &&
       !storage_.finishHardwareBoot(runtime_,uint32_t(millis()-runtime_.memoryGuard.healthyAt)))
     failConfiguration(RecoveryReason::Storage);
@@ -134,6 +136,9 @@ void Application::controllerSetup() {
   if (!runtime_.recovery) display_.initLocalDisplay();
   if (runtime_.recovery) storage_.loadPrefs(runtime_, calibration_, network_.credentials(), true);
   else { storage_.loadForkSettings(runtime_); loadPrefs(); }
+  if (!runtime_.recovery && !runtime_.hud.isHud() && !runtime_.controller.prepareMotion()) {
+    failConfiguration(RecoveryReason::Allocation); return;
+  }
 #if MQTT_SUPPORT
   runtime_.mqttStorageOk=storage_.loadMqtt(runtime_.mqtt);
   if(!runtime_.mqttStorageOk)diagnostics_.dbgPrintln("[MQTT] invalid/unreadable settings; client disabled");
@@ -161,11 +166,7 @@ void Application::controllerSetup() {
                           : runtime_.controller.hardware.drive == DRIVE_YAESU   ? "YAESU"
                           : runtime_.controller.hardware.drive == DRIVE_BTS7960 ? "BTS7960"
                                                              : runtime_.controller.hardware.drive == DRIVE_DIR_PWM ? "DIR_PWM" : "SEPARATE_PWM");
-#if FORK_CLASSIC_ESP32
   diagnostics_.dbgPrintln("[DIAG] /diaglog: fixed 2048-byte log; UART0 H4: RAM and Wi-Fi status");
-#else
-  diagnostics_.dbgPrintln("[DIAG] Web console: /diaglog, RAM ring buffer 160 lines");
-#endif
   diagnostics_.dbgPrint("[RESET REASON] ");
   diagnostics_.dbgPrintln(diagnostics_.bootReasonText());
   diagnostics_.dbgPrint("[RESET CODE] ");
@@ -222,7 +223,7 @@ void Application::controllerSetup() {
       "Fork modes: numerical remote targets wait in manual; jog commands always execute");
   diagnostics_.dbgPrintln(
       "Calibration: GS232 2-point + multi-point; separate AZ P36/P45/custom tables, shared EL");
-  diagnostics_.dbgPrintln("ADC: 25 measurements, median of 5 samples at 20ms; one-pass arrival zone 5deg");
+  diagnostics_.dbgPrintln("ADC: 4 spaced readings per feedback sample; diagnostics average 25 readings on demand");
   diagnostics_.dbgPrintln(
       "Manual axis behavior: AZ manual cancels AZ track only; EL manual cancels EL track only");
   diagnostics_.dbgPrintln("Boot outputs: LOW preloaded before pinMode(OUTPUT)");

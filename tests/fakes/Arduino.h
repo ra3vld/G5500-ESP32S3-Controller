@@ -64,7 +64,7 @@ struct FakeHardware {
   uint32_t now = 0;
   bool attachSucceeds = true;
   int failAttachAt = -1;
-  unsigned attachCalls = 0, readsMv = 0, readsRaw = 0;
+  unsigned attachCalls = 0, readsMv = 0, readsRaw = 0, waitedUs = 0;
   std::map<int, int> levels, millivolts, inputOverrides;
   std::map<int, bool> gpioOwned;
   std::vector<GpioEvent> events;
@@ -84,7 +84,7 @@ inline int digitalRead(int pin) {
 inline void pinMode(int pin, int mode) { fakeHardware.gpioOwned[pin]=true; fakeHardware.events.push_back({"mode", pin, uint32_t(mode)}); }
 inline int analogReadMilliVolts(int pin) { ++fakeHardware.readsMv; return fakeHardware.millivolts[pin]; }
 inline int analogRead(int pin) { ++fakeHardware.readsRaw; return fakeHardware.millivolts[pin]; }
-inline void delayMicroseconds(unsigned) {}
+inline void delayMicroseconds(unsigned us) {fakeHardware.waitedUs+=us;}
 inline void analogReadResolution(unsigned) {}
 inline void analogSetPinAttenuation(int, int) {}
 inline void rgbLedWrite(int, int, int, int) {}

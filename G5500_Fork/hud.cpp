@@ -708,7 +708,9 @@ bool Hud::select(uint64_t node) {
   if (node == HUD_SIMULATION_ID && !config.simulationEnabled) return false;
   if (node == HUD_SIMULATION_ID && !simulation_) {
     simulation_.reset(new (std::nothrow) Simulation);
-    if (!simulation_) { catalogError = true; return false; }
+    if (!simulation_ || !simulation_->controller.prepareMotion()) {
+      simulation_.reset(); catalogError = true; return false;
+    }
     simulation_->controller.tick(now);
     updateSimulation();
   }

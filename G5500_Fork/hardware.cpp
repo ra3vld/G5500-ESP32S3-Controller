@@ -28,6 +28,8 @@ int Hardware::adcAvgMv(int pin) {
   (void)pin;
   return 0;
   } else {
+  const auto &pins=runtime_.controller.hardware.pins;
+  auto *diagnostic=pin==pins.azAdc ? &adcDiagnostics_[0] : pin==pins.elAdc ? &adcDiagnostics_[1] : nullptr;
   uint32_t s = 0;
   for (unsigned i = 0; i < MotionAdcSamples; i++) {
     // Spread conversions across the dual-PWM profile's 1 kHz period. A burst of
@@ -35,6 +37,13 @@ int Hardware::adcAvgMv(int pin) {
     // Four spaced reads leave time for both axes in the 5 ms control period.
     if(i) delayMicroseconds(200);
     const int value=adc_.read(pin);
+    // Diagnostic requests only enable raw capture alongside normal feedback.
+    // No extra averaging loop or waits run in the HTTP/command dispatcher.
+    if(diagnostic && diagnostic->requested) {
+      const auto now=millis();
+      if(diagnostic->active(now)) diagnostic->sample(value<0 ? -1 : analogRead(pin),value,now);
+      else diagnostic->requested=false;
+    }
     if(value<0)return -1;
     s += value;
   }
@@ -66,41 +75,38 @@ int Hardware::positionValue(unsigned axis) {
   positionValid_[axis]=directed>=0;
   return directed;
 }
-void Hardware::positionDiagRead(unsigned axis,int &raw,int &value,int *millivolts) {
+bool Hardware::positionDiagRead(unsigned axis,int &raw,int &value,int *millivolts) {
   if(runtime_.controller.hardware.sensorType(axis)) {
     value=positionValue(axis);raw=sensors_.raw(axis);
+    return true;
   } else {
     const auto &c=runtime_.controller.hardware;
     const int pin=axis?c.pins.elAdc:c.pins.azAdc;
-    adcDiagRead(pin,raw,value);
+    const bool ready=adcDiagRead(pin,raw,value);
     if(millivolts) *millivolts=value;
     if(value>=0 && c.sensorInverted(axis) && !c.simulation && !runtime_.recovery && !runtime_.hud.isHud() && board::adc(pin)) value=3300-value;
+    return ready;
   }
 }
 bool Hardware::buttonReleased() const {
   if (runtime_.controller.hardware.buttonGpio < 0) return true;
   return digitalRead(runtime_.controller.hardware.buttonGpio) == (runtime_.controller.hardware.buttonLow ? HIGH : LOW);
 }
-void Hardware::adcDiagRead(int pin, int &raw, int &mv) {
-  if (runtime_.hud.isHud() || runtime_.recovery) {
+bool Hardware::adcDiagRead(int pin, int &raw, int &mv) {
+  if (runtime_.hud.isHud() || runtime_.recovery ||
+      runtime_.controller.hardware.simulation || !board::adc(pin)) {
     raw = mv = 0;
-    return;
+    return true;
   }
-  if (runtime_.controller.hardware.simulation || !board::adc(pin)) {
-  mv = adcAvgMv(pin);
-  raw = 0;
-  } else {
-  uint32_t sr = 0, sm = 0;
-  for (int i = 0; i < 25; i++) {
-    sr += analogRead(pin);
-    const int value=adc_.read(pin);
-    if(value<0){raw=mv=-1;return;}
-    sm += value;
-    delayMicroseconds(150);
-  }
-  raw = (int)(sr / 25);
-  mv = (int)(sm / 25);
-  }
+  raw = mv = -1;
+  const auto &pins=runtime_.controller.hardware.pins;
+  auto *diagnostic=pin==pins.azAdc ? &adcDiagnostics_[0] : pin==pins.elAdc ? &adcDiagnostics_[1] : nullptr;
+  if(!diagnostic)return false;
+  const auto now=millis();
+  if(!diagnostic->active(now)) diagnostic->rawSum=diagnostic->mvSum=diagnostic->count=0;
+  diagnostic->requested=true;diagnostic->requestedAt=now;
+  if(!diagnostic->ready || uint32_t(now-diagnostic->sampledAt)>=AdcDiagnostic::MaxAgeMs)return false;
+  raw=diagnostic->raw;mv=diagnostic->mv;return true;
 }
 
 void Hardware::rgbSet(uint8_t r, uint8_t g, uint8_t b) {
@@ -159,27 +165,8 @@ void Hardware::updateRgb() {
   }
 }
 
-void Hardware::stopAzimuth() {
-  runtime_.controller.stop(0);
-  runtime_.controller.tick(millis());
-  applyOutputs();
-}
-
 void Hardware::allStop() {
   runtime_.controller.stop();
-  runtime_.controller.tick(millis());
-  applyOutputs();
-}
-
-void Hardware::moveDir(char d) {
-  if (d == 'S') {
-    runtime_.controller.stop();
-  } else if (d == 'A' || d == 'E') {
-    runtime_.controller.stop(d == 'A' ? 0 : 1);
-  } else if (d == 'L' || d == 'R' || d == 'U' || d == 'D') {
-    runtime_.controller.jog(d == 'U' || d == 'D' ? 1 : 0, d == 'R' || d == 'U' ? 1 : -1, false,
-                            millis());
-  }
   runtime_.controller.tick(millis());
   applyOutputs();
 }
@@ -373,6 +360,7 @@ void Hardware::beginDirections() {
 #endif
 }
 void Hardware::beginAdc() {
+  for (auto &diagnostic:adcDiagnostics_) diagnostic={};
   const auto &p=runtime_.controller.hardware.pins;
   if (runtime_.hud.isHud() || runtime_.recovery || runtime_.controller.hardware.simulation || board::validateHardware(runtime_.controller.hardware)) return;
   analogReadResolution(12);

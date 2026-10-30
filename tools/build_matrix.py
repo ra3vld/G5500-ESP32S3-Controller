@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import time
 from project_version import generate
+from build_capabilities import partition_capabilities
 ROOT=Path(__file__).resolve().parents[1]
 PINNED_PLATFORM='https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip'
 p=argparse.ArgumentParser(description=__doc__)
@@ -62,6 +63,9 @@ def build(tool,board,display,bt,drive):
     if a.simulation is not None: flags += ' -DDRIVE_SIMULATION='+a.simulation
     app_size = 0x640000 if board=='s3' else 0x300000 if board in ('esp32','wt32-eth01','s2-mini') else 0x1e0000
     partition_file = 'partitions_s3.csv' if board=='s3' else 'partitions_esp32.csv' if board in ('esp32','wt32-eth01','s2-mini') else 'partitions_s2.csv'
+    capabilities = partition_capabilities(source/partition_file, '16MB' if board=='s3' else '4MB')
+    flags += ''.join(f' -D{name}={value}' for name,value in capabilities.items())
+    if not capabilities['G5500_HAS_OTA_PARTITIONS']: flags += ' -DARDUINO_OTA_SUPPORT=0'
     if tool=='arduino':
         sketch=work/'G5500_Fork';sketch.mkdir(exist_ok=True)
         for f in source.iterdir():

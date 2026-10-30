@@ -34,8 +34,6 @@ public:
   void updateResetHistoryTime() { storage_.updateResetHistoryTime(); }
   bool writeHistoryJson(JsonWriter &j, RssiPeriod period);
   void diagClear();
-  String diagSnapshot();
-#if FORK_CLASSIC_ESP32 || FORK_C3
   size_t copyLog(char *out, size_t capacity) const {
 #if LOG_HISTORY_SUPPORT
     return diagLog_.copyTo(out, capacity);
@@ -44,18 +42,15 @@ public:
     return 0;
 #endif
   }
-#endif
   void dbgView(std::string_view text, bool newline = false);
   void dbgPrint(const String &s);
   void dbgPrintln(const String &s);
-  void dbgPstRx(const String &s);
   void dbgPstTx(const String &s);
   bool syncClockFromNtp(uint32_t timeoutMs = 3500);
   void initRssiHistory();
   void serviceRssiHistory();
 
 private:
-  void diagStoreLine(String line);
   void diagMirror(const String &s, bool newline);
   String resetReasonToText(esp_reset_reason_t r);
   void rssiPush(int8_t *buf, uint16_t size, uint16_t &pos, uint16_t &count, int8_t v);
@@ -70,19 +65,10 @@ private:
 #endif
   esp_reset_reason_t bootResetReason = ESP_RST_UNKNOWN;
   String bootResetReasonText = "UNKNOWN";
-#if FORK_CLASSIC_ESP32 || FORK_C3
-  #if LOG_HISTORY_SUPPORT
+#if LOG_HISTORY_SUPPORT
+  // The complete log, including a pending line, fits the shared HTTP buffer.
+  static_assert(2048 + 220 < STATUS_JSON_CAPACITY);
   ByteLog<2048> diagLog_;
-  #endif
-#else
-  #if LOG_HISTORY_SUPPORT
-  static constexpr uint16_t DIAG_MAX_LINES = 160;
-  static constexpr uint16_t DIAG_MAX_LINE_LEN = 220;
-  String diagLines[DIAG_MAX_LINES];
-  uint16_t diagHead = 0;
-  uint16_t diagCount = 0;
-  String diagPending;
-  #endif
 #endif
 };
 } // namespace forkrot

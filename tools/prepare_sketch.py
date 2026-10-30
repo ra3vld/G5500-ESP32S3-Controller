@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 from project_version import generate
+from build_capabilities import partition_capabilities, write_capabilities
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--target', choices=['s3', 's2', 's2-mini', 'esp32', 'esp32-8mb', 'esp32-c3', 'crowpanel', 'wt32-eth01', 'waveshare-s3-eth', 'esp32-2424s012c', 'esp32-3248s035c'], required=True)
@@ -23,7 +24,8 @@ out.mkdir(parents=True, exist_ok=True)
 (out / 'G5500_Fork.ino.cpp').unlink(missing_ok=True)
 # Retired screen implementations must not survive in a previously prepared copy.
 for name in ('crowpanel_ui.cpp', 'display_round_panel.cpp', 'round_panel_ui.cpp',
-             'round_panel_ui.hpp', 'round_panel_input.hpp', 'round_panel_font.hpp'):
+             'round_panel_ui.hpp', 'round_panel_input.hpp', 'round_panel_font.hpp',
+             'cat_image.h', 'tft_image.hpp', 'tft_image_rows.hpp', 'web_hud.cpp'):
     (out / name).unlink(missing_ok=True)
 
 for f in source.iterdir():
@@ -33,4 +35,6 @@ shutil.copytree(source / 'src', out / 'src', dirs_exist_ok=True)
 generate(ROOT, out / 'build_identity.hpp')
 partitions = 'partitions_esp32_8mb.csv' if a.target == 'esp32-8mb' else 'partitions_esp32.csv' if a.target in ('esp32','wt32-eth01','esp32-c3','esp32-2424s012c','esp32-3248s035c','s2-mini') else 'partitions_s3.csv' if a.target in ('s3', 'crowpanel', 'waveshare-s3-eth') else 'partitions_s2.csv'
 shutil.copy2(source / partitions, out / 'partitions.csv')
+flash = '8MB' if a.target == 'esp32-8mb' else '16MB' if a.target in ('s3', 'crowpanel', 'waveshare-s3-eth') else '4MB'
+write_capabilities(out / 'build_capabilities.hpp', partition_capabilities(out / 'partitions.csv', flash))
 print(out / 'G5500_Fork.ino')

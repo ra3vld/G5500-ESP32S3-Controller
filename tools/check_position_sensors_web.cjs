@@ -19,7 +19,7 @@ const packed=Buffer.from([...asset.matchAll(/0x([0-9a-f]{2})/g)].map(m=>parseInt
    page.on('pageerror',e=>errors.push(e.message));
    await page.route(origin+'/**',route=>{
     const request=route.request(),url=new URL(request.url());
-    if(url.pathname==='/api/adcdiag')return route.fulfill({contentType:'application/json',body:JSON.stringify(diagnostic)});
+    if(url.pathname==='/api/adcdiag')return route.fulfill({status:diagnostic.ready===false?202:200,contentType:'application/json',body:JSON.stringify(diagnostic)});
     if(url.pathname==='/adc')return route.fulfill({contentType:'text/html',body:fs.readFileSync(path.join(root,'G5500_Fork/diagnostic_pages.hpp'),'utf8').match(/R"HTML\(([\s\S]*?)\)HTML"/)[1]});
     if(url.pathname==='/hardware')return route.continue();
     if(request.method()==='POST'){requests.push(Object.fromEntries(new URLSearchParams(request.postData())));return route.fulfill({contentType:'application/json',body:'{"ok":true}'});}
@@ -56,10 +56,16 @@ const packed=Buffer.from([...asset.matchAll(/0x([0-9a-f]{2})/g)].map(m=>parseInt
    assert.equal(requests.length,1);assert.equal(requests[0].azSensor,'2');assert.equal(requests[0]['pin.elSensorSda'],'23');assert.equal(requests[0].azSensorZero,'4095');
    assert.equal(Object.keys(requests[0]).length,30+await page.locator('[name^="pin."]').count());
    assert.equal(requests[0]['pin.azAdc'],String(fixture.pins.azAdc));assert.equal(requests[0]['pin.elAdc'],String(fixture.pins.elAdc));
-   await page.goto(origin+'/adc');await page.waitForFunction(()=>document.getElementById('azraw').textContent==='16383');
+   const measured=diagnostic;diagnostic={ready:false};
+   await page.goto(origin+'/adc');await page.waitForFunction(()=>typeof adcFailed!=='undefined'&&adcFailed);
+   assert.match(await page.locator('#adcStatus').textContent(),/Ожидаем измерения/);
+   diagnostic={...measured,ready:true};await page.waitForFunction(()=>document.getElementById('azraw').textContent==='16383');
    assert.match(await page.locator('#azPin').textContent(),/MT6701/);assert(await page.locator('#azlin').locator('..').isHidden());
    assert(await page.locator('#ellin').isVisible());assert.match(await page.locator('#azmv').locator('..').textContent(),/С учётом нуля/);
-   diagnostic={...diagnostic,elSensor:'AS5600',elRaw:-1,elValue:-1,elMv:null};await page.evaluate(()=>upd());
+   diagnostic={ready:false};await page.waitForFunction(()=>adcFailed);
+   assert.equal(await page.locator('#azraw').textContent(),'16383');
+   assert.match(await page.locator('#adcStatus').textContent(),/Нет свежих данных/);
+   diagnostic={...measured,ready:true,elSensor:'AS5600',elRaw:-1,elValue:-1,elMv:null};await page.waitForFunction(()=>document.getElementById('elraw').textContent.includes('Ошибка чтения'));
    assert.match(await page.locator('#elraw').textContent(),/Ошибка чтения/);assert(await page.locator('#chart').isHidden());
    const main=fs.readFileSync(path.join(root,'G5500_Fork/web_page.hpp'),'utf8');
    await page.setContent('<div id="az2PointList"></div><div id="az2CalProgress"></div>');

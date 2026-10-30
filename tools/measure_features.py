@@ -19,6 +19,7 @@ import shutil
 import struct
 import subprocess
 import time
+from build_capabilities import partition_capabilities
 
 ROOT=Path(__file__).resolve().parents[1]
 FLAGS={
@@ -213,6 +214,15 @@ def main():
    configuration.read(root/'platformio.snapshot.ini')
    configuration['platformio']['src_dir']=str(profile_source)
    configuration['env']['extra_scripts']='' # The frozen identity belongs to this snapshot.
+   # Preserve the normal partition-derived defaults even with version hooks
+   # disabled. Direct ArduinoOTA flags also keep LDF's dependency set compact.
+   capabilities=partition_capabilities(ROOT/option(configuration,'env:'+profile,'board_build.partitions'),
+                                      option(configuration,'env:'+profile,'board_upload.flash_size'))
+   profile_flags=option(configuration,'env:'+profile,'build_flags')
+   profile_flags+=''.join(f'\n-D{name}={value}' for name,value in capabilities.items())
+   if not capabilities['G5500_HAS_OTA_PARTITIONS'] and not re.search(r'-D\s*ARDUINO_OTA_SUPPORT\b',profile_flags):
+    profile_flags+='\n-DARDUINO_OTA_SUPPORT=0'
+   configuration['env:'+profile]['build_flags']=profile_flags
    if a.ccache:
     cache_script=config.with_suffix('.cache.py')
     cache_script.write_text('Import("env")\nimport os\n'
@@ -246,7 +256,8 @@ def main():
    configuration['env:'+profile]['build_src_flags']='-include '+str(override)
    text=io.StringIO();configuration.write(text);config.write_text(text.getvalue())
    inputs=["paired-config-v8",identity,profile,definitions,packages,version,text.getvalue(),override.read_text()]
-   for script in ('platformio_lto.py','platformio_image_size.py','check_firmware_size.py'):
+   for script in ('platformio_lto.py','platformio_image_size.py','check_firmware_size.py',
+                  'platformio_version.py','build_capabilities.py'):
     inputs.append(hashlib.sha256((ROOT/'tools'/script).read_bytes()).hexdigest())
    if a.library_dir:inputs.append(library_fingerprint)
    key=hashlib.sha256(json.dumps(inputs,sort_keys=True).encode()).hexdigest()

@@ -23,7 +23,6 @@ void Controller::configureHardware(const HardwareConfig &config) {
   if (autoTune.active()) finishAutoTune(AutoTunePhase::Cancelled,"hardware_changed",lastSpeedUpdateAt_);
   autoTune.phase = AutoTunePhase::Idle;
   coast={};
-  prepareMotionPlanner();
   hardware = config;
   hardware.releaseSimulationPins();
   if (!hardware.simulation && !remote && hardware.singleAxis() && (!FORK_OPTIONAL_DRIVE || hardware.localAxisConfigured(0))) { if(model==Model::G5500)model = Model::G800DXA; axes[1] = {}; }
@@ -159,6 +158,7 @@ Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
   for (unsigned i=0; i<2; ++i) if ((i ? nextTarget.hasEl && model == Model::G5500 : nextTarget.hasAz) &&
       ( (axes[i].motionError != MotionError::None && !(retryStall && axes[i].motionError == MotionError::Stalled)) ||
         (variableSpeed(i) && !motionSettings[i].ready))) return Result::Unavailable;
+  if (!prepareMotion()) return Result::Unavailable;
   bool accepted = false;
   targetKnown = true;
   for (unsigned i = 0; i < 2; ++i) {
@@ -295,6 +295,7 @@ Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now
   if ((axes[axis].motionError != MotionError::None && axes[axis].motionError != MotionError::Stalled) ||
       (variableSpeed(axis) && !motionSettings[axis].ready)) return Result::Unavailable;
   if (variableSpeed(axis) && motionSettings[axis].mode == RegulatorMode::Cascade && !axes[axis].calibrated) return Result::NotCalibrated;
+  if (!prepareMotion()) return Result::Unavailable;
   recoverStall(axis, now);
   if (axes[axis].tracking || axes[axis].holdArmed) {
     // Taking over a running position command changes intent, not the current
@@ -461,6 +462,7 @@ Result Controller::manualDrive(uint64_t source, uint64_t sessionBoot, uint32_t g
     c.absoluteSpeed = absoluteSpeed;
     return remote->submitAt(c, now);
   }
+  if (!release && ((mask & 1 && az != 0) || (mask & 2 && el != 0)) && !prepareMotion()) return Result::Unavailable;
   ManualSession *s = nullptr, *free = nullptr;
   for (auto &candidate : manualSessions_) {
     if (candidate.used && candidate.source == source && candidate.boot == sessionBoot) {
@@ -628,11 +630,6 @@ void Controller::setModel(Model nextModel) {
     axis.measuredVelocity = axis.requestedVelocity = axis.profileAcceleration = 0;
   }
   motion_ = {};
-}
-void Controller::setMaximum(float value) {
-  if (value == 360 || value == 450) {
-    setRange({0, value}, value == 360 ? AZ_P36 : AZ_P45, lastSpeedUpdateAt_);
-  }
 }
 bool Controller::setRange(AzRange range, uint8_t profile, uint32_t now) {
   if (remote || !validAzProfile(profile, range)) {

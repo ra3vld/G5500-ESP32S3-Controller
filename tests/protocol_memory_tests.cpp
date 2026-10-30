@@ -26,6 +26,7 @@ int main() {
   LineBuffer input; PacketQueue<1024,8> queue;
   char out[512]; size_t length=0;uint32_t tag=0;std::string_view line;
   const std::string payload(512,'x');
+  assert(regulated.prepareMotion());
   deny=true;
   for(unsigned at=20;at<=2000;at+=20) {
     regulated.feedbackAt(0,20+at*.001f,true,at);regulated.feedbackAt(1,30+at*.001f,true,at);

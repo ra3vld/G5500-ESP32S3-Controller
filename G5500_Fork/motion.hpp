@@ -101,9 +101,9 @@ struct MotionFeedback {
   float positionMean(unsigned window) const;
   float staticCoastDistance(float velocity) const;
 };
-struct MotionRuntime {
-  MotionFeedback feedback;
-  MotionTiming timing;
+// Only transient regulation state is cleared by STOP/idle. Feedback and
+// timing have a separate lifetime and must never be copied through the stack.
+struct MotionState {
   MotionPid positionPid, velocityPid;
   bool started = false, profileValid = false, settling = false, releasing = false, arriving = false;
   bool progressValid = false, kickDone = false, streamingTarget = false, profileTracking = false;
@@ -130,6 +130,10 @@ struct MotionRuntime {
   float plannedSpeedLimit = 0;
   int kickDirection = 0, targetDirection = 0;
   bool crossedTarget = false;
+};
+struct MotionRuntime : MotionState {
+  MotionFeedback feedback;
+  MotionTiming timing;
   void cancel(bool retainTarget = false);
 };
 } // namespace forkrot

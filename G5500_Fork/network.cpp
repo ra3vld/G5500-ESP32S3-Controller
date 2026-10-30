@@ -19,19 +19,19 @@ namespace forkrot {
 using namespace board;
 size_t Network::uartWrite(const uint8_t *data,size_t size) {
   if(MODBUS_RTU_SUPPORT && modbus_ && runtime_.modbus.pc)return 0;
-  return RS485_SUPPORT && rs485Reply_?rs485Reply_->write(data,size):Serial0.write(data,size);
+  if(RS485_SUPPORT && rs485Reply_)return rs485Reply_->write(data,size);
+  // Streaming API/diagnostics must wait behind complete GS-232 replies.
+  if(!uartReply_.empty())return 0;
+  const int available=Serial0.availableForWrite();
+  return available>0?Serial0.write(data,std::min(size,size_t(available))):0;
 }
 void Network::serviceUartTx() {
-#if RS485_SUPPORT
-
-  if(!rs485Reply_)return;
+  if(runtime_.controller.hardware.pins.uartTx<0 || (MODBUS_RTU_SUPPORT && modbus_ && runtime_.modbus.pc))return;
   const int available=Serial0.availableForWrite();
-  rs485Reply_->service(millis(),available>0?size_t(available):0,
-      [](const uint8_t *p,size_t n) { return Serial0.write(p,n); });
-
-#else
-
-#endif
+  const size_t capacity=available>0?size_t(available):0;
+  const auto write=[](const uint8_t *p,size_t n) { return Serial0.write(p,n); };
+  if(RS485_SUPPORT && rs485Reply_)rs485Reply_->service(millis(),capacity,write);
+  else uartReply_.service(capacity,write);
 }
 void Network::serviceHeapDiagnostics() {
   heapDiagnostics_.service(millis(),
@@ -61,7 +61,13 @@ void Network::reportAllocationFailures() {
 #if FORK_NATIVE_USB
   diagnostics_.nativeWrite(newline,sizeof newline);
 #else
-  uartWrite(newline,sizeof newline);
+  // Outputs are already stopped. Preserve the final fault report even if
+  // ordinary replies filled the FIFO before recovery; this path may wait.
+  while(!uartReply_.empty())uartReply_.service(256,[](const uint8_t *p,size_t n){return Serial0.write(p,n);});
+  const auto faultWrite=[this](const uint8_t *p,size_t n) {
+    return RS485_SUPPORT && rs485Reply_?rs485Reply_->write(p,n):Serial0.write(p,n);
+  };
+  faultWrite(newline,sizeof newline);
 #endif
   char line[256];
   for(uint8_t page=7;page<=8;++page) {
@@ -71,7 +77,7 @@ void Network::reportAllocationFailures() {
 #if FORK_NATIVE_USB
     diagnostics_.nativeWrite(reinterpret_cast<const uint8_t *>(line),count);
 #else
-    uartWrite(reinterpret_cast<const uint8_t *>(line),count);
+    faultWrite(reinterpret_cast<const uint8_t *>(line),count);
 #endif
   }
 #if !FORK_NATIVE_USB
@@ -186,7 +192,13 @@ void Network::sendReply(const String &s) {
     diagnostics_.dbgPrint("[BT TX] ");
     diagnostics_.dbgPrintln(s);
   } else {
-    if(runtime_.controller.hardware.pins.uartTx>=0) uartWrite(reinterpret_cast<const uint8_t *>(s.c_str()),s.length());
+    if(runtime_.controller.hardware.pins.uartTx>=0) {
+      if(RS485_SUPPORT && rs485Reply_)uartWrite(reinterpret_cast<const uint8_t *>(s.c_str()),s.length());
+      else {
+        if(!uartReply_.push({s.c_str(),s.length()}))diagnostics_.dbgView("[UART TX] dropped: queue full",true);
+        serviceUartTx();
+      }
+    }
     diagnostics_.dbgPstTx(s);
   }
   hardware_.flashTx();
@@ -303,6 +315,7 @@ void Network::processGs232Command(std::string_view input) {
 }
 
 void Network::handlePstRotatorSerial() {
+  serviceUartTx();
 #if FORK_NATIVE_USB
   static ApiLineBuffer usbReceiver;
   static uint32_t usbEpoch=0;
@@ -910,6 +923,7 @@ uint32_t uartFormat(const UartConfig &port) {
 }
 }
 bool Network::beginSerial() {
+  uartReply_.clear();
   const auto &config = runtime_.controller.hardware;
   if(!runtime_.recovery && MODBUS_RTU_SUPPORT && (runtime_.modbus.pc||runtime_.modbus.bus) && !modbus_)return false;
   if(!runtime_.recovery && MODBUS_RTU_SUPPORT && runtime_.modbus.wiring(config,runtime_.hud.config.uart && HUD_UART_SUPPORT))return false;

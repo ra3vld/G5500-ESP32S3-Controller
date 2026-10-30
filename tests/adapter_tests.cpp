@@ -49,10 +49,10 @@ void calibrationMath() {
   data.elLinearValid = true;
   data.gsAzMode = 36;
   CHECK(calibration.selectedCalibrationValid());
-  CHECK(calibration.activeAzMaxDeg() == 360);
+  CHECK(calibration.activeAzRange().end == 360);
   data.gsAzMode = 45;
   CHECK(!calibration.selectedCalibrationValid());
-  CHECK(calibration.activeAzMaxDeg() == 450);
+  CHECK(calibration.activeAzRange().end == 450);
   data.az45LinearValid = true;
   data.elLinearValid = false;
   CHECK(!calibration.selectedCalibrationValid());

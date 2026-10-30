@@ -438,7 +438,9 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     }
     valid = valid && commandPortAllowed(next.commandPort) && next.n1mmPort != next.pstPort && next.commandPort != next.n1mmPort && next.commandPort != next.pstPort && next.commandPort != next.pstPort+1 && next.commandPort != next.reportPort;
     if(model!=controller.model && (motionTouched[0] || motionTouched[1])) valid=false;
-    if(valid && (motion[0].ready || motion[1].ready) && !prepareMotionPlanner())
+    const bool needsPlanner=controller.hardware.simulation || controller.hardware.drive!=DRIVE_YAESU ||
+        (model!=Model::G5500 && enabled && controller.hardware.pins.azSpeedEnable>=0);
+    if(valid && !controller.remote && needsPlanner && !prepareMotionPlanner())
       return {503,"{\"ok\":false,\"result\":\"unavailable\"}"};
     if (valid) {
       if(controlHz!=1000/controller.controlPeriodMs() && controller.setControlFrequency(controlHz,now)!=Result::Ok)

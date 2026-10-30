@@ -20,8 +20,10 @@ inline uint32_t heapMinBytes() {
 inline uint32_t heapMaxBlockBytes() {
   return heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 }
-inline void sampleNetworkMemory(uint32_t now) {
-  networkPressure.sample(now, heapFreeBytes(), heapMaxBlockBytes());
+struct HeapSnapshot { uint32_t free, largest; };
+inline HeapSnapshot captureHeapSnapshot() { return {heapFreeBytes(), heapMaxBlockBytes()}; }
+inline void sampleNetworkMemory(uint32_t now, HeapSnapshot heap = captureHeapSnapshot()) {
+  networkPressure.sample(now, heap.free, heap.largest);
   networkMemoryLimited.store(networkPressure.limited, std::memory_order_relaxed);
 }
 inline bool networkLowMemory() { return networkMemoryLimited.load(std::memory_order_relaxed); }

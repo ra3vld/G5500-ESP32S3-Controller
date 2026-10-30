@@ -33,8 +33,10 @@ int main() {
   fakeHardware.now = 12100; hw.controlRotator(); close(c.axes[0].current, 147.4f);
   hw.allStop(); fakeHardware.now += 2000; hw.controlRotator(); close(c.axes[0].current, 147.4f);
   // Exercise every motor-facing entry point, including jog and ADC diagnostics.
-  for (char direction : {'R', 'L', 'U', 'D', 'S', 'A', 'E'}) {
-    hw.moveDir(direction); fakeHardware.now += 500; hw.controlRotator(); hw.allStop();
+  for (unsigned axis=0;axis<2;++axis) for (int direction : {-1,1}) {
+    assert(c.jog(axis,direction,false,millis())==Result::Ok);
+    hw.controlRotator(); fakeHardware.now += 500; hw.controlRotator();
+    c.stop(axis); hw.controlRotator(); hw.allStop();
   }
   for (int pin : {board::PIN_AZ_ADC, board::PIN_EL_ADC}) {
     int raw = -1, mv = -1; hw.adcDiagRead(pin, raw, mv); assert(!raw && !mv);

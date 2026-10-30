@@ -276,11 +276,11 @@ void DeviceApi::configurationRestart(bool setupBatch) {
   if(setupBatch && runtime_.setupStorageOk)runtime_.setupRestartRequired=true;
   else restart_.request(millis());
 }
-bool DeviceApi::serviceHardwareConfirmation(uint32_t now) {
+bool DeviceApi::serviceHardwareConfirmation(uint32_t now, HeapSnapshot heap) {
   if (runtime_.recovery || runtime_.controller.configurationLocked || ota_.locked() || restart_.pending() ||
       (!runtime_.hardwareInteraction && !runtime_.controller.targetMotionStarted) ||
-      !runtime_.memoryGuard.ready(now) || heapFreeBytes()<MemoryGuard::HealthyFree ||
-      heapMaxBlockBytes()<MemoryGuard::HealthyBlock ||
+      !runtime_.memoryGuard.ready(now) || heap.free<MemoryGuard::HealthyFree ||
+      heap.largest<MemoryGuard::HealthyBlock ||
       runtimeMetrics.allocationFailures.load()!=runtime_.memoryGuard.failures) return true;
   if (!runtime_.hardwareTrial) return storage_.finishHardwareBoot(runtime_);
   if (!runtime_.hardwareProbe) {
@@ -826,11 +826,12 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       return;
     }
     int azRaw = 0, azMv = 0, elRaw = 0, elMv = 0, azPhysicalMv = 0, elPhysicalMv = 0;
-    hardware_.positionDiagRead(0, azRaw, azMv, &azPhysicalMv);
+    bool ready=hardware_.positionDiagRead(0, azRaw, azMv, &azPhysicalMv);
     if (runtime_.controller.model == forkrot::Model::G5500) {
-      hardware_.positionDiagRead(1, elRaw, elMv, &elPhysicalMv);
+      ready=hardware_.positionDiagRead(1, elRaw, elMv, &elPhysicalMv) && ready;
     }
-    String j = String("{\"hasEl\":") +
+    if(!ready) {web_.send(202,"application/json","{\"ready\":false}");return;}
+    String j = String("{\"ready\":true,\"hasEl\":") +
                (runtime_.controller.model == forkrot::Model::G5500 ? "true" : "false") +
                ",\"azRaw\":" + String(azRaw) + ",\"azMv\":" + (runtime_.controller.hardware.sensorType(0)?String("null"):String(azPhysicalMv)) +
                ",\"elRaw\":" + String(elRaw) + ",\"elMv\":" + (runtime_.controller.hardware.sensorType(1)?String("null"):String(elPhysicalMv)) +

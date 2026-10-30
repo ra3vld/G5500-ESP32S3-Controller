@@ -52,6 +52,7 @@ int main() {
   assert(!corrupt.write(0,bytes)); assert(!corrupt.write(2048,bytes)); Update.endOk=false;
   assert(corrupt.finish() && corrupt.locked() && !corrupt.readyToRestart());
   // ArduinoOTA is explicitly armed and expires. Authentication errors don't stop motors.
+#if ARDUINO_OTA_SUPPORT
   reset(); Ota native; native.begin(nullptr,nullptr); assert(!native.armArduino() && ArduinoOTA.enabled);
   ArduinoOTA.error(OTA_AUTH_ERROR); assert(!native.locked());
   otaNow=600000; native.service(); assert(!ArduinoOTA.enabled && !native.locked());
@@ -59,5 +60,10 @@ int main() {
   ArduinoOTA.error(OTA_CONNECT_ERROR); assert(!Update.running && !native.readyToRestart());
   reset(); Ota fs; fs.begin(nullptr,nullptr); assert(!fs.armArduino()); ArduinoOTA.command=U_SPIFFS; ArduinoOTA.start();
   assert(fs.locked() && Update.aborts && status(fs).find("firmware_only")!=std::string::npos);
+#else
+  reset(); Ota disabled; disabled.begin(nullptr,nullptr);
+  assert(std::string(disabled.armArduino())=="feature_disabled" && !ArduinoOTA.enabled && !disabled.locked());
+  disabled.service();assert(!ArduinoOTA.enabled);
+#endif
   std::cout << "OTA: capacity, partitions, transfers, failures and ArduinoOTA passed\n";
 }

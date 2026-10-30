@@ -10,7 +10,7 @@ int main() {
   assert(runtime.controller.driveFault);
   runtime.controller.feedback(20, 30, true, true); // Even saved calibration cannot enable drive.
   assert(runtime.controller.target({100, 90, true, true}, false, 0) == forkrot::Result::Invalid);
-  hw.moveDir('L'); hw.moveDir('U'); hw.controlRotator();
+  runtime.controller.jog(0,-1,false,millis()); runtime.controller.jog(1,1,false,millis()); hw.controlRotator();
   hw.filteredMv(0); hw.filteredMv(1);
   int raw, mv; hw.adcDiagRead(forkrot::board::PIN_AZ_ADC, raw, mv);
   hw.rgbSet(5, 5, 5); hw.allStop();

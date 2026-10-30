@@ -1211,16 +1211,6 @@ void Storage::clearResetHistory() {
 
 #endif
 }
-void Storage::saveCalibrationMode(Model model, CalibrationMode mode) {
-  prefs_.begin(model==Model::G800SA?"g800sacal":model!=Model::G5500?"g800cal":"g5500", false);
-  prefs_.putUChar("calmode", (uint8_t)mode);
-  prefs_.end();
-}
-void Storage::saveAzMode(Model model, uint8_t mode) {
-  prefs_.begin(model==Model::G800SA?"g800sacal":model!=Model::G5500?"g800cal":"g5500", false);
-  prefs_.putUChar("azmode", mode);
-  prefs_.end();
-}
 void Storage::loadRssiYear(RssiHistory &history) {
   prefs_.begin("g5500rssi", true);
   size_t n = prefs_.getBytesLength("year");

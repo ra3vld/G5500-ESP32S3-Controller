@@ -124,7 +124,9 @@ static void invertedSensors() {
   c.sensors[0]=c.sensors[3]=0;r.controller.configureHardware(c);Hardware pot(r);pot.beginAdc();
   fakeHardware.millivolts[c.pins.azAdc]=2000;fakeHardware.millivolts[c.pins.elAdc]=1000;
   assert(pot.positionValue(0)==1300 && pot.positionValue(1)==2300);
-  int physical;pot.positionDiagRead(0,raw,value,&physical);assert(physical==2000 && value==1300);
+  int physical;assert(!pot.positionDiagRead(0,raw,value,&physical));
+  for(unsigned i=0;i<7;++i){fakeHardware.now+=20;pot.positionValue(0);}
+  assert(pot.positionDiagRead(0,raw,value,&physical) && physical==2000 && value==1300);
   CalibrationState state;state.az45LinearValid=state.elLinearValid=true;
   bindPositionSensors(state,c);assert(!state.az45LinearValid && !state.elLinearValid);
   state.az45LinearValid=state.elLinearValid=true;c.sensors[6]=0;bindPositionSensors(state,c);

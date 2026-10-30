@@ -54,7 +54,7 @@
 // При 0, Б (BIN/DRAM/IRAM): ST 0/0/0; S3 317584/0/0.
 // Только Flash: браузеру нужен gzip, JSON API сохранён; отдельной heap нет, полный runtime не измерен.
 #ifndef WEB_PLAIN_HTML_SUPPORT
-#define WEB_PLAIN_HTML_SUPPORT (WEB_INTERFACE_ENABLED && (FORK_S3 || (FORK_CLASSIC_ESP32 && SELECTED_BOARD != BOARD_ESP32_3248S035C)))
+#define WEB_PLAIN_HTML_SUPPORT (WEB_INTERFACE_ENABLED && (FORK_S3 || (FORK_CLASSIC_ESP32 && G5500_BUILD_FLASH_BYTES > 4194304 && SELECTED_BOARD != BOARD_ESP32_3248S035C)))
 #endif
 // При 0, Б (BIN/DRAM/IRAM): ST 708592/14916/34676; S3 0/0/0.
 // HC-05 остаётся; SppState 2320 Б heap при включении + SDK BT, полный runtime не измерен; на S2/S3/C3 SPP уже отсутствует.
@@ -119,10 +119,10 @@
 // При 0, Б (BIN/DRAM/IRAM): ST 19696/1816/0; S3 22160/1808/0.
 // Браузерное OTA остаётся при наличии веба и OTA-разделов; heap ArduinoOTA/mDNS/SDK не измерена.
 #ifndef ARDUINO_OTA_SUPPORT
-#define ARDUINO_OTA_SUPPORT (OTA_SUPPORT && (WIFI_SUPPORT || ETHERNET_SUPPORT))
+#define ARDUINO_OTA_SUPPORT (OTA_SUPPORT && G5500_HAS_OTA_PARTITIONS && (WIFI_SUPPORT || ETHERNET_SUPPORT))
 #endif
-// При 0, Б (BIN/DRAM/IRAM): ST 2464/2280/0; S3 1440/2576/0.
-// ESP32/C3 ByteLog 2280 Б статически; S2/S3 heap текстов 160 строк до 220 символов + pending, полный runtime не измерен.
+// Фиксированный ByteLog: 2048 байт истории + 220 байт незавершённой строки.
+// Собственная память журнала не растёт в heap; USB/SDK runtime отдельно.
 #ifndef LOG_HISTORY_SUPPORT
 #define LOG_HISTORY_SUPPORT 1
 #endif

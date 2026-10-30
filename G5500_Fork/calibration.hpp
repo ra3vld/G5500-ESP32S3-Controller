@@ -80,7 +80,6 @@ public:
   int activeAz2Full() const;
   bool activeAzOSet() const;
   bool activeAzFSet() const;
-  float activeAzMaxDeg() const;
   AzRange activeAzRange() const;
   float mapAz(int millivolts) const;
   bool configureAz(uint8_t profile, float start, float span);

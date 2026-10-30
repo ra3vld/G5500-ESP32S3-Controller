@@ -101,9 +101,6 @@ bool Calibration::activeAzFSet() const {
   return state_.gsAzMode == 36 ? state_.az36FSet : state_.az45FSet;
 }
 
-float Calibration::activeAzMaxDeg() const {
-  return activeAzRange().end;
-}
 AzRange Calibration::activeAzRange() const {
   return state_.gsAzMode == AZ_CUSTOM ? state_.custom.range : AzRange{0, state_.gsAzMode == 36 ? 360.f : 450.f};
 }

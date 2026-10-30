@@ -1,10 +1,19 @@
 #include "memory_pressure.hpp"
+#include "heap_metrics.hpp"
 #include "runtime_metrics.hpp"
 #include <cassert>
 #include <cstring>
 #include <iostream>
 using namespace forkrot;
 int main() {
+  const auto snapshot=captureHeapSnapshot();
+  assert(fakeHeapFreeReads==1 && fakeHeapBlockReads==1);
+  sampleNetworkMemory(0,snapshot);
+  sampleNetworkMemory(1,snapshot);
+  assert(fakeHeapFreeReads==1 && fakeHeapBlockReads==1);
+  fakeHeapFree=20000;fakeHeapBlock=4000;
+  sampleNetworkMemory(2);
+  assert(fakeHeapFreeReads==2 && fakeHeapBlockReads==2 && networkLowMemory());
   MemoryPressure p;p.sample(0,65536,16384);assert(!p.limited);
   p.sample(10,32767,16384);assert(p.limited);
   p.sample(20,65536,16384);p.sample(10019,65536,16384);assert(p.limited);

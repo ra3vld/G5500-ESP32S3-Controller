@@ -15,128 +15,29 @@ static auto &HWCDCSerial = Serial;
 #endif
 
 namespace forkrot {
-void Diagnostics::diagStoreLine(String line) {
-#if LOG_HISTORY_SUPPORT
-
-#if FORK_CLASSIC_ESP32 || FORK_C3
-  diagLog_.append({line.c_str(), line.length()}, true);
-#else
-  line.replace("\r", "");
-  if (line.length() > DIAG_MAX_LINE_LEN) {
-    line = line.substring(0, DIAG_MAX_LINE_LEN - 3) + "...";
-  }
-  diagLines[diagHead] = line;
-  diagHead = (diagHead + 1) % DIAG_MAX_LINES;
-  if (diagCount < DIAG_MAX_LINES) {
-    diagCount++;
-  }
-#endif
-
-#else
-
-#endif
-}
-
 void Diagnostics::diagMirror(const String &s, bool newline) {
 #if LOG_HISTORY_SUPPORT
-
-#if FORK_CLASSIC_ESP32 || FORK_C3
   diagLog_.append({s.c_str(), s.length()}, newline);
 #else
-  for (size_t i = 0; i < s.length(); i++) {
-    char ch = s[i];
-    if (ch == '\r') {
-      continue;
-    }
-    if (ch == '\n') {
-      diagStoreLine(diagPending);
-      diagPending = "";
-    } else {
-      diagPending += ch;
-      if (diagPending.length() >= DIAG_MAX_LINE_LEN) {
-        diagStoreLine(diagPending);
-        diagPending = "";
-      }
-    }
-  }
-  if (newline) {
-    diagStoreLine(diagPending);
-    diagPending = "";
-  }
-#endif
-
-#else
-
+  (void)s; (void)newline;
 #endif
 }
-
 void Diagnostics::diagClear() {
 #if LOG_HISTORY_SUPPORT
-
-#if FORK_CLASSIC_ESP32 || FORK_C3
   diagLog_.clear();
-#else
-  for (uint16_t i = 0; i < DIAG_MAX_LINES; i++) {
-    diagLines[i] = "";
-  }
-  diagHead = 0;
-  diagCount = 0;
-  diagPending = "";
-#endif
-
-#else
-
 #endif
 }
-
-String Diagnostics::diagSnapshot() {
-#if LOG_HISTORY_SUPPORT
-
-  String out;
-#if FORK_CLASSIC_ESP32 || FORK_C3
-  if (!out.reserve(diagLog_.size())) return "[DIAG] not enough memory for snapshot\n";
-  diagLog_.copyTo(out);
-#else
-  out.reserve(8192);
-  uint16_t start = (diagHead + DIAG_MAX_LINES - diagCount) % DIAG_MAX_LINES;
-  for (uint16_t i = 0; i < diagCount; i++) {
-    uint16_t idx = (start + i) % DIAG_MAX_LINES;
-    out += diagLines[idx];
-    out += '\n';
-  }
-  if (diagPending.length()) {
-    out += diagPending;
-  }
-#endif
-  return out;
-
-#else
-return {};
-#endif
-}
-
 void Diagnostics::dbgView(std::string_view text, bool newline) {
 #if LOG_HISTORY_SUPPORT
-
-#if FORK_CLASSIC_ESP32 || FORK_C3
   diagLog_.append(text, newline);
-#else
-  // Other boards retain their existing 160-line log behavior.
-  String line;
-  if (line.reserve(text.size())) {
-    for (char ch : text) line += ch;
-    diagMirror(line, newline);
-  }
-#if FORK_NATIVE_USB && !CROWPANEL_USB_TRACE
+#if FORK_NATIVE_USB && !CROWPANEL_USB_TRACE && !FORK_CLASSIC_ESP32 && !FORK_C3
   if (!nativeCommandMode_ && HWCDCSerial) {
     HWCDCSerial.write(reinterpret_cast<const uint8_t *>(text.data()), text.size());
     if (newline) HWCDCSerial.println();
   }
 #endif
-#endif
-
 #else
-
+  (void)text; (void)newline;
 #endif
 }
 void Diagnostics::dbgPrint(const String &s) {
@@ -155,11 +56,6 @@ void Diagnostics::dbgPrintln(const String &s) {
     HWCDCSerial.println(s);
   }
 #endif
-}
-
-void Diagnostics::dbgPstRx(const String &s) {
-  dbgPrint("[PST RX] ");
-  dbgPrintln(s);
 }
 
 void Diagnostics::dbgPstTx(const String &s) {
@@ -403,18 +299,10 @@ j << "{}"; (void)period; return false;
 namespace forkrot {
 void Diagnostics::writeLog(JsonWriter &out) const {
 #if LOG_HISTORY_SUPPORT
-
-#if FORK_CLASSIC_ESP32 || FORK_C3
   struct Sink { JsonWriter &writer; void operator+=(char c) { writer << c; } } sink{out};
   diagLog_.copyTo(sink);
 #else
-  const unsigned first=(diagHead+DIAG_MAX_LINES-diagCount)%DIAG_MAX_LINES;
-  for(unsigned i=0;i<diagCount;++i) out << diagLines[(first+i)%DIAG_MAX_LINES].c_str() << '\n';
-  out << diagPending.c_str();
-#endif
-
-#else
-
+  (void)out;
 #endif
 }
 }

@@ -188,6 +188,7 @@ document.addEventListener('visibilitychange',adcFreshness);
 async function upd(){
   adcFreshness();try{
     let j=await background.read('adc','/api/adcdiag');
+    if(j.ready===false){adcFailed=true;return;}
     hasEl=j.hasEl!==false;
     for(const id of ['adcElCard','adcElHelp','adcElLegend'])document.getElementById(id).style.display=hasEl?'':'none';
     document.querySelector('.grid').style.gridTemplateColumns=hasEl?'':'1fr';

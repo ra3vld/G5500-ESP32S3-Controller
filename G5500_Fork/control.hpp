@@ -237,6 +237,7 @@ public:
   bool setupRequired = false;
   bool movementBlocked() const { return configurationLocked; }
   void configureHardware(const HardwareConfig &config);
+  bool prepareMotion();
   CommandSink *remote = nullptr; // Non-owning. A mirror must never run tick()/feedback().
   uint32_t motionEpoch[2] = {};
   uint32_t snapshotAt = 0, remoteRemaining = 0;
@@ -339,7 +340,6 @@ public:
   Result setMode(Mode m, uint32_t now);
   void restoreMode(Mode m); // An expired/nonpersistent hour always boots manual.
   void setModel(Model m);
-  void setMaximum(float value);
   bool setRange(AzRange range, uint8_t profile, uint32_t now = 0);
   bool setElRange(RotationRange range, uint8_t profile, uint32_t now = 0);
   Result preset(unsigned slot, uint32_t now);

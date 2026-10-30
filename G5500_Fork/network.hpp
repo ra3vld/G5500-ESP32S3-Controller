@@ -21,6 +21,7 @@
 #include "hud_uart_gate.hpp"
 #include "rs485_hud.hpp"
 #include "rs485_reply.hpp"
+#include "uart_reply.hpp"
 #include "modbus_serial.hpp"
 #include "modbus_bus.hpp"
 #include <WiFiServer.h>
@@ -98,6 +99,7 @@ private:
   size_t uartWrite(const uint8_t *,size_t);
   void serviceUartTx();
   std::unique_ptr<Rs485Reply> rs485Reply_;
+  UartReply uartReply_;
   void sendReply(const String &s);
   void processGs232Command(std::string_view input);
   bool processCommandApi(std::string_view input, uint8_t port);

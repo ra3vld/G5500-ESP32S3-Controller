@@ -9,7 +9,7 @@ static void idleDefaults() {
   MotionTestRuntime r;r.setup.required=false;r.hud.config.role=DeviceRole::Controller;
   Hardware h(r);fakeHardware={};fakeI2c[0]=fakeI2c[1]={};
   h.beginDirections();h.beginAdc();h.beginInputs();
-  h.moveDir('L');h.moveDir('U');h.controlRotator();h.applyOutputs();h.allStop();
+  r.controller.jog(0,-1,false,millis());r.controller.jog(1,1,false,millis());h.controlRotator();h.applyOutputs();h.allStop();
   for(const auto &event:fakeHardware.events)
     assert(event.operation=="mode" && event.pin==9 && event.value==INPUT_PULLUP);
   assert(fakeHardware.readsRaw==0 && fakeHardware.readsMv==0 && !r.controller.moving());
