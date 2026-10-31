@@ -52,10 +52,38 @@ int main() {
   policy.reset(0, false);
   assert(policy.update(30000, false, false, true) == WifiAction::None);
   assert(policy.update(300000, false, false, true) == WifiAction::None);
-  policy.reset(UINT32_MAX - 10000, false);
-  assert(policy.update(19998, true, false, true) == WifiAction::None);
-  assert(policy.update(19999, true, false, true) == WifiAction::StartSta);
-  assert(policy.update(27999, true, false, true) == WifiAction::StartAp);
+  // Startup retries survive millis() wrap and keep the eight-second attempt.
+  policy.reset(UINT32_MAX - 1000, false);
+  assert(policy.update(998, true, false, true) == WifiAction::None);
+  assert(policy.update(999, true, false, true) == WifiAction::StartSta);
+  assert(policy.update(8998, true, false, true) == WifiAction::None);
+  assert(policy.update(8999, true, false, true) == WifiAction::StartAp);
+  // Only the first three retries use two-second pauses. A permanently absent
+  // AP or wrong password must not cause unbounded fast radio restarts.
+  policy.reset(1000, false);
+  uint32_t fallbackAt=1000;
+  for (unsigned retry=0; retry<3; ++retry) {
+    assert(policy.update(fallbackAt+1999,true,false,true)==WifiAction::None);
+    assert(policy.update(fallbackAt+2000,true,false,true)==WifiAction::StartSta);
+    assert(policy.update(fallbackAt+9999,true,false,true)==WifiAction::None);
+    assert(policy.update(fallbackAt+10000,true,false,true)==WifiAction::StartAp);
+    fallbackAt+=10000;
+  }
+  for (unsigned retry=0; retry<2; ++retry) {
+    assert(policy.update(fallbackAt+29999,true,false,true)==WifiAction::None);
+    assert(policy.update(fallbackAt+30000,true,false,true)==WifiAction::StartSta);
+    assert(policy.update(fallbackAt+38000,true,false,true)==WifiAction::StartAp);
+    fallbackAt+=38000;
+  }
+  // A successful startup clears the quick-retry budget; later link loss
+  // retains the existing immediate retry followed by the ordinary backoff.
+  policy.reset(0,false);
+  assert(policy.update(2000,true,false,true)==WifiAction::StartSta);
+  assert(policy.update(2001,true,true,true)==WifiAction::StopAp);
+  assert(policy.update(2002,true,false,false)==WifiAction::ReconnectSta);
+  assert(policy.update(10002,true,false,false)==WifiAction::StartAp);
+  assert(policy.update(12002,true,false,true)==WifiAction::None);
+  assert(policy.update(40002,true,false,true)==WifiAction::StartSta);
   // Explicitly enabled permanent AP remains after a successful STA attempt.
   policy.reset(0, false);
   assert(policy.update(30000, false, false, true, true) == WifiAction::None);
@@ -75,9 +103,10 @@ int main() {
   assert(policy.update(207999, true, false, true, true) == WifiAction::None);
   assert(policy.update(208000, true, false, true, true) == WifiAction::StartAp);
   assert(!policy.trying());
-  assert(policy.update(238000, true, false, true, true) == WifiAction::StartSta);
+  assert(policy.update(209999, true, false, true, true) == WifiAction::None);
+  assert(policy.update(210000, true, false, true, true) == WifiAction::StartSta);
   assert(policy.trying());
-  assert(policy.update(238001, true, true, true, true) == WifiAction::None);
+  assert(policy.update(210001, true, true, true, true) == WifiAction::None);
   assert(!policy.trying());
   uint32_t recoveryWord = 0;
   beginRuntimeMetrics(&recoveryWord, 0x52335648u); assert(runtimeMetrics.hookReady && fakeAllocFailureHook);
@@ -96,5 +125,5 @@ int main() {
   assert(__atomic_load_n(&recoveryWord, __ATOMIC_RELAXED) == 0x52335648u);
   assert(runtimeMetrics.allocationFailures == 20001 && runtimeMetrics.largestFailedAllocation == 4096);
   assert(runtimeMetrics.failures[0].ready() && runtimeMetrics.failures[0].size == 64);
-  std::cout << "PASS: immediate STA recovery, fallback/always-on AP, retry/deadline/wrap, bounded AP stop retry, immutable OOM samples across threads\n";
+  std::cout << "PASS: bounded quick startup retries, immediate STA recovery, fallback/always-on AP, retry/deadline/wrap, bounded AP stop retry, immutable OOM samples across threads\n";
 }

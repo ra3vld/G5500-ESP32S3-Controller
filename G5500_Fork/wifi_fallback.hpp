@@ -21,13 +21,17 @@ enum class WifiAction { None, StartAp, StartSta, StopAp, ReconnectSta };
 class WifiFallback {
 public:
   static constexpr uint32_t RetryMs = 30000, AttemptMs = 8000;
+  static constexpr uint32_t StartupRetryMs = 2000;
+  static constexpr uint8_t StartupRetries = 3;
   void reset(uint32_t now, bool connected) {
     phase_ = connected ? Phase::Online : Phase::Fallback;
+    startupRetries_ = connected ? 0 : StartupRetries;
     changedMs_ = now;
     apStopAttemptMs_ = now - 1000;
   }
   void beginAttempt(uint32_t now) {
     phase_ = Phase::Trying;
+    startupRetries_ = StartupRetries;
     changedMs_ = now;
   }
   bool trying() const { return phase_ == Phase::Trying; }
@@ -35,6 +39,7 @@ public:
                     bool keepAp = false) {
     if (connected) {
       phase_ = Phase::Online;
+      startupRetries_ = 0;
       changedMs_ = now;
       if (!keepAp && apEnabled && uint32_t(now - apStopAttemptMs_) >= 1000) {
         apStopAttemptMs_ = now;
@@ -50,9 +55,14 @@ public:
       return configured ? WifiAction::ReconnectSta : WifiAction::StartAp;
     }
     if (!configured) return WifiAction::None;
-    const uint32_t limit = phase_ == Phase::Trying ? AttemptMs : RetryMs;
+    // A transient association/authentication failure at boot should not cost
+    // thirty seconds per retry. Bound the quick retries, then back off while
+    // the service AP stays available for correcting unavailable credentials.
+    const uint32_t limit = phase_ == Phase::Trying ? AttemptMs
+        : startupRetries_ ? StartupRetryMs : RetryMs;
     if (uint32_t(now - changedMs_) < limit) return WifiAction::None;
     const bool timedOut = phase_ == Phase::Trying;
+    if (!timedOut && startupRetries_) --startupRetries_;
     phase_ = timedOut ? Phase::Fallback : Phase::Trying;
     changedMs_ = now;
     return timedOut ? WifiAction::StartAp : WifiAction::StartSta;
@@ -60,6 +70,7 @@ public:
 private:
   enum class Phase { Online, Fallback, Trying };
   Phase phase_ = Phase::Fallback;
+  uint8_t startupRetries_ = StartupRetries;
   uint32_t changedMs_ = 0, apStopAttemptMs_ = 0;
 };
 } // namespace forkrot

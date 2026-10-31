@@ -651,8 +651,8 @@ bool Network::startWifi() {
   }
   actions_.setupWeb();
   heapAfterWifi_ = heapFreeBytes();
-  diagnostics_.dbgPrintln(apAlwaysOn() ? "[WIFI] AP always on; STA retry 30s, attempt 8s"
-                                       : "[WIFI] STA preferred; AP fallback, retry 30s, attempt 8s");
+  diagnostics_.dbgPrintln(apAlwaysOn() ? "[WIFI] AP always on; startup retry 2s x3, then 30s; attempt 8s"
+                                       : "[WIFI] STA preferred; AP fallback; startup retry 2s x3, then 30s; attempt 8s");
   return runtime_.recovery ? (radioWifi.getMode() == WIFI_AP) : true;
 
 #else
