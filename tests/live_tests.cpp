@@ -64,6 +64,12 @@ int main(int argc,char **argv) {
   JsonWriter worst(data,sizeof data);assert(writeLiveState(worst,c,h,3));
   assert(worst.size()<LIVE_STATE_CAPACITY-110);
   assert(std::string(worst.data()).find("\"trackingTrial\":24")!=std::string::npos);
+  // MQTT IDs share endpoint storage with UDP addresses. Metadata must keep
+  // the transport and must never turn that ID into a controller HTTP link.
+  assert(h.add(2,HudEndpoint::mqttNode(2),escaped.c_str()));
+  JsonWriter mqttMetadata(data,sizeof data);assert(writeLiveMetadata(mqttMetadata,c,h));
+  assert(std::string(mqttMetadata.data()).find("\"hudTransport\":\"mqtt\"")!=std::string::npos);
+  assert(std::string(mqttMetadata.data()).find("\"hudHost\"")==std::string::npos);
   c.autoTune={};
   std::cout<<"Worst live state: "<<worst.size()<<" bytes before envelope\n";
   auto fingerprint=liveControlFingerprint(c,h);c.axes[0].current+=1;

@@ -1595,6 +1595,16 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     }
     HudEndpoint endpoint;
     endpoint.port = hud.config.port;
+    if(web_.arg("transport")=="mqtt") {
+#if MQTT_SUPPORT
+      if(!runtime_.mqtt.enabled) {web_.send(409,"application/json","{\"error\":\"mqtt_disabled\"}");return;}
+      const bool ok=hud.discover(HudEndpoint::mqttNode(0));
+      web_.send(ok?200:503,"application/json",ok?"{\"ok\":true,\"result\":\"searching\"}":"{\"error\":\"mqtt_unavailable\"}");
+#else
+      web_.send(501,"application/json","{\"error\":\"feature_disabled\"}");
+#endif
+      return;
+    }
     const bool rs485=web_.arg("transport")=="rs485";
     endpoint.uart = rs485 || web_.arg("transport") == "uart";
     if (endpoint.uart && !hud.config.uart) {
@@ -1643,6 +1653,14 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       return;
     }
     auto *p = hud.peer(id);
+    if(web_.arg("transport")=="mqtt") {
+#if MQTT_SUPPORT
+      if(!runtime_.mqtt.enabled) {web_.send(409,"application/json","{\"error\":\"mqtt_disabled\"}");return;}
+      if(!p) p=hud.add(id,HudEndpoint::mqttNode(id),"G5500",false);
+#else
+      web_.send(501,"application/json","{\"error\":\"feature_disabled\"}");return;
+#endif
+    }
     if (!p) {
       web_.send(404, "application/json", "{\"ok\":false,\"result\":\"discover_first\"}");
       return;
@@ -1659,13 +1677,25 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     }
     const bool oldSaved = p->saved;
     const auto oldBackground = p->background;
+    const auto oldEndpoint=p->endpoint;
+    auto endpoint=oldEndpoint;
+    const auto transport=web_.arg("transport");
+    if(transport=="mqtt")endpoint=HudEndpoint::mqttNode(id);
+    else if(transport=="wifi") {
+      IPAddress ip;unsigned port=4534;
+      if(!ip.fromString(web_.arg("address")) || ip.type()!=IPv4 || !uint32_t(ip) ||
+          (web_.hasArg("port") && (!integerArg(web_.arg("port"),port) || !port))) {
+        web_.send(400,"application/json","{\"error\":\"invalid_address\"}");return;
+      }
+      endpoint={uint32_t(ip),uint16_t(port),false};
+    } else if(transport.length()) {web_.send(400,"application/json","{\"error\":\"invalid_transport\"}");return;}
     char oldLabel[49];
     std::memcpy(oldLabel, p->label, sizeof oldLabel);
     if (web_.arg("action") == "remove")
       p->saved = false;
     else {
       const auto label = web_.arg("name");
-      if (!hud.add(id, p->endpoint, label.length() ? label.c_str() : oldSaved ? oldLabel : p->state.name, true)) {
+      if (!hud.add(id, endpoint, label.length() ? label.c_str() : oldSaved ? oldLabel : p->state.name, true)) {
         web_.send(400, "application/json", "{\"ok\":false,\"result\":\"invalid_name\"}");
         return;
       }
@@ -1674,6 +1704,7 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     if (!storage_.saveHudPeers(hud)) {
       p->saved = oldSaved;
       p->background = oldBackground;
+      p->endpoint=oldEndpoint;
       std::memcpy(p->label, oldLabel, sizeof oldLabel);
       web_.send(507, "application/json", "{\"ok\":false,\"result\":\"storage_full\"}");
       return;

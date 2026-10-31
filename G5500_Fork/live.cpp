@@ -122,12 +122,12 @@ template<class Writer> void metadata(Writer &j,const Controller &c,const Hud &h)
     << ",\"hudBaud\":" << h.config.link.baud << ",\"hudIntervalMs\":" << h.config.link.intervalMs
     << ",\"hudReadyHigh\":" << unsigned(h.config.link.readyHigh) << ",\"hudSimulationEnabled\":" << boolean(h.config.simulationEnabled)
     << ",\"hudSelected\":" << jsonQuoted(selected) << ",\"hudSelectionEpoch\":" << h.selectionEpoch;
-  if(p&&!p->simulated()&&!p->endpoint.uart) {
+  if(p&&!p->simulated()&&!p->endpoint.uart&&!p->endpoint.mqtt) {
     const auto a=p->endpoint.address;
     j << ",\"hudHost\":\"" << (a&255) << '.' << ((a>>8)&255) << '.' << ((a>>16)&255) << '.' << (a>>24) << '"';
   }
   j << ",\"hudName\":" << jsonQuoted(p?p->label:"")
-    << ",\"hudTransport\":" << jsonQuoted(p?(p->simulated()?"simulation":p->endpoint.uart?"uart":"wifi"):"")
+    << ",\"hudTransport\":" << jsonQuoted(p?(p->simulated()?"simulation":p->endpoint.mqtt?"mqtt":p->endpoint.uart?"uart":"wifi"):"")
     << ",\"hudPeers\":" << h.count() << ",\"remoteDrive\":";
   if(p&&p->received)j << jsonQuoted(p->state.drive==0?"YAESU":p->state.drive==1?"SEPARATE_PWM":p->state.drive==2?"BTS7960":p->state.drive==3?"SIMULATED":"NONE");
   else j << "null";

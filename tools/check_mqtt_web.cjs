@@ -59,7 +59,7 @@ state.mqtt={supported:true,enabled:false,storageOk:true,connected:false,error:'d
   }
   await page.locator('#taz').fill('100');await page.locator('#taz').press('Enter');await page.waitForTimeout(100);
   assert.equal(targets.at(-1)?.get('az'),'100');
-  await page.keyboard.down('ArrowRight');await page.waitForTimeout(450);await page.keyboard.up('ArrowRight');await page.waitForTimeout(100);
+  await page.locator('#taz').blur();await page.keyboard.down('ArrowRight');await page.waitForTimeout(450);await page.keyboard.up('ArrowRight');await page.waitForTimeout(100);
   assert(moves.some(p=>p.get('d')==='H'&&p.get('az')==='1'),'HTTP manual HOLD');
   assert(moves.some(p=>p.get('d')==='S'),'HTTP release STOP');
   await page.getByRole('tab',{name:'Настройки',exact:true}).click();await page.locator('#networkSettings > details').evaluate(e=>e.open=true);

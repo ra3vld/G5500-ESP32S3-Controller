@@ -632,7 +632,7 @@ size_t Hud::count(bool saved) const {
 }
 HudPeer *Hud::add(uint64_t node, HudEndpoint endpoint, const char *label, bool saved) {
   if (!node || node == id || node == HUD_SIMULATION_ID || !label || std::strlen(label) > 48 ||
-      (!endpoint.uart && (!endpoint.address || !endpoint.port)))
+      (endpoint.mqtt ? endpoint.uart || endpoint.mqttId()!=node : (!endpoint.uart && (!endpoint.address || !endpoint.port))))
     return nullptr;
   for (const unsigned char *c = reinterpret_cast<const unsigned char *>(label); *c; ++c)
     if (*c < 32)
@@ -651,7 +651,17 @@ HudPeer *Hud::add(uint64_t node, HudEndpoint endpoint, const char *label, bool s
       tail = &(*tail)->next;
     *tail = std::move(owned);
   }
-  p->endpoint = endpoint;
+  if(!(p->endpoint==endpoint)) {
+    const bool selected=config.selected==node;
+    if(selected)select(0); // Release held input through the old transport.
+    if(client_) {
+      for(auto &j:client_->jobs)if(j.used && j.peer==node)finish(j,Result::Cancelled);
+      for(auto &h:client_->held)if(h.peer==node)h.active=false;
+    }
+    p->received=p->live=p->manual=false;
+    p->endpoint=endpoint;
+    if(selected)select(node);
+  }
   p->saved = saved;
   std::snprintf(p->label, sizeof p->label, "%s", label);
   return p;
@@ -1014,8 +1024,9 @@ bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
   const uint32_t serial = nextSerial();
   Writer w{tx_, sizeof tx_};
   auto *selected = peer(targetId);
-  const bool extended = !discovery && selected && (selected->manual || paced(e)) && selected->received && selected->fresh(now);
-  const uint8_t version = selected && selected->received ? selected->wireVersion :
+  const bool extended = !discovery && selected && (selected->manual || paced(e) || e.mqtt) && selected->received && selected->fresh(now);
+  // MQTT is available only on firmware that already supports HUD/5.
+  const uint8_t version = e.mqtt ? 5 : selected && selected->received ? selected->wireVersion :
       selected ? (selected->probeVersion = selected->probeVersion == 1 ? 5 : selected->probeVersion - 1) : 5;
   header(w, {discovery  ? Kind::Discover
              : extended ? Kind::ExtendedQuery
@@ -1026,7 +1037,7 @@ bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
     return false;
   if (discovery) {
     scanSerial_ = serial;
-    if (!paced(e) && !(e.uart && e.address)) for (uint8_t oldVersion : {uint8_t(4),uint8_t(3),uint8_t(2),uint8_t(1)}) {
+    if (!e.mqtt && !paced(e) && !(e.uart && e.address)) for (uint8_t oldVersion : {uint8_t(4),uint8_t(3),uint8_t(2),uint8_t(1)}) {
       Writer legacy{tx_,sizeof tx_}; header(legacy,{Kind::Discover,id,targetId,boot,0,serial,0,oldVersion});
       const auto bytes=legacy.finish();
       if(bytes) transport_->sendHud(e,tx_,bytes);
@@ -1035,7 +1046,7 @@ bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
   else if (auto *p = peer(targetId)) {
     // Keep the working version first after packet loss. Probe one alternative
     // as well so a reboot into older/newer firmware can still renegotiate.
-    if (p->received && !p->fresh(now) && !paced(e)) {
+    if (p->received && !p->fresh(now) && !paced(e) && !e.mqtt) {
       p->probeVersion = p->probeVersion == 1 ? 5 : p->probeVersion - 1;
       if (p->probeVersion != version) {
         Writer probe{tx_,sizeof tx_};
@@ -1090,7 +1101,7 @@ bool Hud::sendJob(Job &j) {
     finish(j, result);
     return true;
   }
-  if (!j.attempts && paced(j.endpoint)) {
+  if (!j.attempts && (paced(j.endpoint) || j.endpoint.mqtt)) {
     if (const auto *p=peer(j.peer)) j.ticket=p->remoteTick+uint32_t(now-p->receivedAt);
   }
   Writer w{tx_, sizeof tx_};
@@ -1251,8 +1262,8 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     bool requested = false;
     const bool discovery =
         h.kind == Kind::State && scanning_ && h.serial == scanSerial_ && uint32_t(now - scanAt_) < responseMs(e) &&
-        e.uart == scanEndpoint_.uart &&
-        ((e.uart && e.address == scanEndpoint_.address) || (!e.uart && e.port == scanEndpoint_.port &&
+        e.mqtt == scanEndpoint_.mqtt && e.uart == scanEndpoint_.uart &&
+        (e.mqtt ? !scanEndpoint_.mqttId() || e == scanEndpoint_ : (e.uart && e.address == scanEndpoint_.address) || (!e.uart && e.port == scanEndpoint_.port &&
                     (scanEndpoint_.address == 0xffffffffu || e.address == scanEndpoint_.address)));
     if (discovery) {
       scanAnswered_=true;
@@ -1299,12 +1310,15 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
         return;
     }
     if (!(p->endpoint == e)) {
-      if (discovery)
+      // Prefer direct UDP for a new discovery, independent of which search
+      // completed first. A saved transport remains an explicit user choice.
+      if (discovery && (p->endpoint.mqtt==e.mqtt ||
+          (!p->saved && p->endpoint.mqtt && !e.mqtt && !e.uart)))
         p->endpoint = e;
       else
         return;
     }
-    p->freshnessMs = paced(e)?responseMs(e)+uint32_t(config.link.intervalMs)*3:0;
+    p->freshnessMs = e.mqtt?5000:paced(e)?responseMs(e)+uint32_t(config.link.intervalMs)*3:0;
     // Capability is stable for a boot even if a newer state overtook this reply.
     if (extended && (!p->boot || p->boot == h.boot)) {
       p->manual = true;
@@ -1394,7 +1408,8 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       sendState(e, h.source, h.serial, false, Result::Ok, h.boot, false, h.version);
     return;
   }
-  if (h.target != id || h.targetBoot != boot || uint32_t(now - h.ticket) >= ticketMs(e)) {
+  const uint32_t validMs=e.mqtt && (h.kind==Kind::Command || h.kind==Kind::LiveCommand)?4000:ticketMs(e);
+  if (h.target != id || h.targetBoot != boot || uint32_t(now - h.ticket) >= validMs) {
     ++rejected;
     return;
   }
@@ -1419,7 +1434,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
         stale = int32_t(h.serial - d.seq) <= 0;
         break;
       }
-      if ((!d.used || uint32_t(now - d.ticket) >= ticketMs({0,config.port,true})) && (&d != &dedup_[0] || release)) {
+      if ((!d.used || uint32_t(now - d.ticket) >= (d.validMs?d.validMs:ticketMs({0,config.port,true}))) && (&d != &dedup_[0] || release)) {
         barrier = &d;
       }
     }
@@ -1428,7 +1443,8 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
                                    : controller_.manualDrive(h.source, h.boot, gesture, h.serial,
                                                              mask, az, el, release, now, 100, absoluteSpeed);
     if (!stale && barrier) {
-      *barrier = {h.source, h.boot, h.serial, h.ticket, result, true};
+      const uint16_t keep=e.mqtt?4000:barrier->used && barrier->source==h.source && barrier->boot==h.boot?barrier->validMs:0;
+      *barrier = {h.source, h.boot, h.serial, keep?now:h.ticket, result, true,0,keep};
     }
     Writer w{tx_, sizeof tx_};
     header(w, {Kind::ManualAck, id, h.source, boot, h.boot, h.serial, now, h.version, controller_.rangeRevision});
@@ -1441,6 +1457,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
     return;
   }
   if (h.kind == Kind::Subscribe || h.kind == Kind::ExtendedSubscribe) {
+    if(e.mqtt) return; // MQTT uses bounded polling, never per-loop live serialization.
     if (!r.done()) return;
     Subscription *slot = nullptr;
     for (auto &sub : subscriptions_) {
@@ -1489,7 +1506,7 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
   const uint8_t channel = c.op == ControlOp::RuntimeSpeed ? uint8_t(c.axis + 1) : 0;
   Dedup *free = nullptr;
   for (auto &d : dedup_) {
-    if (d.used && uint32_t(now - d.ticket) >= ticketMs({0,config.port,true}))
+    if (d.used && uint32_t(now - d.ticket) >= (d.validMs?d.validMs:ticketMs({0,config.port,true})))
       d.used = false;
     if (!d.used) {
       if (!free && (&d != &dedup_[0] || c.op == ControlOp::Stop || c.op == ControlOp::ReleaseJog))
@@ -1522,7 +1539,8 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
   }
   (void)stop;
   const auto result = execute(c, h.source, h.boot, h.serial);
-  *free = {h.source, h.boot, h.serial, h.ticket, result, true, channel};
+  const uint16_t keep=e.mqtt?4000:free->used && free->source==h.source && free->boot==h.boot?free->validMs:0;
+  *free = {h.source, h.boot, h.serial, keep?now:h.ticket, result, true, channel,keep};
   sendState(e, h.source, h.serial, true, result, h.boot, h.kind == Kind::LiveCommand, h.version);
 }
 bool Hud::subscribe(HudPeer &p) {
@@ -1625,7 +1643,7 @@ void Hud::service(uint32_t at, bool advanceSimulation) {
     invalidateMirror();
   }
   if (auto *p = active();
-      p && !paced(p->endpoint) && !p->manual && p->fresh(now) && uint32_t(now - p->capabilityAt) >= 500) {
+      p && !p->endpoint.mqtt && !paced(p->endpoint) && !p->manual && p->fresh(now) && uint32_t(now - p->capabilityAt) >= 500) {
     Writer w{tx_, sizeof tx_};
     const auto seq = nextSerial();
     header(w, {Kind::ExtendedQuery, id, p->id, boot, p->boot, seq, p->remoteTick, p->wireVersion, p->state.rangeRevision});
@@ -1661,22 +1679,28 @@ void Hud::service(uint32_t at, bool advanceSimulation) {
   }
   for (auto &j : client_->jobs)
     if (j.used) {
-      if (uint32_t(now - j.started) >= (paced(j.endpoint)?responseMs(j.endpoint)*3:1000u)) {
+      if (uint32_t(now - j.started) >= (j.endpoint.mqtt?4000u:paced(j.endpoint)?responseMs(j.endpoint)*3:1000u)) {
         ++timeouts;
         finish(j, Result::Timeout);
-      } else if (!j.attempts || (j.attempts < 3 && uint32_t(now - j.sent) >= (paced(j.endpoint)?responseMs(j.endpoint):150u)))
+      } else if (!j.attempts || (j.attempts < 3 && uint32_t(now - j.sent) >= (j.endpoint.mqtt?500u:paced(j.endpoint)?responseMs(j.endpoint):150u)))
         sendJob(j);
     }
   for (unsigned i = 0; i < 2; ++i)
     if (client_->held[i].active && uint32_t(now - client_->held[i].sent) >= 250)
       sendRenew(i);
-  if (auto *activePeer = active(); activePeer && !activePeer->simulated() && !paced(activePeer->endpoint) && activePeer->fresh(now) &&
+  if (auto *activePeer = active(); activePeer && !activePeer->simulated() && !activePeer->endpoint.mqtt && !paced(activePeer->endpoint) && activePeer->fresh(now) &&
       uint32_t(now - activePeer->subscribeSent) >= 250) subscribe(*activePeer);
   // At most 20 state requests/s, active 10Hz and fair round-robin for every other saved peer.
   if (uint32_t(now - lastPoll_) < 50)
     return;
+  // TCP already retries in flight bytes. Do not stack fresh polls behind an
+  // unanswered MQTT query when the shared network is busy.
+  const auto pollReady=[&](const HudPeer &peer) {
+    return !peer.endpoint.mqtt || !peer.querySerial[0] ||
+        int32_t(peer.receivedAt-peer.queryAt[0])>=0 || uint32_t(now-peer.queryAt[0])>=responseMs(peer.endpoint);
+  };
   auto *p = active();
-  if (p && p->saved && !p->simulated() && uint32_t(now - selectedPoll_) >= (paced(p->endpoint)?std::max<uint32_t>(config.link.intervalMs,memoryLimited_?500:0):p->live && uint32_t(now - p->liveAt) < 1000 ? 1000u : memoryLimited_?500u:100u)) {
+  if (p && p->saved && !p->simulated() && pollReady(*p) && uint32_t(now - selectedPoll_) >= (p->endpoint.mqtt?(memoryLimited_?1000u:500u):paced(p->endpoint)?std::max<uint32_t>(config.link.intervalMs,memoryLimited_?500:0):p->live && uint32_t(now - p->liveAt) < 1000 ? 1000u : memoryLimited_?500u:100u)) {
     sendQuery(p->endpoint, p->id);
     p->lastPoll = selectedPoll_ = lastPoll_ = now;
     return;
@@ -1685,7 +1709,7 @@ void Hud::service(uint32_t at, bool advanceSimulation) {
   auto *cursor = start && start->next ? start->next.get() : peers_.get();
   const auto *first = cursor;
   while (cursor) {
-    if (cursor->saved && !cursor->simulated() && cursor->id != config.selected && uint32_t(now - cursor->lastPoll) >= (paced(cursor->endpoint)?std::max<unsigned>(1000,config.link.intervalMs):1000u)) {
+    if (cursor->saved && !cursor->simulated() && cursor->id != config.selected && pollReady(*cursor) && uint32_t(now - cursor->lastPoll) >= (paced(cursor->endpoint)?std::max<unsigned>(1000,config.link.intervalMs):1000u)) {
       sendQuery(cursor->endpoint, cursor->id);
       cursor->lastPoll = lastPoll_ = now;
       pollCursor_ = cursor->id;
@@ -1714,12 +1738,12 @@ bool Hud::writePeers(JsonWriter &j, size_t offset, size_t limit, bool discovered
     const uint32_t address = p->endpoint.address;
     j << "{\"id\":" << jsonQuoted(node) << ",\"name\":" << jsonQuoted(p->label)
       << ",\"background\":" << unsigned(p->background)
-      << ",\"transport\":" << jsonQuoted(p->simulated() ? "simulation" : p->endpoint.uart ? "uart" : "wifi") << ",\"address\":\""
-      << (address & 255) << '.' << ((address >> 8) & 255) << '.' << ((address >> 16) & 255) << '.'
-      << ((address >> 24) & 255) << "\",\"port\":" << p->endpoint.port
+      << ",\"transport\":" << jsonQuoted(p->simulated() ? "simulation" : p->endpoint.mqtt ? "mqtt" : p->endpoint.uart ? "uart" : "wifi") << ",\"address\":\"";
+    if(!p->endpoint.mqtt)j << (address & 255) << '.' << ((address >> 8) & 255) << '.' << ((address >> 16) & 255) << '.' << ((address >> 24) & 255);
+    j << "\",\"port\":" << (p->endpoint.mqtt?0:p->endpoint.port)
       << ",\"busAddress\":" << (p->endpoint.uart?address:0)
       << ",\"selected\":" << (p->id == config.selected ? "true" : "false") << ",\"online\":"
-      << (p->fresh(now, std::max<uint32_t>(3000, uint32_t(count() * 300))) ? "true" : "false")
+      << (p->fresh(now, std::max<uint32_t>(p->endpoint.mqtt?5000:3000, uint32_t(count() * 300))) ? "true" : "false")
       << ",\"ageMs\":";
     if (p->received)
       j << uint32_t(now - p->receivedAt);
@@ -1744,6 +1768,19 @@ bool Hud::writePeers(JsonWriter &j, size_t offset, size_t limit, bool discovered
   j << "]}";
   return j.good();
 }
+void Hud::disconnectMqtt() {
+  if (!isHud() || !client_) return;
+  for (auto *p=peers_.get();p;p=p->next.get()) if(p->endpoint.mqtt) {
+    p->received=false;p->live=false;
+    std::memset(p->querySerial,0,sizeof p->querySerial);
+    for(auto &j:client_->jobs)if(j.used && j.peer==p->id)finish(j,Result::Cancelled);
+    for(auto &h:client_->held)if(h.peer==p->id)h.active=false;
+    if(client_->manual.used && client_->manual.peer==p->id)client_->manual.used=false;
+  }
+  if(const auto *p=active();p && p->endpoint.mqtt) {
+    ++selectionEpoch;protocol_.resetSession();invalidateMirror();
+  }
+}
 void Hud::writeStatus(JsonWriter &j, bool live) const {
   if(live)j << ",\"networkMemoryLimited\":" << (memoryLimited_?"true":"false")
     << ",\"telemetryIntervalMs\":" << (memoryLimited_?500:WebPositionIntervalMs);
@@ -1764,10 +1801,10 @@ void Hud::writeStatus(JsonWriter &j, bool live) const {
     j << "null";
   auto *p = active();
   j << ",\"hudLive\":" << (p && p->live && uint32_t(now-p->liveAt)<1000 ? "true" : "false");
-  if(p && !p->simulated() && !p->endpoint.uart) {const auto a=p->endpoint.address;char ip[16];std::snprintf(ip,sizeof ip,"%u.%u.%u.%u",unsigned(a&255),unsigned((a>>8)&255),unsigned((a>>16)&255),unsigned(a>>24));
+  if(p && !p->simulated() && !p->endpoint.uart && !p->endpoint.mqtt) {const auto a=p->endpoint.address;char ip[16];std::snprintf(ip,sizeof ip,"%u.%u.%u.%u",unsigned(a&255),unsigned((a>>8)&255),unsigned((a>>16)&255),unsigned(a>>24));
     j << ",\"hudHost\":" << jsonQuoted(ip);}
   j << ",\"hudName\":" << jsonQuoted(p ? p->label : "")
-    << ",\"hudTransport\":" << jsonQuoted(p ? (p->simulated() ? "simulation" : p->endpoint.uart ? "uart" : "wifi") : "")
+    << ",\"hudTransport\":" << jsonQuoted(p ? (p->simulated() ? "simulation" : p->endpoint.mqtt ? "mqtt" : p->endpoint.uart ? "uart" : "wifi") : "")
     << ",\"hudPeers\":" << count() << ",\"remoteDrive\":";
   if (p && p->received)
     j << jsonQuoted(p->state.drive == 0   ? "YAESU"

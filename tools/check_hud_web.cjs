@@ -29,7 +29,7 @@ const state=async url=>(await fetch(url+'/api/status')).json();
    await page.locator('#hudPeerSettings button').filter({hasText:name}).waitFor();
   }
   await page.waitForFunction(()=>window._forkState?.hudOnline);
-  assert.equal(await page.locator('#hudPeerSettings .device-peer').filter({hasText:'R101'}).getByRole('button').count(),3);
+  assert.equal(await page.locator('#hudPeerSettings .device-peer').filter({hasText:'R101'}).getByRole('button').count(),4);
   const background=name=>page.locator('#hudPeerSettings .device-peer').filter({hasText:name}).getByRole('combobox',{name:'Фон HUD · '+name,exact:true});
   const peers=async()=>(await (await fetch(base+'/api/hud/peers?limit=8')).json()).items;
   assert.equal(await background('R101').inputValue(),'0');

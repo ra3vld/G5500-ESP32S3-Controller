@@ -371,13 +371,15 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <div class="device-list" id="hudPeerSettings"></div>
 <div class="device-pagination"><button class="btn" id="hudSettingsPrev" onclick="hudPage(-1)">Назад</button><span id="hudSettingsPageInfo"></span><button class="btn" id="hudSettingsNext" onclick="hudPage(1)">Далее</button></div>
 <section class="settings-group"><h3>Добавить поворотку</h3>
-<div class="form-actions"><button class="btn" onclick="hudSearch()">Найти в сети</button><button class="btn" id="hudUartSearch" onclick="hudSearch(true)">Найти по UART</button></div>
+<div class="form-actions"><button class="btn" onclick="hudSearch()">Найти по UDP</button><button class="btn" id="hudUartSearch" onclick="hudSearch(true)">Найти по UART</button><button class="btn" id="hudMqttSearch" data-feature="mqtt" onclick="hudSearchMqtt()">Найти по MQTT</button></div>
 <form class="device-address" onsubmit="event.preventDefault();hudSearchRs485()">
 <div class="device-fields"><div class="field"><label for="hudBusFirst">RS‑485 · первый адрес</label><input id="hudBusFirst" type="number" min="1" max="247" value="1" required/></div><div class="field"><label for="hudBusLast">Последний адрес</label><input id="hudBusLast" type="number" min="1" max="247" value="247" required/></div></div>
 <button class="btn" id="hudBusSearch">Найти на шине RS‑485</button><p class="field-help">Для режима «Modbus RTU с маркером». Адреса опрашиваются по очереди; полный поиск может занять несколько минут. Адреса ведущих пропускаются.</p></form>
 <form class="device-address" onsubmit="event.preventDefault();hudSearch(false,true)">
 <div class="device-fields"><div class="field"><label for="hudAddress">IP контроллера</label><input aria-describedby="hudAddress-help" id="hudAddress" placeholder="192.168.4.1"/><p class="field-help" id="hudAddress-help">IPv4-адрес контроллера, если поиск в сети его не нашёл. Адрес указан в веб-интерфейсе самого контроллера.</p></div><div class="field"><label for="hudPeerPort">UDP-порт HUD</label><input aria-describedby="hudPeerPort-help" id="hudPeerPort" max="65535" min="1" type="number" value="4534"/><p class="field-help" id="hudPeerPort-help">UDP-порт HUD на добавляемом контроллере. Он должен совпадать с портом в его настройках связи.</p></div></div>
 <button class="btn">Проверить адрес</button></form>
+<p class="field-help" id="hudTransportHelp">Основное подключение HUD — UDP. Используйте MQTT, только если подключение по UDP невозможно.</p>
+<form class="device-address" data-feature="mqtt" onsubmit="event.preventDefault();hudAddMqtt()"><div class="field"><label for="hudMqttId">ID контроллера MQTT</label><input id="hudMqttId" pattern="[0-9A-Fa-f]{12}" maxlength="12" required placeholder="001122334455"/><p class="field-help">ID из настроек контроллера. На обоих устройствах включите MQTT и укажите один брокер.</p></div><button class="btn">Добавить по MQTT</button></form>
 <p class="hint" id="hudBusProgress" role="status"></p>
 <div class="device-list" id="hudDiscovered"></div>
 <div class="device-pagination"><button class="btn" onclick="hudDiscoveryPage(-1)">Назад</button><span id="hudDiscoveryInfo"></span><button class="btn" onclick="hudDiscoveryPage(1)">Далее</button></div>
@@ -815,7 +817,7 @@ function updateConnection(){
   const hud=j.deviceRole==='hud',selected=j.hudSelected&&!/^0+$/.test(j.hudSelected);
   if(hud&&!selected){state='unselected';text='Поворотка не выбрана';hint='Выберите поворотку в настройках пульта.';}
   else if(hud&&!j.hudOnline){state='offline';text='Нет связи с повороткой';hint='Пульт на связи, но выбранная поворотка '+(j.hudName||j.hudSelected)+' недоступна.';}
-  else{state='online';text='Поворотка на связи';hint=hud?'Выбрана '+(j.hudName||j.hudSelected)+' · '+(j.hudTransport==='simulation'?'Встроенная имитация':j.hudTransport==='uart'?'UART':'Wi-Fi'):'Браузер получает состояние контроллера поворотки.';}
+  else{state='online';text='Поворотка на связи';hint=hud?'Выбрана '+(j.hudName||j.hudSelected)+' · '+(j.hudTransport==='simulation'?'Встроенная имитация':j.hudTransport==='mqtt'?'MQTT':j.hudTransport==='uart'?'UART':'Wi-Fi'):'Браузер получает состояние контроллера поворотки.';}
  }else if(connection.httpOnline!==null){state='offline';text='Нет связи с устройством';hint='Браузер не получает актуальное состояние '+(j?.deviceRole==='hud'?'пульта.':'контроллера поворотки.');}
  const addresses=networkAddresses(j);
  if(addresses.length)text+=' · '+(reachable?'':'Последние адреса: ')+addresses.join(' · ');
@@ -969,7 +971,9 @@ async function forkPost(path,body){
   if(r.status===202&&j.requestId){
     document.getElementById('forkMessage').textContent='Ожидаем подтверждение поворотки…';notice?.update('Ожидаем подтверждение поворотки…');
     const started=Date.now();
-    while(j.result==='deferred'&&Date.now()-started<3000){await new Promise(resolve=>setTimeout(resolve,100));j=await (await settingsRequest('/api/hud/command?id='+j.requestId,{cache:'no-store'},Math.max(1,Math.min(1000,3000-(Date.now()-started))))).json();}
+    const waitMs=window._forkState?.hudTransport==='mqtt'?5000:3000;
+    const pollMs=window._forkState?.hudTransport==='mqtt'?4000:1000;
+    while(j.result==='deferred'&&Date.now()-started<waitMs){await new Promise(resolve=>setTimeout(resolve,100));j=await (await settingsRequest('/api/hud/command?id='+j.requestId,{cache:'no-store'},Math.max(1,Math.min(pollMs,waitMs-(Date.now()-started))))).json();}
     if(j.result==='deferred')j={ok:false,result:'timeout'};
   }
   const missingCalibration=path==='/api/target'?['az','el'].filter((axis,i)=>body[axis]!==undefined&&window._forkState?.axes?.[i]?.calibrated===false).map(axis=>axis.toUpperCase()):[];
@@ -1779,9 +1783,13 @@ function hudRow(peer,discovered,manage=false){
  if(!discovered)select.setAttribute('aria-pressed',String(!!peer.selected));
  const age=peer.ageMs===null?'нет данных':Math.round(peer.ageMs/1000)+' с назад';
  const position=axis=>peer[axis+'Calibrated']===false?'NC':Number.isFinite(peer[axis])?Number(peer[axis]).toFixed(1)+'°':'—';
- select.textContent=peer.name+(peer.busAddress?' · RS‑485 №'+peer.busAddress:'')+' · '+(peer.online?'AZ '+position('az')+(peer.hasEl===false?'':' / EL '+position('el'))+(peer.moving?' · вращение':''):'нет связи')+' · '+age;
+ select.textContent=peer.name+(peer.transport==='mqtt'?' · MQTT':'')+(peer.busAddress?' · RS‑485 №'+peer.busAddress:'')+' · '+(peer.online?'AZ '+position('az')+(peer.hasEl===false?'':' / EL '+position('el'))+(peer.moving?' · вращение':''):'нет связи')+' · '+age;
  select.onclick=async()=>{await forkPost(discovered?'/api/hud/peers':'/api/hud/select',{id:peer.id});await loadHudPeers();if(discovered)await loadHudDiscovery()};row.append(select);
  if(manage&&!discovered&&peer.transport!=='simulation'){
+  if(window._forkState?.build?.features?.mqtt!==false){
+   const link=document.createElement('button');link.className='btn';link.textContent=peer.transport==='mqtt'?'Перейти на UDP':'Перейти на MQTT';
+   link.onclick=async()=>{const data={id:peer.id,transport:peer.transport==='mqtt'?'wifi':'mqtt'};if(data.transport==='wifi'){const address=prompt('IPv4 контроллера');if(!address)return;data.address=address;data.port=String(window._forkState?.hudPort||4534);}await forkPost('/api/hud/peers',data);await loadHudPeers();};row.append(link);
+  }
   const rename=document.createElement('button');rename.className='btn';rename.textContent='Имя';rename.onclick=async()=>{const name=prompt('Имя поворотки',peer.name);if(name!==null){await forkPost('/api/hud/peers',{id:peer.id,name});await loadHudPeers()}};row.append(rename);
   const remove=document.createElement('button');remove.className='btn';remove.textContent='Удалить';remove.onclick=async()=>{await forkPost('/api/hud/peers',{id:peer.id,action:'remove'});await loadHudPeers()};row.append(remove);
   const field=document.createElement('label');field.className='hud-background';
@@ -1809,6 +1817,8 @@ async function loadHudPeers(){
 }
 let hudScanTimer;
 async function loadHudDiscovery(){if(otaBusy)return;try{const data=await background.read('discovery','/api/hud/peers?discovered=1&offset='+hudDiscoveredOffset,'json',()=>!document.getElementById('settingsPanel').hidden);hudDiscoveryTotal=data.total;document.getElementById('hudDiscovered').replaceChildren(...data.items.map(p=>hudRow(p,true)));document.getElementById('hudBusProgress').textContent=data.scanActive?'Поиск RS‑485: адрес '+data.scanAddress+' / '+data.scanLast:'';document.getElementById('hudDiscoveryInfo').textContent='Найдено: '+data.total;clearTimeout(hudScanTimer);if(data.scanActive)hudScanTimer=setTimeout(loadHudDiscovery,1000)}catch(e){}}
+async function hudSearchMqtt(){if(await forkPost('/api/hud/discover',{transport:'mqtt'})){hudDiscoveredOffset=0;setTimeout(loadHudDiscovery,500);setTimeout(loadHudDiscovery,1800);}}
+async function hudAddMqtt(){if(await forkPost('/api/hud/peers',{id:document.getElementById('hudMqttId').value,transport:'mqtt'}))await loadHudPeers();}
 async function hudSearchRs485(){if(Number(document.getElementById('hudBusFirst').value)>Number(document.getElementById('hudBusLast').value)){alert('Первый адрес должен быть не больше последнего');return;}if(await forkPost('/api/hud/discover',{transport:'rs485',first:document.getElementById('hudBusFirst').value,last:document.getElementById('hudBusLast').value})){hudDiscoveredOffset=0;await loadHudDiscovery();}}
 async function hudSearch(uart=false,manual=false){
  await forkPost('/api/hud/discover',{transport:uart?'uart':'wifi',address:manual?document.getElementById('hudAddress').value:'',port:manual?document.getElementById('hudPeerPort').value:window._forkState?.hudPort||4534});

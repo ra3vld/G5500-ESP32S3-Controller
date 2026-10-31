@@ -26,6 +26,7 @@
 #include "modbus_bus.hpp"
 #include <WiFiServer.h>
 namespace forkrot {
+class MqttService;
 class Network : public HudTransport {
 public:
   Network(Runtime &runtime, DeviceActions &actions, Calibration &calibration, Hardware &hardware,
@@ -34,6 +35,7 @@ public:
         diagnostics_(diagnostics) {}
   bool beginSerial();
   void beginHud();
+  void setMqttService(MqttService *service) { mqtt_=service; }
   void serviceHud(bool advanceSimulation = true);
   bool sendHud(const HudEndpoint &, const uint8_t *, size_t) override;
   void selectionChanged() override { resetHudInputs(); }
@@ -115,6 +117,7 @@ private:
   void serviceApSubnet();
   int formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity);
   Runtime &runtime_;
+  MqttService *mqtt_=nullptr;
   DeviceActions &actions_;
   Calibration &calibration_;
   Hardware &hardware_;

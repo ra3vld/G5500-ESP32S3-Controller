@@ -24,8 +24,13 @@ struct HudEndpoint {
   uint32_t address = 0; // Network byte order, or Modbus address with uart=true (zero is legacy UART).
   uint16_t port = 4534;
   bool uart = false;
+  bool mqtt = false;
+  static HudEndpoint mqttNode(uint64_t node) {
+    return {uint32_t(node), uint16_t(node >> 32), false, true};
+  }
+  uint64_t mqttId() const { return uint64_t(address) | (uint64_t(port) << 32); }
   bool operator==(const HudEndpoint &o) const {
-    return uart == o.uart && address == o.address && (uart || port == o.port);
+    return mqtt == o.mqtt && uart == o.uart && address == o.address && (uart || port == o.port);
   }
 };
 struct HudPreset {
@@ -160,6 +165,7 @@ public:
   void writeStatus(JsonWriter &, bool live = false) const;
   uint32_t freshnessAge() const;
   void invalidateMirror();
+  void disconnectMqtt();
 
 private:
   Controller &controller_;
@@ -194,7 +200,9 @@ private:
     Result result = Result::Invalid;
     bool used = false;
     uint8_t channel = 0; // Motion, AZ speed and EL speed have independent ordering.
+    uint16_t validMs = 0;
   } dedup_[32];
+  static_assert(sizeof(Dedup)<=32,"Keep extended MQTT dedup deadlines in existing padding");
   struct Lease {
     uint64_t source = 0, boot = 0;
     uint32_t command = 0, epoch = 0, renewed = 0;
@@ -238,7 +246,7 @@ private:
   uint8_t tx_[HUD_FRAME_MAX]{};
   uint32_t nextSerial();
   bool paced(const HudEndpoint &e) const { return e.uart && config.link.paced(); }
-  uint32_t responseMs(const HudEndpoint &e) const { return paced(e)?config.link.responseMs():1000; }
+  uint32_t responseMs(const HudEndpoint &e) const { return e.mqtt?4000:paced(e)?config.link.responseMs():1000; }
   uint32_t ticketMs(const HudEndpoint &e) const { return paced(e)?responseMs(e)*2:2000; }
   uint32_t manualIntervalMs(const HudEndpoint &e) const {
     const uint32_t serialMs=paced(e)?(160000u*config.link.frameBits+config.link.baud-1)/config.link.baud:50;
@@ -296,6 +304,7 @@ public:
   void writeStatus(JsonWriter &,bool=false) const{}
   uint32_t freshnessAge() const{return UINT32_MAX;}
   void invalidateMirror(){}
+  void disconnectMqtt(){}
 };
 #endif
 } // namespace forkrot

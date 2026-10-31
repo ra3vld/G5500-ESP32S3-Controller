@@ -117,6 +117,7 @@ void Application::controllerSetup() {
       failConfiguration(RecoveryReason::Allocation); return;
     }
   }
+  network_.setMqttService(&mqtt_);
   network_.beginHud();
   display_.setMqttService(&mqtt_);
   ota_.begin([](void *context) {
@@ -339,10 +340,11 @@ void Application::controllerLoop() {
   checkpoint("serialTcp");
   web_server_.serviceLiveCommands();
   checkpoint("liveCommands");
-  mqtt_.service();
-  checkpoint("mqtt");
   if (runtime_.controller.controlPeriodMs() < 20) updatePosition();
   hardware_.controlRotator();
+  checkpoint("control");
+  mqtt_.service();
+  checkpoint("mqtt");
   display_.serviceTouch();
   network_.serviceHud();
   if (runtime_.controller.controlPeriodMs() < 20) updatePosition();

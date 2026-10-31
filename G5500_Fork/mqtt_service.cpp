@@ -3,11 +3,13 @@
 #if MQTT_SUPPORT
 #include "mqtt_bridge.hpp"
 #include "mqtt_publish_mailbox.hpp"
+#include "mqtt_hud_queue.hpp"
 #if defined(ARDUINO_ARCH_ESP32) && defined(ARDUINO)
 #include "device_actions.hpp"
 #include "hardware.hpp"
 #include "heap_metrics.hpp"
 #include "wifi_access.hpp"
+#include "wifi_memory.hpp"
 #include "ethernet.hpp"
 #include <mqtt_client.h>
 #include <esp_transport.h>
@@ -24,6 +26,7 @@ struct MqttService::Impl {
   esp_mqtt_client_handle_t client=nullptr;
   std::atomic<bool> connected{false};
   std::atomic<int> connectError{0};
+  std::atomic<int> transportErrorType{0},socketError{0},transportError{0};
   std::atomic<uint32_t> stackFree{0};
   std::atomic<uint32_t> epoch{0},outboxBytes{0},outboxAt{0};
   TaskHandle_t worker=nullptr;
@@ -33,6 +36,14 @@ struct MqttService::Impl {
   esp_transport_handle_t transport=nullptr;
   TcpPeerEndpoint peer;
   MqttPublishMailbox outgoing;
+  MqttHudQueue hudIncoming,hudOutgoing;
+  const bool hudRole;
+  const uint64_t hudId;
+  char hudTopic[48]{};
+  std::atomic<uint32_t> hudRx{0},hudTx{0},hudDropped{0};
+  std::atomic<bool> hudSocketReady{false};
+  std::atomic<uint32_t> hudPublishMaxUs{0},hudPublishFailures{0};
+  uint32_t hudEpoch=0,hudQueryAt=0,hudThrottled=0,hudControlDeferred=0,hudServiceMaxUs=0;
   bool offlineQueued=false;
   nvs_handle_t registry=0;
   nvs_iterator_t iterator=nullptr;
@@ -54,9 +65,28 @@ struct MqttService::Impl {
   }
   void serviceOutgoing() {
     const uint32_t now=uint32_t(esp_timer_get_time()/1000);
-    outgoing.drain(epoch.load(),now,[&](const auto &message) {
+    const auto queued=esp_mqtt_client_get_outbox_size(client);
+    hudOutgoing.drain(epoch.load(),now,[&](const uint8_t *bytes,size_t size) {
+      if(!connected.load() || paused.load())return true;
+      if(queued && !mqttHudStop(bytes,size))return false;
+      if(!mqttHudStop(bytes,size) && heapFreeBytes()<MemoryGuard::HealthyFree)return false;
+      char topic[48];const auto target=mqttHudId(bytes+13);
+      if(target)std::snprintf(topic,sizeof topic,"g5500/hud/%012llx/rx",static_cast<unsigned long long>(target));
+      else std::strcpy(topic,"g5500/hud/discover");
+      // Only the existing publisher task may call the SDK. QoS 0 sends HUD
+      // frames directly, without accumulating them in the retry outbox.
+      const auto started=esp_timer_get_time();
+      const int sent=esp_mqtt_client_publish(client,topic,reinterpret_cast<const char *>(bytes),int(size),0,false);
+      hudPublishMaxUs.store(std::max(hudPublishMaxUs.load(),uint32_t(esp_timer_get_time()-started)));
+      if(sent<0){hudPublishFailures.fetch_add(1);return false;}
+      hudTx.fetch_add(1);return true;
+    });
+    if(!hudOutgoing.pending())outgoing.drain(epoch.load(),now,[&](const auto &message) {
       if(!connected.load() || heapFreeBytes()<MemoryGuard::HealthyFree || heapMaxBlockBytes()<MemoryGuard::HealthyBlock)return false;
       const auto queued=esp_mqtt_client_get_outbox_size(client);
+      // Serialize all QoS 0 traffic on this worker. Do not put periodic HA
+      // state in the SDK retry outbox alongside the time-sensitive HUD path.
+      if(message.qos==0)return !queued && esp_mqtt_client_publish(client,message.topic,message.size?message.payload:"",message.size,0,message.retain)>=0;
       if(size_t(queued)+std::strlen(message.topic)+message.size+16>2048)return false;
       const bool ok=esp_mqtt_client_enqueue(client,message.topic,message.size?message.payload:"",message.size,message.qos,message.retain,true)>=0;
       outboxBytes.store(esp_mqtt_client_get_outbox_size(client));outboxAt.store(now);
@@ -130,10 +160,11 @@ struct MqttService::Impl {
     self.owner.hardware_.applyOutputs();
     if(persist)self.owner.actions_.saveForkSettings();
   }
-  explicit Impl(MqttService &service):owner(service),bridge(service.runtime_,service.runtime_.hud.id,
+  explicit Impl(MqttService &service):owner(service),hudRole(service.runtime_.hud.isHud()),hudId(service.runtime_.hud.id),bridge(service.runtime_,service.runtime_.hud.id,
       {this,publish,idle,registryNext,registryRead,registryWrite,allocate,beforeCommand,afterCommand}) {
     std::snprintf(clientId,sizeof clientId,"g5500_%012llx",static_cast<unsigned long long>(service.runtime_.hud.id));
     std::snprintf(willTopic,sizeof willTopic,"%s/availability",bridge.baseTopic());
+    std::snprintf(hudTopic,sizeof hudTopic,"g5500/hud/%012llx/rx",static_cast<unsigned long long>(hudId));
   }
   ~Impl() {
     if(worker) {
@@ -154,6 +185,14 @@ struct MqttService::Impl {
     } else if(eventId==MQTT_EVENT_CONNECTED) {
       const int fd=self.transport?esp_transport_get_socket(self.transport):-1;
       self.peer=tcpPeerEndpoint(fd);
+#if HUD_SUPPORT
+      // Small control frames must not wait for Nagle or compete with bulk
+      // HTTP in the default Wi-Fi queue. This adds no task or packet buffer.
+      const int yes=1,priority=4<<5;
+      const bool noDelay=fd>=0 && ::setsockopt(fd,IPPROTO_TCP,TCP_NODELAY,&yes,sizeof yes)==0;
+      const bool prioritized=fd>=0 && ::setsockopt(fd,IPPROTO_IP,IP_TOS,&priority,sizeof priority)==0;
+      self.hudSocketReady.store(noDelay && prioritized);
+#endif
 #if FORK_CLASSIC_ESP32
       if(limitTcpSocketMss(fd,536))self.tcpMssLimit.store(536);
 #endif
@@ -162,6 +201,10 @@ struct MqttService::Impl {
       self.bridge.connection(!self.paused);
       char topic[80];std::snprintf(topic,sizeof topic,"%s/+/set/+",self.bridge.baseTopic());
       esp_mqtt_client_subscribe(self.client,topic,0);
+#if HUD_SUPPORT
+      esp_mqtt_client_subscribe(self.client,self.hudTopic,0);
+      if(!self.hudRole)esp_mqtt_client_subscribe(self.client,"g5500/hud/discover",0);
+#endif
 #if HOME_ASSISTANT_DISCOVERY_SUPPORT
       if(self.owner.runtime_.mqtt.discovery) {
         std::snprintf(topic,sizeof topic,"%s/status",self.owner.runtime_.mqtt.discoveryPrefix);
@@ -169,10 +212,25 @@ struct MqttService::Impl {
       }
 #endif
     } else if(eventId==MQTT_EVENT_DISCONNECTED) {
+      self.hudSocketReady.store(false);
       self.disconnects.fetch_add(1);self.retirePeer();self.tcpMssLimit.store(0);
       self.epoch.fetch_add(1);
       self.connected.store(false);self.bridge.connection(false);
     } else if(eventId==MQTT_EVENT_DATA) {
+      const std::string_view topic(event->topic?event->topic:"",size_t(event->topic_len));
+      const bool discovery=topic=="g5500/hud/discover";
+      if(topic==self.hudTopic || discovery) {
+        // A full HUD frame plus topic fits the existing 1 KiB SDK RX buffer.
+        // Reject retained/oversized/partial frames in full, including tails.
+        const auto *bytes=reinterpret_cast<const uint8_t *>(event->data);
+        const size_t n=size_t(event->data_len);
+        const bool valid=!self.paused.load() && !event->retain && self.connected.load() &&
+            !event->current_data_offset && event->data_len==event->total_data_len && mqttHudFrame(bytes,n) &&
+            mqttHudId(bytes+5)!=self.hudId &&
+            (discovery ? !self.hudRole && bytes[4]==1 && !mqttHudId(bytes+13) : mqttHudId(bytes+13)==self.hudId);
+        if(!valid || !self.hudIncoming.offer(bytes,n,self.epoch.load(),uint32_t(esp_timer_get_time()/1000)))self.hudDropped.fetch_add(1);
+        return;
+      }
       // Scalar commands fit one 1 KiB RX buffer. Oversized/fragmented messages
       // are rejected in full, including their trailing fragments.
       if(!self.paused && event->current_data_offset==0 && event->data_len==event->total_data_len &&
@@ -180,6 +238,11 @@ struct MqttService::Impl {
         self.bridge.receive({event->topic,size_t(event->topic_len)},{event->data,size_t(event->data_len)},event->retain,uint32_t(esp_timer_get_time()/1000));
     } else if(eventId==MQTT_EVENT_ERROR) {
       self.connectError.store(event->error_handle?int(event->error_handle->connect_return_code):-1);
+      if(event->error_handle) {
+        self.transportErrorType.store(int(event->error_handle->error_type));
+        self.socketError.store(event->error_handle->esp_transport_sock_errno);
+        self.transportError.store(event->error_handle->esp_tls_last_esp_err);
+      }
       self.connected.store(false);self.bridge.connection(false);
       const auto peer=tcpPeerEndpoint(self.transport?esp_transport_get_socket(self.transport):-1);
       if(peer.valid)self.peer=peer;
@@ -233,7 +296,42 @@ void MqttService::service() {
     return;
   }
   error_=impl_->connected.load()?"":"connecting";
+  const auto epoch=impl_->epoch.load();
+  if(epoch!=impl_->hudEpoch) {
+    impl_->hudEpoch=epoch;runtime_.hud.disconnectMqtt();
+  }
+  const auto started=micros();
+  impl_->hudIncoming.drain(epoch,millis(),[&](const uint8_t *bytes,size_t size) {
+    if(!impl_->connected.load())return true;
+    const auto kind=bytes[4];const auto at=millis();
+    if(!runtime_.hud.isHud() && (kind==1 || kind==2 || kind==11)) {
+      // Let the imminent motor step run first. Retain only this one query;
+      // commands and the reserved STOP slots never wait for control headroom.
+      if(runtime_.controller.controlActive() && runtime_.controller.controlDue(at+1)){++impl_->hudControlDeferred;return false;}
+      // Aggregate limit even with several HUDs or a flooding broker client.
+      if(impl_->hudQueryAt && uint32_t(at-impl_->hudQueryAt)<(networkLowMemory()?500u:50u)) {
+        ++impl_->hudThrottled;return true;
+      }
+      impl_->hudQueryAt=at;
+    }
+    runtime_.hud.receive(HudEndpoint::mqttNode(mqttHudId(bytes+5)),bytes,size,at);
+    impl_->hudRx.fetch_add(1);
+    if(!runtime_.hud.isHud() && (kind==4 || kind==9 || kind==15))hardware_.applyOutputs();
+    return true;
+  });
+  impl_->hudServiceMaxUs=std::max(impl_->hudServiceMaxUs,uint32_t(micros()-started));
   impl_->bridge.service(millis());
+#endif
+}
+bool MqttService::sendHud(const HudEndpoint &endpoint,const uint8_t *bytes,size_t size) {
+#if defined(ARDUINO_ARCH_ESP32) && defined(ARDUINO) && HUD_SUPPORT
+  if(!endpoint.mqtt || !impl_ || !impl_->connected.load() || impl_->paused.load() ||
+      !mqttHudFrame(bytes,size) || endpoint.mqttId()!=mqttHudId(bytes+13))return false;
+  const bool queued=impl_->hudOutgoing.offer(bytes,size,impl_->epoch.load(),millis());
+  if(queued)impl_->schedule();else impl_->hudDropped.fetch_add(1);
+  return queued;
+#else
+  (void)endpoint;(void)bytes;(void)size;return false;
 #endif
 }
 void MqttService::pause() {
@@ -267,7 +365,15 @@ void MqttService::writeStatus(JsonWriter &j, bool compact) const {
     << ",\"stackFreeBytes\":" << impl_->stackFree.load()
     << ",\"publishStackFreeBytes\":" << impl_->publishStackFree.load() << ",\"brokerError\":" << impl_->connectError.load();
   if(impl_)j << ",\"disconnects\":" << impl_->disconnects.load() << ",\"tcpRetired\":" << impl_->tcpRetired.load()
-    << ",\"tcpMssLimit\":" << impl_->tcpMssLimit.load();
+    << ",\"transportErrorType\":" << impl_->transportErrorType.load() << ",\"socketError\":" << impl_->socketError.load()
+    << ",\"transportError\":" << impl_->transportError.load()
+    << ",\"tcpMssLimit\":" << impl_->tcpMssLimit.load()
+    << ",\"hudRxFrames\":" << impl_->hudRx.load() << ",\"hudTxFrames\":" << impl_->hudTx.load()
+    << ",\"hudDropped\":" << impl_->hudDropped.load() << ",\"hudThrottled\":" << impl_->hudThrottled
+    << ",\"hudControlDeferred\":" << impl_->hudControlDeferred
+    << ",\"hudSocketReady\":" << (impl_->hudSocketReady.load()?"true":"false")
+    << ",\"hudPublishMaxUs\":" << impl_->hudPublishMaxUs.load() << ",\"hudPublishFailures\":" << impl_->hudPublishFailures.load()
+    << ",\"hudBufferBytes\":" << (HUD_SUPPORT?sizeof(MqttHudQueue)*2:0) << ",\"hudServiceMaxUs\":" << impl_->hudServiceMaxUs;
 #else
   (void)compact;
   j << "false,\"error\":" << jsonQuoted(runtime_.mqtt.enabled?"not_started":"disabled");

@@ -7,6 +7,7 @@ namespace forkrot {
 struct Runtime;
 class DeviceActions;
 class Hardware;
+struct HudEndpoint;
 #if MQTT_SUPPORT
 class MqttService {
   struct Impl;
@@ -21,6 +22,7 @@ public:
   void service();
   void pause();
   bool connected() const;
+  bool sendHud(const HudEndpoint &,const uint8_t *,size_t);
   void writeStatus(JsonWriter &, bool compact = false) const;
 };
 #else
@@ -30,6 +32,7 @@ public:
   void service(){}
   void pause(){}
   bool connected() const {return false;}
+  bool sendHud(const HudEndpoint &,const uint8_t *,size_t){return false;}
   void writeStatus(JsonWriter &j, bool = false) const { j << "\"supported\":false,\"connected\":false,\"error\":\"feature_disabled\""; }
 };
 #endif

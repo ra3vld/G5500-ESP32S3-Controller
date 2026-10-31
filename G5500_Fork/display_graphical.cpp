@@ -239,7 +239,9 @@ void Display::updateLocalDisplay() {
       const auto *p = runtime_.hud.active();
       view.hudBackground = p ? p->background : 0;
       std::snprintf(view.hudName, sizeof view.hudName, "%s", p ? p->label : "Выберите поворотку");
-      if (p && p->endpoint.uart)
+      if (p && p->endpoint.mqtt)
+        std::snprintf(view.hudAddress, sizeof view.hudAddress, "hud:MQTT");
+      else if (p && p->endpoint.uart)
         std::snprintf(view.hudAddress, sizeof view.hudAddress, "hud:UART");
       else if (p && p->endpoint.address) {
         const IPAddress peerAddress(p->endpoint.address);

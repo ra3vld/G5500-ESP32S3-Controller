@@ -293,6 +293,8 @@ for variant in 0:0 1:0 2:0 2:1; do
 done
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/mqtt_tests.cpp -o build/mqtt_tests
 ./build/mqtt_tests
+${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/mqtt_hud_tests.cpp -o build/mqtt_hud_tests
+./build/mqtt_hud_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -pthread -I G5500_Fork tests/mqtt_publish_mailbox_tests.cpp -o build/mqtt_publish_mailbox_tests
 ./build/mqtt_publish_mailbox_tests
 

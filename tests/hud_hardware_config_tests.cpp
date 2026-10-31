@@ -66,5 +66,27 @@ int main() {
       assert(!restored.recovery && restored.hardwareRecord.hasConfirmed && restored.controller.hardware==config);
     }
   }
-  std::printf("PASS: board %d HUD boot/offline without simulation or local drive, active inputs, recovery editing and safe role return\n",SELECTED_BOARD);
+  // The catalogue keeps its record size and reads both legacy transports.
+  Preferences::database.clear();Storage storage;
+  MotionTestRuntime original;original.hud.config.role=DeviceRole::Hud;original.hud.begin(77,78);
+  assert(storage.saveHudConfig(original.hud.config));
+  assert(original.hud.add(0xc0e5525c3314ULL,HudEndpoint::mqttNode(0xc0e5525c3314ULL),"MQTT"));
+  assert(original.hud.add(0x123400000000ULL,HudEndpoint::mqttNode(0x123400000000ULL),"Zero low ID"));
+  original.hud.peer(0xc0e5525c3314ULL)->background=8;
+  assert(storage.saveHudPeers(original.hud));
+  MotionTestRuntime loaded;loaded.hud.begin(77,79);storage.loadHud(loaded,true);
+  assert(!loaded.hud.catalogError && loaded.hud.count()==2);
+  assert(loaded.hud.peer(0xc0e5525c3314ULL)->endpoint.mqtt && loaded.hud.peer(0xc0e5525c3314ULL)->background==8);
+  assert(loaded.hud.peer(0x123400000000ULL)->endpoint.mqttId()==0x123400000000ULL);
+  for(auto *p=original.hud.peers();p;p=p->next.get())p->endpoint={0xeb03a8c0,4534,false};
+  assert(storage.saveHudPeers(original.hud));
+  auto &bytes=std::get<Preferences::Bytes>(Preferences::database["hudcfg"]["peers"]);
+  for(uint32_t version:{2u,1u}) {
+    std::memcpy(bytes.data(),&version,4);const auto crc=hudCrc(bytes.data(),bytes.size()-4);
+    std::memcpy(bytes.data()+bytes.size()-4,&crc,4);
+    MotionTestRuntime legacy;legacy.hud.begin(77,80);storage.loadHud(legacy,true);
+    assert(!legacy.hud.catalogError && legacy.hud.count()==2 && !legacy.hud.peers()->endpoint.mqtt);
+    assert(legacy.hud.peers()->background==(version==1?0:8));
+  }
+  std::printf("PASS: board %d HUD boot/offline without simulation or local drive, recovery/role return and MQTT/legacy catalogue migration\n",SELECTED_BOARD);
 }

@@ -1,6 +1,7 @@
 #include "wifi_access.hpp"
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "network.hpp"
+#include "mqtt_service.hpp"
 #include "network_addresses.hpp"
 #include "wifi_memory.hpp"
 #include "tcp_memory.hpp"
@@ -1021,7 +1022,9 @@ runtime_.hud.begin(ESP.getEfuseMac() & 0xffffffffffffULL,(uint64_t(esp_random())
 bool Network::sendHud(const HudEndpoint &e, const uint8_t *bytes, size_t size) {
   bool sent=false; int error=0;
 #if HUD_SUPPORT
-  if(e.uart) {
+  if(e.mqtt) {
+    sent=mqtt_ && mqtt_->sendHud(e,bytes,size);
+  } else if(e.uart) {
 #if HUD_UART_SUPPORT
     if(runtime_.hud.config.uart) {
 #if MODBUS_RTU_SUPPORT

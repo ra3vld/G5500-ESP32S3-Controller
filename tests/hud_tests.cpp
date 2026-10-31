@@ -55,7 +55,8 @@ void Bus::pump() {
     auto p = std::move(packets.front());
     packets.pop_front();
     for (auto *n : nodes)
-      if (p.destination.address == 0xffffffffu || p.destination == n->endpoint)
+      if (p.destination.address == 0xffffffffu || p.destination == n->endpoint ||
+          (p.destination.mqtt && !p.destination.mqttId() && !n->hud.isHud()))
         n->hud.receive(p.source, p.bytes.data(), p.bytes.size(), now);
   }
 }
@@ -68,6 +69,29 @@ void Bus::tick(uint32_t at) {
   pump();
 }
 int main() {
+  for (const bool mqttFirst : {false, true}) {
+    Bus wire; Node drive(wire,0x801,1),panel(wire,0x802,2,true);
+    const auto udp=drive.endpoint;
+    auto discover=[&](bool mqtt) {
+      drive.endpoint=mqtt?HudEndpoint::mqttNode(drive.hud.id):udp;
+      panel.endpoint=mqtt?HudEndpoint::mqttNode(panel.hud.id):HudEndpoint{2,4534,false};
+      panel.hud.now=++wire.now;
+      assert(panel.hud.discover(mqtt?HudEndpoint::mqttNode(0):HudEndpoint{0xffffffffu,4534,false}));
+      wire.pump();
+    };
+    discover(mqttFirst);
+    assert(panel.hud.peer(drive.hud.id));
+    const std::string name=panel.hud.peer(drive.hud.id)->label;
+    discover(!mqttFirst);
+    auto *peer=panel.hud.peer(drive.hud.id);
+    assert(peer && !peer->saved && peer->endpoint==udp && peer->received);
+    assert(!name.empty() && peer->label==name);
+    discover(true);assert(peer->endpoint==udp); // Later MQTT cannot displace UDP.
+    assert(panel.hud.add(drive.hud.id,HudEndpoint::mqttNode(drive.hud.id),"Explicit MQTT"));
+    discover(false);assert(peer->saved && peer->endpoint.mqtt); // Keep explicit choice.
+    assert(panel.hud.add(drive.hud.id,udp,"Direct UDP"));
+    discover(true);assert(peer->endpoint==udp && peer->saved);
+  }
   {
     Bus wire;Node first(wire,0x701,1),second(wire,0x702,2),panel(wire,0x703,3,true);
     panel.save(first);panel.save(second);assert(panel.hud.select(first.hud.id));

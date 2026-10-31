@@ -112,7 +112,7 @@ int main() {
     auto bad=saved;bad[4+15]=255;load(bad);
     MotionTestRuntime invalid;storage.loadHud(invalid);
     assert(invalid.hud.catalogError && !invalid.hud.peer(100));
-    bad=saved;bad[0]=3;load(bad);
+    bad=saved;bad[0]=4;load(bad);
     MotionTestRuntime future;storage.loadHud(future);
     assert(future.hud.catalogError && !future.hud.count());
     bad=saved;bad.back()^=1;
