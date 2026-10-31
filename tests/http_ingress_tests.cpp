@@ -271,6 +271,8 @@ int main() {
   }
   assert(testSocket.reset && web.writeFailed());
   assert(std::string(web.diagnostics().writeCause)=="total");
+  const auto htmlFailures=web.diagnostics().htmlFailures;
+  assert(htmlFailures>=2 && std::string(web.diagnostics().htmlCause)=="total");
   // JSON allows the initial TCP retry at 3s, retaining a shorter bound than
   // HTML and never waiting inside the control loop.
   connect(request);testSocket.sendQuota=512;
@@ -285,6 +287,7 @@ int main() {
   fakeHardware.now+=3999;web.handleClient();assert(!testSocket.reset);
   ++fakeHardware.now;web.handleClient();assert(testSocket.reset && web.writeFailed());
   assert(std::string(web.diagnostics().writeCause)=="idle" && web.diagnostics().writeSize==1500);
+  assert(web.diagnostics().htmlFailures==htmlFailures && std::string(web.diagnostics().htmlCause)=="total");
   for(unsigned i=0;i<10000;++i) {
     connect(request);testSocket.maxRead=7;
     for(unsigned n=0;n<10 && !testSocket.handled;++n) web.handleClient();
@@ -462,6 +465,42 @@ int main() {
   connect(request);fakeTcpPendingBytes=1024;web.handleClient();assert(testSocket.open);
   fakeHardware.now+=4000;web.handleClient();assert(!testSocket.open&&testSocket.reset);
   assert(std::string(web.diagnostics().writeCause)=="ack");fakeTcpPendingBytes=0;
+  // An ongoing memory pause must release the single request slot at the
+  // absolute deadline, including across millis() wrap, so STOP can get in.
+  for(uint32_t at:{uint32_t(1000),UINT32_MAX-500u}) {
+    fakeHardware.now=at;connect(request);fakeHeapFree=20000;fakeHeapBlock=8192;
+    testSocket.handler=[&]{web.sendBuffer(200,"application/json",WEB_PAGE,4096);};
+    web.handleClient();const auto header=testSocket.output.size();
+    fakeHardware.now+=14999;web.handleClient();assert(testSocket.open&&!testSocket.reset);
+    assert(testSocket.output.size()==header);
+    ++fakeHardware.now;web.handleClient();assert(!testSocket.open&&testSocket.reset);
+    assert(std::string(web.diagnostics().writeCause)=="total");
+    bool stopReached=false;
+    web.setStopHandler([](void *p,const StopRequest &r){*static_cast<bool *>(p)=r.axis==-1;return BoundedWebServer::StopResult{};},&stopReached);
+    connect("GET /api/move?d=S HTTP/1.1\r\n\r\n");web.handleClient();assert(stopReached);
+    web.setStopHandler(nullptr,nullptr);
+  }
+#if FORK_CLASSIC_ESP32
+  // A full transport queue must pause bulk output even with a healthy heap.
+  connect(request);fakeTcpPendingBytes=4096;
+  testSocket.handler=[&]{web.sendBuffer(200,"application/json",WEB_PAGE,8192);};
+  web.handleClient();const auto queuedHeader=testSocket.output.size();
+  fakeHardware.now+=5;const auto controlBefore=serviced;web.handleClient();
+  assert(testSocket.open&&testSocket.output.size()==queuedHeader&&serviced>controlBefore);
+  fakeTcpPendingBytes=0;fakeHardware.now+=5;web.handleClient();
+  assert(testSocket.output.size()>queuedHeader);
+  while(testSocket.open){fakeHardware.now+=5;web.handleClient();}
+  assert(!testSocket.reset&&!web.writeFailed());
+  connect(request);testSocket.handler=[&]{web.sendBuffer(200,"application/json",WEB_PAGE,8192);};
+  web.handleClient();const auto body=testSocket.output.find("\r\n\r\n")+4;
+  assert(testSocket.output.size()-body<=1024);
+  for(unsigned i=0;testSocket.open&&i<20;++i) {
+    fakeHardware.now+=5;const auto before=testSocket.output.size();web.handleClient();
+    assert(testSocket.output.size()-before<=1024);
+  }
+  assert(!testSocket.open&&!testSocket.reset&&testSocket.largestSend<=512);
+  assert(testSocket.output.substr(body)==std::string(WEB_PAGE,8192));
+#endif
   std::cout<<"PASS: recovery POST remains writable with free=3000/max=512 while normal settings require larger blocks\n";
   std::cout<<"PASS: 10000 parser-free status polls at free=3000/max=512; bulk waits below control reserve, bounded nonblocking 4KB bursts\n";
   std::cout<<"PASS: complete current page over slow socket after low-heap admission, per-loop control progress, transfer deadlines and recovery\n";

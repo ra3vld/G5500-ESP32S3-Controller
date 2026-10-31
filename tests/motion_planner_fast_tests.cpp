@@ -8,6 +8,7 @@ namespace forkrot {
 unsigned motionPlannerCalculations();
 bool testMotionProfileStep(bool,float &,float &,float &,float,float,float,float,float,float);
 bool testCachedMotionProfileStep(MotionVelocityProfile &,float &,float &,float &,float,float,float,float,float,float);
+bool testCachedPositionProfileStep(MotionPositionProfile &,float &,float &,float &,float,float,float,float,float,float);
 }
 using namespace forkrot;
 static void compare(float p,float v,float a,float target,float limit,float up,float down,float jerk,float dt,bool steady) {
@@ -30,6 +31,43 @@ int main() {
   float p=1,v=20,a=0;
   assert(!testMotionProfileStep(false,p,v,a,20,100,50,50,100,.005f));
   assert(prepareMotionPlanner());
+  unsigned positionSteps=0,positionSolves=0;
+  for(float start:{-2.f,0.f,2.f})for(float target:{-12.f,12.f})
+    for(float initialAcceleration:{-.25f,0.f,.25f})for(float dt:{.005f,.01f,.02f}) {
+      MotionPositionProfile cache;float p=0,v=start,a=initialAcceleration;
+      ruckig::Ruckig<1> solver;ruckig::InputParameter<1> input;ruckig::Trajectory<1> trajectory;
+      input.current_position={p};input.current_velocity={v};input.current_acceleration={a};
+      input.target_position={target};input.max_velocity={4};input.max_jerk={8};
+      input.max_acceleration={v<0?3.:2.};input.min_acceleration=std::array<double,1>{v<0?-2.:-3.};
+      assert(solver.calculate(input,trajectory)>=0);
+      double elapsed=0;const auto before=motionPlannerCalculations();
+      for(unsigned step=0;step<1600;++step) {
+        const float interval=step%2?dt*1.1f:dt*.9f;const bool negative=v<0;
+        assert(testCachedPositionProfileStep(cache,p,v,a,target,4,2,3,8,interval));
+        ++positionSteps;elapsed=std::min(elapsed+interval,trajectory.get_duration());
+        std::array<double,1> rp{},rv{},ra{};trajectory.at_time(elapsed,rp,rv,ra);
+        assert(std::abs(p-rp[0])<.00002&&std::abs(v-rv[0])<.00002&&std::abs(a-ra[0])<.00002);
+        if((v<0)!=negative || !cache.valid)break;
+      }
+      positionSolves+=motionPlannerCalculations()-before;
+      auto original=cache;const float bp=p,bv=v,ba=a;
+      for(unsigned change=0;change<8;++change) {
+        cache=original;p=bp;v=bv;a=ba;float goal=target,limit=4,up=2,down=3,jerk=8;
+        if(change==0)goal+=1;
+        if(change==1)limit+=1;
+        if(change==2)up+=1;
+        if(change==3)down+=1;
+        if(change==4)jerk+=1;
+        if(change==5)p+=.001f;
+        if(change==6)v+=.001f;
+        if(change==7)a+=.001f;
+        const auto count=motionPlannerCalculations();
+        assert(testCachedPositionProfileStep(cache,p,v,a,goal,limit,up,down,jerk,dt));
+        assert(motionPlannerCalculations()==count+1);
+      }
+    }
+  assert(positionSolves<positionSteps/10);
+  std::cout<<"Continued position paths: "<<positionSolves<<" solves / "<<positionSteps<<" steps; cache bytes="<<sizeof(MotionPositionProfile)<<" per axis\n";
   // Compare continued paths to Ruckig's original trajectory at actual elapsed
   // times, including jitter, nonzero acceleration and virtual-position resets.
   unsigned cachedSteps=0,solves=0;
@@ -117,6 +155,7 @@ int main() {
   controller.hardware.simulation=false;controller.hardware.drive=DRIVE_BTS7960;
   controller.motionSettings[0].movementDegrees=.02f;
   assert(controller.setControlFrequency(200,0)==Result::Ok);
+  assert(controller.loopDelayMs(0)==1);
   controller.feedbackAt(0,50,true,0);controller.feedbackAt(1,90,true,0);
   controller.setMode(Mode::Auto,0);
   assert(controller.jog(0,1,false,0)==Result::Ok);
@@ -126,19 +165,26 @@ int main() {
     assert(controller.axes[0].motionError==MotionError::None && controller.axes[0].direction==1);
   };
   for(unsigned at=0;at<=2000;at+=5)step(at);
+  assert(controller.loopDelayMs(2002)==1&&controller.loopDelayMs(2004)==0);
   assert(controller.axes[0].speedOutputPercent==controller.runtimeSpeed(0));
   const auto settled=motionPlannerCalculations();
   for(unsigned at=2005;at<=3000;at+=5)step(at);
   assert(motionPlannerCalculations()==settled); // Real control ticks reach the fast path after a ramp.
   controller.stopNow(-1,3001);assert(!controller.axes[0].direction);
+  assert(controller.loopDelayMs(3004)==1);
   // Controller copies are used by settings/preview validation. A mid-ramp
   // copy must continue both axes independently of the shared solver scratch.
+  for(bool positioning:{false,true}) {
   Controller original;auto config=original.hardware;config.simulation=SimulationMechanics;
   original.configureHardware(config);original.feedback(100,90,true,true);
   for(unsigned axis=0;axis<2;++axis) {
     original.motionSettings[axis].mode=RegulatorMode::Cascade;
     assert(original.setRuntimeSpeed(axis,1.5f,0)==Result::Ok);
-    assert(original.jog(axis,1,false,0)==Result::Ok);
+    if(!positioning)assert(original.jog(axis,1,false,0)==Result::Ok);
+  }
+  if(positioning) {
+    original.setMode(Mode::Auto,0);
+    assert(original.target({150,120,true,true},false,0)==Result::Ok);
   }
   for(unsigned at=0;at<=100;at+=5)original.tick(at);
   Controller copied=original;
@@ -151,5 +197,6 @@ int main() {
   }
   original.stopNow(-1,1501);copied.tick(1520);
   assert(!original.moving() && copied.moving());
+  }
   std::cout<<"PASS: exact Ruckig parity, invalid limits, jerk tails, speed changes; 1000 steady ticks without replanning\n";
 }

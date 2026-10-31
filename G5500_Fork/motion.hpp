@@ -86,6 +86,16 @@ struct MotionVelocityProfile {
   float expectedVelocity = 0, expectedAcceleration = 0;
   bool valid = false, negative = false;
 };
+// A position path has seven segments. Advance its current boundary only when
+// crossing a segment, retaining doubles without seven copies of p/v/a.
+struct MotionPositionProfile {
+  std::array<double, 7> times{}, jerks{};
+  double position = 0, velocity = 0, acceleration = 0, elapsed = 0;
+  float target = 0, limit = 0, up = 0, down = 0, jerk = 0;
+  float expectedPosition = 0, expectedVelocity = 0, expectedAcceleration = 0;
+  unsigned segment = 0;
+  bool valid = false, negative = false;
+};
 // Timestamped, bounded least-squares velocity estimator; unchanged samples are real
 // zero-motion evidence only when a new ADC conversion has actually occurred.
 struct MotionFeedback {
@@ -116,6 +126,7 @@ struct MotionFeedback {
 struct MotionState {
   MotionPid positionPid, velocityPid;
   MotionVelocityProfile velocityProfile;
+  MotionPositionProfile positionProfile;
   bool started = false, profileValid = false, settling = false, releasing = false, arriving = false;
   bool progressValid = false, kickDone = false, streamingTarget = false, profileTracking = false;
   bool streamCoasting = false;

@@ -1,4 +1,5 @@
 #include "tcp_peer.hpp"
+#include "tcp_memory.hpp"
 #include <cassert>
 #include <iostream>
 #include <fcntl.h>
@@ -46,6 +47,16 @@ int main(){
   tcp_active_pcbs=&innocent;tcp_pcb *netconn=&wanted;wanted.netconn=&netconn;
   tcp_seg tail{nullptr,100},head{&tail,900},acked{nullptr,250};
   wanted.unsent=&head;wanted.unacked=&acked;
+#if LWIP_TCPIP_CORE_LOCKING
+  auto http=wanted;http.local_port=80;http.nrtx=3;wanted.next=&http;
+  auto mqtt=wanted;mqtt.next=nullptr;mqtt.local_port=49152;mqtt.remote_port=1883;mqtt.state=FIN_WAIT_1;http.next=&mqtt;
+  const auto memory=tcpMemory(1883);
+  assert(memory.available&&memory.httpPeers==1&&memory.httpUnsent==1000&&memory.httpUnacked==250);
+  assert(memory.httpBuffer==5744&&memory.httpMss==1436&&memory.httpRetries==3);
+  assert(memory.httpWindow==4096&&memory.httpCwnd==2872&&!fakeCoreLocked);
+  assert(memory.queued==3750&&memory.closingQueued==1250&&memory.mqttPeers==1&&memory.mqttClosing==1&&memory.mqttQueued==1250&&memory.mqttMss==1436);
+  wanted.next=nullptr;
+#endif
   assert(tcpPeerPendingBytes(target.server)==1250);
   head.len=200;assert(tcpPeerPendingBytes(target.server)==550);
   wanted.unsent=wanted.unacked=nullptr;assert(tcpPeerPendingBytes(target.server)==0);
@@ -83,5 +94,28 @@ int main(){
   assert(tcpSocketEndpoint(address,parsed,port)&&parsed.type==6&&parsed.v6.zone==3);
 #endif
   assert(!abortTcpSocket(-1));
+  // Apply a conservative outbound MSS only to the new exact socket, before
+  // any payload exists. Never enlarge it or mutate queued/retransmitted data.
+  Connection fresh;auto limited=descriptor(fresh.server);tcp_active_pcbs=&limited;
+  assert(limitTcpSocketMss(fresh.server,536)&&limited.mss==536&&limited.cwnd==2144);
+  assert(limitTcpSocketMss(fresh.server,1436)&&limited.mss==536);
+  tcp_seg queued{nullptr,128};limited.unacked=&queued;
+  assert(!limitTcpSocketMss(fresh.server,512)&&limited.mss==536);
+  limited.unacked=nullptr;
+  assert(!limitTcpSocketMss(other.server,512)&&limited.mss==536);
+  assert(!limitTcpSocketMss(fresh.server,0)&&!limitTcpSocketMss(-1,536));
+  // SDK close can leave a queued PCB after the fd is closed and reused.
+  // Retire the saved endpoint without resolving that reused descriptor.
+  Connection orphan;auto closed=descriptor(orphan.server);const auto endpoint=tcpPeerEndpoint(orphan.server);
+  assert(endpoint.valid);const auto oldfd=orphan.server;
+  close(orphan.server);orphan.server=-1;closed.fd=-1;
+  assert(dup2(other.server,oldfd)==oldfd);
+  innocent.next=&closed;tcp_active_pcbs=&innocent;closed.queuedBytes=4096;
+  const auto allocated=allocations;
+  assert(abortTcpPeerEndpoint(endpoint)&&allocations==allocated&&closed.aborted&&closed.queuedBytes==0);
+  assert(!innocent.aborted&&!abortTcpPeerEndpoint(endpoint));
+  assert(send(oldfd,"ok",2,0)==2&&recv(other.peer,alive,2,MSG_WAITALL)==2);close(oldfd);
+  assert(!tcpPeerEndpoint(-1).valid&&!abortTcpPeerEndpoint({}));
+  tcp_active_pcbs=nullptr;
   std::cout<<"PASS: SO_LINGER-disabled TCP retirement frees only the matching PCB, clears netconn, resets the peer, preserves other clients and allocates no heap\n";
 }

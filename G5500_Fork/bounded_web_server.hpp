@@ -1,5 +1,6 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
+#include "build_config.hpp"
 #include <WebServer.h>
 #include <lwip/sockets.h>
 #include <lwip/tcp.h>
@@ -67,6 +68,9 @@ public:
       if (!_currentClient) return;
       ++diagnostics_.accepted;
       _currentClient.setNoDelay(true);
+#if FORK_CLASSIC_ESP32
+      limitTcpSocketMss(_currentClient.fd(),536);
+#endif
       _currentStatus = HC_WAIT_READ;
       _statusChange = millis();
       requestUsed_ = 0;
@@ -255,34 +259,54 @@ private:
   void servicePage() {
     const uint32_t now = millis();
     const uint32_t elapsed=now-pageServicedMs_;pageServicedMs_=now;
+    const uint32_t idleLimit = htmlTransfer_ ? 10000 : 4000;
+    const uint32_t totalLimit = htmlTransfer_ ? 30000 : 15000;
+    // Local throttling may postpone the idle deadline, but must not hold the
+    // only HTTP request slot forever while browsers retry behind it.
+    if (uint32_t(now-pageStartedMs_) >= totalLimit) {
+      failWrite("total",pageRetryErrno_?pageRetryErrno_:ETIMEDOUT,pageSent_,pageSize_);
+      releaseClient();return;
+    }
     if(pageSize_-pageSent_>256&&!networkBulkTxBudget(pageSize_-pageSent_)&&tcpPeerFrameCapacity(client().fd())!=0) {
       // Do not classify our own memory throttle as an unresponsive reader.
-      pageStartedMs_+=elapsed;pageProgressMs_+=elapsed;return;
+      pageProgressMs_+=elapsed;return;
     }
     // Allow the initial 3s TCP retransmission for both pages and JSON. Closing
     // JSON after 2s dropped its tail before a lost packet could be retried.
-    const uint32_t idleLimit = htmlTransfer_ ? 10000 : 4000;
-    const uint32_t totalLimit = htmlTransfer_ ? 30000 : 15000;
-    if (uint32_t(now - pageStartedMs_) >= totalLimit || uint32_t(now - pageProgressMs_) >= idleLimit) {
-      failWrite(uint32_t(now - pageStartedMs_) >= totalLimit ? "total" : "idle",
-                pageRetryErrno_ ? pageRetryErrno_ : ETIMEDOUT, pageSent_, pageSize_);
+    if (uint32_t(now - pageProgressMs_) >= idleLimit) {
+      failWrite("idle",pageRetryErrno_ ? pageRetryErrno_ : ETIMEDOUT, pageSent_, pageSize_);
       releaseClient(); return;
     }
     // A healthy heap can drain at loop speed. Retain conservative pacing when
     // radio/BT traffic leaves little RAM, and never spin waiting for TCP space.
     const uint32_t interval = networkBulkTxReady() ? 5 : 20;
-    if (uint32_t(now - pageAttemptMs_) < interval) return;
+    const uint32_t attemptElapsed=uint32_t(now-pageAttemptMs_);
+    if (attemptElapsed < interval) return;
     pageAttemptMs_ = now;
-    // MSS-sized writes avoid a queue of tiny TCP_NODELAY packets competing
-    // with telemetry for the small Wi-Fi TX pool. Retain the 4KB turn budget
-    // and 512-byte progress under memory pressure or a small transport queue.
-    size_t budget=4096;
+    // Classic ESP32 has only eight dynamic Wi-Fi TX buffers. Bound both the
+    // packet and burst size even when the general heap looks healthy; filling
+    // that pool with bulk data delays ACK/control traffic and triggers retries.
+#if FORK_CLASSIC_ESP32
+    constexpr size_t chunkLimit=512;
+    // A long renderer pause can catch up in one bounded turn. At normal loop
+    // cadence leave most of the radio pool free for ACKs, HUD and control.
+    const size_t turnLimit=attemptElapsed>=50?4096:1024;
+#else
+    constexpr size_t chunkLimit=TCP_MSS,turnLimit=4096;
+#endif
+    size_t budget=turnLimit;
     for(unsigned attempt=0;attempt<8 && budget;++attempt) {
       serviceControl();
-      size_t chunk = std::min({pageSize_ - pageSent_, budget, size_t(TCP_MSS)});
+      size_t chunk = std::min({pageSize_ - pageSent_, budget, chunkLimit});
       if(pageRetryErrno_==ENOMEM || pageRetryErrno_==ENOBUFS)chunk=std::min(chunk,size_t(512));
       // Small control/recovery replies remain writable below the bulk reserve.
       if(pageSize_-pageSent_>256)chunk=networkBulkTxBudget(chunk);
+#if FORK_CLASSIC_ESP32
+      if(chunk&&pageSize_-pageSent_>256) {
+        const auto pending=tcpPeerPendingBytes(client().fd());
+        if(pending!=size_t(-1))chunk=std::min(chunk,pending<4096?4096-pending:size_t(0));
+      }
+#endif
       if(!chunk)break;
       const int count = ::send(client().fd(), page_ + pageSent_, chunk, MSG_DONTWAIT);
       if (count > 0) {
@@ -311,6 +335,10 @@ private:
       ++diagnostics_.writeFailures;
       diagnostics_.writeCause = cause; diagnostics_.writeErrno = error;
       diagnostics_.writeBytes = sent; diagnostics_.writeSize = size;
+      if(htmlTransfer_) {
+        ++diagnostics_.htmlFailures;diagnostics_.htmlCause=cause;diagnostics_.htmlErrno=error;
+        diagnostics_.htmlBytes=sent;diagnostics_.htmlSize=size;
+      }
     }
     failed_ = true; abortClient();
   }

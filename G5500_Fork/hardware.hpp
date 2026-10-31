@@ -40,7 +40,7 @@ public:
   void startHeartbeat() {
     lastHeartbeatMs = millis();
   }
-  int adcAvgMv(int pin);
+  int adcAvgMv(int pin, int secondPin = -1, int *secondValue = nullptr);
   int positionValue(unsigned axis);
   bool positionValid(unsigned axis) const { return positionValid_[axis]; }
   bool positionDiagRead(unsigned axis,int &raw,int &value,int *millivolts=nullptr);

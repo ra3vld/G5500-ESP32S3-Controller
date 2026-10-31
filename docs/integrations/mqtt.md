@@ -61,6 +61,8 @@ Discovery сохраняется в брокере и публикуется п�
 
 `GET /api/mqtt` возвращает `enabled`, `host`, `port`, `username`, `hasPassword`, `discovery`, `discoveryPrefix`, `storageOk`, `supported`, `connected`, `error` и диагностику активного клиента. Поля `password` в ответе нет.
 
+`outboxBytes` показывает последний измеренный размер очереди MQTT, а `outboxAgeMs` — возраст этого измерения. `stackFreeBytes` и `publishStackFreeBytes` показывают минимальный свободный стек клиента и передатчика. `disconnects` считает отключения брокера, `tcpRetired` — освобождённые завершённые TCP-соединения, `tcpMssLimit` — применённый верхний предел TCP-сегмента. При перегрузке отправка ограничивается; команды управления продолжают обрабатываться независимо от ожидания сетевой отправки.
+
 HTTP `GET /api/status` содержит краткий объект `mqtt`: `enabled`, `storageOk`, `supported`, `connected`, `error` и, после запуска клиента, `brokerError`. Это состояние работающего клиента; сохранённые настройки ожидают перезапуска. Учётные данные и подробные счётчики в краткий статус не входят. В сборке без MQTT объект содержит `supported=false` и `error="feature_disabled"`.
 
 `POST /api/mqtt` принимает форму `application/x-www-form-urlencoded`:

@@ -5,6 +5,9 @@
 #include <cstring>
 #include <memory>
 #include <new>
+#if defined(ARDUINO) && defined(ARDUINO_ARCH_ESP32)
+#include <Arduino.h>
+#endif
 namespace forkrot {
 const char *regulatorName(RegulatorMode m) { return m == RegulatorMode::Cascade ? "cascade" : "simple"; }
 const char *motionPhaseName(MotionPhase p) {
@@ -31,6 +34,13 @@ bool MotionSettings::operator==(const MotionSettings &o) const {
   return true;
 }
 namespace {
+#if defined(ARDUINO) && defined(ARDUINO_ARCH_ESP32)
+struct MotionComputeTimer {
+  MotionTiming &timing;
+  uint32_t started=micros();
+  ~MotionComputeTimer(){timing.recordCompute(uint32_t(micros()-started));}
+};
+#endif
 #ifdef MOTION_PLANNER_TEST
 unsigned plannerCalculations=0;
 #endif
@@ -60,9 +70,25 @@ void velocityProfileAt(const MotionVelocityProfile &profile, double time,
   std::tie(p,v,a)=ruckig::integrate(time,profile.positions[segment],profile.velocities[segment],
                                   profile.accelerations[segment],profile.jerks[segment]);
 }
+void advancePositionProfile(MotionPositionProfile &profile,double dt,float &p,float &v,float &a) {
+  double time=profile.elapsed+dt;
+  while(profile.segment<6 && time>=profile.times[profile.segment]) {
+    const auto segment=profile.segment++;
+    time-=profile.times[segment];
+    std::tie(profile.position,profile.velocity,profile.acceleration)=ruckig::integrate(
+        profile.times[segment],profile.position,profile.velocity,profile.acceleration,profile.jerks[segment]);
+  }
+  profile.elapsed=std::min(time,profile.times[profile.segment]);
+  double np,nv,na;
+  std::tie(np,nv,na)=ruckig::integrate(profile.elapsed,profile.position,profile.velocity,
+                                    profile.acceleration,profile.jerks[profile.segment]);
+  p=float(np);v=float(nv);a=float(na);
+  profile.expectedPosition=p;profile.expectedVelocity=v;profile.expectedAcceleration=a;
+  if(profile.segment==6 && time>=profile.times[6])profile.valid=false;
+}
 bool profileStep(bool positionControl, float &p, float &v, float &a, float target,
                  float velocity, float acceleration, float deceleration, float jerk, float dt,
-                 MotionVelocityProfile *cached=nullptr) {
+                 MotionVelocityProfile *cached=nullptr,MotionPositionProfile *positionCached=nullptr) {
   auto &scratch=sharedPlanner();
   if(!scratch) return false;
   // A velocity profile already at its target has zero duration: at_time(0)
@@ -92,6 +118,14 @@ bool profileStep(bool positionControl, float &p, float &v, float &a, float targe
     return std::isfinite(p) && std::isfinite(v) && std::isfinite(a);
   }
   if(cached)cached->valid=false;
+  if(positionCached && positionControl && positionCached->valid && std::isfinite(dt) && dt>=0 &&
+      p==positionCached->expectedPosition && v==positionCached->expectedVelocity && a==positionCached->expectedAcceleration &&
+      target==positionCached->target && velocity==positionCached->limit && acceleration==positionCached->up &&
+      deceleration==positionCached->down && jerk==positionCached->jerk && (v<0)==positionCached->negative) {
+    advancePositionProfile(*positionCached,dt,p,v,a);
+    return std::isfinite(p)&&std::isfinite(v)&&std::isfinite(a);
+  }
+  if(positionCached)positionCached->valid=false;
   auto &solver=scratch->solver;auto &input=scratch->input;auto &trajectory=scratch->trajectory;
   input.control_interface = positionControl ? ruckig::ControlInterface::Position : ruckig::ControlInterface::Velocity;
   input.current_position = {p}; input.current_velocity = {v}; input.current_acceleration = {a};
@@ -107,6 +141,21 @@ bool profileStep(bool positionControl, float &p, float &v, float &a, float targe
   ++plannerCalculations;
 #endif
   if (solver.calculate(input, trajectory) < 0) return false;
+  if(positionCached && positionControl) {
+    const auto &profile=trajectory.profiles_view()[0][0];
+    // Keep constraint recovery on the original path. A changed goal, speed,
+    // boundary or asymmetric-acceleration side is solved again immediately.
+    if(trajectory.get_duration()>double(dt) && profile.brake.duration==0 && profile.accel.duration==0) {
+      positionCached->times=profile.t;positionCached->jerks=profile.j;
+      positionCached->position=profile.p[0];positionCached->velocity=profile.v[0];positionCached->acceleration=profile.a[0];
+      positionCached->segment=0;positionCached->elapsed=0;
+      positionCached->target=target;positionCached->limit=velocity;positionCached->up=acceleration;
+      positionCached->down=deceleration;positionCached->jerk=jerk;positionCached->negative=v<0;
+      positionCached->valid=true;
+      advancePositionProfile(*positionCached,dt,p,v,a);
+      return std::isfinite(p)&&std::isfinite(v)&&std::isfinite(a);
+    }
+  }
   if(cached && !positionControl) {
     const auto &profile=trajectory.profiles_view()[0][0];
     // The compact cache covers the ordinary three-segment velocity solution.
@@ -164,6 +213,10 @@ bool testMotionProfileStep(bool positionControl,float &p,float &v,float &a,float
 bool testCachedMotionProfileStep(MotionVelocityProfile &profile,float &p,float &v,float &a,float target,
                                  float velocity,float acceleration,float deceleration,float jerk,float dt) {
   return profileStep(false,p,v,a,target,velocity,acceleration,deceleration,jerk,dt,&profile);
+}
+bool testCachedPositionProfileStep(MotionPositionProfile &profile,float &p,float &v,float &a,float target,
+                                 float velocity,float acceleration,float deceleration,float jerk,float dt) {
+  return profileStep(true,p,v,a,target,velocity,acceleration,deceleration,jerk,dt,nullptr,&profile);
 }
 #endif
 bool prepareMotionPlanner() {
@@ -455,6 +508,9 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
     axis.speedOutputPercent = 0; output(i,0,now); cancelMotion(i,axis.completed); return;
   }
   if (r.started && int32_t(now-r.nextAt)<0) return;
+#if defined(ARDUINO) && defined(ARDUINO_ARCH_ESP32)
+  MotionComputeTimer compute{r.timing};
+#endif
   const uint32_t interval = r.started ? uint32_t(now-r.at) : 0;
   // Keep the nominal phase after jitter. Skip missed deadlines in one step;
   // never replay PID/planner updates against the same measurement.
@@ -785,7 +841,7 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
           outwardAcceleration*outwardAcceleration/(2*m.jerk));
       float speedPosition=r.referencePosition,speedVelocity=r.referenceVelocity,speedAcceleration=r.referenceAcceleration;
       if (!profileStep(true,r.referencePosition,r.referenceVelocity,r.referenceAcceleration,axis.target,
-                       feasibleLimit,m.acceleration,m.deceleration,m.jerk,dt)) { motionFault(i,MotionError::Planner,now); return; }
+                       feasibleLimit,m.acceleration,m.deceleration,m.jerk,dt,nullptr,&r.positionProfile)) { motionFault(i,MotionError::Planner,now); return; }
       if(feasibleLimit>velocityLimit+.0001f) {
         if(!profileStep(false,speedPosition,speedVelocity,speedAcceleration,velocityLimit*desired,
                         m.velocity,m.acceleration,m.deceleration,m.jerk,dt,&r.velocityProfile)) { motionFault(i,MotionError::Planner,now); return; }

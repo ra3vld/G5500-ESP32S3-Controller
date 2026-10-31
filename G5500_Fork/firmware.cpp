@@ -286,6 +286,10 @@ void Application::controllerSetup() {
 }
 void Application::controllerLoop() {
   const uint32_t startedUs = micros();
+  uint32_t stageStartedUs=startedUs;
+  const auto checkpoint=[&](const char *name) {
+    const uint32_t nowUs=micros();runtimeMetrics.recordStage(name,nowUs-stageStartedUs);stageStartedUs=nowUs;
+  };
   ota_.service();
   network_.serviceCommandReplies();
   device_api_.serviceNetworkTrial(millis());
@@ -323,13 +327,19 @@ void Application::controllerLoop() {
   if (LOCAL_INPUT_SUPPORT && runtime_.controller.hardware.buttonGpio >= 0 && confirmButton.sample(hardware_.buttonReleased(), millis())) {
     runtime_.controller.execute(millis());
   }
+  checkpoint("control");
   network_.serviceCommandUdp();
+  checkpoint("commandUdp");
   network_.serviceLoggerUdp();
+  checkpoint("loggerUdp");
   network_.handlePstRotatorSerial(); // UART0 USB / PSTROTATOR / GS-232
   network_.handleBluetoothSerial(); // selected Bluetooth transport / GS-232B
   network_.handleRotctldTcp();       // Wi-Fi TCP 4533 / Look4Sat / Hamlib rotctld
+  checkpoint("serialTcp");
   web_server_.serviceLiveCommands();
+  checkpoint("liveCommands");
   mqtt_.service();
+  checkpoint("mqtt");
   if (runtime_.controller.controlPeriodMs() < 20) updatePosition();
   hardware_.controlRotator();
   display_.serviceTouch();
@@ -337,13 +347,18 @@ void Application::controllerLoop() {
   if (runtime_.controller.controlPeriodMs() < 20) updatePosition();
   hardware_.controlRotator();
   web_server_.publishLive();
+  checkpoint("livePublish");
   network_.serviceCommandReplies();
   network_.serviceHeapDiagnostics();
+  checkpoint("diagnostics");
   web_server_.service();
+  checkpoint("http");
   if (ota_.locked()) return;
   if (!storage_.serviceRuntimeSpeeds(runtime_,millis()))
     diagnostics_.dbgPrintln("[Speed NVS] deferred save failed; retry in 40 s");
+  checkpoint("storage");
   network_.serviceWifiReconnect();
+  checkpoint("wifi");
   diagnostics_.serviceRssiHistory();
   if (runtime_.hud.settingsDirty) {
     runtime_.hud.settingsDirty = false;
@@ -362,8 +377,9 @@ void Application::controllerLoop() {
   display_.serviceTouch();
   display_.updateLocalDisplay();
   hardware_.updateRgb();
+  checkpoint("display");
   runtimeMetrics.recordLoop(uint32_t(micros() - startedUs));
-  delay(runtime_.controller.controlPeriodMs() < 20 ? 1 : 5);
+  delay(runtime_.controller.loopDelayMs(millis()));
 }
 } // namespace forkrot
 namespace {

@@ -21,10 +21,20 @@ int main() {
       assert(hardware.positionValue(i%2)==(i%2?2345:1234));
       assert(fakeAdc.creates==1 && fakeAdc.live==1);
     }
-    hardware.filteredMv(0);const auto sampled=hardware.sampledAt(0);
+    const auto reads=fakeAdc.conversions,waited=fakeHardware.waitedUs;
+    assert(hardware.filteredMv(0)==1234&&hardware.filteredMv(1)==2345);
+    assert(fakeAdc.conversions-reads==2*MotionAdcSamples);
+    assert(fakeHardware.waitedUs-waited==600); // both axes share three PWM-spaced waits
+    assert(hardware.sampleCount(0)==1&&hardware.sampleCount(1)==1);
+    assert(hardware.sampledAt(0)==hardware.sampledAt(1));
+    hardware.filteredMv(0);hardware.filteredMv(1);assert(fakeAdc.conversions-reads==2*MotionAdcSamples);
+    const auto sampled=hardware.sampledAt(0);
     fakeHardware.now+=100;fakeAdc.convertOk=false;
     hardware.filteredMv(0);
     assert(!hardware.positionValid(0) && hardware.sampledAt(0)==sampled);
+    assert(!hardware.positionValid(1)&&hardware.sampledAt(1)==sampled);
+    const auto failedReads=fakeAdc.conversions;
+    hardware.filteredMv(0);hardware.filteredMv(1);assert(fakeAdc.conversions==failedReads);
     int raw,mv;assert(!hardware.adcDiagRead(az,raw,mv) && raw==-1 && mv==-1);
     hardware.positionValue(0);
     assert(hardware.adcDiagRead(az,raw,mv) && raw==-1 && mv==-1);
@@ -33,6 +43,21 @@ int main() {
     assert(fakeAdc.creates==1 && fakeAdc.live==1);
   }
   assert(fakeAdc.live==0);
+  fakeAdc.convertOk=true;
+  runtime.controller.hardware.sensors[6]=runtime.controller.hardware.sensors[7]=1;
+  {
+    Hardware hardware(runtime);hardware.beginAdc();
+    assert(hardware.filteredMv(0)==2066&&hardware.filteredMv(1)==955);
+    const auto sampled=hardware.sampledAt(0);
+    fakeHardware.now+=runtime.controller.controlPeriodMs();fakeHardware.millivolts[az]=4000;
+    hardware.filteredMv(0);hardware.filteredMv(1);
+    assert(!hardware.positionValid(0)&&hardware.sampledAt(0)==sampled);
+    assert(hardware.positionValid(1)&&hardware.sampleCount(1)==2);
+    fakeHardware.now+=runtime.controller.controlPeriodMs();fakeHardware.millivolts[az]=1234;
+    hardware.filteredMv(0);hardware.filteredMv(1);
+    assert(hardware.positionValid(0)&&hardware.positionValid(1));
+    assert(hardware.sampleCount(0)==2&&hardware.sampleCount(1)==3);
+  }
   fakeAdc={};fakeAdc.createOk=false;
   {
     Hardware hardware(runtime);hardware.beginAdc();

@@ -7,6 +7,7 @@ inline std::set<int> fakeTcpPending;
 inline size_t fakeTcpCapacity=size_t(-1);
 inline std::function<void()> fakeTcpCapacityHook;
 namespace forkrot {
+inline bool limitTcpSocketMss(int,uint16_t) { return true; }
 inline bool abortTcpSocket(int fd) {
  linger reset{1,0};return ::setsockopt(fd,SOL_SOCKET,SO_LINGER,&reset,sizeof reset)==0;
 }

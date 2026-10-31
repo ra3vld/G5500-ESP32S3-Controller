@@ -940,6 +940,12 @@ bool Controller::controlDue(uint32_t now) const {
   }
   return false;
 }
+unsigned Controller::loopDelayMs(uint32_t now) const {
+  if(controlPeriodMs_>=20)return 5;
+  // Yield without sleeping through an imminent 100/200 Hz deadline. Idle
+  // controllers still sleep normally; no overdue PID steps are replayed.
+  return controlDue(now+1)?0:1;
+}
 void Controller::tick(uint32_t now) {
   tickCoast(now);
   // HUD outputs are remote: the operation that locks configuration sends STOP once.

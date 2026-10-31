@@ -14,6 +14,12 @@ inline constexpr unsigned MotionAdcSamples = 4;
 inline constexpr bool validMotionHz(unsigned hz) { return hz==50 || hz==100 || hz==200; }
 struct MotionTiming {
   uint32_t steps = 0, maxIntervalMs = 0, lateSteps = 0;
+  uint32_t computeMaxUs = 0;
+  uint64_t computeTotalUs = 0;
+  void recordCompute(uint32_t us) {
+    if(us>computeMaxUs)computeMaxUs=us;
+    computeTotalUs+=us;
+  }
   void record(uint32_t interval, unsigned period = MotionControlPeriodMs) {
     ++steps;
     if (interval > maxIntervalMs) maxIntervalMs = interval;

@@ -78,6 +78,10 @@ public:
   bool wifiConnecting() const { return wifiConnectPending_ || (wifiFallback_.trying() && radioWifi.status() != WL_CONNECTED); }
   void formatAddresses(char *text, size_t capacity, const char *separator = "\n", bool own = true, bool ap = true) const;
   void serviceWifiReconnect();
+  bool wifiMaintenanceAllowed() const {
+    if(runtime_.recovery || runtime_.hud.isHud())return true;
+    return !runtime_.controller.controlActive();
+  }
   void setupLoggerUdp();
   void serviceLoggerUdp();
   void captureSetupHeap() { heapAfterSetup_ = heapFreeBytes(); }

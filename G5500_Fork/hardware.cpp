@@ -21,7 +21,7 @@ int Hardware::idleOutputLevel(int pin) const {
   return c.drive == DRIVE_BTS7960 && c.pwmInverted &&
       (pin == p.azNegative || pin == p.azPositive || pin == p.elPositive || pin == p.elNegative) ? HIGH : LOW;
 }
-int Hardware::adcAvgMv(int pin) {
+int Hardware::adcAvgMv(int pin, int secondPin, int *secondValue) {
   if (runtime_.hud.isHud() || runtime_.recovery)
     return 0;
   if (runtime_.controller.hardware.simulation || !board::adc(pin)) {
@@ -29,25 +29,34 @@ int Hardware::adcAvgMv(int pin) {
   return 0;
   } else {
   const auto &pins=runtime_.controller.hardware.pins;
-  auto *diagnostic=pin==pins.azAdc ? &adcDiagnostics_[0] : pin==pins.elAdc ? &adcDiagnostics_[1] : nullptr;
-  uint32_t s = 0;
+  const auto read=[&](int input) {
+    const int value=adc_.read(input);
+    auto *diagnostic=input==pins.azAdc ? &adcDiagnostics_[0] : input==pins.elAdc ? &adcDiagnostics_[1] : nullptr;
+    if(diagnostic && diagnostic->requested) {
+      const auto now=millis();
+      if(diagnostic->active(now)) diagnostic->sample(value<0 ? -1 : analogRead(input),value,now);
+      else diagnostic->requested=false;
+    }
+    return value;
+  };
+  uint32_t s = 0, secondSum=0;
+  bool valid=true,secondValid=true;
   for (unsigned i = 0; i < MotionAdcSamples; i++) {
     // Spread conversions across the dual-PWM profile's 1 kHz period. A burst of
     // adjacent reads aliases switching interference into a false shaft jump.
-    // Four spaced reads leave time for both axes in the 5 ms control period.
+    // Interleave due axes: both retain four spaced reads while sharing the
+    // three waits, rather than spending another 600 us waiting for EL.
     if(i) delayMicroseconds(200);
-    const int value=adc_.read(pin);
-    // Diagnostic requests only enable raw capture alongside normal feedback.
-    // No extra averaging loop or waits run in the HTTP/command dispatcher.
-    if(diagnostic && diagnostic->requested) {
-      const auto now=millis();
-      if(diagnostic->active(now)) diagnostic->sample(value<0 ? -1 : analogRead(pin),value,now);
-      else diagnostic->requested=false;
+    const int value=read(pin);
+    if(value<0) {valid=false;if(!secondValue)return -1;}
+    else s+=value;
+    if(secondValue) {
+      const int other=read(secondPin);
+      if(other<0)secondValid=false;else secondSum+=other;
     }
-    if(value<0)return -1;
-    s += value;
   }
-  return s / MotionAdcSamples;
+  if(secondValue)*secondValue=secondValid?int(secondSum/MotionAdcSamples):-1;
+  return valid?int(s/MotionAdcSamples):-1;
   }
 }
 
@@ -57,10 +66,24 @@ int Hardware::filteredMv(unsigned axis) {
   auto &filter = filters_[axis];
   const uint32_t now = millis();
   const unsigned period=runtime_.controller.controlPeriodMs();
-  if(runtime_.controller.hardware.sensorType(axis) && positionAttempted_[axis] &&
+  if(positionAttempted_[axis] &&
       uint32_t(now-positionAttemptAt_[axis])<period) return filter.value();
   if (!filter.due(now,runtime_.controller.controlPeriodMs())) return filter.value();
   positionAttempted_[axis]=true;positionAttemptAt_[axis]=now;
+  const auto &c=runtime_.controller.hardware;
+  if(axis==0 && !c.simulation && runtime_.controller.model==Model::G5500 &&
+      !c.sensorType(0) && !c.sensorType(1) && board::adc(c.pins.azAdc) && board::adc(c.pins.elAdc) &&
+      filters_[1].due(now,period) && (!positionAttempted_[1] || uint32_t(now-positionAttemptAt_[1])>=period)) {
+    positionAttempted_[1]=true;positionAttemptAt_[1]=now;
+    int other=-1;const int first=adcAvgMv(c.pins.azAdc,c.pins.elAdc,&other);
+    const int values[]={first,other};const uint32_t sampled=millis();
+    for(unsigned i=0;i<2;++i) {
+      const int directed=c.sensorInverted(i)&&values[i]>=0?3300-values[i]:values[i];
+      positionValid_[i]=directed>=0;
+      if(positionValid_[i])filters_[i].sample(directed,sampled,period);
+    }
+    return filter.value();
+  }
   const int value = positionValue(axis);
   if(value<0) return filter.value(); // failed reads never advance the feedback timestamp
   return filter.sample(value, millis(),runtime_.controller.controlPeriodMs()); // timestamp the completed conversion

@@ -12,6 +12,7 @@ struct TestSocket {
   size_t consumed=0, maxRead=4096;
   size_t sendQuota=size_t(-1);
   size_t outstanding=0, queueCapacity=size_t(-1);
+  size_t largestSend=0;
   int writeError=0;
   bool noDelay=false;
   std::function<void()> handler;

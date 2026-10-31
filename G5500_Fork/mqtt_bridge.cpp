@@ -192,7 +192,7 @@ void MqttBridge::execute(const Request &request,uint32_t at) {
     case ControlOp::Target:result=c.target(command.target,true,at);break;
     case ControlOp::RuntimeSpeed:result=c.setRuntimeSpeed(unsigned(command.axis),command.speed,at);break;
     case ControlOp::Mode:result=c.setMode(command.mode,at);break;
-    case ControlOp::Stop:c.stop(command.axis);result=Result::Ok;break;
+    case ControlOp::Stop:c.stopNow(command.axis,at);result=Result::Ok;break;
     case ControlOp::Execute:result=c.execute(at);break;
     case ControlOp::Preset:result=c.preset(command.slot,at);break;
     default:break;
@@ -204,8 +204,10 @@ void MqttBridge::execute(const Request &request,uint32_t at) {
   for(auto *n=nodes_.get();n;n=n->next.get())if(n->id==destination || (!n->id && runtime_.hud.config.selected==destination))n->sentAt=at-1000;
 }
 bool MqttBridge::publish(const char *topic,JsonWriter &j,bool retained,int qos) {
-  if(!j.good()){lastResult_="mqtt_payload_too_large";return false;}
-  return callbacks_.publish && callbacks_.publish(callbacks_.context,topic,{j.data(),j.size()},retained,qos);
+  const bool ok=j.good() && callbacks_.publish && callbacks_.publish(callbacks_.context,topic,{j.data(),j.size()},retained,qos);
+  if(!j.good())lastResult_="mqtt_payload_too_large";
+  if(!ok){publishBlocked_=true;publishFailedAt_=publishNow_;}
+  return ok;
 }
 bool MqttBridge::publishState(Node &node,uint32_t at,bool reset) {
   const auto *snapshot=state(node.id,at);
@@ -335,9 +337,10 @@ bool MqttBridge::discovery(Node &node,uint32_t at) {
 #endif
 }
 void MqttBridge::service(uint32_t at) {
+  publishNow_=at;
   selection_.store(runtime_.hud.selectionEpoch);
   const bool online=connected_.load();const uint32_t epoch=session_.load();
-  if(!online){observedConnection_=false;announced_=false;return;}
+  if(!online){observedConnection_=false;announced_=false;publishBlocked_=false;return;}
   if(!observedConnection_ || epoch!=observedSession_) {
     observedConnection_=true;observedSession_=epoch;announced_=false;lastScan_=at-1000;
     for(auto *n=nodes_.get();n;n=n->next.get()){n->resetSession=0;n->configured=false;n->entity=0;n->sentAt=at-1000;}
@@ -371,6 +374,10 @@ void MqttBridge::service(uint32_t at) {
     } else link=&node.next;
   }
   if(!nodes_)return;
+  // Preserve command/STOP handling above, but do not rebuild rejected JSON on
+  // every fast control-loop turn while the bounded sender is busy/full.
+  if(publishBlocked_ && uint32_t(at-publishFailedAt_)<50)return;
+  publishBlocked_=false;
   // Clear old retained availability before announcing the gateway online.
   if(!announced_) {
     if(!registryDone_ && callbacks_.registryNext)return;
@@ -386,6 +393,7 @@ void MqttBridge::service(uint32_t at) {
   if(uint32_t(at-lastDiscovery_)>=50) {
     discoveryCursor_=nextNode(discoveryCursor_);
     if(discoveryCursor_ && discovery(*discoveryCursor_,at)){lastDiscovery_=at;return;}
+    if(publishBlocked_)return;
   }
   stateCursor_=nextNode(stateCursor_);
   if(stateCursor_ && (uint32_t(at-stateCursor_->sentAt)>=1000 || (!stateCursor_->id && stateCursor_->selection!=runtime_.hud.selectionEpoch)))

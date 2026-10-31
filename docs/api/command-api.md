@@ -21,7 +21,9 @@
 
 ```sh
 python3 tools/controller_api.py --serial /dev/ttyUSB0 GET /api/status
-python3 tools/controller_api.py --serial /dev/ttyACM0 GET /api/diagnostics
+python3 tools/controller_api.py --serial /dev/ttyACM0 GET /api/diagnostics view=runtime
+python3 tools/controller_api.py --serial /dev/ttyUSB0 GET /api/diagnostics view=runtime
+python3 tools/controller_api.py --udp 192.168.4.1 GET /api/diagnostics view=transport
 python3 tools/controller_api.py --udp 192.168.4.1 GET /api/hardware
 python3 tools/controller_api.py --tcp 192.168.4.1 POST /api/mode mode=auto
 python3 tools/controller_api.py --udp 192.168.4.1 POST /api/target az=120 el=30
@@ -33,7 +35,7 @@ python3 tools/controller_api.py --serial /dev/ttyUSB0 POST /api/move d=S
 Для наблюдения с записью и немедленным сохранением каждой строки:
 
 ```sh
-python3 tools/controller_api.py --serial /dev/ttyUSB0 --watch 10 --duration 86400 --log memory.jsonl GET /api/diagnostics
+python3 tools/controller_api.py --serial /dev/ttyUSB0 --watch 10 --duration 86400 --log memory.jsonl GET /api/diagnostics view=runtime
 ```
 
 Утилита сама открывает сессию, повторяет потерянный запрос с тем же идентификатором и собирает страницы ответа. При смене устройства или сессии она сообщает об ошибке; перед повтором действия прочитайте состояние устройства.

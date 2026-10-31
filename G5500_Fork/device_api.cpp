@@ -381,6 +381,9 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
   if(hardwarePath)executeHardware(method,path,arguments,output,status,type,command,setupBatch);
   else if(path=="/api/network" || path=="/api/network/confirm" || path=="/api/network/rollback" || path=="/api/wifi" || path=="/api/ap")
     executeNetwork(method,path,arguments,output,status,type,setupBatch);
+  else if(path=="/api/status" && (command || method=="GET"))executeStatus(method,path,arguments,output,status,type,command);
+  else if(path=="/api/diagnostics" && method=="GET")executeDiagnostics(method,path,arguments,output,status,type);
+  else if((path=="/api/move" || path=="/api/target") && (method=="GET" || method=="POST"))executeControl(method,path,arguments,output,status,type);
   else executeGeneral(method,path,arguments,output,status,type,command,lease,setupBatch);
 }
 
@@ -721,6 +724,316 @@ void DeviceApi::executeNetwork(std::string_view method, std::string_view path, F
   reply(405,"method_not_allowed");
 }
 
+void DeviceApi::executeStatus(std::string_view method, std::string_view path, FormView arguments,
+    JsonWriter &output, int &status, const char *&type, bool command) {
+  ApiContext web_(arguments,output,status,type);
+  auto reply=[&](int code,const char *reason) {
+    status=code; type="application/json";
+    output << "{\"ok\":" << (code==200?"true":"false") << ",\"error\":" << jsonQuoted(reason) << '}';
+  };
+  if(path=="/api/status" && command) {
+    auto &c=runtime_.controller;
+    if(!runtime_.recovery)actions_.updatePosition();
+    if(web_.value("view")=="axis") {
+      const auto axis=web_.value("axis");
+      if(axis!="az" && axis!="el") {reply(400,"invalid_axis");return;}
+      const unsigned i=axis=="az"?0:1;const auto &a=c.axes[i];
+      output << "{\"current\":" << a.current << ",\"target\":" << a.target
+        << ",\"tracking\":" << (a.tracking?"true":"false")
+        << ",\"completed\":" << (a.completed?"true":"false")
+        << ",\"direction\":" << a.direction << ",\"stopToleranceDegrees\":" << c.effectiveTolerance(i)
+        << ",\"speedOutputPercent\":" << a.speedOutputPercent
+        << ",\"speedSetpoint\":";output.decimal(c.runtimeSpeed(i),-1) << ",\"speedLimit\":";
+      output.decimal(c.runtimeSpeedLimit(i),-1) << ",\"speedAdjustable\":" << (c.runtimeSpeedAvailable(i)?"true":"false");
+      writeAxisMotion(output,c,i);output << '}';return;
+    }
+    output << "{\"model\":" << jsonQuoted(modelName(c.model))
+      << ",\"role\":" << jsonQuoted(runtime_.hud.isHud()?"hud":"controller")
+      << ",\"controlMode\":" << jsonQuoted(Controller::modeName(c.mode))
+      << ",\"remainingMs\":" << c.remaining(millis())
+      << ",\"moving\":" << (c.moving()?"true":"false") << ",\"pendingValid\":" << (c.pendingValid?"true":"false")
+      << ",\"pending\":{\"az\":" << c.pending.az << ",\"el\":" << c.pending.el
+      << ",\"hasAz\":" << (c.pending.hasAz?"true":"false") << ",\"hasEl\":" << (c.pending.hasEl?"true":"false") << '}'
+      << ",\"presetActive\":" << (c.presetActive?"true":"false") << ",\"presetSlot\":" << c.presetSlot
+      << ",\"fault\":" << jsonQuoted(c.fault) << ",\"recovery\":" << (runtime_.recovery?"true":"false")
+      << ",\"reason\":" << jsonQuoted(recoveryReasonName(runtime_.recoveryReason))
+      << ",\"configurationLocked\":" << (c.configurationLocked?"true":"false")
+      << ",\"commandPort\":" << runtime_.loggerSettings.commandPort;
+    writeHardwareTrial(output,runtime_);
+    output << ",\"axes\":[";
+    for(unsigned i=0;i<2;++i) {
+      if(i)output << ',';
+      const auto &a=c.axes[i];
+      output << "{\"current\":" << a.current << ",\"target\":" << a.target
+        << ",\"calibrated\":" << (a.calibrated?"true":"false") << ",\"output\":" << a.speedOutputPercent << '}';
+    }
+    output << "]}";return;
+  }
+  if(path=="/api/status" && method=="GET") {
+    web_.sendHeader("Cache-Control", "no-store");
+    auto &calibrationState = calibration_.state();
+    actions_.updatePosition();
+    bool staOk = (radioWifi.status() == WL_CONNECTED);
+    String staIp = staOk ? radioWifi.localIP().toString() : "-";
+    const bool apEnabled = (radioWifi.getMode() & WIFI_AP) != 0;
+    String apIp = apEnabled ? radioWifi.softAPIP().toString() : "-";
+    const bool ethOk=ethernetConnected();
+    const String ethIp=ethOk?ethernetIP().toString():"-";
+    String ip = ethOk ? ethIp : staOk ? staIp : apIp;
+    const char *mode = ethOk ? (apEnabled ? "Ethernet + AP" : "Ethernet") : staOk ? (apEnabled ? "AP + Wi-Fi Client" : "Wi-Fi Client") : apEnabled ? "Access Point" : "Disconnected";
+    int rssi = staOk ? radioWifi.RSSI() : 0;
+    String signal = !staOk
+                        ? "-"
+                        : (rssi >= -55 ? "Excellent"
+                                       : (rssi >= -67 ? "Good" : (rssi >= -75 ? "Fair" : "Weak")));
+    String rssiJson = staOk ? String(rssi) : "null";
+    uint32_t targetAge = runtime_.targetValid ? (millis() - runtime_.lastTargetRxMs) : 0;
+    const int *azTbl =
+        (calibrationState.gsAzMode == 36) ? calibrationState.az36CalMv : calibrationState.az45CalMv;
+    int azN = (calibrationState.gsAzMode == 36) ? AZ36_CAL_N : AZ45_CAL_N;
+    if (runtime_.hud.isHud())
+      calibrationState.gsAzMode = runtime_.controller.azProfile;
+    bool azLin =
+        runtime_.hud.isHud() ? runtime_.controller.axes[0].calibrated : calibration_.activeAzLinearValid();
+    bool azMul = calibration_.activeAzMultiValid();
+    int az450v = (azN > 5) ? azTbl[5] : -1;
+    int az2z = calibration_.activeAzOSet() ? calibration_.activeAz2Zero() : -1;
+    int az2f = calibration_.activeAzFSet() ? calibration_.activeAz2Full() : -1;
+    calibrationState.cal.valid = calibration_.selectedCalibrationValid();
+
+    char btMac[18];
+    network_.bluetoothMac(btMac);
+    auto &j=output;
+    j << '{'; actions_.writeWebDiagnostics(j);
+    j << ",\"az\":" << runtime_.currentAz << ",\"el\":" << runtime_.currentEl
+      << ",\"targetAz\":" << runtime_.targetAz << ",\"targetEl\":" << runtime_.targetEl
+      << ",\"targetValid\":" << (runtime_.targetValid ? "true" : "false") << ",\"targetAgeMs\":" << targetAge
+      << ",\"calibrated\":" << (calibrationState.cal.valid ? "true" : "false") << ",\"selectedCalOk\":"
+      << ((runtime_.hud.isHud()
+               ? runtime_.controller.axes[0].calibrated &&
+                     (runtime_.controller.model != Model::G5500 || runtime_.controller.axes[1].calibrated)
+               : calibration_.selectedCalibrationValid())
+              ? "true"
+              : "false")
+      << ",\"azMode\":" << calibrationState.gsAzMode << ",\"azLinear\":" << (azLin ? "true" : "false")
+      << ",\"azLinear36\":" << (calibrationState.az36LinearValid ? "true" : "false")
+      << ",\"azLinear45\":" << (calibrationState.az45LinearValid ? "true" : "false")
+      << ",\"elLinear\":" << (calibration_.activeElLinearValid() ? "true" : "false")
+      << ",\"azMulti\":" << (azMul ? "true" : "false")
+      << ",\"azMulti36\":" << (calibrationState.az36MultiValid ? "true" : "false")
+      << ",\"azMulti45\":" << (calibrationState.az45MultiValid ? "true" : "false")
+      << ",\"elMulti\":" << (calibration_.activeElMultiValid() ? "true" : "false")
+      << ",\"calMode\":" << jsonQuoted(calibrationState.calibrationMode == CAL_MULTI_POINT ? "multi" : "2")
+      << ",\"azSensor\":" << jsonQuoted(sensorName(runtime_.controller.hardware.sensorType(0)))
+      << ",\"elSensor\":" << jsonQuoted(sensorName(runtime_.controller.hardware.sensorType(1)))
+      << ",\"az2p0\":" << az2z << ",\"az2pf\":" << az2f
+      << ",\"el2p0\":" << (calibration_.activeElOSet() ? calibration_.activeEl2Zero() : -1)
+      << ",\"el2pf\":" << (calibration_.activeElFSet() ? calibration_.activeEl2Full() : -1)
+      << ",\"motion\":" << jsonQuoted(hardware_.motion().c_str()) << ",\"azp0\":" << azTbl[0]
+      << ",\"azp90\":" << azTbl[1] << ",\"azp180\":" << azTbl[2] << ",\"azp270\":" << azTbl[3]
+      << ",\"azp360\":" << azTbl[4] << ",\"azp450\":" << az450v << ",\"elp0\":" << calibrationState.elCalMv[0]
+      << ",\"elp45\":" << calibrationState.elCalMv[1] << ",\"elp90\":" << calibrationState.elCalMv[2]
+      << ",\"elp135\":" << calibrationState.elCalMv[3] << ",\"elp180\":" << calibrationState.elCalMv[4]
+      << ",\"ip\":" << jsonQuoted(ip.c_str()) << ",\"apIp\":" << jsonQuoted(apIp.c_str())
+      << ",\"staIp\":" << jsonQuoted(staIp.c_str()) << ",\"wifiMode\":" << jsonQuoted(mode)
+      << ",\"ethernetSupported\":" << (ETHERNET_SUPPORTED?"true":"false")
+      << ",\"ethStarted\":" << (network_.ethernetStarted()?"true":"false")
+      << ",\"ethLink\":" << (ethernetLinkUp()?"true":"false")
+      << ",\"ethConnected\":" << (ethOk?"true":"false")
+      << ",\"ethIp\":" << jsonQuoted(ethIp.c_str())
+      << ",\"connectedSsid\":" << jsonQuoted(staOk ? radioWifi.SSID().c_str() : "")
+      << ",\"wifiConnecting\":" << (network_.wifiConnecting() ? "true" : "false")
+      << ",\"ssid\":" << jsonQuoted(network_.credentials().wifiSsid.c_str())
+      << ",\"rssi\":" << rssiJson.c_str() << ",\"signal\":" << jsonQuoted(signal.c_str())
+      << ",\"btConnected\":" << (network_.bluetoothConnected() ? "true" : "false")
+      << ",\"btLinkConnected\":" << (network_.bluetoothLinkConnected() ? "true" : "false")
+      << ",\"btMac\":" << jsonQuoted(btMac)
+      << ",\"resetReason\":" << jsonQuoted(diagnostics_.bootReasonText().c_str())
+      << ",\"uptimeSeconds\":" << uint32_t(esp_timer_get_time() / 1000000)
+      << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMinFree\":" << heapMinBytes()
+      << ",\"heapMaxBlock\":" << heapMaxBlockBytes()
+      << ",\"httpWriteFailures\":" << network_.httpDiagnostics().writeFailures;
+    j << ",\"httpReadFailures\":" << network_.httpDiagnostics().readFailures << ",\"httpRejected\":" << network_.httpDiagnostics().rejected
+      << ",\"httpAccepted\":" << network_.httpDiagnostics().accepted << ",\"httpRequests\":" << network_.httpDiagnostics().requests;
+    const auto tcp = tcpMemory();
+    j << ",\"tcpStatsAvailable\":" << (tcp.available ? "true" : "false")
+      << ",\"tcpActive\":" << tcp.active << ",\"tcpClosing\":" << tcp.closing << ",\"tcpTimeWait\":" << tcp.timewait;
+    j << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load()
+      << ",\"networkMemoryLimited\":" << (networkLowMemory()?"true":"false")
+      << ",\"telemetryIntervalMs\":" << (networkLowMemory()?500:WebPositionIntervalMs)
+      << ",\"udpDropped\":" << network_.udpDropped() << ",\"tcpAborts\":" << network_.tcpAborts()
+      << ",\"maxFailedAllocation\":" << runtimeMetrics.largestFailedAllocation.load()
+      << ",\"loopMaxUs\":" << runtimeMetrics.loopMaxUs << ",\"loopsOver20ms\":" << runtimeMetrics.loopsOver20ms
+      << ",\"slowStage\":" << jsonQuoted(runtimeMetrics.slowStage) << ",\"slowStageUs\":" << runtimeMetrics.slowStageUs;
+    const uint32_t feedbackNow = millis();
+    j << ",\"localFeedback\":[";
+    for (unsigned i=0; i<2; ++i) {
+      if(i) j << ',';
+      const bool available = !runtime_.hud.isHud() && !runtime_.controller.hardware.simulation &&
+          (i==0 || runtime_.controller.model==Model::G5500) && hardware_.sampleMaxIntervalMs(i)>0;
+      if(!available) j << "null";
+      else j << "{\"ageMs\":" << uint32_t(feedbackNow-hardware_.sampledAt(i))
+             << ",\"maxIntervalMs\":" << hardware_.sampleMaxIntervalMs(i) << '}';
+    }
+    j << ']';
+    runtime_.hud.writeStatus(j);
+    writeHardwareTrial(j,runtime_);
+    writeMqttStatus(j);
+    if (!writeStateJson(j, runtime_.controller, runtime_.protocol, runtime_.loggerSettings, millis(), true)) {
+      web_.send(503, "application/json", "{\"error\":\"status_too_large\"}");
+      return;
+    }
+    web_.finish(200,"application/json");
+
+    return;
+  }
+}
+
+void DeviceApi::executeDiagnostics(std::string_view method, std::string_view path, FormView arguments,
+    JsonWriter &output, int &status, const char *&type) {
+  ApiContext web_(arguments,output,status,type);
+  auto reply=[&](int code,const char *reason) {
+    status=code; type="application/json";
+    output << "{\"ok\":" << (code==200?"true":"false") << ",\"error\":" << jsonQuoted(reason) << '}';
+  };
+  if(path=="/api/diagnostics" && method=="GET") {
+    if(web_.value("view")=="queues") {
+#if MQTT_SUPPORT
+      const auto t=tcpMemory(runtime_.mqtt.port);
+#else
+      const auto t=tcpMemory();
+#endif
+      output << "{\"uptimeMs\":" << millis() << ",\"heapFree\":" << heapFreeBytes()
+        << ",\"tcpAvailable\":" << (t.available?"true":"false")
+        << ",\"active\":" << t.active << ",\"closing\":" << t.closing
+        << ",\"queued\":" << t.queued << ",\"closingQueued\":" << t.closingQueued
+        << ",\"mqttPeers\":" << t.mqttPeers << ",\"mqttClosing\":" << t.mqttClosing
+        << ",\"mqttQueued\":" << t.mqttQueued << ",\"mqttMss\":" << t.mqttMss << '}';return;
+    }
+    if(web_.value("view")=="transport") {
+      // Fits one command-API page: a live counter document cannot be safely
+      // reconstructed by reserializing a different revision for every page.
+      const auto &h=network_.httpDiagnostics();const auto t=tcpMemory();
+      output << "{\"uptimeMs\":" << millis() << ",\"heapFree\":" << heapFreeBytes()
+        << ",\"heapMin\":" << heapMinBytes() << ",\"heapMaxBlock\":" << heapMaxBlockBytes()
+        << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load()
+        << ",\"limited\":" << (networkLowMemory()?"true":"false")
+        << ",\"httpFailures\":" << h.writeFailures << ",\"httpCause\":" << jsonQuoted(h.writeCause)
+        << ",\"httpErrno\":" << h.writeErrno << ",\"httpWritten\":" << h.writeBytes << ",\"httpSize\":" << h.writeSize
+        << ",\"htmlFailures\":" << h.htmlFailures << ",\"htmlCause\":" << jsonQuoted(h.htmlCause)
+        << ",\"htmlErrno\":" << h.htmlErrno << ",\"htmlWritten\":" << h.htmlBytes << ",\"htmlSize\":" << h.htmlSize
+        << ",\"tcpAvailable\":" << (t.available?"true":"false")
+        << ",\"httpPeers\":" << t.httpPeers << ",\"unsent\":" << t.httpUnsent << ",\"unacked\":" << t.httpUnacked
+        << ",\"sendBuffer\":" << t.httpBuffer << ",\"window\":" << t.httpWindow << ",\"cwnd\":" << t.httpCwnd
+        << ",\"retries\":" << t.httpRetries << ",\"mss\":" << t.httpMss << '}';return;
+    }
+    if(web_.hasArg("previousFailure")) {
+      unsigned i;if(!integerArg(web_.arg("previousFailure"),i,1)){reply(400,"invalid_failure");return;}
+      writePreviousAllocation(output,i);return;
+    }
+    if(web_.hasArg("failure")) {
+      unsigned i; if(!integerArg(web_.arg("failure"),i,1)) {reply(400,"invalid_failure");return;}
+      const auto &f=runtimeMetrics.failures[i];
+      output << "{\"ready\":" << (f.ready()?"true":"false");
+      if(f.ready()) {
+        output << ",\"size\":" << f.size << ",\"caps\":" << f.caps << ",\"free\":" << f.freeBytes
+          << ",\"largestBlock\":" << f.largestBlock << ",\"function\":" << jsonQuoted(f.function)
+          << ",\"task\":" << jsonQuoted(f.task) << ",\"pc\":[";
+        for(unsigned n=0;n<8;++n) {if(n)output << ',';output << f.pc[n];} output << ']';
+      }
+      output << '}';return;
+    }
+    const auto writeTiming=[&](unsigned i) {
+      const auto &t=runtime_.controller.motionTiming(i);
+      const auto &f=runtime_.controller.motionFeedback(i);
+      output << "{\"steps\":" << t.steps << ",\"maxIntervalMs\":" << t.maxIntervalMs
+        << ",\"lateSteps\":" << t.lateSteps << ",\"computeMaxUs\":" << t.computeMaxUs
+        << ",\"computeTotalUs\":" << t.computeTotalUs << ",\"sampleCount\":" << hardware_.sampleCount(i)
+        << ",\"sampleMaxIntervalMs\":" << hardware_.sampleMaxIntervalMs(i)
+        << ",\"feedbackRejected\":" << f.rejectedTotal << ",\"feedbackInvalid\":" << f.invalidEvents
+        << ",\"rejectedAt\":" << f.rejectedAt << ",\"rejectedIntervalMs\":" << f.rejectedIntervalMs
+        << ",\"rejectedPosition\":" << f.rejectedPosition << ",\"lastGoodPosition\":" << f.lastGoodPosition << '}';
+    };
+    if(web_.hasArg("axis")) {
+      const auto axis=web_.arg("axis");
+      if(axis!="az" && axis!="el") {reply(400,"invalid_axis");return;}
+      // One live UART page: counters change between paginated requests.
+      output << "{\"axis\":" << jsonQuoted(axis.c_str())
+        << ",\"controlPeriodMs\":" << runtime_.controller.controlPeriodMs() << ",\"timing\":";
+      writeTiming(axis=="az"?0:1);output << '}';return;
+    }
+    const bool runtimeOnly=web_.value("view")=="runtime";
+    output << "{\"uptimeMs\":" << millis() << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMin\":" << heapMinBytes()
+      << ",\"heapMaxBlock\":" << heapMaxBlockBytes() << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load()
+      << ",\"maxFailedAllocation\":" << runtimeMetrics.largestFailedAllocation.load()
+      << ",\"networkMemoryLimited\":" << (networkLowMemory()?"true":"false")
+      << ",\"udpDropped\":" << network_.udpDropped() << ",\"tcpAborts\":" << network_.tcpAborts()
+      << ",\"loopMaxUs\":" << runtimeMetrics.loopMaxUs << ",\"loopsOver20ms\":" << runtimeMetrics.loopsOver20ms
+      << ",\"slowStage\":" << jsonQuoted(runtimeMetrics.slowStage) << ",\"slowStageUs\":" << runtimeMetrics.slowStageUs
+      << ",\"webEnabled\":" << (WEB_INTERFACE_ENABLED?"true":"false") << ",\"bluetoothSupported\":" << (BLUETOOTH_SUPPORT?"true":"false")
+      << ",\"psramBytes\":" << heap_caps_get_total_size(MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT)
+      << ",\"controlPeriodMs\":" << runtime_.controller.controlPeriodMs();
+    if(runtimeOnly) {output << '}';return;}
+    output << ",\"motionTiming\":[";
+    for (unsigned i=0;i<2;++i) {
+      if(i) output << ',';
+      writeTiming(i);
+    }
+    output << ']';
+#if GRAPHICAL_DISPLAY
+    output << ",\"panel\":{\"renderMaxUs\":" << panelMetrics.renderMaxUs
+      << ",\"touchReads\":" << panelMetrics.touchReads << ",\"touchErrors\":" << panelMetrics.touchErrors
+      << ",\"touchHealthy\":" << (panelMetrics.touchHealthy?"true":"false")
+      << ",\"touchDown\":" << (panelMetrics.touchDown?"true":"false")
+      << ",\"x\":" << panelMetrics.touchX << ",\"y\":" << panelMetrics.touchY << '}';
+#endif
+    output << '}';return;
+  }
+}
+
+void DeviceApi::executeControl(std::string_view method, std::string_view path, FormView arguments,
+    JsonWriter &output, int &status, const char *&type) {
+  ApiContext web_(arguments,output,status,type);
+  if(path=="/api/move" && method=="GET") {
+    auto r = callApi("/api/move",arguments);
+    runtime_.controller.tick(millis());
+    hardware_.applyOutputs();
+    web_.send(r.status, "application/json", r.body.c_str());
+
+    return;
+  }
+  if(path=="/api/target" && method=="GET") {
+    actions_.updatePosition();
+    auto response = callApi("/api/target",arguments);
+    runtime_.controller.tick(millis());
+    hardware_.applyOutputs();
+    runtime_.targetValid = runtime_.controller.targetKnown;
+    web_.send(response.status, "application/json", response.body.c_str());
+
+    return;
+  }
+  if(path=="/api/move" && method=="POST") {
+    auto r = callApi("/api/move",arguments);
+    runtime_.controller.tick(millis());
+    hardware_.applyOutputs();
+    web_.send(r.status, "application/json", r.body.c_str());
+
+    return;
+  }
+  if(path=="/api/target" && method=="POST") {
+    actions_.updatePosition();
+    auto r = callApi("/api/target",arguments);
+    runtime_.controller.tick(millis());
+    hardware_.applyOutputs();
+    if (r.status == 200) {
+      runtime_.targetValid = runtime_.controller.targetKnown;
+    }
+    web_.send(r.status, "application/json", r.body.c_str());
+
+    return;
+  }
+}
+
 void DeviceApi::executeGeneral(std::string_view method, std::string_view path, FormView arguments,
                                JsonWriter &output, int &status, const char *&type, bool command, uint32_t lease, bool setupBatch) {
   ApiContext web_(arguments,output,status,type);
@@ -850,102 +1163,6 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     if(runtime_.hud.isHud()) {reply(409,"controller_settings_only");return;}
     writeAutoTune(output,runtime_.controller);return;
   }
-  if(path=="/api/status" && command) {
-    auto &c=runtime_.controller;
-    if(!runtime_.recovery)actions_.updatePosition();
-    if(web_.value("view")=="axis") {
-      const auto axis=web_.value("axis");
-      if(axis!="az" && axis!="el") {reply(400,"invalid_axis");return;}
-      const unsigned i=axis=="az"?0:1;const auto &a=c.axes[i];
-      output << "{\"current\":" << a.current << ",\"target\":" << a.target
-        << ",\"tracking\":" << (a.tracking?"true":"false")
-        << ",\"completed\":" << (a.completed?"true":"false")
-        << ",\"direction\":" << a.direction << ",\"stopToleranceDegrees\":" << c.effectiveTolerance(i)
-        << ",\"speedOutputPercent\":" << a.speedOutputPercent
-        << ",\"speedSetpoint\":";output.decimal(c.runtimeSpeed(i),-1) << ",\"speedLimit\":";
-      output.decimal(c.runtimeSpeedLimit(i),-1) << ",\"speedAdjustable\":" << (c.runtimeSpeedAvailable(i)?"true":"false");
-      writeAxisMotion(output,c,i);output << '}';return;
-    }
-    output << "{\"model\":" << jsonQuoted(modelName(c.model))
-      << ",\"role\":" << jsonQuoted(runtime_.hud.isHud()?"hud":"controller")
-      << ",\"controlMode\":" << jsonQuoted(Controller::modeName(c.mode))
-      << ",\"remainingMs\":" << c.remaining(millis())
-      << ",\"moving\":" << (c.moving()?"true":"false") << ",\"pendingValid\":" << (c.pendingValid?"true":"false")
-      << ",\"pending\":{\"az\":" << c.pending.az << ",\"el\":" << c.pending.el
-      << ",\"hasAz\":" << (c.pending.hasAz?"true":"false") << ",\"hasEl\":" << (c.pending.hasEl?"true":"false") << '}'
-      << ",\"presetActive\":" << (c.presetActive?"true":"false") << ",\"presetSlot\":" << c.presetSlot
-      << ",\"fault\":" << jsonQuoted(c.fault) << ",\"recovery\":" << (runtime_.recovery?"true":"false")
-      << ",\"reason\":" << jsonQuoted(recoveryReasonName(runtime_.recoveryReason))
-      << ",\"configurationLocked\":" << (c.configurationLocked?"true":"false")
-      << ",\"commandPort\":" << runtime_.loggerSettings.commandPort;
-    writeHardwareTrial(output,runtime_);
-    output << ",\"axes\":[";
-    for(unsigned i=0;i<2;++i) {
-      if(i)output << ',';
-      const auto &a=c.axes[i];
-      output << "{\"current\":" << a.current << ",\"target\":" << a.target
-        << ",\"calibrated\":" << (a.calibrated?"true":"false") << ",\"output\":" << a.speedOutputPercent << '}';
-    }
-    output << "]}";return;
-  }
-  if(path=="/api/diagnostics" && method=="GET") {
-    if(web_.hasArg("previousFailure")) {
-      unsigned i;if(!integerArg(web_.arg("previousFailure"),i,1)){reply(400,"invalid_failure");return;}
-      writePreviousAllocation(output,i);return;
-    }
-    if(web_.hasArg("failure")) {
-      unsigned i; if(!integerArg(web_.arg("failure"),i,1)) {reply(400,"invalid_failure");return;}
-      const auto &f=runtimeMetrics.failures[i];
-      output << "{\"ready\":" << (f.ready()?"true":"false");
-      if(f.ready()) {
-        output << ",\"size\":" << f.size << ",\"caps\":" << f.caps << ",\"free\":" << f.freeBytes
-          << ",\"largestBlock\":" << f.largestBlock << ",\"function\":" << jsonQuoted(f.function)
-          << ",\"task\":" << jsonQuoted(f.task) << ",\"pc\":[";
-        for(unsigned n=0;n<8;++n) {if(n)output << ',';output << f.pc[n];} output << ']';
-      }
-      output << '}';return;
-    }
-    const auto writeTiming=[&](unsigned i) {
-      const auto &t=runtime_.controller.motionTiming(i);
-      const auto &f=runtime_.controller.motionFeedback(i);
-      output << "{\"steps\":" << t.steps << ",\"maxIntervalMs\":" << t.maxIntervalMs
-        << ",\"lateSteps\":" << t.lateSteps << ",\"sampleCount\":" << hardware_.sampleCount(i)
-        << ",\"sampleMaxIntervalMs\":" << hardware_.sampleMaxIntervalMs(i)
-        << ",\"feedbackRejected\":" << f.rejectedTotal << ",\"feedbackInvalid\":" << f.invalidEvents
-        << ",\"rejectedAt\":" << f.rejectedAt << ",\"rejectedIntervalMs\":" << f.rejectedIntervalMs
-        << ",\"rejectedPosition\":" << f.rejectedPosition << ",\"lastGoodPosition\":" << f.lastGoodPosition << '}';
-    };
-    if(web_.hasArg("axis")) {
-      const auto axis=web_.arg("axis");
-      if(axis!="az" && axis!="el") {reply(400,"invalid_axis");return;}
-      // One live UART page: counters change between paginated requests.
-      output << "{\"axis\":" << jsonQuoted(axis.c_str())
-        << ",\"controlPeriodMs\":" << runtime_.controller.controlPeriodMs() << ",\"timing\":";
-      writeTiming(axis=="az"?0:1);output << '}';return;
-    }
-    output << "{\"uptimeMs\":" << millis() << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMin\":" << heapMinBytes()
-      << ",\"heapMaxBlock\":" << heapMaxBlockBytes() << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load()
-      << ",\"maxFailedAllocation\":" << runtimeMetrics.largestFailedAllocation.load()
-      << ",\"networkMemoryLimited\":" << (networkLowMemory()?"true":"false")
-      << ",\"udpDropped\":" << network_.udpDropped() << ",\"tcpAborts\":" << network_.tcpAborts()
-      << ",\"loopMaxUs\":" << runtimeMetrics.loopMaxUs << ",\"loopsOver20ms\":" << runtimeMetrics.loopsOver20ms
-      << ",\"webEnabled\":" << (WEB_INTERFACE_ENABLED?"true":"false") << ",\"bluetoothSupported\":" << (BLUETOOTH_SUPPORT?"true":"false")
-      << ",\"psramBytes\":" << heap_caps_get_total_size(MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT)
-      << ",\"controlPeriodMs\":" << runtime_.controller.controlPeriodMs() << ",\"motionTiming\":[";
-    for (unsigned i=0;i<2;++i) {
-      if(i) output << ',';
-      writeTiming(i);
-    }
-    output << ']';
-#if GRAPHICAL_DISPLAY
-    output << ",\"panel\":{\"renderMaxUs\":" << panelMetrics.renderMaxUs
-      << ",\"touchReads\":" << panelMetrics.touchReads << ",\"touchErrors\":" << panelMetrics.touchErrors
-      << ",\"touchHealthy\":" << (panelMetrics.touchHealthy?"true":"false")
-      << ",\"touchDown\":" << (panelMetrics.touchDown?"true":"false")
-      << ",\"x\":" << panelMetrics.touchX << ",\"y\":" << panelMetrics.touchY << '}';
-#endif
-    output << '}';return;
-  }
   if(path=="/api/config" && method=="GET") {writeConfiguration(output);return;}
   if(path=="/api/diaglog" && method=="GET") {
     diagnostics_.writeLog(output); web_.finish(200,"text/plain; charset=utf-8");
@@ -977,24 +1194,6 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
                ",\"azSensor\":\"" + String(sensorName(runtime_.controller.hardware.sensorType(0))) +
                "\",\"elSensor\":\"" + String(sensorName(runtime_.controller.hardware.sensorType(1))) + "\"}";
     web_.send(200, "application/json", j);
-
-    return;
-  }
-  if(path=="/api/move" && method=="GET") {
-    auto r = callApi("/api/move",arguments);
-    runtime_.controller.tick(millis());
-    hardware_.applyOutputs();
-    web_.send(r.status, "application/json", r.body.c_str());
-
-    return;
-  }
-  if(path=="/api/target" && method=="GET") {
-    actions_.updatePosition();
-    auto response = callApi("/api/target",arguments);
-    runtime_.controller.tick(millis());
-    hardware_.applyOutputs();
-    runtime_.targetValid = runtime_.controller.targetKnown;
-    web_.send(response.status, "application/json", response.body.c_str());
 
     return;
   }
@@ -1232,123 +1431,6 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
 
     return;
   }
-  if(path=="/api/status" && method=="GET") {
-    web_.sendHeader("Cache-Control", "no-store");
-    auto &calibrationState = calibration_.state();
-    actions_.updatePosition();
-    bool staOk = (radioWifi.status() == WL_CONNECTED);
-    String staIp = staOk ? radioWifi.localIP().toString() : "-";
-    const bool apEnabled = (radioWifi.getMode() & WIFI_AP) != 0;
-    String apIp = apEnabled ? radioWifi.softAPIP().toString() : "-";
-    const bool ethOk=ethernetConnected();
-    const String ethIp=ethOk?ethernetIP().toString():"-";
-    String ip = ethOk ? ethIp : staOk ? staIp : apIp;
-    const char *mode = ethOk ? (apEnabled ? "Ethernet + AP" : "Ethernet") : staOk ? (apEnabled ? "AP + Wi-Fi Client" : "Wi-Fi Client") : apEnabled ? "Access Point" : "Disconnected";
-    int rssi = staOk ? radioWifi.RSSI() : 0;
-    String signal = !staOk
-                        ? "-"
-                        : (rssi >= -55 ? "Excellent"
-                                       : (rssi >= -67 ? "Good" : (rssi >= -75 ? "Fair" : "Weak")));
-    String rssiJson = staOk ? String(rssi) : "null";
-    uint32_t targetAge = runtime_.targetValid ? (millis() - runtime_.lastTargetRxMs) : 0;
-    const int *azTbl =
-        (calibrationState.gsAzMode == 36) ? calibrationState.az36CalMv : calibrationState.az45CalMv;
-    int azN = (calibrationState.gsAzMode == 36) ? AZ36_CAL_N : AZ45_CAL_N;
-    if (runtime_.hud.isHud())
-      calibrationState.gsAzMode = runtime_.controller.azProfile;
-    bool azLin =
-        runtime_.hud.isHud() ? runtime_.controller.axes[0].calibrated : calibration_.activeAzLinearValid();
-    bool azMul = calibration_.activeAzMultiValid();
-    int az450v = (azN > 5) ? azTbl[5] : -1;
-    int az2z = calibration_.activeAzOSet() ? calibration_.activeAz2Zero() : -1;
-    int az2f = calibration_.activeAzFSet() ? calibration_.activeAz2Full() : -1;
-    calibrationState.cal.valid = calibration_.selectedCalibrationValid();
-
-    char btMac[18];
-    network_.bluetoothMac(btMac);
-    auto &j=output;
-    j << '{'; actions_.writeWebDiagnostics(j);
-    j << ",\"az\":" << runtime_.currentAz << ",\"el\":" << runtime_.currentEl
-      << ",\"targetAz\":" << runtime_.targetAz << ",\"targetEl\":" << runtime_.targetEl
-      << ",\"targetValid\":" << (runtime_.targetValid ? "true" : "false") << ",\"targetAgeMs\":" << targetAge
-      << ",\"calibrated\":" << (calibrationState.cal.valid ? "true" : "false") << ",\"selectedCalOk\":"
-      << ((runtime_.hud.isHud()
-               ? runtime_.controller.axes[0].calibrated &&
-                     (runtime_.controller.model != Model::G5500 || runtime_.controller.axes[1].calibrated)
-               : calibration_.selectedCalibrationValid())
-              ? "true"
-              : "false")
-      << ",\"azMode\":" << calibrationState.gsAzMode << ",\"azLinear\":" << (azLin ? "true" : "false")
-      << ",\"azLinear36\":" << (calibrationState.az36LinearValid ? "true" : "false")
-      << ",\"azLinear45\":" << (calibrationState.az45LinearValid ? "true" : "false")
-      << ",\"elLinear\":" << (calibration_.activeElLinearValid() ? "true" : "false")
-      << ",\"azMulti\":" << (azMul ? "true" : "false")
-      << ",\"azMulti36\":" << (calibrationState.az36MultiValid ? "true" : "false")
-      << ",\"azMulti45\":" << (calibrationState.az45MultiValid ? "true" : "false")
-      << ",\"elMulti\":" << (calibration_.activeElMultiValid() ? "true" : "false")
-      << ",\"calMode\":" << jsonQuoted(calibrationState.calibrationMode == CAL_MULTI_POINT ? "multi" : "2")
-      << ",\"azSensor\":" << jsonQuoted(sensorName(runtime_.controller.hardware.sensorType(0)))
-      << ",\"elSensor\":" << jsonQuoted(sensorName(runtime_.controller.hardware.sensorType(1)))
-      << ",\"az2p0\":" << az2z << ",\"az2pf\":" << az2f
-      << ",\"el2p0\":" << (calibration_.activeElOSet() ? calibration_.activeEl2Zero() : -1)
-      << ",\"el2pf\":" << (calibration_.activeElFSet() ? calibration_.activeEl2Full() : -1)
-      << ",\"motion\":" << jsonQuoted(hardware_.motion().c_str()) << ",\"azp0\":" << azTbl[0]
-      << ",\"azp90\":" << azTbl[1] << ",\"azp180\":" << azTbl[2] << ",\"azp270\":" << azTbl[3]
-      << ",\"azp360\":" << azTbl[4] << ",\"azp450\":" << az450v << ",\"elp0\":" << calibrationState.elCalMv[0]
-      << ",\"elp45\":" << calibrationState.elCalMv[1] << ",\"elp90\":" << calibrationState.elCalMv[2]
-      << ",\"elp135\":" << calibrationState.elCalMv[3] << ",\"elp180\":" << calibrationState.elCalMv[4]
-      << ",\"ip\":" << jsonQuoted(ip.c_str()) << ",\"apIp\":" << jsonQuoted(apIp.c_str())
-      << ",\"staIp\":" << jsonQuoted(staIp.c_str()) << ",\"wifiMode\":" << jsonQuoted(mode)
-      << ",\"ethernetSupported\":" << (ETHERNET_SUPPORTED?"true":"false")
-      << ",\"ethStarted\":" << (network_.ethernetStarted()?"true":"false")
-      << ",\"ethLink\":" << (ethernetLinkUp()?"true":"false")
-      << ",\"ethConnected\":" << (ethOk?"true":"false")
-      << ",\"ethIp\":" << jsonQuoted(ethIp.c_str())
-      << ",\"connectedSsid\":" << jsonQuoted(staOk ? radioWifi.SSID().c_str() : "")
-      << ",\"wifiConnecting\":" << (network_.wifiConnecting() ? "true" : "false")
-      << ",\"ssid\":" << jsonQuoted(network_.credentials().wifiSsid.c_str())
-      << ",\"rssi\":" << rssiJson.c_str() << ",\"signal\":" << jsonQuoted(signal.c_str())
-      << ",\"btConnected\":" << (network_.bluetoothConnected() ? "true" : "false")
-      << ",\"btLinkConnected\":" << (network_.bluetoothLinkConnected() ? "true" : "false")
-      << ",\"btMac\":" << jsonQuoted(btMac)
-      << ",\"resetReason\":" << jsonQuoted(diagnostics_.bootReasonText().c_str())
-      << ",\"uptimeSeconds\":" << uint32_t(esp_timer_get_time() / 1000000)
-      << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMinFree\":" << heapMinBytes()
-      << ",\"heapMaxBlock\":" << heapMaxBlockBytes()
-      << ",\"httpWriteFailures\":" << network_.httpDiagnostics().writeFailures;
-    j << ",\"httpReadFailures\":" << network_.httpDiagnostics().readFailures << ",\"httpRejected\":" << network_.httpDiagnostics().rejected
-      << ",\"httpAccepted\":" << network_.httpDiagnostics().accepted << ",\"httpRequests\":" << network_.httpDiagnostics().requests;
-    const auto tcp = tcpMemory();
-    j << ",\"tcpStatsAvailable\":" << (tcp.available ? "true" : "false")
-      << ",\"tcpActive\":" << tcp.active << ",\"tcpClosing\":" << tcp.closing << ",\"tcpTimeWait\":" << tcp.timewait;
-    j << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load()
-      << ",\"networkMemoryLimited\":" << (networkLowMemory()?"true":"false")
-      << ",\"telemetryIntervalMs\":" << (networkLowMemory()?500:WebPositionIntervalMs)
-      << ",\"udpDropped\":" << network_.udpDropped() << ",\"tcpAborts\":" << network_.tcpAborts()
-      << ",\"maxFailedAllocation\":" << runtimeMetrics.largestFailedAllocation.load()
-      << ",\"loopMaxUs\":" << runtimeMetrics.loopMaxUs << ",\"loopsOver20ms\":" << runtimeMetrics.loopsOver20ms;
-    const uint32_t feedbackNow = millis();
-    j << ",\"localFeedback\":[";
-    for (unsigned i=0; i<2; ++i) {
-      if(i) j << ',';
-      const bool available = !runtime_.hud.isHud() && !runtime_.controller.hardware.simulation &&
-          (i==0 || runtime_.controller.model==Model::G5500) && hardware_.sampleMaxIntervalMs(i)>0;
-      if(!available) j << "null";
-      else j << "{\"ageMs\":" << uint32_t(feedbackNow-hardware_.sampledAt(i))
-             << ",\"maxIntervalMs\":" << hardware_.sampleMaxIntervalMs(i) << '}';
-    }
-    j << ']';
-    runtime_.hud.writeStatus(j);
-    writeHardwareTrial(j,runtime_);
-    writeMqttStatus(j);
-    if (!writeStateJson(j, runtime_.controller, runtime_.protocol, runtime_.loggerSettings, millis(), true)) {
-      web_.send(503, "application/json", "{\"error\":\"status_too_large\"}");
-      return;
-    }
-    web_.finish(200,"application/json");
-
-    return;
-  }
 
 #if MQTT_SUPPORT
   if(path=="/api/mqtt" && (method=="GET" || method=="POST")) {
@@ -1393,26 +1475,6 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
     output << '}';return;
   }
 #endif
-  if(path=="/api/move" && method=="POST") {
-    auto r = callApi("/api/move",arguments);
-    runtime_.controller.tick(millis());
-    hardware_.applyOutputs();
-    web_.send(r.status, "application/json", r.body.c_str());
-
-    return;
-  }
-  if(path=="/api/target" && method=="POST") {
-    actions_.updatePosition();
-    auto r = callApi("/api/target",arguments);
-    runtime_.controller.tick(millis());
-    hardware_.applyOutputs();
-    if (r.status == 200) {
-      runtime_.targetValid = runtime_.controller.targetKnown;
-    }
-    web_.send(r.status, "application/json", r.body.c_str());
-
-    return;
-  }
   if(path=="/api/motion" && method=="GET") {
     if(runtime_.hud.isHud()) { web_.send(409,"application/json","{\"ok\":false,\"result\":\"controller_settings_only\"}"); return; }
     auto &j=output;

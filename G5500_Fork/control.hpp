@@ -279,6 +279,7 @@ public:
   void tickCoast(uint32_t now);
   unsigned controlPeriodMs() const { return controlPeriodMs_; }
   bool controlDue(uint32_t now) const;
+  unsigned loopDelayMs(uint32_t now) const;
   Result setControlFrequency(unsigned hz, uint32_t now);
   Result centerForAutoTune(unsigned axis, uint32_t now);
   Result startAutoTune(unsigned axis, RegulatorMode mode, float travel, float outputLimit, uint32_t now, const AutoTuneOptions &options = {});
@@ -359,6 +360,11 @@ public:
   uint32_t remaining(uint32_t now) const;
   bool valid(Target t) const;
   bool moving() const;
+  bool controlActive() const {
+    if(moving() || autoTune.active() || coast.active())return true;
+    for(const auto &axis:axes)if(axis.tracking)return true;
+    return false;
+  }
   static const char *modeName(Mode m);
   static const char *resultName(Result r);
 

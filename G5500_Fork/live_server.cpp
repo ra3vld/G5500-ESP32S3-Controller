@@ -41,6 +41,9 @@ bool LiveServer::begin() {
 }
 esp_err_t LiveServer::opened(httpd_handle_t server,int fd) {
   int yes=1;setsockopt(fd,IPPROTO_TCP,TCP_NODELAY,&yes,sizeof yes);
+#if FORK_CLASSIC_ESP32
+  limitTcpSocketMss(fd,536);
+#endif
   // HTTPD runs independently of motor control. Allow a split TCP request to
   // arrive across Wi-Fi retries, with a bounded wait for an incomplete peer.
   timeval timeout{0,200000};

@@ -17,11 +17,11 @@ struct Harness {
   std::vector<uint64_t> registryScan;
   size_t scan=0;
   bool writable=true,network=true,drained=true,allocations=true;
-  unsigned before=0,after=0,persisted=0;
+  unsigned before=0,after=0,persisted=0,publishAttempts=0;
   MqttBridge bridge;
   static Harness &self(void *p){return *static_cast<Harness *>(p);}
   static bool publish(void *p,const char *topic,std::string_view value,bool retained,int qos){
-    auto &h=self(p);if(!h.network)return false;
+    auto &h=self(p);++h.publishAttempts;if(!h.network)return false;
     h.messages.push_back({topic,std::string(value),retained,qos});return true;
   }
   static bool idle(void *p){return self(p).drained;}

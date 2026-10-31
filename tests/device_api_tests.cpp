@@ -374,6 +374,19 @@ static void networkRecoveryTests() {
   }
 }
 int main(int argc,char **argv) {
+  {
+    Fixture f;useLocalController(f);
+    assert(f.network.wifiMaintenanceAllowed());
+    auto &c=f.runtime.controller;
+    c.axes[0].direction=1;assert(!f.network.wifiMaintenanceAllowed());c.axes[0].direction=0;
+    c.axes[1].tracking=true;assert(!f.network.wifiMaintenanceAllowed());c.axes[1].tracking=false;
+    c.autoTune.phase=AutoTunePhase::Quiet;assert(!f.network.wifiMaintenanceAllowed());c.autoTune.phase=AutoTunePhase::Idle;
+    c.coast.phase=CoastMeasurement::Coasting;assert(!f.network.wifiMaintenanceAllowed());c.coast.phase=CoastMeasurement::Idle;
+    c.axes[1].holdArmed=true;assert(f.network.wifiMaintenanceAllowed());
+    c.axes[1].wanted=-1;assert(!f.network.wifiMaintenanceAllowed());
+    f.runtime.recovery=true;assert(f.network.wifiMaintenanceAllowed());
+  }
+
   networkRecoveryTests();
   hardwareStorageApiTests();
   apPasswordMethodTests();
@@ -1265,6 +1278,17 @@ int main(int argc,char **argv) {
   assert(feedbackDiagnostics.body.find("\"feedbackInvalid\":")!=std::string::npos);
   assert(feedbackDiagnostics.body.find("\"rejectedIntervalMs\":")!=std::string::npos);
   assert(feedbackDiagnostics.body.find("\"lastGoodPosition\":")!=std::string::npos);
+  for(const auto *view:{"runtime","transport","queues"}) {
+    const auto one=f.call("GET","/api/diagnostics",std::string("view=")+view);
+    assert(one.status==200&&one.body.size()<=COMMAND_PAGE_MAX);
+    assert(one.body.find("\"heapFree\":")!=std::string::npos);
+    assert(one.body.find("\"motionTiming\":")==std::string::npos);
+  }
+  const auto transport=f.call("GET","/api/diagnostics","view=transport");
+  assert(transport.body.find("\"httpCause\":")!=std::string::npos);
+  assert(transport.body.find("\"unsent\":")!=std::string::npos);
+  const auto queues=f.call("GET","/api/diagnostics","view=queues");
+  assert(queues.body.size()<300&&queues.body.find("\"closingQueued\":")!=std::string::npos&&queues.body.find("\"mqttMss\":")!=std::string::npos);
   AllocationFailure previous;previous.size=4096;previous.caps=3;previous.freeBytes=22000;previous.largestBlock=4000;
   previous.function="malloc";previous.pc[0]=0x12345678;allocationRecordText(previous.task,sizeof previous.task,"tcpip_task");
   uint8_t previousElf[32]{};previousElf[0]=0xab;

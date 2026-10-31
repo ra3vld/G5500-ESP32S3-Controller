@@ -63,6 +63,8 @@ private:
   std::atomic<bool> connected_{false},rediscover_{false};
   std::atomic<uint32_t> session_{1},selection_{0},rejected_{0},dropped_{0},serial_{0};
   uint32_t observedSession_=0,lastScan_=0,lastDiscovery_=0,commands_=0,pendingRequest_=0;
+  uint32_t publishNow_=0,publishFailedAt_=0;
+  bool publishBlocked_=false;
   uint64_t pendingNode_=0;
   const char *lastResult_="idle";
   bool observedConnection_=false,registryDone_=!HOME_ASSISTANT_DISCOVERY_SUPPORT,announced_=false;

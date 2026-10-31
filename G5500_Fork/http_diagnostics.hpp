@@ -8,5 +8,8 @@ struct HttpDiagnostics {
   int writeErrno = 0;
   uint32_t writeBytes = 0, writeSize = 0;
   const char *writeCause = "none";
+  uint32_t htmlFailures = 0, htmlBytes = 0, htmlSize = 0;
+  int htmlErrno = 0;
+  const char *htmlCause = "none";
 };
 } // namespace forkrot

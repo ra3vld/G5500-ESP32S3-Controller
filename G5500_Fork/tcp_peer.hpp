@@ -46,6 +46,28 @@ inline err_t abortTcpPeer(tcpip_api_call_data *call) {
   }
   return ERR_OK;
 }
+struct TcpPeerEndpoint {
+  ip_addr_t peer{},local{};
+  uint16_t peerPort=0,localPort=0;
+  bool valid=false;
+};
+inline TcpPeerEndpoint tcpPeerEndpoint(int fd) {
+  TcpPeerEndpoint result;
+  if(fd<0)return result;
+  sockaddr_storage peer{},local{};socklen_t pn=sizeof peer,ln=sizeof local;
+  result.valid=getpeername(fd,reinterpret_cast<sockaddr *>(&peer),&pn)==0 &&
+      getsockname(fd,reinterpret_cast<sockaddr *>(&local),&ln)==0 &&
+      tcpSocketEndpoint(peer,result.peer,result.peerPort) && tcpSocketEndpoint(local,result.local,result.localPort);
+  return result;
+}
+// Retire a session after its owner has already closed the descriptor. A cached
+// fd may now belong to another client: only the saved complete endpoint counts.
+inline bool abortTcpPeerEndpoint(const TcpPeerEndpoint &peer) {
+  if(!peer.valid)return false;
+  TcpAbortRequest request;request.peer=peer.peer;request.local=peer.local;
+  request.peerPort=peer.peerPort;request.localPort=peer.localPort;
+  return tcpip_api_call(abortTcpPeer,&request.call)==ERR_OK && request.aborted;
+}
 // Call only for a session that has ended or a response already being aborted.
 // Stock Arduino ESP32 libraries disable LWIP_SO_LINGER: merely setting that
 // option silently failed to release queued telemetry on retired connections.
@@ -60,6 +82,37 @@ inline bool abortTcpSocket(int fd) {
      !tcpSocketEndpoint(peer,request.peer,request.peerPort) ||
      !tcpSocketEndpoint(local,request.local,request.localPort))return false;
   return tcpip_api_call(abortTcpPeer,&request.call)==ERR_OK && request.aborted;
+}
+struct TcpMssRequest {
+  tcpip_api_call_data call{};
+  ip_addr_t peer{},local{};
+  uint16_t peerPort=0,localPort=0,limit=0;
+  bool applied=false;
+};
+inline err_t limitTcpPeerMss(tcpip_api_call_data *call) {
+  auto &r=*reinterpret_cast<TcpMssRequest *>(call);
+  for(auto *pcb=tcp_active_pcbs;pcb;pcb=pcb->next) {
+    if(pcb->local_port!=r.localPort||pcb->remote_port!=r.peerPort||
+       !ip_addr_cmp(&pcb->remote_ip,&r.peer)||!ip_addr_cmp(&pcb->local_ip,&r.local))continue;
+    // Only before application data is queued: changing an existing segment's
+    // boundary would invalidate lwIP's retransmission accounting.
+    if(pcb->unsent||pcb->unacked)return ERR_OK;
+    pcb->mss=std::min(pcb->mss,r.limit);
+    if(pcb->cwnd>uint32_t(pcb->mss)*4)pcb->cwnd=uint32_t(pcb->mss)*4;
+    r.applied=true;break;
+  }
+  return ERR_OK;
+}
+// Limit outgoing payloads on a newly accepted socket. Short application
+// writes alone can still be merged into full-MSS unsent segments by lwIP.
+inline bool limitTcpSocketMss(int fd,uint16_t limit) {
+  if(fd<0||!limit)return false;
+  sockaddr_storage peer{},local{};socklen_t pn=sizeof peer,ln=sizeof local;
+  TcpMssRequest r;r.limit=limit;
+  if(getpeername(fd,reinterpret_cast<sockaddr *>(&peer),&pn)!=0||
+     getsockname(fd,reinterpret_cast<sockaddr *>(&local),&ln)!=0||
+     !tcpSocketEndpoint(peer,r.peer,r.peerPort)||!tcpSocketEndpoint(local,r.local,r.localPort))return false;
+  return tcpip_api_call(limitTcpPeerMss,&r.call)==ERR_OK&&r.applied;
 }
 struct TcpPendingRequest {
   tcpip_api_call_data call{};

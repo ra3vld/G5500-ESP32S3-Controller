@@ -11,6 +11,7 @@ inline int recv(int fd,void *out,size_t size,int) {
   testSocket.consumed+=count;return int(count);
 }
 inline int send(int fd,const void *data,size_t size,int) {
+  testSocket.largestSend=std::max(testSocket.largestSend,size);
   if(fd<0) return -1;
   if(testSocket.writeError) { errno=testSocket.writeError;return -1; }
   if(testSocket.blockWrites || !testSocket.sendQuota) { errno=EAGAIN;return -1; }

@@ -1,6 +1,18 @@
 #include "mqtt_fixture.hpp"
 int main(int argc,char **argv){
   {
+    Harness h;h.run();h.network=false;h.bridge.service(5000);
+    const auto attempts=h.publishAttempts;
+    for(unsigned at=5001;at<5020;++at)h.bridge.service(at);
+    h.runtime.controller.axes[0].direction=1;
+    assert(h.command("stop","PRESS",5020));h.bridge.service(5021);
+    assert(!h.runtime.controller.moving());
+    for(unsigned at=5022;at<5050;++at)h.bridge.service(at);
+    assert(h.publishAttempts==attempts);
+    h.bridge.service(5050);assert(h.publishAttempts==attempts+1);
+    h.network=true;h.bridge.service(5100);assert(h.publishAttempts>attempts+1);
+  }
+  {
     MqttConfig c;auto bytes=encodeMqtt(c);MqttConfig decoded;
     assert(decodeMqtt(bytes,decoded) && decoded==c);
     bytes[10]^=1;assert(!decodeMqtt(bytes,decoded));

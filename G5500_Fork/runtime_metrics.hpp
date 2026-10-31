@@ -36,6 +36,11 @@ struct RuntimeMetrics {
   std::atomic<uint32_t> allocationFailures{0}, largestFailedAllocation{0};
   bool hookReady = false;
   uint32_t loopMaxUs = 0, loopsOver20ms = 0; // main-loop access only
+  const char *slowStage = "none";
+  uint32_t slowStageUs = 0;
+  void recordStage(const char *name,uint32_t us) {
+    if(us>slowStageUs){slowStage=name;slowStageUs=us;}
+  }
   AllocationFailure failures[2]; // first <1024B and first >=1024B failure
   AllocationRecord previousFailures[2]{};
   AllocationRecord *persistentFailures=nullptr;

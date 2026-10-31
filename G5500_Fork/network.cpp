@@ -528,6 +528,9 @@ void Network::handleRotctldTcp() {
       rotctldClient_ = c;
       rotctldClient_.setNoDelay(true);
       const int fd=rotctldClient_.fd(),yes=1,idle=15,interval=5,count=3;
+#if FORK_CLASSIC_ESP32
+      limitTcpSocketMss(fd,536);
+#endif
       ::setsockopt(fd,SOL_SOCKET,SO_KEEPALIVE,&yes,sizeof yes);
       ::setsockopt(fd,IPPROTO_TCP,TCP_KEEPIDLE,&idle,sizeof idle);
       ::setsockopt(fd,IPPROTO_TCP,TCP_KEEPINTVL,&interval,sizeof interval);
@@ -747,7 +750,10 @@ void Network::connectWifi(const String &ssid, const String &password) {
 
 void Network::serviceWifiReconnect() {
 #if WIFI_SUPPORT
-
+  // Driver mode/channel/subnet changes can block for hundreds of milliseconds.
+  // Keep the current link and pending work intact until local motion settles;
+  // a HUD has no local motor loop and can maintain its radio immediately.
+  if(!wifiMaintenanceAllowed())return;
   const bool wired=ethernetConnected();
   if(wired!=ethernetWasConnected_) {
     ethernetWasConnected_=wired;

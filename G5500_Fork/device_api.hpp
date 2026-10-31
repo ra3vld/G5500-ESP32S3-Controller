@@ -22,6 +22,12 @@ private:
                        JsonWriter &output, int &status, const char *&type, bool command, bool setupBatch);
   void executeNetwork(std::string_view method, std::string_view path, FormView arguments,
                       JsonWriter &output, int &status, const char *&type, bool setupBatch);
+  void executeStatus(std::string_view method, std::string_view path, FormView arguments,
+                     JsonWriter &output, int &status, const char *&type, bool command);
+  void executeDiagnostics(std::string_view method, std::string_view path, FormView arguments,
+                          JsonWriter &output, int &status, const char *&type);
+  void executeControl(std::string_view method, std::string_view path, FormView arguments,
+                      JsonWriter &output, int &status, const char *&type);
   void executeGeneral(std::string_view method, std::string_view path, FormView arguments,
                       JsonWriter &output, int &status, const char *&type, bool command, uint32_t lease, bool setupBatch);
   bool setupReady(SetupStep step) const;
