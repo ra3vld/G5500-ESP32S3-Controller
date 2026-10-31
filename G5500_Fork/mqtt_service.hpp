@@ -20,6 +20,7 @@ public:
   ~MqttService();
   void service();
   void pause();
+  bool connected() const;
   void writeStatus(JsonWriter &, bool compact = false) const;
 };
 #else
@@ -28,6 +29,7 @@ public:
   MqttService(Runtime &,DeviceActions &,Hardware &){}
   void service(){}
   void pause(){}
+  bool connected() const {return false;}
   void writeStatus(JsonWriter &j, bool = false) const { j << "\"supported\":false,\"connected\":false,\"error\":\"feature_disabled\""; }
 };
 #endif

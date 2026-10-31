@@ -36,7 +36,7 @@ BOOL_FIELDS = frozenset((
     "movingNow", "settingsAvailable", "enabled", "hud", "hudSelector", "dualAxis", "speedScreen", "speedAvailable[0]", "speedAvailable[1]",
     "elevation", "feedback", "targetValid", "uncalibrated", "secondaryUncalibrated", "pending",
     "moving", "autoMode", "autoHour", "secondaryFeedback", "secondaryTargetValid", "secondaryPending",
-    "wifiConnected", "wifiAp", "bluetoothEnabled", "bluetoothConnected", "statusFault"))
+    "wifiConnected", "wifiAp", "mqttEnabled", "mqttConnected", "bluetoothEnabled", "bluetoothConnected", "statusFault"))
 INT_FIELDS = frozenset(("direction", "azDirection", "elDirection", "wifiRssi"))
 UINT_FIELDS = frozenset(("speedPercent[0]", "speedPercent[1]"))
 TEXT_FIELDS = frozenset(("hudName", "hudAddress", "hudRows[0]", "hudRows[1]", "hudRows[2]", "ip", "heap", "status"))

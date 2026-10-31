@@ -29,7 +29,7 @@
 #include "display_state.hpp"
 #endif
 namespace forkrot {
-class DeviceActions; class Calibration; class Hardware; class Diagnostics; class Network; class Storage;
+class DeviceActions; class Calibration; class Hardware; class Diagnostics; class Network; class Storage; class MqttService;
 class Display {
   Runtime &runtime_;
   DeviceActions &actions_;
@@ -37,6 +37,7 @@ class Display {
   Hardware &hardware_;
   Diagnostics &diagnostics_;
   Network &network_;
+  MqttService *mqtt_=nullptr;
   CrowPanelKnob knob_;
   HudKnob hudKnob_;
   Storage &storage_;
@@ -134,6 +135,7 @@ public:
       :runtime_(runtime),actions_(actions),calibration_(calibration),hardware_(hardware),diagnostics_(diagnostics),
        network_(network),knob_(runtime.controller),hudKnob_(runtime.hud,runtime.controller),storage_(storage) {}
   void invalidate() {redraw_=true;}
+  void setMqttService(MqttService *service) {mqtt_=service;}
   void loadTouchCalibration();
   void startAfterCalibrationLoad();
   void initLocalDisplay();void serviceTouch();void updateLocalDisplay();
@@ -145,7 +147,7 @@ public:
 #include "board.hpp"
 #include "runtime.hpp"
 namespace forkrot {
-class DeviceActions; class Calibration; class Hardware; class Diagnostics; class Network; class Storage;
+class DeviceActions; class Calibration; class Hardware; class Diagnostics; class Network; class Storage; class MqttService;
 class Display {
   Runtime &runtime_;
   std::optional<LiquidCrystal> lcd_;
@@ -155,6 +157,7 @@ class Display {
 public:
   Display(Runtime &runtime, DeviceActions &, Calibration &, Hardware &, Diagnostics &, Network &, Storage &) : runtime_(runtime) {}
   void invalidate() { redraw_ = true; }
+  void setMqttService(MqttService *) {}
   void loadTouchCalibration() {}
   void startAfterCalibrationLoad() {}
   void serviceTouch() {}
@@ -172,6 +175,7 @@ class Hardware;
 class Diagnostics;
 class Network;
 class Storage;
+class MqttService;
 
 // The same application interface without drivers, peripheral state or GPIO calls.
 class Display {
@@ -179,6 +183,7 @@ public:
   Display(Runtime &, DeviceActions &, Calibration &, Hardware &, Diagnostics &, Network &,
           Storage &) {}
   void invalidate() {}
+  void setMqttService(MqttService *) {}
   void loadTouchCalibration() {}
   void startAfterCalibrationLoad() {}
   void serviceTouch() {}

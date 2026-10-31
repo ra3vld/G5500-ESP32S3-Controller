@@ -38,6 +38,7 @@ inline void writeCrowPanelView(JsonWriter &j, const CrowPanelView &v) {
   CP_BOOL(secondaryFeedback); CP_BOOL(secondaryTargetValid); CP_BOOL(secondaryPending);
   CP_NUMBER(azDirection); CP_NUMBER(elDirection); CP_NUMBER(sourceId);
   CP_BOOL(wifiConnected); CP_BOOL(wifiAp); CP_NUMBER(wifiRssi);
+  CP_BOOL(mqttEnabled); CP_BOOL(mqttConnected);
   CP_BOOL(bluetoothEnabled); CP_BOOL(bluetoothConnected); CP_TEXT(ip); CP_TEXT(heap);
   CP_BOOL(statusFault);
   j << "\"status\":" << jsonQuoted(v.status) << '}';

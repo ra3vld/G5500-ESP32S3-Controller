@@ -118,6 +118,7 @@ void Application::controllerSetup() {
     }
   }
   network_.beginHud();
+  display_.setMqttService(&mqtt_);
   ota_.begin([](void *context) {
     auto &self=*static_cast<Application *>(context);
     self.hardware_.cancelJoystickCalibration();

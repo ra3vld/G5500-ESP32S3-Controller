@@ -184,6 +184,22 @@ class NativeTests(unittest.TestCase):
             self.assertNotEqual(stopped, pressed)
             self.assertEqual(stopped, released)
 
+    def test_connection_warnings_advance_without_new_view_records(self):
+        with NativeRenderer(RENDERER) as renderer:
+            renderer.update(0, state(0, 0, wifiRssi=-55))
+            healthy = renderer.frame(0)
+            renderer.update(0, state(1, 0, wifiRssi=-80, mqttEnabled=True, mqttConnected=False))
+            weak = renderer.frame(0)
+            self.assertNotEqual(healthy, weak)
+            self.assertEqual(renderer.frame(1999), weak)
+            mqtt = renderer.frame(2000)
+            self.assertNotEqual(mqtt, weak)
+            self.assertEqual(renderer.frame(4000), weak)
+            renderer.update(4100, state(2, 4100, wifiConnected=False, mqttEnabled=True, mqttConnected=False))
+            self.assertNotEqual(renderer.frame(4100), mqtt)
+            renderer.update(4200, state(3, 4200, wifiRssi=-55, mqttEnabled=True, mqttConnected=True))
+            self.assertEqual(renderer.frame(4200), healthy)
+
     def test_all_firmware_fields_unicode_and_null_coordinates(self):
         view = next(item.record for item in demo_records() if item.record["type"] == "view")
         view = copy.deepcopy(view)

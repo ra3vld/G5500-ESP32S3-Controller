@@ -7,6 +7,7 @@
 #include "hardware.hpp"
 #include "diagnostics.hpp"
 #include "network.hpp"
+#include "mqtt_service.hpp"
 #include "heap_metrics.hpp"
 #include "storage.hpp"
 #include "drive_fault_text.hpp"
@@ -355,6 +356,8 @@ void Display::updateLocalDisplay() {
     view.wifiConnected = connected;
     view.wifiAp = ap;
     view.wifiRssi = connected ? int(radioWifi.RSSI()) : -127;
+    view.mqttEnabled = MQTT_SUPPORT && runtime_.mqtt.enabled;
+    view.mqttConnected = view.mqttEnabled && mqtt_ && mqtt_->connected();
     network_.formatAddresses(view.ip, sizeof view.ip, "  ",view.shows(DisplayLocalAddress),view.shows(DisplayApAddress));
     if(compact) {
       if(auto *sta=std::strstr(view.ip,"STA: "))

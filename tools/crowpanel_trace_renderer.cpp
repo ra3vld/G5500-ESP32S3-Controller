@@ -22,6 +22,7 @@ std::array<uint16_t, size * 40> stripe{};
 std::array<uint8_t, size * size * 3> rgb{};
 lv_display_t *display = nullptr;
 forkrot::CrowPanelUi ui;
+forkrot::CrowPanelView currentView;
 uint64_t cursor = 0;
 bool initialized = false;
 traceviz::Inputs inputs;
@@ -49,7 +50,8 @@ void reset() {
   lv_display_set_buffers(display, stripe.data(), nullptr, sizeof stripe, LV_DISPLAY_RENDER_MODE_PARTIAL);
   lv_display_set_flush_cb(display, flush);
   ui.create();
-  ui.update(forkrot::CrowPanelView{});
+  currentView=forkrot::CrowPanelView{};
+  ui.update(currentView);
   lv_refr_now(display);
 }
 
@@ -75,6 +77,8 @@ void advance(uint64_t requested) {
   // animation at this exact event time so the result is independent of the
   // number of intermediate frames requested by a viewer or video exporter.
   lv_anim_refr_now();
+  // Indicators also advance when a recording has no new telemetry snapshot.
+  ui.update(currentView);
 }
 
 bool boolean(const std::string &value) {
@@ -129,6 +133,7 @@ void field(forkrot::CrowPanelView &v, const std::string &key, const std::string 
   INT(azDirection) INT(elDirection)
   if (key == "sourceId") { v.sourceId = natural(value); return; }
   BOOL(wifiConnected) BOOL(wifiAp) INT(wifiRssi)
+  BOOL(mqttEnabled) BOOL(mqttConnected)
   BOOL(bluetoothEnabled) BOOL(bluetoothConnected)
   TEXT(ip) TEXT(heap) BOOL(statusFault) TEXT(status)
 #undef BOOL
@@ -201,7 +206,8 @@ int main() {
           if (equal == std::string::npos) throw std::runtime_error("invalid view field");
           field(view, args[i].substr(0, equal), args[i].substr(equal + 1));
         }
-        ui.update(view);
+        currentView=view;
+        ui.update(currentView);
         pressed(args[2]);
       } else throw std::runtime_error("invalid renderer command");
     }

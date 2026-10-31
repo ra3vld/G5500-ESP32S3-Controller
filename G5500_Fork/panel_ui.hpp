@@ -7,6 +7,7 @@
 #include <array>
 #include "panel_input.hpp"
 #include "panel_view.hpp"
+#include "panel_connection.hpp"
 namespace forkrot {
 class PanelUi {
   PanelView previous_;
@@ -27,6 +28,9 @@ class PanelUi {
   lv_obj_t *root_=nullptr;
   void configureLayout(const PanelView &view);
   void layoutCurrent(const PanelView &view);
+  void updateConnectionIndicator(const PanelView &,panel::ConnectionWarning);
+  panel::ConnectionIndicator connectionIndicator_;
+  panel::ConnectionWarning connectionWarning_=panel::ConnectionWarning::None;
   std::array<lv_font_t,13> currentFonts_{};
   std::array<lv_font_t,2> secondaryFonts_{};
   unsigned currentFontCount_=0;
@@ -45,7 +49,7 @@ class PanelUi {
   lv_obj_t *hudName_ = nullptr, *hudAddress_ = nullptr, *hudList_ = nullptr, *hudRows_[3]{};
   lv_obj_t *mode_ = nullptr, *axis_ = nullptr, *range_ = nullptr, *angle_ = nullptr;
   lv_obj_t *targetCaption_ = nullptr, *target_ = nullptr, *status_ = nullptr, *wifi_ = nullptr;
-  lv_obj_t *wifiSlash_ = nullptr, *wifiAp_ = nullptr;
+  lv_obj_t *wifiSlash_ = nullptr, *wifiAp_ = nullptr, *mqtt_ = nullptr;
   lv_obj_t *bluetooth_ = nullptr, *ip_ = nullptr, *heap_ = nullptr;
   lv_obj_t *modeButton_ = nullptr;
   lv_obj_t *currentMarker_ = nullptr, *targetMarker_ = nullptr;

@@ -106,6 +106,18 @@ int main(int argc,char **argv) {
     }
     assert(lv_obj_is_hidden(lv_obj_get_parent(stopLabel))==!v.movingNow);
     const auto &l=ui.touchLayout();
+    auto *mqtt=findLabel(findLabel,ui.root(),"MQTT " LV_SYMBOL_CLOSE);assert(mqtt);
+    if(!lv_obj_is_hidden(mqtt)) {
+      const auto area=[](lv_obj_t *object) {lv_area_t a;lv_obj_get_coords(object,&a);return panel::TouchRect{uint16_t(a.x1),uint16_t(a.y1),uint16_t(a.x2-a.x1+1),uint16_t(a.y2-a.y1+1)};};
+      const auto r=area(mqtt);assert(inside(r));
+      for(const char *text:{v.ip,v.heap})if(auto *other=findLabel(findLabel,ui.root(),text))
+        if(!lv_obj_is_hidden(other))assert(!overlaps(r,area(other)));
+      if(roundPanel) {
+        const int dx=std::max(std::abs(int(r.x)-width/2),std::abs(int(r.x+r.width)-width/2));
+        const int dy=std::max(std::abs(int(r.y)-height/2),std::abs(int(r.y+r.height)-height/2));
+        assert(dx*dx+dy*dy<=(width/2)*(width/2));
+      }
+    }
     assert(bool(l.stop.width)==v.movingNow && l.stopArea.width);
     if(v.movingNow) {
       assert(inside(l.stop));
@@ -124,6 +136,38 @@ int main(int argc,char **argv) {
     }
   };
   snapshot("dual");
+  {
+    const auto saved=v;
+    auto *wifi=findLabel(findLabel,ui.root(),LV_SYMBOL_WIFI);
+    auto *mqtt=findLabel(findLabel,ui.root(),"MQTT " LV_SYMBOL_CLOSE);
+    assert(wifi&&mqtt&&lv_obj_is_hidden(wifi)&&lv_obj_is_hidden(mqtt));
+    v.mqttEnabled=true;v.mqttConnected=false;snapshot("mqtt-lost");
+    assert(lv_obj_is_hidden(mqtt)==compact&&lv_obj_is_hidden(wifi));
+    if(!compact) {
+      v.wifiRssi=-80;ui.update(v);lv_refr_now(d);
+      assert(!lv_obj_is_hidden(wifi)&&lv_obj_is_hidden(mqtt));
+      const auto weak=image;const auto layout=ui.touchLayout();
+      lv_tick_inc(1999);ui.update(v);lv_timer_handler();lv_refr_now(d);assert(image==weak);
+      lv_tick_inc(1);ui.update(v);lv_timer_handler();lv_refr_now(d);
+      assert(lv_obj_is_hidden(wifi)&&!lv_obj_is_hidden(mqtt)&&image!=weak);
+      assert(!std::memcmp(&layout,&ui.touchLayout(),sizeof layout));
+      snapshot("mqtt-lost-weak-wifi");
+      lv_tick_inc(1750);ui.update(v);lv_timer_handler();lv_refr_now(d);
+      assert(!lv_obj_is_hidden(wifi)&&lv_obj_is_hidden(mqtt)&&image==weak);
+      snapshot("wifi-weak-mqtt-lost");
+      v.wifiConnected=false;snapshot("wifi-lost-mqtt-lost");
+      assert(!lv_obj_is_hidden(wifi)&&lv_obj_is_hidden(mqtt));
+      v.wifiConnected=true;v.wifiRssi=-55;v.wifiAp=true;snapshot("mqtt-lost-ap");
+      auto *ap=findLabel(findLabel,ui.root(),"AP");assert(ap&&lv_obj_is_hidden(ap));
+      v.mqttConnected=true;snapshot("mqtt-restored");
+      assert(lv_obj_is_hidden(mqtt)&&lv_obj_is_hidden(wifi)&&!lv_obj_is_hidden(ap));
+      v.mqttConnected=false;v.mqttEnabled=false;snapshot("mqtt-disabled");
+      assert(lv_obj_is_hidden(mqtt)&&lv_obj_is_hidden(wifi));
+      v.mqttEnabled=true;v.wifiAp=false;v.movingNow=true;snapshot("mqtt-lost-moving");
+      v.movingNow=false;v.autoMode=false;v.pending=true;snapshot("mqtt-lost-confirm");
+    }
+    v=saved;ui.update(v);settle(d);
+  }
   {
     const auto saved=v;
     v.hudBackground=2;ui.update(v);settle(d);

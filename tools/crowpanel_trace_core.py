@@ -318,7 +318,7 @@ def demo_records() -> Iterable[DecodedRecord]:
                 pending=False, moving=False, autoMode=True, autoHour=False, direction=0,
                 current=30., target=30., minimum=0., maximum=450., secondaryCurrent=20., secondaryTarget=20.,
                 secondaryFeedback=True, secondaryTargetValid=True, secondaryPending=False,
-                azDirection=0, elDirection=0, sourceId=1, wifiConnected=True, wifiAp=False, wifiRssi=-58,
+                azDirection=0, elDirection=0, sourceId=1, wifiConnected=True, wifiAp=False, wifiRssi=-58, mqttEnabled=False, mqttConnected=False,
                 bluetoothEnabled=False, bluetoothConnected=False, ip="STA: 192.168.1.42", heap="Heap: 123 КБ",
                 statusFault=False, status="Остановлен")
     for ms in range(0, 15001, 50):

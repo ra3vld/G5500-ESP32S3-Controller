@@ -296,6 +296,8 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_F
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -pthread -I G5500_Fork tests/mqtt_publish_mailbox_tests.cpp -o build/mqtt_publish_mailbox_tests
 ./build/mqtt_publish_mailbox_tests
 
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/panel_connection_tests.cpp -o build/panel_connection_tests
+./build/panel_connection_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork -I tests $CORE_SOURCES tools/mqtt_host.cpp -o build/mqtt_host
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -DDISPLAY_SUPPORT=0 -DLOCAL_INPUT_SUPPORT=0 -DWEB_INTERFACE_ENABLED=0 -DWIFI_SUPPORT=0 -DHUD_SUPPORT=0 -DRS485_SUPPORT=0 -DOTA_SUPPORT=0 -DLOG_HISTORY_SUPPORT=0 -DRESET_HISTORY_SUPPORT=0 -DN1MM_SUPPORT=0 -DPSTROTATOR_SUPPORT=0 -DGS232_SUPPORT=0 -DROTCTLD_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/features_disabled_tests.cpp -o build/features_disabled_tests
 ./build/features_disabled_tests

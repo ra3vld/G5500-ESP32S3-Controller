@@ -38,7 +38,7 @@ class CrowPanelUsbTraceTests(unittest.TestCase):
         view = rows[1]['view']
         bools = '''movingNow settingsAvailable enabled hud hudSelector dualAxis speedScreen elevation feedback targetValid uncalibrated
                    secondaryUncalibrated pending moving autoMode autoHour secondaryFeedback
-                   secondaryTargetValid secondaryPending wifiConnected wifiAp bluetoothEnabled
+                   secondaryTargetValid secondaryPending wifiConnected wifiAp mqttEnabled mqttConnected bluetoothEnabled
                    bluetoothConnected statusFault'''.split()
         numbers = '''direction current target minimum maximum secondaryCurrent secondaryTarget
                      azDirection elDirection sourceId wifiRssi'''.split()

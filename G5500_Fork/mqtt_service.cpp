@@ -244,6 +244,13 @@ void MqttService::pause() {
   }
 #endif
 }
+bool MqttService::connected() const {
+#if defined(ARDUINO_ARCH_ESP32) && defined(ARDUINO)
+  return impl_ && impl_->connected.load();
+#else
+  return false;
+#endif
+}
 void MqttService::writeStatus(JsonWriter &j, bool compact) const {
   j << "\"supported\":true,\"connected\":";
 #if defined(ARDUINO_ARCH_ESP32) && defined(ARDUINO)

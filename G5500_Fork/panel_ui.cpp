@@ -17,7 +17,6 @@ namespace {
 constexpr uint32_t bg = 0x0a111c, text = 0xeff5ff, muted = 0x8fabc3;
 constexpr uint32_t targetColor = 0x64cfff;
 constexpr uint32_t wifiWarning = 0xffd54f, wifiDisconnected = 0xff6b6b;
-constexpr int weakWifiRssi = -80;
 constexpr lv_point_precise_t wifiSlash[] = {{2, 2}, {26, 26}};
 constexpr int dialRadius = 227;
 constexpr int currentMarkerSize = 20, targetMarkerSize = 26;
@@ -335,6 +334,10 @@ void PanelUi::create(bool round) {
   lv_obj_set_style_line_width(wifiSlash_, 3, 0);
   lv_obj_set_style_line_rounded(wifiSlash_, true, 0);
   lv_obj_set_style_line_color(wifiSlash_, lv_color_hex(wifiDisconnected), 0);
+  mqtt_ = label(439, LV_SIZE_CONTENT, 11, wifiDisconnected);
+  lv_obj_set_style_text_font(mqtt_, &lv_font_montserrat_14, 0);
+  lv_label_set_text(mqtt_, "MQTT " LV_SYMBOL_CLOSE);
+  lv_obj_set_hidden(mqtt_, true);
   wifiAp_ = label(442, LV_SIZE_CONTENT, 11, muted);
   lv_obj_align(wifiAp_, LV_ALIGN_TOP_MID, p(27), y(442));
   bluetooth_ = label(378, 340, 11, muted);
@@ -452,7 +455,7 @@ void PanelUi::configureLayout(const PanelView &v) {
     lv_obj_set_size(hudAddress_,p(300),face(11)->line_height);
     if(lv_label_get_long_mode(hudAddress_)!=LV_LABEL_LONG_DOT) lv_label_set_long_mode(hudAddress_,LV_LABEL_LONG_DOT);
     if(lv_label_get_long_mode(ip_)!=LV_LABEL_LONG_DOT) lv_label_set_long_mode(ip_,LV_LABEL_LONG_DOT);
-    for(auto *obj:{bluetooth_,heap_,wifi_,wifiSlash_,wifiAp_}) lv_obj_set_hidden(obj,true);
+    for(auto *obj:{bluetooth_,heap_,wifi_,wifiSlash_,wifiAp_,mqtt_}) lv_obj_set_hidden(obj,true);
     if(v.shows(DisplayHeap)) {
       if(v.shows(DisplayLocalAddress)||v.shows(DisplayApAddress)) {
         lv_obj_set_y(status_,y(confirm?380:354));
@@ -580,6 +583,7 @@ void PanelUi::layoutCurrent(const PanelView &v) {
     if(!lv_obj_is_hidden(obj)&&lv_label_get_text(obj)[0])obstacle(bounds(obj));
   }
   if(!compact) {obstacle(bounds(wifi_));obstacle(bounds(wifiSlash_));obstacle(bounds(wifiAp_));}
+  if(!lv_obj_is_hidden(mqtt_))obstacle(bounds(mqtt_));
   int top=gap,bottom=height_-gap;
   for(const auto &r:{touchLayout_.mode,touchLayout_.name,touchLayout_.axis,touchLayout_.settings})
     if(r.width)top=std::max(top,int(r.y+r.height)+gap);
@@ -669,8 +673,23 @@ void PanelUi::setPressed(panel::TouchAction action) {
   if (action == panel::TouchAction::Mode) lv_obj_add_state(modeButton_, LV_STATE_PRESSED);
   else lv_obj_remove_state(modeButton_, LV_STATE_PRESSED);
 }
+void PanelUi::updateConnectionIndicator(const PanelView &v,panel::ConnectionWarning warning) {
+  using Warning=panel::ConnectionWarning;
+  const bool compact=diameter_<320,showMqtt=warning==Warning::MqttLost;
+  lv_obj_set_hidden(wifi_,compact || (warning!=Warning::WifiLost && warning!=Warning::WifiWeak));
+  lv_obj_set_hidden(wifiSlash_,compact || warning!=Warning::WifiLost);
+  lv_obj_set_hidden(mqtt_,compact || !showMqtt);
+  color(wifi_,warning==Warning::WifiLost?wifiDisconnected:wifiWarning);
+  set(wifiAp_,v.wifiAp?"AP":"");
+  lv_obj_set_hidden(wifiAp_,compact || !v.wifiAp || showMqtt);
+  connectionWarning_=warning;
+}
 void PanelUi::update(const PanelView &v) {
-  if(previousValid_ && previous_==v) return;
+  const auto warning=diameter_<320?panel::ConnectionWarning::None:connectionIndicator_.update(v,lv_tick_get());
+  if(previousValid_ && previous_==v) {
+    if(warning!=connectionWarning_)updateConnectionIndicator(v,warning);
+    return;
+  }
   const uint32_t background = hudBackgroundColor(v.hud ? v.hudBackground : 0);
   if (background_ != background) {
     background_ = background;
@@ -850,17 +869,15 @@ void PanelUi::update(const PanelView &v) {
   lv_obj_set_y(wifi_, y(v.dualAxis && confirmation ? 451 : 435));
   lv_obj_set_y(wifiSlash_, y(v.dualAxis && confirmation ? 449 : 433));
   lv_obj_set_y(wifiAp_, y(v.dualAxis && confirmation ? 458 : 442));
+  const int wifiHeight=lv_obj_get_style_text_font(wifi_,LV_PART_MAIN)->line_height;
+  const int mqttHeight=lv_obj_get_style_text_font(mqtt_,LV_PART_MAIN)->line_height;
+  lv_obj_set_y(mqtt_,y(v.dualAxis && confirmation ? 451 : 435)+(wifiHeight-mqttHeight)/2);
   }
   const auto statusMode = v.statusFault ? LV_LABEL_LONG_SCROLL_CIRCULAR : LV_LABEL_LONG_CLIP;
   if (lv_label_get_long_mode(status_) != statusMode) lv_label_set_long_mode(status_, statusMode);
   color(status_, v.statusFault ? 0xff6b6b : 0xf0b85c);
   set(status_, v.status);
-  color(wifi_, v.wifiConnected ? wifiWarning : wifiDisconnected);
-  if(!compact) {
-    lv_obj_set_hidden(wifi_, v.wifiConnected && v.wifiRssi > weakWifiRssi);
-    lv_obj_set_hidden(wifiSlash_, v.wifiConnected);
-  }
-  set(wifiAp_, v.wifiAp ? "AP" : "");
+  updateConnectionIndicator(v,warning);
   set(bluetooth_, !v.bluetoothEnabled ? "" : v.bluetoothConnected ? "Bluetooth: подключён" : "Bluetooth: нет связи");
   if(!compact) set(ip_, v.ip);
   set(heap_, v.heap);
