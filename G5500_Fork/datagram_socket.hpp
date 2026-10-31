@@ -60,6 +60,16 @@ public:
     if (fd_ >= 0) ::close(fd_);
     fd_ = -1;
   }
+  // During OTA, commands must not execute or accumulate pbufs while inputs
+  // are locked. Discard whole datagrams without allocating a receive buffer.
+  unsigned discardQueued(unsigned limit = 4) {
+    if (fd_ < 0) return 0;
+    unsigned count = 0;
+    char byte;
+    while (count < limit && ::recvfrom(fd_, &byte, 1, MSG_DONTWAIT, nullptr, nullptr) >= 0)
+      ++count; // recvfrom consumes the whole packet, including an empty one.
+    return count;
+  }
   // IP precedence 6/7 maps to Wi-Fi's voice queue on ESP32. Apply only
   // to the small, time-sensitive HUD datagrams, leaving logger traffic alone.
   bool setIpPrecedence(unsigned value) {

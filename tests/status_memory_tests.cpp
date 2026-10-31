@@ -77,10 +77,10 @@ int main() {
   assert(small[1 + overflow.size()] == 0);
   // Preserve printf-compatible precision and rounding while avoiding newlib's
   // per-task dtoa allocations. Exercise binary fractions and exponent edges.
-  const auto checkDecimal = [&](double value, int precision) {
+  const auto checkDecimal = [&](auto value, int precision) {
     char reference[128];
-    const int size = precision < 0 ? std::snprintf(reference, sizeof reference, "%.6g", value)
-                                   : std::snprintf(reference, sizeof reference, "%.*f", precision, value);
+    const int size = precision < 0 ? std::snprintf(reference, sizeof reference, "%.6g", double(value))
+                                   : std::snprintf(reference, sizeof reference, "%.*f", precision, double(value));
     JsonWriter output(buffer, sizeof buffer);
     denyAllocations = true;
     output.decimal(value, precision);
@@ -91,11 +91,15 @@ int main() {
   for (const double value : {0., -0., 0.125, 1.005, -12.3456, 359.995, 450., 1e-12, 1e20,
                              std::numeric_limits<double>::denorm_min(), std::numeric_limits<double>::max()})
     for (const int precision : {-1, 0, 1, 2, 6}) checkDecimal(value, precision);
+  for (const float value : {0.f,-0.f,.125f,1.005f,-12.3456f,359.995f,450.f,1e-12f,1e20f,
+                            std::numeric_limits<float>::denorm_min(),std::numeric_limits<float>::max()})
+    for (const int precision : {-1,0,1,2,6}) checkDecimal(value,precision);
   uint32_t random = 7;
   for (unsigned i = 0; i < 10000; ++i) {
     random = random * 1664525U + 1013904223U;
     const double value = (double(random) - 2147483648.) / 987654.321;
     checkDecimal(value, 2);checkDecimal(value, -1);
+    checkDecimal(float(value),2);checkDecimal(float(value),-1);
   }
   JsonWriter nonfinite(buffer,sizeof buffer);
   nonfinite << std::numeric_limits<double>::infinity() << ',' << std::numeric_limits<double>::quiet_NaN();

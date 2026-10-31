@@ -529,7 +529,7 @@ void Network::handleRotctldTcp() {
       rotctldClient_ = c;
       rotctldClient_.setNoDelay(true);
       const int fd=rotctldClient_.fd(),yes=1,idle=15,interval=5,count=3;
-#if FORK_CLASSIC_ESP32
+#if FORK_CLASSIC_ESP32 || FORK_C3 || FORK_S2
       limitTcpSocketMss(fd,536);
 #endif
       ::setsockopt(fd,SOL_SOCKET,SO_KEEPALIVE,&yes,sizeof yes);
@@ -599,7 +599,7 @@ bool Network::startWifi() {
   if (ETHERNET_SUPPORTED && !ethernet_.begin(credentials_.network.ethernet))
     diagnostics_.dbgPrintln("[ETH] PHY start failed; Wi-Fi remains available");
   radioWifi.persistent(false);
-  if (runtime_.recovery || FORK_C3 || (FORK_CLASSIC_ESP32 && runtime_.controller.hardware.backend() == BT_ESP32_SPP)) {
+  if (runtime_.recovery || FORK_C3 || FORK_S2 || (FORK_CLASSIC_ESP32 && runtime_.controller.hardware.backend() == BT_ESP32_SPP)) {
     compactWifi_ = initCompactWifi() == ESP_OK;
     if (!compactWifi_) return false; // never fall back to a larger buffer profile on OOM
   } else if (FORK_CLASSIC_ESP32) {

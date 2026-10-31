@@ -50,7 +50,7 @@ class LiveServer {
     uint32_t acceptedAt=0,controlSentAt=0;
     uint32_t ackCheckedAt=0, ackStartedAt=0;
     bool closing=false, controlOnly=false, binary=false;
-    bool ackWaiting=false;
+    bool ackWaiting=false, controlPrioritized=false;
     // Stable slot metadata survives disconnects; queues exist only while used.
     std::unique_ptr<ClientBuffers> buffers;
   };
@@ -77,6 +77,8 @@ class LiveServer {
   uint32_t handshakeTimeouts_=0, admissionRejected_=0;
   uint32_t pressureCloses_=0;
   bool pressureReliefPending_=false;
+  bool pressureWatching_=false;
+  uint32_t pressureStarted_=0, controlPriorityErrors_=0;
   // Preserve the last failed socket write: the HTTPD return code alone loses
   // errno and whether a frame was cut short by the bounded retry deadline.
   uint32_t sendTimeouts_=0, sendRetryErrors_=0, sendElapsedMs_=0;

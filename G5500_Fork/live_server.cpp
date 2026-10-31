@@ -31,6 +31,9 @@ bool LiveServer::begin() {
   // accumulate queued sockets/buffers instead of reaching our admission check.
   cfg.max_open_sockets=clients_->size()+1;cfg.backlog_conn=1;
   cfg.stack_size=6144; cfg.recv_wait_timeout=1;cfg.send_wait_timeout=1;
+#if !CONFIG_FREERTOS_UNICORE
+  cfg.core_id=0; // socket/WS work must not pre-empt the CPU1 state owner
+#endif
   cfg.open_fn=opened;cfg.close_fn=closed;cfg.global_user_ctx=this;
   if(httpd_start(&server_,&cfg)!=ESP_OK){server_=nullptr;clients_.reset();return false;}
   httpd_uri_t uri{};uri.uri="/api/live";uri.method=HTTP_GET;uri.handler=handler;uri.user_ctx=this;uri.is_websocket=true;uri.handle_ws_control_frames=true;
@@ -41,7 +44,7 @@ bool LiveServer::begin() {
 }
 esp_err_t LiveServer::opened(httpd_handle_t server,int fd) {
   int yes=1;setsockopt(fd,IPPROTO_TCP,TCP_NODELAY,&yes,sizeof yes);
-#if FORK_CLASSIC_ESP32
+#if FORK_CLASSIC_ESP32 || FORK_C3 || FORK_S2
   limitTcpSocketMss(fd,536);
 #endif
   // HTTPD runs independently of motor control. Allow a split TCP request to
@@ -59,7 +62,9 @@ esp_err_t LiveServer::opened(httpd_handle_t server,int fd) {
   for(auto &c:*self.clients_)if(c.fd<0){
     // Decline a new browser before it eats the control/recovery headroom.
     // Existing clients, including their STOP queue, keep their buffers.
-    const size_t needed=sizeof(ClientBuffers)+(self.stateSize_?0:sizeof(StateBuffer)+LIVE_STATE_CAPACITY+4);
+    // Command-only peers never need a JSON state buffer. Each lazy state
+    // allocation has its own reserve check in writableState().
+    const size_t needed=sizeof(ClientBuffers);
     if(heapFreeBytes()<needed+MemoryGuard::HealthyFree ||
        heapMaxBlockBytes()<needed+MemoryGuard::HealthyBlock)return ESP_FAIL;
     const auto gen=c.generation+1;c=Client{};
@@ -69,7 +74,7 @@ esp_err_t LiveServer::opened(httpd_handle_t server,int fd) {
 }
 bool LiveServer::activate(Client &c) {
   if(c.buffers)return true;
-  const size_t needed=sizeof(ClientBuffers)+(stateSize_?0:sizeof(StateBuffer)+LIVE_STATE_CAPACITY+4);
+  const size_t needed=sizeof(ClientBuffers);
   if(heapFreeBytes()<needed+MemoryGuard::HealthyFree || heapMaxBlockBytes()<needed+MemoryGuard::HealthyBlock) {
     ++admissionRejected_;c.closing=true;return false;
   }
@@ -211,9 +216,15 @@ esp_err_t LiveServer::handler(httpd_req_t *req) {
   // Select before the first command, without needing a boot ID from a large
   // telemetry frame. IDF can finish the upgrade without calling our GET handler.
   if(std::string_view(input.data,input.size)=="v=1&control=1") {
+    // Give tiny command replies the Wi-Fi voice queue. Socket options take
+    // lwIP's lock, so apply this before taking the state/HTTPD mutex.
+    const int priority=6<<5;
+    const bool prioritized=::setsockopt(fd,IPPROTO_IP,IP_TOS,&priority,sizeof priority)==0;
     Guard lock(self.mutex_);
     for(auto &c:*self.clients_)if(c.fd==fd) {
-      c.controlOnly=true;c.binary=false;c.revision=0;return ESP_OK;
+      c.controlOnly=true;c.binary=false;c.revision=0;c.controlPrioritized=prioritized;
+      if(!prioritized)++self.controlPriorityErrors_;
+      return ESP_OK;
     }
     return ESP_FAIL;
   }
@@ -340,9 +351,30 @@ void LiveServer::commands(uint32_t now) {
 }
 void LiveServer::relieveMemory(uint32_t free, uint32_t largest) {
   pressureReliefPending_=free<MemoryGuard::CriticalFree || largest<MemoryGuard::CriticalBlock;
+  if(free>=24576 && largest>=8192)pressureWatching_=false;
+  else if(!pressureWatching_) {
+    pressureWatching_=true;pressureStarted_=uint32_t(esp_timer_get_time()/1000);
+  }
 }
 void LiveServer::trimTelemetry() {
-  if(!pressureReliefPending_ || !server_ || !clients_)return;
+  if(!server_ || !clients_)return;
+  const auto now=uint32_t(esp_timer_get_time()/1000);
+  if(!pressureReliefPending_) {
+    if(!pressureWatching_ || uint32_t(now-pressureStarted_)<500)return;
+    Guard lock(mutex_);
+    // Recover queued TCP buffers before reaching the restart threshold.
+    // Shed only a stalled telemetry peer; healthy peers and STOP stay alive.
+    for(auto &client:*clients_)if(client.fd>=0 && !client.controlOnly && !client.closing && client.buffers) {
+      const auto &b=*client.buffers;
+      const bool stalledAck=client.ackWaiting && uint32_t(now-client.ackStartedAt)>=1000;
+      const bool stalledWrite=b.outgoing.active() && !b.memoryWaits && b.outgoing.retries &&
+          uint32_t(now-b.outgoing.started)>=1000;
+      if(!b.stop.size && (stalledAck||stalledWrite)) {
+        client.closing=true;++pressureCloses_;pressureStarted_=now;break;
+      }
+    }
+    return;
+  }
   pressureReliefPending_=false;
   Guard lock(mutex_);
   // Pause ordinary pressure; shed telemetry only at the existing critical
@@ -447,8 +479,8 @@ void LiveServer::publish(uint32_t now) {
 }
 void LiveServer::writeDiagnostics(JsonWriter &j) {
   if(!server_)return;
-  Guard lock(mutex_);unsigned clients=0,buffers=0;
-  for(const auto &c:*clients_){clients+=c.fd>=0;buffers+=bool(c.buffers);}
+  Guard lock(mutex_);unsigned clients=0,buffers=0,prioritized=0;
+  for(const auto &c:*clients_){clients+=c.fd>=0;buffers+=bool(c.buffers);prioritized+=c.fd>=0&&c.controlPrioritized;}
   unsigned states=0;size_t stateBytes=0;for(const auto &state:states_)if(state){++states;stateBytes+=sizeof(StateBuffer)+state->capacity;}
   j<<",\"liveBinaryVersion\":2,\"liveControlChannel\":true,\"liveHeartbeat\":true,\"liveClients\":"<<clients<<",\"liveRevision\":"<<revision_<<",\"liveStateBytes\":"<<stateSize_
    <<",\"liveBinaryBytes\":"<<LIVE_BINARY_SIZE<<",\"liveMetadataBytes\":"<<metadataSize_
@@ -456,6 +488,7 @@ void LiveServer::writeDiagnostics(JsonWriter &j) {
    <<",\"liveStateBuffers\":"<<states<<",\"liveBufferBytes\":"<<(sizeof(Clients)+buffers*sizeof(ClientBuffers)+stateBytes)
    <<",\"liveHandshakeTimeouts\":"<<handshakeTimeouts_<<",\"liveAdmissionRejected\":"<<admissionRejected_
    <<",\"livePressureCloses\":"<<pressureCloses_
+   <<",\"liveControlPrioritized\":"<<prioritized<<",\"liveControlPriorityErrors\":"<<controlPriorityErrors_
    <<",\"networkMemoryLimited\":"<<(networkLowMemory()?"true":"false")<<",\"telemetryIntervalMs\":"<<(networkLowMemory()?500:WebPositionIntervalMs)
    <<",\"liveWorkRuns\":"<<workRuns_<<",\"liveFrames\":"<<framesSent_
    <<",\"liveSendDeferred\":"<<sendDeferred_<<",\"liveQueueErrors\":"<<queueErrors_<<",\"liveSendErrors\":"<<sendErrors_

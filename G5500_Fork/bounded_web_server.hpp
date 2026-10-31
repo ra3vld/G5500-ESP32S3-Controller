@@ -12,10 +12,13 @@
 #include "http_request_gate.hpp"
 #include "heap_metrics.hpp"
 #include "http_diagnostics.hpp"
+#include "owner_call.hpp"
 namespace forkrot {
 class BoundedWebServer : public WebServer {
 public:
   using WebServer::WebServer;
+  using Executor = void (*)(void *, OwnerCall::Function, void *);
+  void setExecutor(Executor executor, void *context) { executor_=executor;executorContext_=context; }
   void setRequestBuffer(char *data, size_t capacity) {
     requestBuffer_ = data;
     requestCapacity_ = std::min(capacity, size_t(4096));
@@ -40,6 +43,7 @@ public:
   uint32_t rejectedRequests() const { return diagnostics_.rejected; }
   uint32_t acceptedRequests() const { return diagnostics_.accepted; }
   const HttpDiagnostics &diagnostics() const { return diagnostics_; }
+  unsigned pollIntervalMs() const { return _currentStatus==HC_NONE || idlePersistent_ ? 5 : 1; }
   void setLowMemoryPaths(const char *const *paths, size_t count) {
     lowMemoryPaths_ = paths; lowMemoryPathCount_ = count;
   }
@@ -57,6 +61,7 @@ public:
     pageServicedMs_ = pageStartedMs_ = pageProgressMs_ = millis();
     pageAttemptMs_ = pageStartedMs_ - 20;
     pageRetryErrno_ = 0;
+    pageMemoryWaiting_=false;
   }
   void handleClient() override {
     started_ = failed_ = false;
@@ -68,7 +73,7 @@ public:
       if (!_currentClient) return;
       ++diagnostics_.accepted;
       _currentClient.setNoDelay(true);
-#if FORK_CLASSIC_ESP32
+#if FORK_CLASSIC_ESP32 || FORK_C3 || FORK_S2
       limitTcpSocketMss(_currentClient.fd(),536);
 #endif
       _currentStatus = HC_WAIT_READ;
@@ -116,7 +121,8 @@ public:
       // fixed snapshot, avoiding NetworkClient's separate 1436-byte RX malloc.
       const auto stop = emergencyStopRequest({requestBuffer_, requestSize});
       if (stopHandler_ && stop.axis != -2) {
-        const auto result = stopHandler_(stopContext_, stop); // no parser/header allocation
+        StopResult result;
+        onOwner([&] { result=stopHandler_(stopContext_, stop); }); // no parser/header allocation
         ++diagnostics_.requests;
         char body[96], reply[256];
         const int n =
@@ -151,7 +157,9 @@ public:
         _responseCode = 0;
         _clearResponseHeaders();
         serviceControl();
-        if (requestHandler_(requestContext_, {requestBuffer_, requestSize})) {
+        bool handled=false;
+        onOwner([&] { handled=requestHandler_(requestContext_, {requestBuffer_, requestSize}); });
+        if (handled) {
           ++diagnostics_.requests;
           if (page_) servicePage();
           else finishResponse();
@@ -171,8 +179,10 @@ public:
         _responseCode = 0;
         _clearResponseHeaders();
         serviceControl();
-        if (_chain) _chain->runChain(*this, [this]() { return _handleRequest(); });
-        else _handleRequest();
+        onOwner([&] {
+          if (_chain) _chain->runChain(*this, [this]() { return _handleRequest(); });
+          else _handleRequest();
+        });
       }
       clearArguments(); // handlers have consumed the views; do not retain form Strings while idle
       if (page_) { servicePage(); return; }
@@ -207,9 +217,16 @@ public:
     htmlTransfer_ = std::strncmp(type,"text/html",9) == 0;
     pageServicedMs_ = pageStartedMs_ = pageProgressMs_ = millis(); pageAttemptMs_ = pageStartedMs_-20;
     pageRetryErrno_ = 0;
+    pageMemoryWaiting_=false;
   }
 protected:
   size_t _currentClientWrite(const char *data, size_t size) override {
+    if (capturing_) {
+      // Headers and small immediate errors must outlive the owner's stack.
+      // Large bodies already have a persistent caller-owned sendPage buffer.
+      if (size>sizeof deferred_-deferredSize_) { deferredFailed_=true;return 0; }
+      std::memcpy(deferred_+deferredSize_,data,size);deferredSize_+=size;return size;
+    }
     if (!size || failed_) return 0;
     if (!started_) { started_ = true; startedMs_ = millis(); }
     const int socket = client().fd();
@@ -228,7 +245,28 @@ protected:
     return _currentClientWrite(data, size); // ESP32 maps PROGMEM into its address space.
   }
 private:
-  void serviceControl() { if(serviceHandler_)serviceHandler_(serviceContext_); }
+  template<class Function> void onOwner(Function function) {
+    if(!executor_) {function();return;}
+    struct Invocation { BoundedWebServer *server; Function *function; } invocation{this,&function};
+    executor_(executorContext_,[](void *context) {
+      auto &call=*static_cast<Invocation *>(context);
+      call.server->capturing_=true;
+      (*call.function)();
+      call.server->capturing_=false;
+    },&invocation);
+    if(deferredFailed_) {
+      deferredFailed_=false;deferredSize_=0;failWrite("header",EOVERFLOW,0,sizeof deferred_);return;
+    }
+    const size_t count=deferredSize_;deferredSize_=0;
+    if(count)_currentClientWrite(deferred_,count); // only the I/O task touches sockets
+  }
+  // The independent owner continues ticking while this task waits for TCP.
+  void serviceControl() { if(!executor_ && serviceHandler_)serviceHandler_(serviceContext_); }
+  Executor executor_=nullptr;
+  void *executorContext_=nullptr;
+  char deferred_[512]{};
+  size_t deferredSize_=0;
+  bool capturing_=false,deferredFailed_=false;
   ServiceHandler serviceHandler_=nullptr;
   void *serviceContext_=nullptr;
   bool requestFitsMemory(size_t size) const {
@@ -258,6 +296,7 @@ private:
   }
   void servicePage() {
     const uint32_t now = millis();
+    if(shedQueuedBulk(now))return;
     const uint32_t elapsed=now-pageServicedMs_;pageServicedMs_=now;
     const uint32_t idleLimit = htmlTransfer_ ? 10000 : 4000;
     const uint32_t totalLimit = htmlTransfer_ ? 30000 : 15000;
@@ -283,10 +322,10 @@ private:
     const uint32_t attemptElapsed=uint32_t(now-pageAttemptMs_);
     if (attemptElapsed < interval) return;
     pageAttemptMs_ = now;
-    // Classic ESP32 has only eight dynamic Wi-Fi TX buffers. Bound both the
+    // Small Wi-Fi pools have at most eight dynamic TX buffers. Bound both the
     // packet and burst size even when the general heap looks healthy; filling
     // that pool with bulk data delays ACK/control traffic and triggers retries.
-#if FORK_CLASSIC_ESP32
+#if FORK_CLASSIC_ESP32 || FORK_C3 || FORK_S2
     constexpr size_t chunkLimit=512;
     // A long renderer pause can catch up in one bounded turn. At normal loop
     // cadence leave most of the radio pool free for ACKs, HUD and control.
@@ -301,7 +340,7 @@ private:
       if(pageRetryErrno_==ENOMEM || pageRetryErrno_==ENOBUFS)chunk=std::min(chunk,size_t(512));
       // Small control/recovery replies remain writable below the bulk reserve.
       if(pageSize_-pageSent_>256)chunk=networkBulkTxBudget(chunk);
-#if FORK_CLASSIC_ESP32
+#if FORK_CLASSIC_ESP32 || FORK_C3 || FORK_S2
       if(chunk&&pageSize_-pageSent_>256) {
         const auto pending=tcpPeerPendingBytes(client().fd());
         if(pending!=size_t(-1))chunk=std::min(chunk,pending<4096?4096-pending:size_t(0));
@@ -344,6 +383,7 @@ private:
   }
   void releaseClient() {
     draining_=false;
+    pageMemoryWaiting_=false;
     clearArguments();
     page_ = nullptr;
     persistentCandidate_ = keepAliveResponse_ = idlePersistent_ = false;
@@ -368,6 +408,7 @@ private:
   }
   void serviceDrain() {
     const uint32_t now=millis();
+    if(shedQueuedBulk(now))return;
     const size_t pending=tcpPeerPendingBytes(client().fd());
     if(pending) {
       if(pending<drainBytes_){drainBytes_=pending;drainProgressAt_=now;}
@@ -387,6 +428,19 @@ private:
     _statusChange = millis();
     _currentUpload.reset();
     _currentRaw.reset();
+  }
+  bool shedQueuedBulk(uint32_t now) {
+    // TCP owns another copy after send(). A slow HTTP reader can retain it
+    // through a local RAM pause, longer than the recovery guard's two seconds.
+    // Reclaim that queue before restarting; small command replies keep priority.
+    const auto pending=pageSize_>256?tcpPeerPendingBytes(client().fd()):0;
+    if(pending && pending!=size_t(-1) && !networkBulkTxBudget(1)) {
+      if(!pageMemoryWaiting_){pageMemoryWaiting_=true;pageMemoryStarted_=now;}
+      if(uint32_t(now-pageMemoryStarted_)>=500) {
+        failWrite("memory",ENOMEM,pageSent_,pageSize_);releaseClient();return true;
+      }
+    } else pageMemoryWaiting_=false;
+    return false;
   }
   class RequestClient : public NetworkClient {
   public:
@@ -442,6 +496,8 @@ private:
   bool htmlTransfer_ = false;
   bool transferConnection_ = false;
   bool draining_=false;
+  bool pageMemoryWaiting_=false;
+  uint32_t pageMemoryStarted_=0;
   uint32_t drainAt_=0,drainProgressAt_=0;
   size_t drainBytes_=0;
   StopHandler stopHandler_ = nullptr;

@@ -9,6 +9,9 @@ inline ssize_t fakeLiveSocketSend(int fd,const void *data,size_t size,int flags)
  return ::send(fd,data,size,flags);
 }
 inline int fakeLiveSetSockOpt(int fd,int level,int option,const void *value,socklen_t size){
+ if(fakeServer.websocketFds.count(fd)&&level==IPPROTO_IP&&option==IP_TOS&&size==sizeof(int)){
+  fakeIpTos[fd]=*static_cast<const int *>(value);return 0;
+ }
  if(level==SOL_SOCKET&&option==SO_LINGER&&size==sizeof(linger)){
   const auto &mode=*static_cast<const linger *>(value);
   if(mode.l_onoff&&mode.l_linger==0){fakeAbortiveCloseFd=fd;++fakeAbortiveCloses;}

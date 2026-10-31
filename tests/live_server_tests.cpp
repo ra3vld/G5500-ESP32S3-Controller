@@ -40,6 +40,9 @@ int main(){
  MotionTestRuntime runtime;runtime.hud.begin(1,10);runtime.controller.feedback(20,30,true,true);
  LiveServer server(runtime);const auto beforeBegin=allocatedBytes;
  assert(server.begin());assert(fakeServer.registrations==std::vector<std::string>({"/api/live","/api/control"}));assert(fakeServer.cfg.max_open_sockets==5&&fakeServer.cfg.backlog_conn==1);assert(fakeServer.uri.handle_ws_control_frames);
+#if !CONFIG_FREERTOS_UNICORE
+ assert(fakeServer.cfg.core_id==0);
+#endif
  const auto bufferMetric=[&](const char *name){
    char text[2048];JsonWriter j(text,sizeof text);server.writeDiagnostics(j);assert(j.good());
    const std::string json(j.data(),j.size()),key=std::string("\"")+name+"\":";
@@ -65,6 +68,15 @@ int main(){
    assert(releasedCalls==releases);
    assert(fakeAbortiveCloses==aborts+1 && fakeAbortiveCloseFd==999);
  }
+ // A compact command connection does not reserve a full JSON projection.
+ // It can reconnect with four KiB of spare headroom while retaining the
+ // normal control/recovery reserve and never allocating a state buffer.
+ fakeHeapFree=MemoryGuard::HealthyFree+4096;fakeHeapBlock=MemoryGuard::HealthyBlock+4096;
+ assert(connect(999)==ESP_OK&&command(999,"v=1&control=1")==ESP_OK);
+ server.publish(5);pumpLive();assert(bufferMetric("liveStateBuffers")==0);
+ assert(!fakeServer.sent.empty()&&fakeServer.sent.back().second.find("\"type\":\"control\"")!=std::string::npos);
+ httpd_sess_trigger_close(&fakeServer,999);fakeServer.sent.clear();
+ fakeHeapFree=65536;fakeHeapBlock=32768;
  // Accepted but silent sockets consume no per-client queues or state snapshot.
  assert(fakeServer.cfg.open_fn(&fakeServer,998)==ESP_OK);
  const auto handshakeIdleBytes=bufferMetric("liveBufferBytes");
@@ -525,6 +537,8 @@ int main(){
  assert(bufferMetric("liveControlChecks")==idleChecks);
  assert(connect(1000)==ESP_OK&&command(1000,"v=2&telemetry=1")==ESP_OK);
  assert(connect(1001)==ESP_OK&&command(1001,"v=1&control=1")==ESP_OK);
+ assert(fakeIpTos.at(1001)==(6<<5));assert(bufferMetric("liveControlPrioritized")==1);
+ assert(bufferMetric("liveControlPriorityErrors")==0);
  assert(connect(1002)==ESP_OK);fakeServer.sent.clear();
  publishAt(91000);publishAt(91005);
  const auto binaryFor=[&](int fd) {
@@ -604,6 +618,27 @@ int main(){
  server.relieveMemory(65536,MemoryGuard::CriticalBlock-1);server.commands(97026);server.publish(97030);pumpLive();
  assert(!fakeServer.websocketFds.count(1000)&&bufferMetric("livePressureCloses")==pressureCloses+2);
  std::cout<<"PASS: critical heap/fragmentation sheds telemetry, retains control and queued STOP before socket close\n";
+ // Persistent low reserve sheds one TCP-stalled reader before critical RAM.
+ // A healthy telemetry peer and the dedicated control channel remain usable.
+ fakeHeapFree=65536;fakeHeapBlock=32768;
+ assert(connect(1000)==ESP_OK&&command(1000,"v=2&telemetry=1")==ESP_OK);
+ assert(connect(1001)==ESP_OK&&command(1001,"v=1&control=1")==ESP_OK);
+ assert(connect(1002)==ESP_OK&&command(1002,"v=2&telemetry=1")==ESP_OK);
+ fakeTcpPending.insert(1000);fakeEspTimeUs=98000000;
+ server.publish(98000);pumpLive();server.publish(98005);pumpLive();
+ const auto earlyCloses=bufferMetric("livePressureCloses");
+ server.relieveMemory(24575,32768);server.commands(98006);
+ fakeEspTimeUs=98499000;server.relieveMemory(24575,32768);server.commands(98499);server.publish(98499);pumpLive();
+ assert(bufferMetric("livePressureCloses")==earlyCloses);
+ fakeEspTimeUs=99100000;server.relieveMemory(24575,32768);server.commands(99100);server.publish(99100);pumpLive();
+ assert(!fakeServer.websocketFds.count(1000));assert(bufferMetric("livePressureCloses")==earlyCloses+1);
+ assert(fakeServer.websocketFds.count(1001)&&fakeServer.websocketFds.count(1002));
+ assert(command(1001,criticalStop(1))==ESP_OK);server.commands(99101);server.publish(99105);pumpLive();
+ fakeEspTimeUs=101000000;server.relieveMemory(24575,32768);server.commands(101000);server.publish(101000);pumpLive();
+ assert(bufferMetric("livePressureCloses")==earlyCloses+1);
+ for(int fd=1000;fd<1003;++fd)if(fakeServer.websocketFds.count(fd))httpd_sess_trigger_close(&fakeServer,fd);
+ fakeTcpPending.clear();server.relieveMemory(65536,32768);
+ std::cout<<"PASS: prioritized control and early stalled-peer release preserve healthy telemetry and STOP\n";
  std::cout<<"PASS: binary 160 B, no idle hashing, metadata only on change, no fast JSON, mixed consumers, partial metadata/context, STOP, reconnect, unchanged 200/500 ms\n";
  fakeEspTimeUs=-1;
  std::cout<<"PASS: HUD manual renewals and release receive one deferred admission without false completion errors\n";

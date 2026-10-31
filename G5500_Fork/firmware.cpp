@@ -24,6 +24,7 @@
 #include "application.hpp"
 #include "runtime_metrics.hpp"
 #include <new>
+#include <cstdio>
 #include <esp_log.h>
 #include <esp_app_desc.h>
 namespace forkrot {
@@ -39,8 +40,13 @@ void Application::failConfiguration(RecoveryReason reason) {
   runtime_.controller.stopNow(-1, millis());
   hardware_.applyOutputs();
   runtime_.controller.configurationLocked = true;
+  const auto failedHeap=captureHeapSnapshot();
   __atomic_store_n(&recoveryLatch, RecoveryCookie, __ATOMIC_RELAXED);
   if (recoveryReserve_) { heap_caps_free(recoveryReserve_); recoveryReserve_ = nullptr; }
+  char failure[128];
+  std::snprintf(failure,sizeof failure,"[CONFIG] recovery=%s free=%lu largest=%lu",
+      recoveryReasonName(reason),static_cast<unsigned long>(failedHeap.free),static_cast<unsigned long>(failedHeap.largest));
+  diagnostics_.dbgPrintln(failure);
   if(reason==RecoveryReason::Allocation)network_.reportAllocationFailures();
   ota_.cancel();
   storage_.enterRecovery(runtime_, reason);
@@ -284,6 +290,7 @@ void Application::controllerSetup() {
   diagnostics_.dbgPrintln("==============================");
 
   hardware_.startHeartbeat();
+  if(!runtime_.recovery)web_server_.startIoTask();
   network_.captureSetupHeap();
 }
 void Application::controllerLoop() {
@@ -312,6 +319,7 @@ void Application::controllerLoop() {
   // Only reboot can resume input processing, so buffered commands cannot replay.
   if (ota_.locked()) {
     mqtt_.pause();
+    network_.discardHudInput();
     network_.handlePstRotatorSerial();network_.serviceCommandUdp();network_.handleRotctldTcp();
     network_.serviceCommandReplies();
     web_server_.service();
@@ -382,7 +390,7 @@ void Application::controllerLoop() {
   hardware_.updateRgb();
   checkpoint("display");
   runtimeMetrics.recordLoop(uint32_t(micros() - startedUs));
-  delay(runtime_.controller.loopDelayMs(millis()));
+  web_server_.wait(runtime_.controller.loopDelayMs(millis()));
 }
 } // namespace forkrot
 namespace {

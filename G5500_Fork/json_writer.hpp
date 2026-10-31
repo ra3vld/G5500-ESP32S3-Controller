@@ -56,11 +56,16 @@ public:
   }
   JsonWriter &operator<<(float value) { return decimal(value, 2); }
   JsonWriter &operator<<(double value) { return decimal(value, 2); }
-  JsonWriter &decimal(double value, int precision) {
+  JsonWriter &decimal(float value, int precision) { return decimalNumber(value,precision); }
+  JsonWriter &decimal(double value, int precision) { return decimalNumber(value,precision); }
+private:
+  template<class Number> JsonWriter &decimalNumber(Number value, int precision) {
     if (!std::isfinite(value)) return *this << "null";
     char number[64];
     // newlib printf's float conversion keeps per-task big-integer allocations.
-    // GCC's float/double to_chars uses Ryu with caller-owned output storage.
+    // Keep float telemetry on the float overload: promoting it to double adds
+    // software-double work on ESP32, on the same CPU as the PID owner.
+    // GCC's to_chars uses Ryu with caller-owned output storage.
     const auto result = std::to_chars(number, number + sizeof number - 1, value,
         precision < 0 ? std::chars_format::general : std::chars_format::fixed,
         precision < 0 ? 6 : precision);
@@ -68,7 +73,6 @@ public:
     else append({number, size_t(result.ptr - number)});
     return *this;
   }
-private:
   JsonWriter &append(std::string_view text) {
     if (!good_) return *this;
     if (text.empty()) return *this;

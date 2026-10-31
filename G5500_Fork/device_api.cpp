@@ -10,6 +10,7 @@
 #include "panel_metrics.hpp"
 #include "tcp_memory.hpp"
 #include "network_timing.hpp"
+#include "network_snapshot.hpp"
 #include <esp_timer.h>
 namespace forkrot {
 using namespace board;
@@ -773,15 +774,16 @@ void DeviceApi::executeStatus(std::string_view method, std::string_view path, Fo
     web_.sendHeader("Cache-Control", "no-store");
     auto &calibrationState = calibration_.state();
     actions_.updatePosition();
-    bool staOk = (radioWifi.status() == WL_CONNECTED);
-    String staIp = staOk ? radioWifi.localIP().toString() : "-";
-    const bool apEnabled = (radioWifi.getMode() & WIFI_AP) != 0;
-    String apIp = apEnabled ? radioWifi.softAPIP().toString() : "-";
+    const auto radio=networkStatusSnapshot();
+    const bool staOk=radio.connected;
+    String staIp = staOk ? IPAddress(radio.staIp).toString() : "-";
+    const bool apEnabled = radio.ap;
+    String apIp = apEnabled ? IPAddress(radio.apIp).toString() : "-";
     const bool ethOk=ethernetConnected();
     const String ethIp=ethOk?ethernetIP().toString():"-";
     String ip = ethOk ? ethIp : staOk ? staIp : apIp;
     const char *mode = ethOk ? (apEnabled ? "Ethernet + AP" : "Ethernet") : staOk ? (apEnabled ? "AP + Wi-Fi Client" : "Wi-Fi Client") : apEnabled ? "Access Point" : "Disconnected";
-    int rssi = staOk ? radioWifi.RSSI() : 0;
+    int rssi = radio.rssi;
     String signal = !staOk
                         ? "-"
                         : (rssi >= -55 ? "Excellent"
@@ -841,7 +843,7 @@ void DeviceApi::executeStatus(std::string_view method, std::string_view path, Fo
       << ",\"ethLink\":" << (ethernetLinkUp()?"true":"false")
       << ",\"ethConnected\":" << (ethOk?"true":"false")
       << ",\"ethIp\":" << jsonQuoted(ethIp.c_str())
-      << ",\"connectedSsid\":" << jsonQuoted(staOk ? radioWifi.SSID().c_str() : "")
+      << ",\"connectedSsid\":" << jsonQuoted(radio.ssid)
       << ",\"wifiConnecting\":" << (network_.wifiConnecting() ? "true" : "false")
       << ",\"ssid\":" << jsonQuoted(network_.credentials().wifiSsid.c_str())
       << ",\"rssi\":" << rssiJson.c_str() << ",\"signal\":" << jsonQuoted(signal.c_str())
@@ -855,9 +857,8 @@ void DeviceApi::executeStatus(std::string_view method, std::string_view path, Fo
       << ",\"httpWriteFailures\":" << network_.httpDiagnostics().writeFailures;
     j << ",\"httpReadFailures\":" << network_.httpDiagnostics().readFailures << ",\"httpRejected\":" << network_.httpDiagnostics().rejected
       << ",\"httpAccepted\":" << network_.httpDiagnostics().accepted << ",\"httpRequests\":" << network_.httpDiagnostics().requests;
-    const auto tcp = tcpMemory();
-    j << ",\"tcpStatsAvailable\":" << (tcp.available ? "true" : "false")
-      << ",\"tcpActive\":" << tcp.active << ",\"tcpClosing\":" << tcp.closing << ",\"tcpTimeWait\":" << tcp.timewait;
+    j << ",\"tcpStatsAvailable\":" << (radio.tcpAvailable ? "true" : "false")
+      << ",\"tcpActive\":" << radio.tcpActive << ",\"tcpClosing\":" << radio.tcpClosing << ",\"tcpTimeWait\":" << radio.tcpTimeWait;
     j << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load()
       << ",\"networkMemoryLimited\":" << (networkLowMemory()?"true":"false")
       << ",\"telemetryIntervalMs\":" << (networkLowMemory()?500:WebPositionIntervalMs)

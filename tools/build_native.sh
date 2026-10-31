@@ -176,6 +176,14 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_F
 ./build/diagnostic_stream_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I tests/http_fakes -I tests/fakes -I G5500_Fork tests/http_ingress_tests.cpp -o build/http_ingress_tests
 ./build/http_ingress_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -I tests/http_fakes -I tests/fakes -I G5500_Fork tests/http_ingress_tests.cpp -o build/http_ingress_esp32_tests
+./build/http_ingress_esp32_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=8 -DDISPLAY_KIND=4 -I tests/http_fakes -I tests/fakes -I G5500_Fork tests/http_ingress_tests.cpp -o build/http_ingress_c3_tests
+./build/http_ingress_c3_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=2 -I tests/http_fakes -I tests/fakes -I G5500_Fork tests/http_ingress_tests.cpp -o build/http_ingress_s2_tests
+./build/http_ingress_s2_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -pthread -I G5500_Fork tests/owner_call_tests.cpp -o build/owner_call_tests
+./build/owner_call_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -I tests/wifi_fakes -I G5500_Fork tests/wifi_memory_tests.cpp -o build/wifi_memory_tests
 ./build/wifi_memory_tests
 

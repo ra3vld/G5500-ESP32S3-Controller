@@ -14,6 +14,7 @@
 #include "live_server.hpp"
 #include "ota.hpp"
 #include "camera.hpp"
+#include "http_io_task.hpp"
 namespace forkrot {
 class WebInterface {
 public:
@@ -53,16 +54,22 @@ public:
     web_.setLowMemoryPaths(lowMemoryPaths, sizeof lowMemoryPaths / sizeof *lowMemoryPaths);
   }
   void service() {
-    web_.handleClient();
-    if (web_.writeFailed() && web_.diagnostics().writeFailures == 1)
+    if(io_.active())io_.service();
+    else web_.handleClient();
+    const auto diagnostics=httpDiagnostics();
+    if (diagnostics.writeFailures && !reportedWriteFailure_) {
+      reportedWriteFailure_=true;
       diagnostics_.dbgPrintln("[HTTP] response failed or send deadline expired; client closed");
-    network_.setHttpDiagnostics(web_.diagnostics());
+    }
+    network_.setHttpDiagnostics(diagnostics);
 
   }
   bool otaLocked() const { return ota_.locked(); }
   void abortForRecovery() { ota_.cancel(); }
   void setupWeb();
-  void writeDiagnostics(JsonWriter &j) { j << "\"livePort\":" << (live_.started()?81:0); live_.writeDiagnostics(j); camera_.writeStatus(j); }
+  void startIoTask() {io_.begin(web_);}
+  void wait(unsigned ms) {io_.wait(ms);}
+  void writeDiagnostics(JsonWriter &j) { j << "\"livePort\":" << (live_.started()?81:0); live_.writeDiagnostics(j); camera_.writeStatus(j);io_.writeDiagnostics(j); }
   void serviceLiveCommands() { live_.commands(millis()); }
   void publishLive() { live_.publish(millis()); }
   void relieveMemory(uint32_t free, uint32_t largest) { live_.relieveMemory(free,largest); }
@@ -86,6 +93,14 @@ private:
   LiveServer live_{runtime_};
   Camera camera_;
   BoundedWebServer web_{80};
+  HttpIoTask io_;
+  bool reportedWriteFailure_=false;
+  HttpDiagnostics httpDiagnostics() {
+#if defined(ARDUINO) && defined(ARDUINO_ARCH_ESP32) && !CONFIG_FREERTOS_UNICORE && (FORK_CLASSIC_ESP32 || FORK_S3)
+    if(io_.active())return io_.diagnostics();
+#endif
+    return web_.diagnostics();
+  }
   RestartDelay &restart_;
   Ota &ota_;
   char statusBuffer_[STATUS_JSON_CAPACITY];
@@ -100,6 +115,8 @@ class WebInterface {
 public:
   template<class... Args> explicit WebInterface(Args &...) {}
   void setupWeb() {}
+  void startIoTask() {}
+  void wait(unsigned ms) {delay(ms);}
   void service() {}
   void serviceLiveCommands() {}
   void publishLive() {}

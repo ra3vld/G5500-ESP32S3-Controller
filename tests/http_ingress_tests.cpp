@@ -279,7 +279,8 @@ int main() {
   testSocket.handler=[&] { web.sendBuffer(200,"application/json",WEB_PAGE,1500); };
   web.handleClient();testSocket.blockWrites=true;
   fakeHardware.now+=3500;web.handleClient();assert(!testSocket.reset && !web.writeFailed());
-  testSocket.blockWrites=false;testSocket.sendQuota=size_t(-1);fakeHardware.now+=5;web.handleClient();
+  testSocket.blockWrites=false;testSocket.sendQuota=size_t(-1);
+  for(unsigned i=0;testSocket.open&&i<20;++i){fakeHardware.now+=5;web.handleClient();}
   assert(!web.writeFailed() && testSocket.output.substr(testSocket.output.find("\r\n\r\n")+4)==std::string(WEB_PAGE,1500));
   connect(request);testSocket.sendQuota=512;
   testSocket.handler=[&] { web.sendBuffer(200,"application/json",WEB_PAGE,1500); };
@@ -422,23 +423,26 @@ int main() {
   auto transferTime=[&](size_t heap) {
     connect(request);fakeHeapFree=heap;
     testSocket.handler=[&] {web.sendBuffer(200,"text/html",WEB_PAGE,8192);};
-    const auto start=fakeHardware.now;web.handleClient();
+    const auto start=fakeHardware.now;web.handleClient();const auto pausedBytes=testSocket.output.size();
     for(unsigned i=0;testSocket.open && i<1000;++i) {
       const auto bytes=testSocket.output.size();fakeHardware.now+=5;
       if(heap<32768&&i==20)fakeHeapFree=65536;
       const auto now=fakeHardware.now;web.handleClient();
       assert(fakeHardware.now==now && testSocket.output.size()-bytes<=4096);
+      if(heap<32768&&i<20)assert(testSocket.output.size()==pausedBytes);
     }
     assert(!testSocket.open && !testSocket.reset);return uint32_t(fakeHardware.now-start);
   };
   const auto slow=transferTime(16384),fast=transferTime(65536);
-  assert(slow>=fast+100);
+  assert(slow>=105&&slow>fast);
   // A local memory pause is not evidence that the client stopped reading.
   connect(request);fakeHeapFree=20000;fakeHeapBlock=8192;
   testSocket.handler=[&]{web.sendBuffer(200,"application/json",WEB_PAGE,4096);};
   web.handleClient();const auto held=testSocket.output.size();
   fakeHardware.now+=10000;web.handleClient();assert(testSocket.open&&!testSocket.reset&&testSocket.output.size()==held);
-  fakeHeapFree=65536;fakeHeapBlock=32768;fakeHardware.now+=20;web.handleClient();assert(!testSocket.open&&!testSocket.reset);
+  fakeHeapFree=65536;fakeHeapBlock=32768;
+  for(unsigned i=0;testSocket.open&&i<20;++i){fakeHardware.now+=5;web.handleClient();}
+  assert(!testSocket.open&&!testSocket.reset);
   // Fixed status replies start their pause clock at this response, including
   // after a long idle period and across the millis() rollover.
   web.setRequestHandler([](void *context,std::string_view) {
@@ -451,7 +455,8 @@ int main() {
     web.handleClient();const auto headerBytes=testSocket.output.size();
     fakeHardware.now+=10000;web.handleClient();
     assert(testSocket.open&&!testSocket.reset&&testSocket.output.size()==headerBytes);
-    fakeHeapFree=65536;fakeHeapBlock=32768;fakeHardware.now+=20;web.handleClient();
+    fakeHeapFree=65536;fakeHeapBlock=32768;
+    for(unsigned i=0;testSocket.open&&i<20;++i){fakeHardware.now+=5;web.handleClient();}
     assert(!testSocket.open&&!testSocket.reset&&!web.writeFailed());
     assert(testSocket.output.substr(headerBytes)==std::string(WEB_PAGE,4096));
   }
@@ -480,8 +485,23 @@ int main() {
     connect("GET /api/move?d=S HTTP/1.1\r\n\r\n");web.handleClient();assert(stopReached);
     web.setStopHandler(nullptr,nullptr);
   }
-#if FORK_CLASSIC_ESP32
+  // A paused slow reader must relinquish queued TCP memory before recovery's
+  // 2s deadline, during the body and after its final send. STOP stays usable.
+  for(uint32_t at:{uint32_t(1000),UINT32_MAX-200u})for(size_t size:{size_t(768),size_t(8192)}) {
+    fakeHardware.now=at;connect(request);fakeHeapFree=65536;fakeTcpPendingBytes=size==768?768:3072;
+    testSocket.handler=[&]{web.sendBuffer(200,"application/json",WEB_PAGE,size);};
+    web.handleClient();assert(testSocket.open);fakeHeapFree=20000;fakeHeapBlock=8192;web.handleClient();
+    fakeHardware.now+=499;web.handleClient();assert(testSocket.open&&!testSocket.reset);
+    ++fakeHardware.now;web.handleClient();assert(!testSocket.open&&testSocket.reset);
+    assert(std::string(web.diagnostics().writeCause)=="memory"&&web.diagnostics().writeErrno==ENOMEM);
+    fakeTcpPendingBytes=0;bool stopped=false;
+    web.setStopHandler([](void *p,const StopRequest &r){*static_cast<bool *>(p)=r.axis==-1;return BoundedWebServer::StopResult{};},&stopped);
+    connect("GET /api/move?d=S HTTP/1.1\r\n\r\n");web.handleClient();assert(stopped);
+    web.setStopHandler(nullptr,nullptr);
+  }
+#if FORK_CLASSIC_ESP32 || FORK_C3 || FORK_S2
   // A full transport queue must pause bulk output even with a healthy heap.
+  web.setServiceHandler([](void *context){++*static_cast<unsigned *>(context);},&serviced);
   connect(request);fakeTcpPendingBytes=4096;
   testSocket.handler=[&]{web.sendBuffer(200,"application/json",WEB_PAGE,8192);};
   web.handleClient();const auto queuedHeader=testSocket.output.size();
@@ -500,7 +520,45 @@ int main() {
   }
   assert(!testSocket.open&&!testSocket.reset&&testSocket.largestSend<=512);
   assert(testSocket.output.substr(body)==std::string(WEB_PAGE,8192));
+  web.setServiceHandler(nullptr,nullptr);
 #endif
+  // The CPU1 callback must never enter a socket write, including headers
+  // assembled on its stack and allocation-free emergency STOP responses.
+  unsigned ownerCalls=0;
+  web.setExecutor([](void *context,OwnerCall::Function fn,void *arguments) {
+    const auto before=testSocket.output;
+    fn(arguments);
+    assert(testSocket.output==before);
+    ++*static_cast<unsigned *>(context);
+  },&ownerCalls);
+  web.setRequestHandler(nullptr,nullptr);
+  connect(request);
+  static constexpr char state[]="{\"moving\":false}";
+  testSocket.handler=[&] {web.sendFixed(200,"application/json",state,sizeof state-1);};
+  web.handleClient();
+  assert(ownerCalls && testSocket.output.substr(testSocket.output.find("\r\n\r\n")+4)==state);
+  while(testSocket.open){fakeHardware.now+=5;web.handleClient();}
+  // A temporary small response is copied before returning to the I/O task.
+  connect(request);testSocket.handler={};testSocket.respond=true;
+  web.handleClient();assert(testSocket.output=="reply");
+  connect("GET /api/move?d=S HTTP/1.1\r\n\r\n");
+  bool ownerStop=false;
+  web.setStopHandler([](void *context,const StopRequest &r) {
+    *static_cast<bool *>(context)=r.axis==-1;return BoundedWebServer::StopResult{};
+  },&ownerStop);
+  fakeHeapFree=3000;fakeHeapBlock=512;
+  web.handleClient();assert(ownerStop && !testSocket.parsed && !web.writeFailed());
+  assert(testSocket.output.find("\"result\":\"ok\"")!=std::string::npos);
+  web.setStopHandler(nullptr,nullptr);
+  // Parsed handlers and the parser-free request path both use the owner.
+  connect(request);
+  web.setRequestHandler([](void *p,std::string_view) {
+    static_cast<BoundedWebServer *>(p)->sendFixed(200,"application/json",state,sizeof state-1);return true;
+  },&web);
+  web.handleClient();assert(!testSocket.parsed && !web.writeFailed());
+  assert(testSocket.output.substr(testSocket.output.find("\r\n\r\n")+4)==state);
+  web.setExecutor(nullptr,nullptr);
+  std::cout<<"PASS: owner callbacks defer headers and fixed buffers without socket I/O; low-memory STOP uses the same owner\n";
   std::cout<<"PASS: recovery POST remains writable with free=3000/max=512 while normal settings require larger blocks\n";
   std::cout<<"PASS: 10000 parser-free status polls at free=3000/max=512; bulk waits below control reserve, bounded nonblocking 4KB bursts\n";
   std::cout<<"PASS: complete current page over slow socket after low-heap admission, per-loop control progress, transfer deadlines and recovery\n";

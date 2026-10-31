@@ -25,7 +25,8 @@ class Bridge:
         self.stopped = threading.Event()
         self.error = None
         self.connection = None
-        self.engine = subprocess.Popen([str(ROOT / 'build/device_api_tests'), '--serve'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        engine = os.environ.get('DEVICE_API_TESTS', str(ROOT / 'build/device_api_tests'))
+        self.engine = subprocess.Popen([engine, '--serve'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if kind == 'serial':
             import pty
             self.master, self.slave = pty.openpty()
@@ -202,7 +203,9 @@ class CommandApiTests(unittest.TestCase):
                 client = api.Client(link, timeout=1)
                 hardware = client.request('GET', '/api/hardware')['body']
                 caps = client.request('GET', '/api/hardware/pins')['body']
-                self.assertEqual(len(caps['roles']), 43)
+                roles = [role['name'] for role in caps['roles']]
+                self.assertEqual(len(roles), len(set(roles)))
+                self.assertEqual(set(roles), set(hardware['configured']['pins']))
                 self.assertEqual(len(caps['gpios']), 49)
                 fields = dict(token=hardware['token'], generation=hardware['generation'])
                 fields['pin.azAdc'] = 36

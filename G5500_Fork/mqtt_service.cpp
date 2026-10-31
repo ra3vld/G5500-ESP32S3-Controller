@@ -269,8 +269,13 @@ struct MqttService::Impl {
     settings.buffer.size=1024;settings.buffer.out_size=1024;settings.outbox.limit=2048;
     settings.network.timeout_ms=2000;settings.network.reconnect_timeout_ms=10000;
     client=esp_mqtt_client_init(&settings);
-    return client && esp_mqtt_client_register_event(client,MQTT_EVENT_ANY,event,this)==ESP_OK &&
-        esp_mqtt_client_start(client)==ESP_OK && xTaskCreate(transmitTask,"mqtt-publish",3072,this,1,&worker)==pdPASS;
+    if(!client || esp_mqtt_client_register_event(client,MQTT_EVENT_ANY,event,this)!=ESP_OK ||
+        esp_mqtt_client_start(client)!=ESP_OK)return false;
+#if !CONFIG_FREERTOS_UNICORE
+    return xTaskCreatePinnedToCore(transmitTask,"mqtt-publish",3072,this,1,&worker,0)==pdPASS;
+#else
+    return xTaskCreate(transmitTask,"mqtt-publish",3072,this,1,&worker)==pdPASS;
+#endif
   }
 };
 #else

@@ -114,7 +114,19 @@ int main() {
   assert(logger.send(loopback,n1mm.localPort(),""));assert(n1mm.receiveInto(scratch,sizeof scratch,address,port)==-2);
   assert(logger.send(loopback,n1mm.localPort(),"ok"));assert(n1mm.receiveInto(scratch,sizeof scratch,address,port)==2);
   assert(allocations==fixedBefore);failAllocation=false;
+  // Locked OTA drains input without executing commands, allocating memory,
+  // or allowing an incoming flood to monopolize one controller turn.
+  for (const auto text : {"", "stop", "target", "oversized-prefix", "after drain"})
+    assert(logger.send(loopback,n1mm.localPort(),text));
+  const auto drainBefore=allocations;failAllocation=true;
+  assert(n1mm.discardQueued(0)==0);
+  assert(n1mm.discardQueued()==4);
+  assert(n1mm.receiveInto(scratch,sizeof scratch,address,port)==11);
+  assert(std::string_view(reinterpret_cast<char *>(scratch),11)=="after drain");
+  assert(n1mm.discardQueued()==0 && allocations==drainBefore);
+  failAllocation=false;
   DatagramSocket invalid;assert(!invalid.begin(0,0)&&!invalid.localPort());
+  assert(invalid.discardQueued()==0);
 
   int error = 0;
   assert(!logger.send(loopback, n1mm.localPort(), boundary, &error) && error == EMSGSIZE);

@@ -37,6 +37,11 @@ public:
   void beginHud();
   void setMqttService(MqttService *service) { mqtt_=service; }
   void serviceHud(bool advanceSimulation = true);
+  void discardHudInput() {
+#if HUD_UDP_SUPPORT
+    hudUdp_.discardQueued();
+#endif
+  }
   bool sendHud(const HudEndpoint &, const uint8_t *, size_t) override;
   void selectionChanged() override { resetHudInputs(); }
   bool hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned report) const;
