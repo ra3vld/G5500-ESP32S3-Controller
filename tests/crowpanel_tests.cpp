@@ -42,8 +42,8 @@ int main() {
   assert(buttons.sample(true, 240, 106) == TouchAction::None); // Must start inside button.
   buttons.sample(false, 0, 0);
   // Broad annulus, compass bearings, one command per contact, no slide-in commands.
-  assert(crowpanel::dialContains(380, 240) && crowpanel::dialContains(479, 240));
-  assert(!crowpanel::dialContains(379, 240) && !crowpanel::dialContains(0, 0));
+  assert(crowpanel::dialContains(390, 240) && crowpanel::dialContains(479, 240));
+  assert(!crowpanel::dialContains(389, 240) && !crowpanel::dialContains(0, 0));
   assert(!crowpanel::dialContains(65535, 65535));
   assert(crowpanel::dialBearing(240, 13) == 0 && crowpanel::dialBearing(467, 240) == 90);
   assert(crowpanel::dialBearing(240, 467) == 180 && crowpanel::dialBearing(13, 240) == 270);

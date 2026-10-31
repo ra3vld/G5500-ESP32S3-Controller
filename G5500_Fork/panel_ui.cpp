@@ -285,16 +285,20 @@ void PanelUi::create(bool round) {
   lv_obj_set_scrollable(limits_, false);
   lv_obj_set_clickable(limits_, false);
   lv_obj_add_event_cb(limits_, drawLimits, LV_EVENT_DRAW_MAIN, this);
-  hudName_ = label(panel::HudNameButton.y, 230, 22, text);
+  // Smaller panels reserve this space for jog arrows and pending targets.
+  const int headerOffset = diameter_ >= 480 ? 10 : 0;
+  hudName_ = label(panel::HudNameButton.y + headerOffset, 230, 22, text);
   lv_label_set_long_mode(hudName_, LV_LABEL_LONG_DOT);
   lv_obj_set_height(hudName_,face(22)->line_height);
   lv_obj_set_hidden(hudName_, true);
-  hudAddress_ = label(65, 340, 11, muted);
+  hudAddress_ = label(65 + headerOffset, 340, 11, muted);
   lv_obj_set_hidden(hudAddress_, true);
-  modeButton_ = button(panel::ModeButton, 0x183329);
+  auto modeRect = panel::ModeButton;
+  modeRect.y += headerOffset;
+  modeButton_ = button(modeRect, 0x183329);
   mode_ = buttonLabel(modeButton_,face(22));
-  range_ = label(65, 300, 11, muted);
-  axis_ = label(132, 320, 22, muted);
+  range_ = label(65 + headerOffset, 300, 11, muted);
+  axis_ = label(132 + headerOffset, 320, 22, muted);
   angle_ = label(170, LV_SIZE_CONTENT, 112, text);
   secondaryAngle_ = label(170, LV_SIZE_CONTENT, 28, text);
   secondaryTarget_ = label(282, LV_SIZE_CONTENT, 22, targetColor);
@@ -341,7 +345,7 @@ void PanelUi::create(bool round) {
   currentMotion_.object = currentMarker_; currentMotion_.size = p(currentMarkerSize);currentMotion_.owner=this;
   targetMotion_.object = targetMarker_; targetMotion_.size = p(targetMarkerSize);targetMotion_.owner=this;
   hudList_ = lv_obj_create(screen);
-  lv_obj_set_pos(hudList_, x(panel::HudList.x), y(panel::HudList.y));
+  lv_obj_set_pos(hudList_, x(panel::HudList.x), y(panel::HudList.y + headerOffset));
   lv_obj_set_size(hudList_, p(panel::HudList.width), p(panel::HudList.height));
   lv_obj_set_style_bg_color(hudList_, lv_color_hex(0x101e2b), 0);
   lv_obj_set_style_bg_opa(hudList_, LV_OPA_COVER, 0);
@@ -502,8 +506,8 @@ void PanelUi::configureLayout(const PanelView &v) {
   lv_obj_set_hidden(axis_,!v.shows(DisplayAxis));
   lv_obj_set_hidden(actionButton_,!showStop);
   if(v.speedScreen) {
-    lv_obj_set_pos(actionButton_,x(250),y(374));
-    lv_obj_set_size(actionButton_,p(130),std::max(28,p(44)));
+    lv_obj_set_pos(actionButton_,x(250),y(371));
+    lv_obj_set_size(actionButton_,p(81),std::max(28,p(44)));
     font(actionLabel_,face(22));
   } else {
     // The footer button replaces status and telemetry, leaving the goal and
@@ -527,7 +531,8 @@ void PanelUi::configureLayout(const PanelView &v) {
       const int dy=std::max(std::abs(top-height_/2),std::abs(bottom-height_/2));
       buttonWidth=std::min(buttonWidth,2*int(std::sqrt(std::max(0,radius*radius-dy*dy))));
     }
-    lv_obj_set_pos(actionButton_,(width_-buttonWidth)/2,top);
+    buttonWidth=(buttonWidth*9+5)/10;
+    lv_obj_set_pos(actionButton_,(width_-buttonWidth)/2,top-p(3));
     lv_obj_set_size(actionButton_,buttonWidth,bottom-top);
     for(const auto *candidate:{compact?face(36):&panel_font_28,compact?face(28):face(22),face(11)}) {
       if(candidate->line_height+gap<=bottom-top) {font(actionLabel_,candidate);break;}
@@ -555,7 +560,7 @@ void PanelUi::configureLayout(const PanelView &v) {
   touchLayout_.speedBack=bounds(speedBack_);
   touchLayout_.centerX=width_/2;touchLayout_.centerY=height_/2;
   touchLayout_.width=width_;touchLayout_.height=height_;
-  touchLayout_.innerRadius=p(140);touchLayout_.outerRadius=p(240)+panel::DialTouchExtension;
+  touchLayout_.innerRadius=p(panel::DialTouchInner);touchLayout_.outerRadius=p(panel::DialTouchOuter)+panel::DialTouchExtension;
   touchLayout_.swipeDeadzone=std::max(6,p(12));touchLayout_.swipeFull=std::max(50,p(100));
   touchLayout_.enabled=touchLayout_.enabled && v.enabled;
   confirmationCaption_=bounds(targetCaption_,p(8));confirmationAngle_=bounds(target_,p(8));

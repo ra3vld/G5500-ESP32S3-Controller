@@ -15,7 +15,8 @@ inline constexpr TouchRect HudNameButton{70, 38, 340, 28};
 inline constexpr TouchRect ModeButton{140, 84, 200, 44};
 inline constexpr TouchRect HudList{35, 129, 410, 185};
 inline constexpr int HudRowTop = HudList.y + 10, HudRowHeight = 58;
-inline constexpr int DialCenter = 240, DialTouchInner = 140, DialTouchOuter = 240;
+// Trim 10% of the original 100-pixel touch band from its inner edge.
+inline constexpr int DialCenter = 240, DialTouchInner = 150, DialTouchOuter = 240;
 inline constexpr int DialTouchExtension = 50;
 inline bool dialContains(uint16_t x, uint16_t y) {
   if (x >= 480 || y >= 480) return false;
