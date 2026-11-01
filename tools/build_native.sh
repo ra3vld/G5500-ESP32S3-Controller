@@ -34,7 +34,7 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DLWIP_TCPIP_CORE_LOCKING=0 -I 
 ./build/tcp_peer_no_core_lock_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DLWIP_IPV6=0 -I tests/tcp_fakes -I G5500_Fork tests/tcp_peer_tests.cpp -o build/tcp_peer_ipv4_tests
 ./build/tcp_peer_ipv4_tests
-MOTION_SOURCES="G5500_Fork/motion.cpp build/motion/libruckig.a"
+MOTION_SOURCES="G5500_Fork/motion.cpp"
 CORE_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp G5500_Fork/mqtt_bridge.cpp G5500_Fork/mqtt_service.cpp"
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork $CORE_SOURCES tests/planner_memory_tests.cpp -o build/planner_memory_tests
 ./build/planner_memory_tests
@@ -336,3 +336,13 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -DDISPLAY_KIN
 ./build/pin_map_tests_4_d0
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -DDISPLAY_KIND=6 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/pin_map_tests.cpp -o build/pin_map_tests_4_d6
 ./build/pin_map_tests_4_d6
+
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -DDRIVE_INTERFACE=2 -I G5500_Fork $CORE_SOURCES tests/direct_motion_tests.cpp -o build/direct_motion_tests
+./build/direct_motion_tests
+
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/minimal_storage_tests.cpp -o build/minimal_storage_tests
+./build/minimal_storage_tests
+
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork $CORE_SOURCES tests/az_range_tests.cpp -o build/essential_az_range_tests
+
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork $CORE_SOURCES tests/el_range_tests.cpp -o build/essential_el_range_tests

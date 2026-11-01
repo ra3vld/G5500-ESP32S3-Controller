@@ -732,6 +732,24 @@ void DeviceApi::executeStatus(std::string_view method, std::string_view path, Fo
     status=code; type="application/json";
     output << "{\"ok\":" << (code==200?"true":"false") << ",\"error\":" << jsonQuoted(reason) << '}';
   };
+  if(path=="/api/status" && method=="GET" && web_.value("view")=="minimal") {
+    auto &c=runtime_.controller;const auto radio=networkStatusSnapshot();
+    output << "{\"profile\":\"direct\",\"ip\":" << jsonQuoted(IPAddress(radio.staIp).toString().c_str())
+      << ",\"controlMode\":" << jsonQuoted(Controller::modeName(c.mode))
+      << ",\"rangeRevision\":" << c.rangeRevision << ",\"pendingValid\":" << (c.pendingValid?"true":"false")
+      << ",\"configurationLocked\":" << (c.configurationLocked?"true":"false") << ",\"recovery\":" << (runtime_.recovery?"true":"false")
+      << ",\"fault\":" << jsonQuoted(c.fault) << ",\"moving\":" << (c.moving()?"true":"false")
+      << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMinFree\":" << heapMinBytes() << ",\"heapMaxBlock\":" << heapMaxBlockBytes()
+      << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load() << ",\"rssi\":" << radio.rssi
+      << ",\"btConnected\":" << (network_.bluetoothConnected()?"true":"false") << ",\"uptimeSeconds\":" << uint32_t(esp_timer_get_time()/1000000)
+      << ",\"axes\":[";
+    for(unsigned i=0;i<2;++i) {if(i)output << ',';const auto &a=c.axes[i];
+      output << "{\"current\":" << a.current << ",\"calibrated\":" << (a.calibrated?"true":"false")
+        << ",\"target\":" << a.target << ",\"direction\":" << a.direction << ",\"output\":" << a.speedOutputPercent
+        << ",\"min\":" << c.range(i).start << ",\"max\":" << c.range(i).end << ",\"speed\":" << c.runtimeSpeed(i) << ",\"limit\":" << c.runtimeSpeedLimit(i) << '}';
+    }
+    output << "]}";return;
+  }
   if(path=="/api/status" && command) {
     auto &c=runtime_.controller;
     if(!runtime_.recovery)actions_.updatePosition();
@@ -1163,6 +1181,29 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
   if(path=="/api/motion/autotune" && method=="GET" && command && web_.value("full")!="1") {
     if(runtime_.hud.isHud()) {reply(409,"controller_settings_only");return;}
     writeAutoTune(output,runtime_.controller);return;
+  }
+  if(path=="/api/config" && method=="GET" && web_.value("view")=="essential") {
+    const auto &c=runtime_.controller;const auto &s=calibration_.state();auto &j=output;
+    j << "{\"model\":" << jsonQuoted(modelName(c.model))
+      << ",\"rotorName\":" << jsonQuoted(runtime_.protocol.rotorName)
+      << ",\"externalAzMode\":" << jsonQuoted(runtime_.protocol.externalAzMode==ExternalAzMode::Mechanical?"mechanical":"shortest")
+      << ",\"gs232ManualFollow\":" << (runtime_.protocol.manualFollow.gs232?"true":"false")
+      << ",\"speedEnabled\":" << (c.speedEnabled?"true":"false")
+      << ",\"controlHz\":" << 1000/c.controlPeriodMs()
+      << ",\"calMode\":" << jsonQuoted(s.calibrationMode==CAL_MULTI_POINT?"multi":"2")
+      << ",\"axes\":[";
+    for(unsigned i=0;i<2;++i) {
+      if(i)j << ',';const auto &m=c.motionSettings[i];
+      j << "{\"speedPercent\":" << c.speeds[i].speedPercent
+        << ",\"coastDegrees\":" << c.speeds[i].coastDegrees
+        << ",\"outputLimit\":" << m.outputLimitPercent
+        << ",\"feedbackTimeoutMs\":" << m.feedbackTimeoutMs
+        << ",\"stallMs\":" << m.stallMs
+        << ",\"movementDegrees\":" << m.movementDegrees
+        << ",\"zero\":" << (i?(calibration_.activeElOSet()?calibration_.activeEl2Zero():-1):(calibration_.activeAzOSet()?calibration_.activeAz2Zero():-1))
+        << ",\"full\":" << (i?(calibration_.activeElFSet()?calibration_.activeEl2Full():-1):(calibration_.activeAzFSet()?calibration_.activeAz2Full():-1)) << '}';
+    }
+    j << "]}";return;
   }
   if(path=="/api/config" && method=="GET") {writeConfiguration(output);return;}
   if(path=="/api/diaglog" && method=="GET") {

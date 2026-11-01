@@ -170,37 +170,6 @@ Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
       const float value = i ? nextTarget.el : nextTarget.az;
       const bool unchanged = axis.accepted && value == axis.target &&
           (axis.tracking || axis.holdArmed || (axis.completed && std::abs(value-axis.current)<=tolerance(i)));
-      if(!unchanged) {
-        auto &r=motion_[i];
-        r.arriving=r.settling=false;
-        const unsigned interval=uint32_t(now-r.targetChangedAt);
-        const bool streaming=r.targetTimed && (axis.tracking || axis.completed || axis.holdArmed) &&
-            value!=axis.target && (!axis.direction || axis.direction*(value-axis.target)>0) && interval<=1800;
-        if(!streaming) {r.targetIntervalMs=0;r.targetVelocity=0;}
-        else if(!r.streamingTarget) {
-          r.targetIntervalMs=std::clamp(interval,5u,1500u);
-          r.targetVelocity=interval ? std::clamp((value-axis.target)*1000/interval,-runtimeSpeed(i),runtimeSpeed(i)) : 0;
-          r.targetVelocityAt=now;r.targetVelocityPosition=value;
-        } else {
-          // Wi-Fi may deliver queued UDP packets in one burst. Their arrival
-          // spacing is not the target's physical velocity, nor a new stream.
-          const unsigned span=uint32_t(now-r.targetVelocityAt);
-          if(span>=40) {
-            const float velocity=std::clamp((value-r.targetVelocityPosition)*1000/span,-runtimeSpeed(i),runtimeSpeed(i));
-            r.targetVelocity=.75f*r.targetVelocity+.25f*velocity;
-            r.targetVelocityAt=now;r.targetVelocityPosition=value;
-          }
-          if(interval>=40) {
-            const unsigned cadence=std::clamp(interval,100u,1500u);
-            r.targetIntervalMs=cadence>=r.targetIntervalMs ? cadence : (3*r.targetIntervalMs+cadence)/4;
-          }
-        }
-        r.streamingTarget=streaming;
-        r.targetChangedAt=now;
-        r.targetTimed=true;
-        motion_[i].targetDirection=(value>axis.current)-(value<axis.current);
-        motion_[i].crossedTarget=false;
-      }
       accepted = true;
       axis.acceptedTarget = value;
       axis.accepted = true;
@@ -211,7 +180,7 @@ Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
       if (unchanged) continue;
       ++motionEpoch[i];
       axis.completed = false;
-      const bool cascade = variableSpeed(i) && motionSettings[i].mode == RegulatorMode::Cascade;
+      const bool cascade = variableSpeed(i) && false;
       axis.holdArmed = cascade && motionSettings[i].holdEnabled;
       const float difference = axis.target - axis.current;
       const int requested = std::abs(difference) <= tolerance(i) ? 0 : difference > 0 ? 1 : -1;
@@ -296,13 +265,13 @@ Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now
   if (driveFault) return Result::Invalid;
   if ((axes[axis].motionError != MotionError::None && axes[axis].motionError != MotionError::Stalled) ||
       (variableSpeed(axis) && !motionSettings[axis].ready)) return Result::Unavailable;
-  if (variableSpeed(axis) && motionSettings[axis].mode == RegulatorMode::Cascade && !axes[axis].calibrated) return Result::NotCalibrated;
+  if (variableSpeed(axis) && false && !axes[axis].calibrated) return Result::NotCalibrated;
   if (!prepareMotion()) return Result::Unavailable;
   recoverStall(axis, now);
   if (axes[axis].tracking || axes[axis].holdArmed) {
     // Taking over a running position command changes intent, not the current
     // velocity/acceleration boundary state or the load compensation integral.
-    axes[axis].holdArmed=false;motion_[axis].positionPid.reset();motion_[axis].settling=false;
+    axes[axis].holdArmed=false;
   }
   ++motionEpoch[axis];
   manualScale_[axis] = 1;
@@ -835,7 +804,7 @@ bool Controller::runtimeSpeedAvailable(unsigned i) const {
 float Controller::runtimeSpeedLimit(unsigned i) const {
   if (i > 1) return 0;
   if (remote) return remoteSpeedLimit[i];
-  return motionSettings[i].mode == RegulatorMode::Cascade ? motionSettings[i].velocity :
+  return false ? motionSettings[i].velocity :
       std::min(100.f, motionSettings[i].outputLimitPercent);
 }
 unsigned Controller::runtimeSpeedIndex(unsigned i) const {
@@ -843,7 +812,7 @@ unsigned Controller::runtimeSpeedIndex(unsigned i) const {
   // physical interface retained for switching back. Reuse its simulation bank.
   const unsigned drive=hardware.simulation==SimulationMechanics?0:unsigned(hardware.drive);
   return ((((unsigned(hardware.simulation!=0) * 3 + drive) * 2 +
-      unsigned(model)) * 2 + i) * 2 + unsigned(motionSettings[i].mode));
+      unsigned(model)) * 2 + i) * 2 + 0u);
 }
 void Controller::resetRuntimeSpeed(unsigned i, uint32_t now) {
   if (i > 1) return;
@@ -854,7 +823,7 @@ void Controller::resetRuntimeSpeed(unsigned i, uint32_t now) {
 float Controller::runtimeSpeed(unsigned i) const {
   if (i > 1) return 0;
   if (remote) return remoteSpeed[i];
-  const float saved = motionSettings[i].mode == RegulatorMode::Cascade ? motionSettings[i].velocity : float(speeds[i].speedPercent);
+  const float saved = false ? motionSettings[i].velocity : float(speeds[i].speedPercent);
   const bool tuning = autoTune.active() && autoTune.axis == int(i);
   const float value = runtimeSpeeds.values[runtimeSpeedIndex(i)];
   const float limit = runtimeSpeedLimit(i);
@@ -1012,7 +981,7 @@ void Controller::tick(uint32_t now) {
       axis.tracking = false;
     }
     if (axis.tracking &&
-        (!axis.calibrated || ((motionSettings[i].mode != RegulatorMode::Cascade || !variableSpeed(i)) && (
+        (!axis.calibrated || ((true || !variableSpeed(i)) && (
          (axis.wanted > 0 && axis.current >= axis.target - tolerance(i)) ||
          (axis.wanted < 0 && axis.current <= axis.target + tolerance(i)))))) {
       axis.completed = axis.calibrated;

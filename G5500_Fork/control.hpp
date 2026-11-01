@@ -162,70 +162,13 @@ struct AutoTuneFailure {
   unsigned velocityWindowMs = 0;
 };
 struct AutoTuneState {
-  AutoTuneOptions options{};
-  AutoTunePhase phase = AutoTunePhase::Idle;
-  RegulatorMode mode = RegulatorMode::Simple;
-  int axis = -1, direction = 1;
-  AutoTunePhase nextPhase = AutoTunePhase::Start;
-  int nextDirection = 1;
-  unsigned relocations = 0;
-  unsigned preparationAttempts = 0;
-  uint32_t preparationAt = 0;
-  float preparationRequired = 0, preparationAvailable = 0;
-  uint32_t id = 0, startedAt = 0, phaseAt = 0, tickAt = 0, sampledAt = 0, revision = 0, settledAt = 0;
-  const char *reason = "";
-  AutoTuneFailure failure{};
-  float origin = 0, otherPosition = 0, lower = 0, upper = 0, limit = 0, level = 0;
-  float initialSetpoint = 0;
-  float phasePosition = 0, noiseLow = 0, noiseHigh = 0, noiseVelocity = 0, shortNoiseVelocity = 0, threshold = 0;
-  float peakVelocity = 0, validationError = 0, validationTarget = 0;
-  float validationOrigin = 0;
-  unsigned validationPass = 0, validationReversals = 0;
-  bool validationDirectional = false;
-  int validationDirection = 1;
-  // Candidate minimum is accepted only after independent starts in both
-  // directions, then repeated at the selected level before Apply is enabled.
-  float minimumCandidate = 0, minimumSetpoint = 0, minimumSpeed = 0, minimumOutput = 0;
-  float minimumSpeedSum = 0, minimumOutputSum = 0, minimumPeak = 0;
-  float minimumDirectionSpeed = 0, minimumDirectionOutput = 0;
-  float minimumProgress = 0;
-  std::array<float, 2> minimumStartupTravel{};
-  unsigned minimumSamples = 0, minimumTrial = 0, minimumPass = 0;
-  uint32_t minimumAt = 0, minimumProgressAt = 0;
-  bool minimumConfirm = false, minimumRaised = false, minimumCompletePending = false;
-  // Three bounded PI/P candidates, each tested at the selected speeds, two command
-  // periods and both directions through the ordinary target path.
-  std::array<AutoTuneTrackingResult, 3> trackingResults{};
-  MotionSettings trackingBase{};
-  unsigned trackingCandidate = 0, trackingCase = 0, trackingBest = 0;
-  unsigned trackingPeriodMs = 0, trackingCommand = 0, trackingSamples = 0;
-  uint32_t trackingAt = 0, trackingStoppedMs = 0, trackingTimeoutMs = 480000;
-  float trackingSlow = 0, trackingFast = 0, trackingVelocity = 0;
-  float trackingOrigin = 0, trackingGoal = 0, trackingErrorSum = 0, trackingPeak = 0, trackingOvershoot = 0;
-  float trackingSeconds = 0, trackingReserve = 0;
-  std::array<unsigned, 4> trackingWarmupMs{}, trackingDurationMs{};
-  bool trackingPlanned = false;
-  float trackingVariation = 0, trackingOutput = 0, trackingStartMean = 0;
-  unsigned trackingKicks = 0, trackingReversals = 0;
-  int trackingDirection = 1, trackingLastDirection = 0;
-  MotionPhase trackingLastPhase = MotionPhase::Idle;
-  bool trackingVerified = false, trackingScored = false;
-  bool modelReady = false, proposalValidated = false;
-  int validationLastDirection = 0;
-  float nextLevel = 0, searchLevel = 0, minimumLevel = 0;
-  float lastPosition = 0, sampleVelocity = 0, stoppingDistance = 0;
-  float plateauVelocity = 0;
-  uint32_t positionAt = 0, plateauAt = 0;
-  std::array<float, 16> positions{};
-  std::array<uint32_t, 16> sampleTimes{};
-  unsigned sampleCount = 0, sampleNext = 0;
-  bool internal = false, ticked = false, settled = false, relocate = false, plateauReady = false;
-  SpeedSettings originalSpeed{}, proposedSpeed{};
-  MotionSettings originalMotion{}, proposedMotion{};
-  std::array<AutoTuneMeasurement, 2> measurements{};
-  struct Plateau { float output = 0, velocity = 0, responseSeconds = 0; };
-  std::array<Plateau, 2> confirmedHigh{};
-  bool active() const { return phase >= AutoTunePhase::Quiet && phase <= AutoTunePhase::Tracking; }
+  AutoTunePhase phase=AutoTunePhase::Idle;
+  uint32_t id=0;
+  int axis=-1,direction=0;
+  float level=0,validationError=0;
+  const char *reason="disabled";
+  static constexpr bool internal=false;
+  bool active() const { return false; }
 };
 struct Preset {
   std::string label;
@@ -301,7 +244,7 @@ public:
   void resetRuntimeSpeed(unsigned axis, uint32_t now);
   Result setRuntimeSpeed(unsigned axis, float value, uint32_t now);
   float tolerance(unsigned i) const {
-    if (variableSpeed(i) && motionSettings[i].mode == RegulatorMode::Cascade)
+    if (false)
       return motionSettings[i].positionTolerance;
     return std::min(speeds[i].coastDegrees, range(i).span() / 10);
   }

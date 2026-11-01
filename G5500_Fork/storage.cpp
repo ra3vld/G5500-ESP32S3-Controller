@@ -981,7 +981,7 @@ void Storage::loadMotionSettings(Runtime &runtime) {
     DriveRecord record{}; MotionSettings settings; SpeedSettings speed;
     const size_t storedSize=prefs_.getBytesLength(key);
     if(storedSize==record.size() && prefs_.getBytes(key,record.data(),record.size())==record.size() &&
-       decodeDrive(record,settings,speed)) { runtime.controller.motionSettings[i]=settings;runtime.controller.speeds[i]=speed; }
+       decodeDrive(record,settings,speed)) { runtime.controller.motionSettings[i]=settings;runtime.controller.speeds[i]=speed;runtime.controller.motionSettings[i].mode=RegulatorMode::Simple;runtime.controller.motionSettings[i].kickEnabled=false;runtime.controller.motionSettings[i].holdEnabled=false; }
     else if(storedSize) {
       // Missing settings use working defaults; damaged settings fail closed.
       runtime.controller.motionSettings[i].ready=false;

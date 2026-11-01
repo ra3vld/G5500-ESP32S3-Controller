@@ -100,18 +100,7 @@ template<class Writer> void metadata(Writer &j,const Controller &c,const Hud &h)
     j << "{\"regulatorMode\":" << jsonQuoted(regulatorName(m.mode)) << ",\"motionReady\":" << boolean(m.ready)
       << ",\"holdEnabled\":" << boolean(m.mode==RegulatorMode::Cascade&&m.holdEnabled) << '}';
   }
-  const auto &t=c.autoTune;
-  j << "],\"autotune\":{\"phase\":" << jsonQuoted(Controller::autoTunePhaseName(t.phase))
-    << ",\"active\":" << boolean(t.active()) << ",\"id\":" << t.id << ",\"axis\":" << t.axis
-    << ",\"mode\":" << jsonQuoted(regulatorName(t.mode)) << ",\"direction\":" << t.direction << ",\"reason\":" << jsonQuoted(t.reason);
-  if(t.active())j << ",\"stages\":" << t.options.stages;
-  const unsigned cases=t.options.trackingCases(),first=t.options.has(TuneSlow)?0:4;
-  if(t.active()&&t.trackingPeriodMs&&!t.trackingVerified)
-    j << ",\"trackingTrial\":" << std::min(3*cases,t.trackingCandidate*cases+t.trackingCase-first+1)
-      << ",\"trackingTrials\":" << 3*cases << ",\"trackingPeriodMs\":" << ((t.trackingCase/2)%2?1500:200)
-      << ",\"trackingDurationMs\":" << t.trackingDurationMs[t.trackingCase/2]
-      << ",\"trackingTravel\":" << (t.trackingCase<4?t.trackingSlow:t.trackingFast)*t.trackingDurationMs[t.trackingCase/2]/1000;
-  j << '}';
+  j << "],\"autotune\":{\"phase\":\"disabled\",\"active\":false,\"id\":0,\"axis\":-1}";
 #if HUD_SUPPORT
   char node[17],selected[17];
   std::snprintf(node,sizeof node,"%012llx",static_cast<unsigned long long>(h.id));
