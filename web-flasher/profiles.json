@@ -1,0 +1,356 @@
+{
+  "schema": 1,
+  "profiles": [
+    {
+      "id": "esp32s3_n16r8_headless",
+      "board": "s3",
+      "board_label": "ESP32-S3 N16R8",
+      "title": "Без дисплея",
+      "chip_family": "ESP32-S3",
+      "flash_bytes": 16777216,
+      "psram_bytes": 8388608,
+      "display": "Нет",
+      "description": "Контроллер с веб-управлением, MQTT и удалёнными пультами.",
+      "docs": "docs/build.md",
+      "notes": [
+        "Нужен модуль N16R8: Flash 16 МБ, OPI PSRAM 8 МБ."
+      ],
+      "services": {
+        "mqtt": true,
+        "ethernet": false,
+        "rs485": true
+      },
+      "photo": "s3"
+    },
+    {
+      "id": "esp32s3_n16r8_tft",
+      "board": "s3",
+      "board_label": "ESP32-S3 N16R8",
+      "title": "Дисплей ILI9341",
+      "chip_family": "ESP32-S3",
+      "flash_bytes": 16777216,
+      "psram_bytes": 8388608,
+      "display": "ILI9341 + XPT2046",
+      "description": "Контроллер с внешним сенсорным дисплеем 320 × 240.",
+      "docs": "docs/build.md",
+      "notes": [
+        "Подключите дисплей по схеме выбранной платы."
+      ],
+      "services": {
+        "mqtt": true,
+        "ethernet": false,
+        "rs485": true
+      },
+      "photo": "s3"
+    },
+    {
+      "id": "esp32s3_n16r8_st77916",
+      "board": "s3",
+      "board_label": "ESP32-S3 N16R8",
+      "title": "Круглый дисплей ST77916",
+      "chip_family": "ESP32-S3",
+      "flash_bytes": 16777216,
+      "psram_bytes": 8388608,
+      "display": "ST77916 + CST816S",
+      "description": "Контроллер с внешним QSPI-дисплеем 360 × 360.",
+      "docs": "docs/boards/waveshare-1.85-qspi.md",
+      "notes": [
+        "Для внешнего модуля Waveshare 1.85″ QSPI; проверьте распиновку."
+      ],
+      "services": {
+        "mqtt": true,
+        "ethernet": false,
+        "rs485": true
+      },
+      "photo": "s3"
+    },
+    {
+      "id": "esp32_4mb",
+      "board": "esp32",
+      "board_label": "ESP32 WROOM / WROVER",
+      "title": "Основная · Flash 4 МБ",
+      "chip_family": "ESP32",
+      "flash_bytes": 4194304,
+      "psram_bytes": 0,
+      "display": "Нет",
+      "description": "Веб-управление и поддержка встроенного Bluetooth Classic SPP.",
+      "docs": "docs/build.md",
+      "notes": [
+        "Один раздел приложения 3 МиБ. Обновление выполняется через USB.",
+        "Совместная работа Wi-Fi и SPP уменьшает запас внутренней RAM."
+      ],
+      "services": {
+        "mqtt": true,
+        "ethernet": false,
+        "rs485": true
+      },
+      "photo": "esp32"
+    },
+    {
+      "id": "esp32_4mb_ota_compact",
+      "board": "esp32",
+      "board_label": "ESP32 WROOM / WROVER",
+      "title": "Компактная · с OTA",
+      "chip_family": "ESP32",
+      "flash_bytes": 4194304,
+      "psram_bytes": 0,
+      "display": "Нет",
+      "description": "HTTP, браузерное OTA и MQTT/Home Assistant; без WebSocket и встроенного SPP.",
+      "docs": "docs/build.md",
+      "notes": [
+        "Для Bluetooth используется внешний HC-05.",
+        "ArduinoOTA и несжатая копия веб-страниц исключены из сборки."
+      ],
+      "services": {
+        "mqtt": true,
+        "ethernet": false,
+        "rs485": true
+      },
+      "photo": "esp32"
+    },
+    {
+      "id": "esp32_spp",
+      "board": "esp32",
+      "board_label": "ESP32 WROOM / WROVER",
+      "title": "SPP · компактный веб",
+      "chip_family": "ESP32",
+      "flash_bytes": 4194304,
+      "psram_bytes": 0,
+      "display": "Нет",
+      "description": "Bluetooth Classic SPP и компактный HTTP-интерфейс. Прямое PWM без PID, автотюна и рампы.",
+      "docs": "docs/boards/esp32-spp.md",
+      "notes": [
+        "Для настроенного контроллера: сначала выполните первичную настройку полной прошивкой, затем установите SPP без стирания.",
+        "MQTT, Ethernet, RS-485, OTA и HUD исключены.",
+        "При совместной работе SPP и HTTP возможны обрывы HTTP-соединений. Для настройки отключите SPP-клиента."
+      ],
+      "services": {
+        "mqtt": false,
+        "ethernet": false,
+        "rs485": false
+      },
+      "photo": "esp32",
+      "recipe": "esp32_spp"
+    },
+    {
+      "id": "esp32c3_4mb",
+      "board": "c3",
+      "board_label": "ESP32-C3",
+      "title": "Без дисплея · Flash 4 МБ",
+      "chip_family": "ESP32-C3",
+      "flash_bytes": 4194304,
+      "psram_bytes": 0,
+      "display": "Нет",
+      "description": "Контроллер на обычной ESP32-C3 с веб-управлением.",
+      "docs": "docs/boards/esp32-c3.md",
+      "notes": [
+        "Одно ядро и небольшой запас внутренней RAM: ограничивайте число клиентов и одновременно работающих сервисов.",
+        "Встроенный Bluetooth Classic SPP отсутствует. OTA-раздела нет."
+      ],
+      "services": {
+        "mqtt": true,
+        "ethernet": false,
+        "rs485": true
+      },
+      "photo": "c3"
+    },
+    {
+      "id": "esp32_2424s012c",
+      "board": "guition",
+      "board_label": "Guition ESP32-2424S012C",
+      "title": "Круглый сенсорный пульт",
+      "chip_family": "ESP32-C3",
+      "flash_bytes": 4194304,
+      "psram_bytes": 0,
+      "display": "GC9A01 + CST816 · 240 × 240",
+      "description": "Готовая плата ESP32-C3 со встроенным круглым дисплеем.",
+      "docs": "docs/boards/esp32-2424s012c.md",
+      "notes": [
+        "Выбирайте только для ESP32-2424S012C-Y(B).",
+        "Одно ядро: дисплей и сетевые сервисы делят время процессора. OTA-раздела нет."
+      ],
+      "services": {
+        "mqtt": true,
+        "ethernet": false,
+        "rs485": true
+      },
+      "photo": "guition"
+    },
+    {
+      "id": "esp32_3248s035c",
+      "board": "sunton",
+      "board_label": "Sunton ESP32-3248S035C",
+      "title": "Сенсорный дисплей 3.5″",
+      "chip_family": "ESP32",
+      "flash_bytes": 4194304,
+      "psram_bytes": 0,
+      "display": "ST7796 + GT911 · 480 × 320",
+      "description": "Контроллер на готовой плате с ёмкостным сенсорным дисплеем.",
+      "docs": "docs/boards/esp32-3248s035c.md",
+      "notes": [
+        "Для ёмкостного сенсора GT911; модель с резистивным сенсором требует другой прошивки.",
+        "Дисплей и Bluetooth расходуют внутреннюю RAM. OTA-раздела нет."
+      ],
+      "services": {
+        "mqtt": true,
+        "ethernet": false,
+        "rs485": true
+      },
+      "photo": "sunton"
+    },
+    {
+      "id": "crowpanel_21",
+      "board": "crowpanel",
+      "board_label": "Elecrow CrowPanel 2.1",
+      "title": "Удалённый пульт HUD",
+      "chip_family": "ESP32-S3",
+      "flash_bytes": 16777216,
+      "psram_bytes": 8388608,
+      "display": "ST7701 · 480 × 480",
+      "description": "Пульт для управления удалённым контроллером по сети или UART.",
+      "docs": "docs/boards/crowpanel-21.md",
+      "notes": [
+        "Для обычной платы Elecrow DHE03921D.",
+        "На новом устройстве включена имитация; локальный физический привод заблокирован."
+      ],
+      "services": {
+        "mqtt": true,
+        "ethernet": false,
+        "rs485": true
+      },
+      "photo": "crowpanel"
+    },
+    {
+      "id": "crowpanel_21_az",
+      "board": "crowpanel",
+      "board_label": "Elecrow CrowPanel 2.1",
+      "title": "Локальный привод AZ",
+      "chip_family": "ESP32-S3",
+      "flash_bytes": 16777216,
+      "psram_bytes": 8388608,
+      "display": "ST7701 · 480 × 480",
+      "description": "Для переделанной CrowPanel с подключённым приводом азимута.",
+      "docs": "docs/boards/crowpanel-az.md",
+      "notes": [
+        "Требуется аппаратная переделка по инструкции локального AZ.",
+        "Bluetooth отключён; UART занят выводами привода. Диагностика через native USB."
+      ],
+      "services": {
+        "mqtt": true,
+        "ethernet": false,
+        "rs485": true
+      },
+      "photo": "crowpanel"
+    },
+    {
+      "id": "wt32_eth01",
+      "board": "wt32",
+      "board_label": "WT32-ETH01",
+      "title": "Контроллер с Ethernet",
+      "chip_family": "ESP32",
+      "flash_bytes": 4194304,
+      "psram_bytes": 0,
+      "display": "Нет",
+      "description": "Проводное подключение LAN8720, Wi-Fi и веб-управление.",
+      "docs": "docs/boards/wt32-eth01.md",
+      "notes": [
+        "Нужен внешний USB–UART адаптер с логическими уровнями 3.3 В.",
+        "Один раздел приложения 3 МиБ, без OTA."
+      ],
+      "services": {
+        "mqtt": true,
+        "ethernet": true,
+        "rs485": true
+      },
+      "photo": "wt32"
+    },
+    {
+      "id": "waveshare_esp32s3_eth",
+      "board": "waveshare",
+      "board_label": "Waveshare ESP32-S3-ETH",
+      "title": "Ethernet + камера",
+      "chip_family": "ESP32-S3",
+      "flash_bytes": 16777216,
+      "psram_bytes": 8388608,
+      "display": "Нет",
+      "description": "W5500 Ethernet и DVP-камера с изображением на веб-странице.",
+      "docs": "docs/boards/waveshare-esp32-s3-eth.md",
+      "notes": [
+        "Камера использует PSRAM и увеличивает нагрузку при передаче изображения.",
+        "Начальный интерфейс привода — BTS7960; оборудование настраивается после прошивки."
+      ],
+      "services": {
+        "mqtt": true,
+        "ethernet": true,
+        "rs485": true
+      },
+      "photo": "waveshare"
+    },
+    {
+      "id": "waveshare_esp32s3_eth_nocam",
+      "board": "waveshare",
+      "board_label": "Waveshare ESP32-S3-ETH",
+      "title": "Ethernet · без камеры",
+      "chip_family": "ESP32-S3",
+      "flash_bytes": 16777216,
+      "psram_bytes": 8388608,
+      "display": "Нет",
+      "description": "Проводной контроллер W5500 с исключённым драйвером камеры.",
+      "docs": "docs/boards/waveshare-esp32-s3-eth.md",
+      "notes": [
+        "Камера исключена из сборки, её GPIO освобождены.",
+        "Начальный интерфейс привода — BTS7960."
+      ],
+      "services": {
+        "mqtt": true,
+        "ethernet": true,
+        "rs485": true
+      },
+      "photo": "waveshare"
+    },
+    {
+      "id": "esp32s2_mini",
+      "board": "s2mini",
+      "board_label": "LOLIN / WEMOS S2 Mini",
+      "title": "Без дисплея",
+      "chip_family": "ESP32-S2",
+      "flash_bytes": 4194304,
+      "psram_bytes": 2097152,
+      "display": "Нет",
+      "description": "Контроллер для S2 Mini со встроенной PSRAM 2 МБ.",
+      "docs": "docs/build.md",
+      "notes": [
+        "Одно ядро: ограничивайте число клиентов и одновременно работающих сервисов.",
+        "Один раздел приложения 3 МиБ, без OTA. Встроенный Bluetooth отсутствует."
+      ],
+      "services": {
+        "mqtt": true,
+        "ethernet": false,
+        "rs485": true
+      },
+      "photo": "s2mini"
+    },
+    {
+      "id": "esp32s2_4mb",
+      "board": "s2legacy",
+      "board_label": "ESP32-S2 · прежняя распиновка",
+      "title": "Стандартная · с OTA",
+      "chip_family": "ESP32-S2",
+      "flash_bytes": 4194304,
+      "psram_bytes": 0,
+      "display": "Нет",
+      "description": "HTTP, WebSocket и OTA для S2 без PSRAM; MQTT и Home Assistant исключены.",
+      "docs": "docs/build.md",
+      "notes": [
+        "Для прежней распиновки S2 и штатного блока Yaesu.",
+        "Запас RAM и время одного ядра ограничены. Перед выбором прочитайте раздел «ESP32-S2 без PSRAM» в инструкции: отдельный компактный SDK уменьшает расход памяти и собирается самостоятельно."
+      ],
+      "services": {
+        "mqtt": false,
+        "ethernet": false,
+        "rs485": true
+      },
+      "photo": "s2legacy"
+    }
+  ]
+}

@@ -24,7 +24,7 @@
 ## Платы и дисплеи
 
 - [Общий сенсорный интерфейс CrowPanel, GC9A01 и ILI9341](control/display.md).
-- [Классический ESP32 WROOM/WROVER](boards/classic-esp32.md).
+- [Классический ESP32 WROOM/WROVER](boards/classic-esp32.md), [SPP с компактным веб-интерфейсом](boards/esp32-spp.md).
 - [ESP32-C3 без дисплея](boards/esp32-c3.md).
 - [WT32-ETH01 с Ethernet](boards/wt32-eth01.md).
 - [Waveshare ESP32-S3-ETH: камера и два BTS7960](boards/waveshare-esp32-s3-eth.md).
@@ -62,6 +62,7 @@
 ## Обслуживание
 
 - [Обновление прошивки](maintenance/ota.md).
+- [Выбор готовой прошивки и установка из браузера](web-flasher.md).
 - [Диагностика и восстановление](maintenance/diagnostics.md).
 
 ## Лицензии и авторство

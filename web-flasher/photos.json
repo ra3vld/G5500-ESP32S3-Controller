@@ -1,0 +1,82 @@
+{
+  "s3": {
+    "file": "s3.webp",
+    "alt": "Фото платы ESP32-S3-DevKitC-1",
+    "source": "https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/index.html",
+    "original": "https://raw.githubusercontent.com/espressif/esp-dev-kits/bd4d4ac18657e73583af3d7c0b0a23c3cddf3735/docs/_static/esp32-s3-devkitc-1/esp32-s3-devkitc-1-v1-isometric.png",
+    "caption": "Пример DevKitC-1. Проверьте маркировку модуля N16R8. Фото: Espressif.",
+    "sha256": "b4db528df63d3cd7c02bd4c68c44a0cb17b8fc9c0bc5ff70853546aba3003b45"
+  },
+  "esp32": {
+    "file": "esp32.webp",
+    "alt": "Фото платы ESP32-DevKitC",
+    "source": "https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32/esp32-devkitc/user_guide.html",
+    "original": "https://raw.githubusercontent.com/espressif/esp-dev-kits/bd4d4ac18657e73583af3d7c0b0a23c3cddf3735/docs/_static/esp32-devkitc/esp32-devkitc-board.png",
+    "caption": "Пример ESP32 DevKitC. Исполнение вашей платы может отличаться. Фото: Espressif.",
+    "sha256": "7541135c0504e9676d88fb6b1dc59319586c1f61fc81b8df6e0e0a5f496c438c"
+  },
+  "c3": {
+    "file": "c3.webp",
+    "alt": "Фото платы ESP32-C3-DevKitM-1",
+    "source": "https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c3/esp32-c3-devkitm-1/user_guide.html",
+    "original": "https://raw.githubusercontent.com/espressif/esp-dev-kits/bd4d4ac18657e73583af3d7c0b0a23c3cddf3735/docs/_static/esp32-c3-devkitm-1/esp32-c3-devkitm-1-v1-isometric.png",
+    "caption": "Пример ESP32-C3 DevKitM-1. Фото: Espressif.",
+    "sha256": "32307e3960f760c1e328297eb2c8d36e29842493e2a924ecda3bfb08a68a381c"
+  },
+  "s2legacy": {
+    "file": "s2legacy.webp",
+    "alt": "Фото платы ESP32-S2-Saola-1",
+    "source": "https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s2/esp32-s2-saola-1/index.html",
+    "original": "https://raw.githubusercontent.com/espressif/esp-dev-kits/bd4d4ac18657e73583af3d7c0b0a23c3cddf3735/docs/_static/esp32-s2-saola-1/esp32-s2-saola-1-v1.2-isometric.png",
+    "caption": "Пример ESP32-S2 Saola-1. Сверьте распиновку и память. Фото: Espressif.",
+    "sha256": "2456a253829dc5489d0fdab708adb7945d28f47559e3678347bdbab9d77c8878"
+  },
+  "s2mini": {
+    "file": "s2mini.webp",
+    "alt": "Фото платы LOLIN S2 Mini",
+    "source": "https://www.wemos.cc/en/latest/s2/s2_mini.html",
+    "original": "https://www.wemos.cc/en/latest/_images/s2_mini_v1.0.0_1_16x16.jpg",
+    "caption": "LOLIN S2 Mini. Фото: WEMOS.",
+    "sha256": "d03078a73c6e920fd829a645a29232f45e6befbd8f5dd24be793f63e95a3289b"
+  },
+  "waveshare": {
+    "file": "waveshare.webp",
+    "alt": "Фото платы Waveshare ESP32-S3-ETH",
+    "source": "https://www.waveshare.com/wiki/ESP32-S3-ETH",
+    "original": "https://www.waveshare.com/w/upload/9/90/360px-ESP32-S3-ETH-1.jpg",
+    "caption": "Waveshare ESP32-S3-ETH. Фото: Waveshare.",
+    "sha256": "6a5ef99d4ae367c3b710668c1ca152e2ff2177844f1f77d6e121146528ebcab0"
+  },
+  "crowpanel": {
+    "file": "crowpanel.webp",
+    "alt": "Фото платы Elecrow CrowPanel 2.1",
+    "source": "https://www.elecrow.com/crowpanel-2-1inch-hmi-esp32-rotary-display-480-480-ips-round-touch-knob-screen.html",
+    "original": "https://www.elecrow.com/media/catalog/product/cache/b6b9577937e6a96f50e53ddc42983628/2/_/2.1inch_rotary_knob_screen_1.jpg",
+    "caption": "CrowPanel 2.1″ DHE03921D. Фото: Elecrow.",
+    "sha256": "2c865801aab972655982ba6e14cadca642ac92797c20fdc246ecadfef25be65b"
+  },
+  "wt32": {
+    "file": "wt32.webp",
+    "alt": "Фото платы WT32-ETH01",
+    "source": "https://wiki.wireless-tag.com/docs/en/WT32-ETH01/board_features.html",
+    "original": "https://res.8ms.xyz/wiki_assets/WT32-ETH01/WT32-ETH01.png",
+    "caption": "WT32-ETH01. Фото: Wireless-Tag.",
+    "sha256": "910db97525f8348940ca5696849e14290b379f4f6613900d0853409a0bdcd529"
+  },
+  "guition": {
+    "file": "guition.webp",
+    "alt": "Фото платы Guition ESP32-2424S012C",
+    "caption": "ESP32-2424S012C. Фото разборки: David Thomas.",
+    "source": "https://dev.to/david_thomas/i-opened-up-an-esp32-smart-display-to-see-whats-inside-esp32-2424s012c-teardown-ed0",
+    "original": "https://dev-to-uploads.s3.us-east-2.amazonaws.com/uploads/articles/kmjotnh9ou1keaw2giqw.png",
+    "sha256": "816d0f050d176ba7aebb5218e3090cbdf9413e2ace9d001c37f7222ce5d60fb8"
+  },
+  "sunton": {
+    "file": "sunton.webp",
+    "alt": "Фото платы ESP32-3248S035",
+    "caption": "ESP32-3248S035. Выбирайте ёмкостную версию C с GT911. Фото: Shenzhen Jingcai.",
+    "source": "https://www.displaysmodule.com/sale-42712060-esp32-display-module-3-5-inch-product-weight-about-50g-for-affordable-display-solutions.html",
+    "original": "https://img.displaysmodule.com/photo/displaysmodule/editor/20240127113226_41560.png",
+    "sha256": "1e1de951fc08ae3d712b1e8eb7375c1fd1103e5b3779fd1bef1fc11f830a4097"
+  }
+}

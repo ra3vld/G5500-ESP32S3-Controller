@@ -1,0 +1,124 @@
+name: Firmware and web flasher
+
+on:
+  push:
+    branches: [main, web_flasher]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-flasher-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: python3 -m unittest discover -s tests -p test_web_flasher.py
+      - run: npm run build:web-flasher -- --allow-missing
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:web-flasher
+      - id: matrix
+        run: echo "value=$(python3 tools/web_flasher.py matrix)" >> "$GITHUB_OUTPUT"
+
+  firmware:
+    needs: check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJSON(needs.check.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/platforms
+            ~/.platformio/packages
+            ~/.platformio/.cache
+            .pio/libdeps
+            .pio/web-flasher
+            .pio/packages-esp32-spp
+            build/web-flasher-spp-sdk/vendor
+          key: pio-web-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('platformio.ini') }}-${{ github.sha }}
+          restore-keys: |
+            pio-web-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('platformio.ini') }}-
+            pio-web-${{ runner.os }}-${{ matrix.profile }}-
+      - run: python3 -m pip install platformio==6.1.19
+      - run: python3 tools/generate_web_assets.py --check
+      - if: matrix.profile == 'esp32_spp'
+        run: python3 tools/check_web_flasher_spp.py
+      - run: python3 tools/web_flasher.py build '${{ matrix.profile }}' --jobs 4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.profile }}
+          path: artifacts/web-flasher/
+          if-no-files-found: error
+
+  site:
+    needs: firmware
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: firmware-*
+          path: artifacts/web-flasher
+          merge-multiple: true
+      - run: npm ci --ignore-scripts
+      - run: npm run build:web-flasher
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-flasher-site
+          path: dist/web-flasher/
+          if-no-files-found: error
+      - uses: actions/upload-pages-artifact@v4
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          path: dist/web-flasher
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: site
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - id: deployment
+        uses: actions/deploy-pages@v4

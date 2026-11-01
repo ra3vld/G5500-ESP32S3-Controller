@@ -49,7 +49,7 @@ CrowPanel 2.1 (DHE03921D): `pio run -e crowpanel_21` или `./tools/build_ardui
 | Partition Scheme | Huge APP (3MB No OTA/1MB SPIFFS) | 16M Flash (3MB APP/9.9MB FATFS) | Huge APP (3MB No OTA/1MB SPIFFS) | Minimal SPIFFS (1.9MB APP with OTA/128KB SPIFFS) |
 | BOARD_PROFILE | AUTO или ESP32 | AUTO или S3 | AUTO или S2_MINI | AUTO или S2_LEGACY |
 
-Для прежней S2 с двумя OTA-разделами и MQTT установите `WEB_LIVE_SUPPORT=0` и `ARDUINO_OTA_SUPPORT=0`: сохраняются HTTP-управление, браузерное OTA и MQTT/Home Assistant. В PlatformIO это профиль `esp32s2_4mb_ota_compact`. Стандартные `esp32s2_4mb` / `_headless` сохраняют WebSocket и ArduinoOTA, исключая новый MQTT при сборке, чтобы поместиться в прежний раздел.
+Стандартные `esp32s2_4mb` / `_headless` сохраняют WebSocket и ArduinoOTA, исключая MQTT при сборке, чтобы поместиться в прежний раздел. Для S2 без PSRAM используйте [отдельный компактный SDK](#esp32-s2-без-psram), уменьшающий расход внутренней памяти Wi-Fi и native USB.
 
 Arduino-ESP32 генерирует бинарную таблицу из выбранной схемы. На ESP32 выбирайте слот приложения 3 МБ: встроенный SPP включён в образ независимо от положения веб-переключателя. Flash Size должен совпадать с физической памятью платы. Если используете старую копию скетча с `partitions.csv`, этот файл по-прежнему имеет приоритет перед меню; для сборки по меню удалите его из той копии. NVS у перечисленных схем остаётся на `0x9000`. Для [обновления по Wi-Fi](maintenance/ota.md) нужны два подходящих раздела приложения: Huge APP OTA не поддерживает.
 

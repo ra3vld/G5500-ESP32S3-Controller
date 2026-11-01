@@ -1,0 +1,235 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const http = require('node:http');
+const {chromium} = require('playwright');
+
+const root = path.resolve(__dirname, '..');
+const directory = path.join(root, 'dist/web-flasher');
+const original = JSON.parse(fs.readFileSync(path.join(directory, 'catalog.json')));
+const types = {'.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.json':'application/json', '.webp':'image/webp'};
+const server = http.createServer((request, response) => {
+  const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
+  const relative = pathname.replace(/^\/controller\//, '') || 'index.html';
+  const file = path.resolve(directory, relative);
+  if (!file.startsWith(directory + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    response.writeHead(404); response.end(); return;
+  }
+  response.setHeader('Content-Type', types[path.extname(file)] || 'application/octet-stream');
+  response.end(fs.readFileSync(file));
+});
+const output = path.join(root, 'artifacts/web-flasher-screenshots');
+fs.mkdirSync(output, {recursive:true});
+
+function readyCatalog() {
+  const data = structuredClone(original);
+  for (const profile of data.profiles) {
+    // Explicit UI fixtures; these are never written to the published site.
+    const capabilities = Object.fromEntries(['WEB_INTERFACE_ENABLED','WIFI_SUPPORT','MQTT_SUPPORT',
+      'HOME_ASSISTANT_DISCOVERY_SUPPORT','GS232_SUPPORT','ROTCTLD_SUPPORT','N1MM_SUPPORT','PSTROTATOR_SUPPORT',
+      'HUD_SUPPORT','MODBUS_RTU_SUPPORT','BLUETOOTH_SUPPORT','WEB_LIVE_SUPPORT','OTA_SUPPORT','G5500_HAS_OTA_PARTITIONS'].map((name) => [name, true]));
+    for (const [key, flags] of Object.entries({mqtt:['MQTT_SUPPORT','HOME_ASSISTANT_DISCOVERY_SUPPORT'],ethernet:['ETHERNET_SUPPORT'],rs485:['RS485_SUPPORT','MODBUS_RTU_SUPPORT']})) {
+      for (const flag of flags) capabilities[flag] = profile.services[key];
+    }
+    capabilities.CAMERA_ENABLED = profile.id === 'waveshare_esp32s3_eth';
+    capabilities.BLUETOOTH_SPP_SUPPORT = profile.chip_family === 'ESP32' && !profile.id.includes('compact');
+    if (profile.id.includes('compact')) capabilities.WEB_LIVE_SUPPORT = false;
+    profile.build = {identity:data.identity, capabilities, app_bytes:2400000 - Object.values(profile.services).filter((v) => !v).length * 10000, app_limit_bytes:6553600,
+      static_dram_bytes:48000, static_iram_bytes:16000};
+    profile.artifact_base = 'firmware/ui-test-fixture/' + profile.id;
+  }
+  return data;
+}
+
+(async () => {
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}/controller/`;
+  const browser = await chromium.launch({headless:true, ...(process.env.CHROMIUM_PATH ? {executablePath:process.env.CHROMIUM_PATH} : {}), args:['--no-sandbox']});
+  const errors = [];
+  try {
+    const context = await browser.newContext({viewport:{width:1280,height:1000}});
+    await context.addInitScript(() => Object.defineProperty(navigator, 'serial', {configurable:true, value:{requestPort:async () => {
+      window.requestPortCalls = (window.requestPortCalls || 0) + 1;
+      throw new DOMException('User cancelled port selection', 'NotFoundError');
+    }}}));
+    const page = await context.newPage();
+    page.on('pageerror', (error) => errors.push(error.message));
+    const external = [];
+    page.on('request', (request) => {if (!request.url().startsWith(base)) external.push(request.url());});
+    await page.goto(base);
+    await page.locator('#workspace').waitFor({state:'visible'});
+    await page.waitForFunction(() => Boolean(customElements.get('esp-web-install-button')));
+    assert.equal(await page.locator('#boardSelect option').count(), 10);
+    const selectedOriginal = original.profiles[0];
+    assert.equal(await page.locator('.install-button').isDisabled(), true);
+    if (selectedOriginal.build) {
+      const manifestURL = base + selectedOriginal.artifact_base + '/manifest.json';
+      const response = await page.request.get(manifestURL);
+      assert.equal(response.status(), 200);
+      const manifest = await response.json();
+      assert.equal(manifest.builds[0].chipFamily, selectedOriginal.chip_family);
+      for (const part of manifest.builds[0].parts) {
+        const image = await page.request.get(new URL(part.path, manifestURL).href);
+        assert.equal(image.status(), 200);
+        const expected = selectedOriginal.build.files.find((file) => file.path === part.path);
+        assert.equal((await image.body()).length, expected.size);
+      }
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({width,height:1000});
+        await page.screenshot({path:path.join(output, `catalog-${width}.png`), fullPage:true});
+      }
+      await page.setViewportSize({width:1280,height:1000});
+    }
+    if (!selectedOriginal.build) {
+      assert.match(await page.locator('#buildStatus').innerText(), /ещё не опубликованы/);
+      assert.equal(await page.locator('#memory').isVisible(), false);
+      await page.locator('#confirmHardware').check();
+      assert.equal(await page.locator('.install-button').isDisabled(), true);
+    }
+    for (const real of original.profiles.filter((p) => ['esp32_spp','wt32_eth01'].includes(p.id) && p.build)) {
+      await page.goto(base + '?preview=' + real.id + '#profile=' + real.id);
+      await page.locator('#memory').waitFor({state:'visible'});
+      await page.waitForFunction(() => document.getElementById('boardPhoto').complete && document.getElementById('boardPhoto').naturalWidth > 0);
+      assert.match(await page.locator('esp-web-install-button').getAttribute('manifest'), new RegExp(real.id + '/manifest.json$'));
+      assert.equal(await page.locator('#flashPercent').innerText(), (real.build.app_bytes / real.build.app_limit_bytes * 100).toFixed(1) + '%');
+      assert.equal(await page.locator('#sppEraseAdvice').isVisible(), real.id === 'esp32_spp');
+      assert.equal(await page.locator('#bootHelpWT32').isVisible(), real.id === 'wt32_eth01');
+      for (const width of [1280,390]) {
+        await page.setViewportSize({width,height:1000});
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        await page.screenshot({path:path.join(output, `${real.id}-${width}.png`), fullPage:true});
+      }
+      await page.setViewportSize({width:1280,height:1000});
+      await page.goto(base);
+    }
+    const fixture = readyCatalog();
+    await page.route('**/catalog.json', (route) => route.fulfill({json:fixture}));
+    await page.reload();
+    await page.waitForFunction(() => Boolean(customElements.get('esp-web-install-button')));
+    await page.locator('#memory').waitFor({state:'visible'});
+    assert.equal(await page.locator('.install-button').isDisabled(), true);
+    await page.locator('#confirmHardware').check();
+    await page.waitForFunction(() => !document.querySelector('.install-button').disabled);
+    assert.match(await page.locator('esp-web-install-button').getAttribute('manifest'), /\/controller\/firmware\/ui-test-fixture\/esp32s3_n16r8_headless\/manifest.json$/);
+    assert.match(await page.locator('#flashDetail').innerText(), /свободно/);
+    const boards = [...new Set(fixture.profiles.map((p) => p.board))];
+    for (const board of boards) {
+      await page.locator('#boardSelect').selectOption(board);
+      assert.equal(await page.locator('#bootHelpWT32').isVisible(), board === 'wt32');
+      if (board === 'wt32') assert.match(await page.locator('#connectInstruction').innerText(), /USB–UART.*3,3/);
+      for (const profile of fixture.profiles.filter((p) => p.board === board && p.id === p.base_id)) {
+        await page.locator(`input[name="profile"][value="${profile.id}"]`).check();
+        for (const key of Object.keys(profile.available_services)) {
+          if (profile.available_services[key]) await page.locator('#service-' + key).check();
+        }
+        await page.waitForFunction(() => document.getElementById('boardPhoto').complete && document.getElementById('boardPhoto').naturalWidth > 0);
+        assert.match(await page.locator('#selectedName').innerText(), new RegExp(profile.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+        assert.equal(await page.locator('#confirmHardware').isChecked(), false);
+        assert.equal(await page.locator('.install-button').isDisabled(), true);
+        assert.match(await page.locator('#documentation').getAttribute('href'), new RegExp(profile.docs + '$'));
+        assert.match(await page.locator('#download').getAttribute('href'), new RegExp(profile.id + '/usb-firmware.zip$'));
+        assert.equal(new URL(page.url()).hash, '#profile=' + profile.id);
+      }
+    }
+    // Every independent service combination chooses the exact prebuilt manifest,
+    // updates measured sizes, resets approval and survives a deep-link reload.
+    await page.locator('#boardSelect').selectOption('waveshare');
+    await page.locator('input[value="waveshare_esp32s3_eth"]').check();
+    for (const variant of fixture.profiles.filter((p) => p.base_id === 'waveshare_esp32s3_eth')) {
+      for (const [key, enabled] of Object.entries(variant.services)) await page.locator('#service-' + key).setChecked(enabled);
+      assert.equal(new URL(page.url()).hash, '#profile=' + variant.id);
+      assert.equal(await page.locator('#flashPercent').innerText(), (variant.build.app_bytes / variant.build.app_limit_bytes * 100).toFixed(1) + '%');
+      assert.match(await page.locator('esp-web-install-button').getAttribute('manifest'), new RegExp(variant.id + '/manifest.json$'));
+      assert.match(await page.locator('#download').getAttribute('href'), new RegExp(variant.id + '/usb-firmware.zip$'));
+      assert.equal(await page.locator('#confirmHardware').isChecked(), false);
+      for (const [key, label] of Object.entries({mqtt:'MQTT',ethernet:'Ethernet',rs485:'RS-485'})) {
+        assert.equal(await page.getByLabel(label + ': ' + (variant.services[key] ? 'включено' : 'исключено'), {exact:true}).count(), 1);
+      }
+      await page.locator('#confirmHardware').check();
+    }
+    await page.reload();
+    await page.locator('#memory').waitFor({state:'visible'});
+    assert.equal(await page.locator('#service-ethernet').isChecked(), false);
+    assert.equal(await page.locator('#service-mqtt').isChecked(), false);
+    assert.equal(await page.locator('#service-rs485').isChecked(), false);
+    assert.equal(await page.locator('input[value="waveshare_esp32s3_eth"]').isChecked(), true);
+    await page.locator('#boardSelect').selectOption('esp32');
+    await page.locator('input[value="esp32_spp"]').check();
+    for (const key of ['mqtt','ethernet','rs485']) assert.equal(await page.locator('#service-' + key).isDisabled(), true);
+    assert.equal(await page.locator('#sppEraseAdvice').isVisible(), true);
+    assert.match(await page.locator('#profileNotes').innerText(), /обрывы HTTP/);
+    await page.locator('#boardSelect').selectOption('esp32');
+    await page.locator('input[value="esp32_4mb_ota_compact"]').check();
+    assert.equal(await page.getByLabel('Live / WebSocket: исключено', {exact:true}).count(), 1);
+    assert.equal(await page.getByLabel('Bluetooth Classic SPP: исключено', {exact:true}).count(), 1);
+    // A live installer dialog freezes selection for the whole session.
+    await page.evaluate(() => document.body.appendChild(document.createElement('ewt-install-dialog')));
+    await page.waitForFunction(() => document.getElementById('boardSelect').disabled);
+    assert.equal(await page.locator('#confirmHardware').isDisabled(), true);
+    for (const key of ['mqtt','ethernet','rs485']) assert.equal(await page.locator('#service-' + key).isDisabled(), true);
+    await page.evaluate(() => document.querySelector('ewt-install-dialog').remove());
+    await page.waitForFunction(() => !document.getElementById('boardSelect').disabled);
+    await page.locator('#boardSelect').selectOption('s3');
+    await page.locator('input[value="esp32s3_n16r8_headless"]').focus();
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await page.evaluate(() => document.activeElement.value), 'esp32s3_n16r8_tft', 'radio selection retains keyboard focus');
+    await page.locator('input[value="esp32s3_n16r8_headless"]').check();
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({width,height:1000});
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `overflow at ${width}`);
+      await page.screenshot({path:path.join(output, `installer-${width}.png`), fullPage:true});
+    }
+    // Exercise the real bundled Web Serial entry point with a cancelled picker.
+    await page.locator('#confirmHardware').check();
+    await page.locator('.install-button').click();
+    await page.waitForFunction(() => window.requestPortCalls === 1);
+    await page.waitForFunction(() => Boolean(customElements.get('ewt-install-dialog')));
+    assert.deepEqual(external, [], 'all browser libraries must be self-hosted');
+    await page.close();
+
+    const unsupported = await browser.newContext();
+    await unsupported.addInitScript(() => {delete Navigator.prototype.serial;});
+    const noSerial = await unsupported.newPage();
+    await noSerial.route('**/catalog.json', (route) => route.fulfill({json:fixture}));
+    await noSerial.goto(base);
+    await noSerial.locator('#workspace').waitFor({state:'visible'});
+    await noSerial.locator('#confirmHardware').check();
+    assert.equal(await noSerial.locator('.install-button').isVisible(), false);
+    assert.match(await noSerial.locator('#globalStatus').innerText(), /Web Serial/);
+    assert.equal(await noSerial.locator('#download').isVisible(), true);
+    await unsupported.close();
+
+    const insecure = await browser.newContext();
+    await insecure.addInitScript(() => Object.defineProperty(window, 'isSecureContext', {value:false}));
+    const httpPage = await insecure.newPage();
+    await httpPage.route('**/catalog.json', (route) => route.fulfill({json:fixture}));
+    await httpPage.goto(base);
+    await httpPage.locator('#workspace').waitFor({state:'visible'});
+    await httpPage.locator('#confirmHardware').check();
+    assert.match(await httpPage.locator('#globalStatus').innerText(), /HTTPS/);
+    assert.equal(await httpPage.locator('.install-button').isDisabled(), true);
+    await insecure.close();
+
+    const broken = await context.newPage();
+    await broken.route('**/catalog.json', (route) => route.fulfill({status:503, body:'Unavailable'}));
+    await broken.goto(base);
+    await broken.locator('#globalStatus').waitFor({state:'visible'});
+    assert.match(await broken.locator('#globalStatus').innerText(), /Не удалось загрузить каталог/);
+    assert.equal(await broken.locator('#workspace').isVisible(), false);
+    await broken.close();
+
+    const noLibrary = await context.newPage();
+    await noLibrary.route('**/catalog.json', (route) => route.fulfill({json:fixture}));
+    await noLibrary.route('**/vendor/**', (route) => route.abort());
+    await noLibrary.goto(base);
+    await noLibrary.locator('#confirmHardware').check();
+    await noLibrary.waitForFunction(() => document.getElementById('installHint').textContent.includes('Не удалось загрузить прошивальщик'));
+    assert.equal(await noLibrary.locator('.install-button').isDisabled(), true);
+    await noLibrary.close();
+    assert.deepEqual(errors, []);
+    console.log('PASS: 71 variants / 16 profiles / 10 photographed boards, independent MQTT/Ethernet/RS485, SPP and erase guidance, exact selected manifest, capability exclusions, confirmation reset, memory, missing builds, cancelled serial picker with real ESP Web Tools, frozen dialog selection, unsupported browser, failed catalog/library, self-hosted assets, desktop/mobile layout');
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+})().catch((error) => {console.error(error);server.close();process.exitCode=1;});
