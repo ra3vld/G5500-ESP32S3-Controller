@@ -27,12 +27,21 @@ int main(int argc,char **argv){
   for(const auto &message:base.messages)assert(message.payload.size()<1024);
   assert(base.config("000000000042_target_az/config") && base.config("000000000042_stop/config"));
   for(const char *direction:{"left","right","up","down"}) {
-    const auto *button=base.config(std::string("000000000042_")+direction+"/config");
-    assert(button && button->retain && button->qos==1);
-    assert(button->topic.find("homeassistant/button/")==0);
-    assert(button->payload.find(std::string("/set/")+direction+"\"")!=std::string::npos);
-    assert(button->payload.find("\"payload_press\":\"PRESS\"")!=std::string::npos);
-    assert(button->payload.find("\"retain\":false")!=std::string::npos);
+    const auto suffix=std::string("000000000042_")+direction+"/config";
+    const auto *toggle=base.config(suffix);
+    assert(toggle && toggle->retain && toggle->qos==1);
+    assert(toggle->topic.find("homeassistant/switch/")==0);
+    assert(toggle->payload.find(std::string("/set/")+direction+"\"")!=std::string::npos);
+    assert(toggle->payload.find("\"payload_on\":\"ON\",\"payload_off\":\"OFF\"")!=std::string::npos);
+    assert(toggle->payload.find("\"optimistic\":false")!=std::string::npos);
+    assert(toggle->payload.find("\"retain\":false")!=std::string::npos);
+    const bool elevation=std::string(direction)=="up" || std::string(direction)=="down";
+    const int sign=std::string(direction)=="right" || std::string(direction)=="up"?1:-1;
+    assert(toggle->payload.find(std::string("value_json.")+(elevation?"el":"az")+".direction == "+std::to_string(sign))!=std::string::npos);
+    const auto oldTopic="homeassistant/button/000000000042/"+suffix;
+    const auto old=std::find_if(base.messages.begin(),base.messages.end(),[&](const auto &m){return m.topic==oldTopic;});
+    assert(old!=base.messages.end() && old->payload.empty() && old->retain && old->qos==1);
+    assert(&*old<toggle); // Retire the old domain before registering the replacement.
   }
   const auto *elevation=base.config("000000000042_el/config");
   assert(elevation && elevation->payload.find("\"name\":\"Элевация\"")!=std::string::npos);
@@ -40,13 +49,13 @@ int main(int argc,char **argv){
   const auto before=base.messages.size();
   assert(base.bridge.receive("homeassistant/status","online",true,4100));base.run(4100,6500);
   assert(base.messages.size()>before+MqttBridge::EntityCount);
-  // Direction buttons are immediate operator commands in every control mode.
+  // Direction switches are immediate operator commands in every control mode.
   for(auto model:{Model::G5500,Model::G800DXA,Model::G800SA})for(auto mode:{Mode::Manual,Mode::Auto,Mode::AutoHour}) {
     Harness h;auto &c=h.runtime.controller;c.setModel(model);c.setMode(mode,4000);h.run();
     for(const char *direction:{"left","right","up","down"}) {
       const bool elevation=std::string(direction)=="up" || std::string(direction)=="down";
       const unsigned axis=elevation?1:0;
-      assert(h.command(direction,"PRESS"));h.bridge.service(4101);
+      assert(h.command(direction,"ON"));h.bridge.service(4101);
       if(elevation && model!=Model::G5500) {
         assert(std::string(h.bridge.lastResult())=="invalid" && !c.moving());
       } else {
@@ -55,8 +64,52 @@ int main(int argc,char **argv){
         assert(!c.axes[axis].tracking && !c.pendingValid);
       }
       assert(c.mode==mode);
-      assert(h.command("stop","PRESS",4102));h.bridge.service(4103);assert(!c.moving());
+      assert(h.command(direction,"OFF",4102));h.bridge.service(4103);assert(!c.moving());
     }
+  }
+  {
+    Harness h;h.run();auto &c=h.runtime.controller;
+    const auto state=[&](uint32_t at,int az,int el){
+      h.bridge.service(at);
+      const auto *message=h.config("/state");assert(message);
+      const auto azAt=message->payload.find("\"az\":{");
+      const auto elAt=message->payload.find("\"el\":{");
+      assert(azAt!=std::string::npos && elAt>azAt);
+      assert(message->payload.substr(azAt,elAt-azAt).find("\"direction\":"+std::to_string(az))!=std::string::npos);
+      assert(message->payload.substr(elAt).find("\"direction\":"+std::to_string(el))!=std::string::npos);
+    };
+    assert(h.command("left","ON",4100));state(4101,-1,0);
+    assert(h.command("left","ON",4110));state(4111,-1,0); // Explicit ON is idempotent.
+    assert(h.command("up","ON",4120));state(4121,-1,1);
+    assert(h.command("right","ON",4130));state(4131,1,1);
+    assert(h.command("right","OFF",4140));state(4141,0,1);
+    assert(h.command("right","OFF",4150));state(4151,0,1);
+    assert(h.command("down","OFF",4160));state(4161,0,0); // OFF always stops only its axis.
+    assert(h.command("left","PRESS",4170));state(4171,-1,0); // Legacy automation payload.
+    c.stopNow(0,4180);state(5180,0,0); // A different control source updates switch feedback.
+    assert(h.command("right","ON",5190));state(5191,1,0);
+    c.feedback(c.maximum,30,true,true);c.tick(5200);state(6200,0,0); // Limit clears intent.
+    assert(h.command("left","ON",6210));state(6211,-1,0);
+    c.driveFault=true;c.tick(6220);state(7220,0,0); // Protection clears intent.
+  }
+  {
+    Harness h;h.run();auto &c=h.runtime.controller;
+    for(unsigned i=0;i<4;++i)assert(h.command("right","ON",4100));
+    assert(!h.command("up","ON",4100));
+    assert(h.command("right","OFF",4100));h.bridge.service(4101);
+    assert(!c.moving() && c.axes[0].wanted==0 && h.bridge.commands()==1);
+    assert(h.command("left","ON",4110));assert(h.command("up","ON",4110));
+    assert(h.command("left","OFF",4110));h.bridge.service(4111);
+    assert(c.axes[0].wanted==0 && c.axes[1].wanted==1);
+    assert(h.command("up","OFF",4120));h.bridge.service(4121);assert(!c.moving());
+    for(const char *payload:{"ON","OFF"}) {
+      assert(!h.command("left",payload,4130,true));
+      assert(h.command("left",payload,4130));h.bridge.service(6130);
+      assert(std::string(h.bridge.lastResult())=="expired" && !c.moving());
+      assert(h.command("right",payload,6140));h.bridge.connection(false);h.bridge.connection(true);h.bridge.service(6141);
+      assert(std::string(h.bridge.lastResult())=="expired" && !c.moving());
+    }
+    for(const char *payload:{"on","off","TOGGLE","RELEASE",""})assert(!h.command("left",payload));
   }
   {
     Harness h;h.run();auto &c=h.runtime.controller;
@@ -105,18 +158,33 @@ int main(int argc,char **argv){
     assert(h.runtime.hud.select(1));h.run();assert(h.bridge.nodeCount()==3);
     assert(h.config("selected_target_az/config") && h.config("000000000002_target_az/config"));
     assert(h.config("selected_left/config") && h.config("000000000002_up/config"));
-    assert(h.command("right","PRESS",4100,false,"selected"));assert(h.runtime.hud.select(2));
+    assert(h.command("right","ON",4100,false,"selected"));assert(h.runtime.hud.select(2));
     const auto selection=h.runtime.hud.selectionEpoch;h.bridge.service(4101);
     assert(std::string(h.bridge.lastResult())=="selection_changed");
     assert(h.command("target_az","120",4110,false,"000000000001"));h.bridge.service(4111);
     assert(h.runtime.hud.config.selected==2 && h.runtime.hud.selectionEpoch==selection);
     assert(h.bridge.pendingRequest()!=0);
-    assert(h.command("left","PRESS",4120,false,"000000000001"));h.bridge.service(4121);
+    assert(h.command("left","ON",4120,false,"000000000001"));h.bridge.service(4121);
+    assert(std::string(h.bridge.lastResult())=="deferred");
+    assert(h.runtime.hud.config.selected==2 && h.runtime.hud.selectionEpoch==selection);
+    assert(h.command("left","OFF",4130,false,"000000000001"));h.bridge.service(4131);
     assert(std::string(h.bridge.lastResult())=="deferred");
     assert(h.runtime.hud.config.selected==2 && h.runtime.hud.selectionEpoch==selection);
     assert(h.runtime.hud.remove(1));h.run(4200,7000);assert(!h.registry.count(1));
     const auto *deleted=h.config("000000000001_target_az/config");assert(deleted && deleted->payload.empty());
     deleted=h.config("000000000001_left/config");assert(deleted && deleted->payload.empty());
+  }
+  {
+    Harness h;h.registry[0x42]="previous";h.run();
+    for(const char *domain:{"button","switch"})for(const char *direction:{"left","right","up","down"}) {
+      const auto topic=std::string("previous/")+domain+"/000000000042/000000000042_"+direction+"/config";
+      const auto found=std::find_if(h.messages.begin(),h.messages.end(),[&](const auto &m){return m.topic==topic;});
+      assert(found!=h.messages.end() && found->payload.empty());
+    }
+    assert(h.registry.at(0x42)=="homeassistant");
+    assert(h.config("000000000042_left/config")->topic.find("homeassistant/switch/")==0);
+    h.runtime.mqtt.discovery=false;h.run(4010,7000);assert(h.registry.empty());
+    for(const char *direction:{"left","right","up","down"})assert(h.config(std::string("000000000042_")+direction+"/config")->payload.empty());
   }
   {
     Harness h;h.registry[99]="previous";h.registryScan.push_back(99);h.run();
@@ -126,7 +194,7 @@ int main(int argc,char **argv){
   {
     Harness h;h.runtime.controller.setModel(Model::G800DXA);h.run();
     const auto *el=h.config("000000000042_el/config");assert(el && el->payload.empty());
-    for(const char *direction:{"up","down"}){const auto *button=h.config(std::string("000000000042_")+direction+"/config");assert(button && button->payload.empty());}
+    for(const char *direction:{"up","down"}){const auto *toggle=h.config(std::string("000000000042_")+direction+"/config");assert(toggle && toggle->payload.empty());}
     assert(!h.config("000000000042_left/config")->payload.empty());
     h.network=false;const auto count=h.messages.size();h.run(5000,7000);assert(h.messages.size()==count);
     h.network=true;h.run(7010,9000);assert(h.messages.size()>count);
@@ -162,5 +230,5 @@ int main(int argc,char **argv){
   if(argc>1 && std::string(argv[1])=="--dump"){
     for(const auto &m:base.messages){std::cout<<m.topic<<'\t'<<m.payload<<'\n';}return 0;
   }
-  std::cout<<"PASS: MQTT config, bounded commands/STOP, discovery, birth/LWT state, catalogue/selected routing, retained rejection, reconnect expiry and cleanup\n";
+  std::cout<<"PASS: MQTT direction switches/feedback/migration, config, bounded commands/STOP, discovery, birth/LWT state, catalogue/selected routing, retained rejection, reconnect expiry and cleanup\n";
 }

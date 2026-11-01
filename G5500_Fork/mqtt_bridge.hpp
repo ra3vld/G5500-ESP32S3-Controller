@@ -40,7 +40,7 @@ public:
   const char *lastResult() const { return lastResult_; }
   const char *baseTopic() const { return base_; }
   size_t nodeCount() const;
-  static constexpr unsigned EntityCount=24;
+  static constexpr unsigned EntityCount=28; // Includes four obsolete direction buttons to clear.
 private:
   struct Node {
     uint64_t id=0;

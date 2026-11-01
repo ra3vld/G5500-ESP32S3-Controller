@@ -29,7 +29,7 @@ void haName(JsonWriter &j,const char *name) {
   else j << "G5500";
   j << '"';
 }
-struct Entity { const char *domain,*id,*name,*field,*command;int axis; };
+struct Entity { const char *domain,*id,*name,*field,*command;int axis;bool obsolete=false;int direction=0; };
 constexpr Entity entities[MqttBridge::EntityCount]={
   {"sensor","az","Азимут","az.current",nullptr,0},
   {"sensor","el","Элевация","el.current",nullptr,1},
@@ -51,10 +51,15 @@ constexpr Entity entities[MqttBridge::EntityCount]={
   {"button","preset_4","Пресет 4",nullptr,"preset_4",-1},
   {"sensor","name","Поворотка","name",nullptr,-1},
   {"sensor","node","Идентификатор","node",nullptr,-1},
-  {"button","left","Влево",nullptr,"left",0},
-  {"button","right","Вправо",nullptr,"right",0},
-  {"button","up","Вверх",nullptr,"up",1},
-  {"button","down","Вниз",nullptr,"down",1}
+  // Retained tombstones migrate the old button entities before switches appear.
+  {"button","left","Влево",nullptr,nullptr,0,true},
+  {"button","right","Вправо",nullptr,nullptr,0,true},
+  {"button","up","Вверх",nullptr,nullptr,1,true},
+  {"button","down","Вниз",nullptr,nullptr,1,true},
+  {"switch","left","Влево","az.direction","left",0,false,-1},
+  {"switch","right","Вправо","az.direction","right",0,false,1},
+  {"switch","up","Вверх","el.direction","up",1,false,1},
+  {"switch","down","Вниз","el.direction","down",1,false,-1}
 };
 #endif
 }
@@ -92,13 +97,15 @@ bool MqttBridge::receive(std::string_view topic,std::string_view payload,bool re
     else if(payload=="auto")request.mode=Mode::Auto;
     else if(payload=="auto_1h")request.mode=Mode::AutoHour;
     else return reject();
+  } else if(topic=="left" || topic=="right" || topic=="up" || topic=="down") {
+    if(payload!="ON" && payload!="OFF" && payload!="PRESS")return reject();
+    request.axis=topic=="up" || topic=="down"?1:0;
+    request.op=payload=="OFF"?Operation::Stop:Operation::Jog;
+    request.direction=topic=="right" || topic=="up"?1:-1;
   } else {
     if(payload!="PRESS")return reject();
     if(topic=="stop" || topic=="stop_az" || topic=="stop_el") {
       request.op=Operation::Stop;request.axis=topic=="stop"?-1:topic=="stop_az"?0:1;
-    } else if(topic=="left" || topic=="right" || topic=="up" || topic=="down") {
-      request.op=Operation::Jog;request.axis=topic=="up" || topic=="down"?1:0;
-      request.direction=topic=="right" || topic=="up"?1:-1;
     } else if(topic=="execute")request.op=Operation::Execute;
     else if(topic.size()==8 && topic.substr(0,7)=="preset_" && topic[7]>='1' && topic[7]<='4') {
       request.op=Operation::Preset;request.slot=uint8_t(topic[7]-'1');
@@ -240,6 +247,8 @@ bool MqttBridge::publishState(Node &node,uint32_t at,bool reset) {
     j << ",\"pending\":";
     if(pending)j.decimal(axis?snapshot->pending.el:snapshot->pending.az,2);else j << "null";
     j << ",\"speed\":";if(supported)j.decimal(snapshot->runtimeSpeed[axis],3);else j << "null";
+    // Report controller intent even during the output's reverse dead-time.
+    j << ",\"direction\":";if(supported)j << snapshot->axes[axis].wanted;else j << "null";
     j << ",\"adjustable\":" << (supported && snapshot->speedAvailable[axis]?"true":"false") << '}';
   }
   j << '}';
@@ -300,7 +309,7 @@ bool MqttBridge::discovery(Node &node,uint32_t at) {
   if(node.configured)return false;
   const unsigned index=node.entity;const auto &entity=entities[index];
   discoveryTopic(config.discoveryPrefix,node.id,index);JsonWriter j(json_,sizeof json_);
-  const bool supported=(entity.axis!=1 || snapshot->model==Model::G5500) &&
+  const bool supported=!entity.obsolete && (entity.axis!=1 || snapshot->model==Model::G5500) &&
       ((index!=7 && index!=8) || snapshot->speedAvailable[unsigned(entity.axis)]);
   if(supported) {
     char destination[17],key[80],stateTopic[80],availability[64];idText(destination,sizeof destination,node.id);
@@ -317,7 +326,8 @@ bool MqttBridge::discovery(Node &node,uint32_t at) {
     j << " else 'offline' }}\"}]";
     if(entity.field) {
       j << ",\"state_topic\":" << jsonQuoted(stateTopic) << ",\"value_template\":\"{{ ";
-      if(index==2 || index==4)j << "'ON' if value_json." << entity.field << " else 'OFF'";
+      if(entity.direction)j << "'ON' if value_json." << entity.field << " == " << entity.direction << " else 'OFF'";
+      else if(index==2 || index==4)j << "'ON' if value_json." << entity.field << " else 'OFF'";
       else if(index==5 || index==6)j << "value_json." << entity.field << " if value_json." << entity.field
           << " is not none else value_json." << (entity.axis?"el":"az") << ".current";
       else j << "value_json." << entity.field;
@@ -325,7 +335,8 @@ bool MqttBridge::discovery(Node &node,uint32_t at) {
     }
     if(entity.command)j << ",\"command_topic\":\"" << base_ << '/' << destination << "/set/" << entity.command << "\",\"qos\":0,\"retain\":false";
     if(index==0 || index==1 || index==5 || index==6)j << ",\"unit_of_measurement\":\"°\"";
-    if(index==2 || index==4)j << ",\"payload_on\":\"ON\",\"payload_off\":\"OFF\"";
+    if(index==2 || index==4 || entity.direction)j << ",\"payload_on\":\"ON\",\"payload_off\":\"OFF\"";
+    if(entity.direction)j << ",\"optimistic\":false";
     if(!std::strcmp(entity.domain,"button"))j << ",\"payload_press\":\"PRESS\"";
     if(index==9)j << ",\"options\":[\"manual\",\"auto\",\"auto_1h\"]";
     if(index==5 || index==6)j << ",\"min\":" << (entity.axis?snapshot->elRange.start:snapshot->minimum)
