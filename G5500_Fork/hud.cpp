@@ -811,6 +811,10 @@ Result Hud::submitTo(uint64_t node,const ControlCommand &c,uint32_t at) {
   case ControlOp::Target:
     if(!validTarget(c.target))return lastResult_=Result::Invalid;
     break;
+  case ControlOp::Jog:
+    if(c.axis<0 || c.axis>1 || (c.axis==1 && !elevation) || c.direction < -1 || c.direction>1)return lastResult_=Result::Invalid;
+    if(paced(p->endpoint) && (!p->manual || manualIntervalMs(p->endpoint)>250))return lastResult_;
+    break;
   case ControlOp::Stop:
     if(c.axis < -1 || c.axis>1 || (c.axis==1 && !elevation))return lastResult_=Result::Invalid;
     break;
@@ -833,7 +837,7 @@ Result Hud::submitTo(uint64_t node,const ControlCommand &c,uint32_t at) {
   Job *slot=nullptr;
   if(c.op==ControlOp::Stop) {
     for(auto &j:client_->jobs)if(j.used && j.peer==node && !j.attempts && j.command.op!=ControlOp::Stop)finish(j,Result::Cancelled);
-    for(auto &h:client_->held)if(h.peer==node)h.active=false;
+    for(unsigned axis=0;axis<2;++axis)if((c.axis<0 || c.axis==int(axis)) && client_->held[axis].peer==node)client_->held[axis].active=false;
     slot=stopSlot(node);
   } else {
     for(unsigned i=1;i<4;++i)if(!client_->jobs[i].used){slot=&client_->jobs[i];break;}
@@ -970,7 +974,7 @@ HudReply Hud::result(uint32_t request) const {
 void Hud::finish(Job &j, Result r) {
   client_->history[client_->nextHistory++ % 12] = {{r, j.peer, j.id}, now};
   if (r == Result::Ok && j.command.op == ControlOp::Jog && j.command.direction && j.command.axis >= 0 &&
-      j.command.axis < 2 && j.peer == config.selected && j.selection == selectionEpoch) {
+      j.command.axis < 2 && (j.addressed || (j.peer == config.selected && j.selection == selectionEpoch))) {
     auto &h = client_->held[j.command.axis];
     h = {j.peer, j.boot, j.id, now - 250, j.endpoint, true};
   }

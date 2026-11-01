@@ -26,12 +26,56 @@ int main(int argc,char **argv){
   assert(base.bridge.nodeCount()==1);
   for(const auto &message:base.messages)assert(message.payload.size()<1024);
   assert(base.config("000000000042_target_az/config") && base.config("000000000042_stop/config"));
+  for(const char *direction:{"left","right","up","down"}) {
+    const auto *button=base.config(std::string("000000000042_")+direction+"/config");
+    assert(button && button->retain && button->qos==1);
+    assert(button->topic.find("homeassistant/button/")==0);
+    assert(button->payload.find(std::string("/set/")+direction+"\"")!=std::string::npos);
+    assert(button->payload.find("\"payload_press\":\"PRESS\"")!=std::string::npos);
+    assert(button->payload.find("\"retain\":false")!=std::string::npos);
+  }
   const auto *elevation=base.config("000000000042_el/config");
   assert(elevation && elevation->payload.find("\"name\":\"Элевация\"")!=std::string::npos);
   assert(base.config("000000000042_mode/config")->payload.find("auto_1h")!=std::string::npos);
   const auto before=base.messages.size();
   assert(base.bridge.receive("homeassistant/status","online",true,4100));base.run(4100,6500);
   assert(base.messages.size()>before+MqttBridge::EntityCount);
+  // Direction buttons are immediate operator commands in every control mode.
+  for(auto model:{Model::G5500,Model::G800DXA,Model::G800SA})for(auto mode:{Mode::Manual,Mode::Auto,Mode::AutoHour}) {
+    Harness h;auto &c=h.runtime.controller;c.setModel(model);c.setMode(mode,4000);h.run();
+    for(const char *direction:{"left","right","up","down"}) {
+      const bool elevation=std::string(direction)=="up" || std::string(direction)=="down";
+      const unsigned axis=elevation?1:0;
+      assert(h.command(direction,"PRESS"));h.bridge.service(4101);
+      if(elevation && model!=Model::G5500) {
+        assert(std::string(h.bridge.lastResult())=="invalid" && !c.moving());
+      } else {
+        assert(std::string(h.bridge.lastResult())=="ok");
+        assert(c.axes[axis].wanted==((std::string(direction)=="right" || std::string(direction)=="up")?1:-1));
+        assert(!c.axes[axis].tracking && !c.pendingValid);
+      }
+      assert(c.mode==mode);
+      assert(h.command("stop","PRESS",4102));h.bridge.service(4103);assert(!c.moving());
+    }
+  }
+  {
+    Harness h;h.run();auto &c=h.runtime.controller;
+    assert(!h.command("left","PRESS",4100,true));assert(!h.command("right","RELEASE"));
+    assert(h.command("up","PRESS"));h.bridge.service(6100);assert(!c.moving());
+    assert(h.command("right","PRESS",6200));h.bridge.connection(false);h.bridge.connection(true);h.bridge.service(6201);assert(!c.moving());
+    assert(h.command("left","PRESS",6210));assert(h.command("up","PRESS",6210));
+    assert(h.command("stop_az","PRESS",6210));h.bridge.service(6211);
+    assert(c.axes[0].wanted==0 && c.axes[1].wanted==1);
+    assert(h.command("stop_el","PRESS",6220));h.bridge.service(6221);assert(!c.moving());
+    for(unsigned i=0;i<4;++i)assert(h.command("right","PRESS",6230));
+    assert(!h.command("left","PRESS",6230));
+    assert(h.command("stop","PRESS",6230));h.bridge.service(6231);assert(!c.moving());
+    assert(h.command("right","PRESS",6240));h.bridge.service(6241);assert(c.axes[0].wanted==1);
+    assert(h.command("stop","PRESS",6250));h.bridge.service(6251);assert(!c.moving());
+    c.configurationLocked=true;
+    assert(h.command("right","PRESS",6260));h.bridge.service(6261);
+    assert(std::string(h.bridge.lastResult())=="unavailable" && !c.moving());
+  }
   {
     Harness h;h.run();const auto oldTarget=h.runtime.controller.axes[0].target;
     assert(!h.command("target_az","70",4100,true));
@@ -60,14 +104,19 @@ int main(int argc,char **argv){
     for(auto *p:{a,b}){p->received=p->saved=true;p->receivedAt=4000;p->boot=3;p->wireVersion=5;p->state.capture(h.runtime.controller,h.runtime.protocol,4000);}
     assert(h.runtime.hud.select(1));h.run();assert(h.bridge.nodeCount()==3);
     assert(h.config("selected_target_az/config") && h.config("000000000002_target_az/config"));
-    assert(h.command("target_az","100",4100,false,"selected"));assert(h.runtime.hud.select(2));
+    assert(h.config("selected_left/config") && h.config("000000000002_up/config"));
+    assert(h.command("right","PRESS",4100,false,"selected"));assert(h.runtime.hud.select(2));
     const auto selection=h.runtime.hud.selectionEpoch;h.bridge.service(4101);
     assert(std::string(h.bridge.lastResult())=="selection_changed");
     assert(h.command("target_az","120",4110,false,"000000000001"));h.bridge.service(4111);
     assert(h.runtime.hud.config.selected==2 && h.runtime.hud.selectionEpoch==selection);
     assert(h.bridge.pendingRequest()!=0);
+    assert(h.command("left","PRESS",4120,false,"000000000001"));h.bridge.service(4121);
+    assert(std::string(h.bridge.lastResult())=="deferred");
+    assert(h.runtime.hud.config.selected==2 && h.runtime.hud.selectionEpoch==selection);
     assert(h.runtime.hud.remove(1));h.run(4200,7000);assert(!h.registry.count(1));
     const auto *deleted=h.config("000000000001_target_az/config");assert(deleted && deleted->payload.empty());
+    deleted=h.config("000000000001_left/config");assert(deleted && deleted->payload.empty());
   }
   {
     Harness h;h.registry[99]="previous";h.registryScan.push_back(99);h.run();
@@ -77,8 +126,14 @@ int main(int argc,char **argv){
   {
     Harness h;h.runtime.controller.setModel(Model::G800DXA);h.run();
     const auto *el=h.config("000000000042_el/config");assert(el && el->payload.empty());
+    for(const char *direction:{"up","down"}){const auto *button=h.config(std::string("000000000042_")+direction+"/config");assert(button && button->payload.empty());}
+    assert(!h.config("000000000042_left/config")->payload.empty());
     h.network=false;const auto count=h.messages.size();h.run(5000,7000);assert(h.messages.size()==count);
     h.network=true;h.run(7010,9000);assert(h.messages.size()>count);
+    h.runtime.controller.setModel(Model::G5500);h.run(9010,11000);
+    assert(!h.config("000000000042_up/config")->payload.empty());
+    h.runtime.controller.setModel(Model::G800SA);h.run(11010,13000);
+    assert(h.config("000000000042_up/config")->payload.empty() && h.config("000000000042_down/config")->payload.empty());
   }
   {
     Harness h;h.runtime.controller.hardware.simulation=true;

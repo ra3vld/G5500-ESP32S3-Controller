@@ -69,6 +69,33 @@ void Bus::tick(uint32_t at) {
   pump();
 }
 int main() {
+  // Addressed direction buttons renew the destination's jog without selecting it.
+  for(bool mqtt:{false,true}) {
+    Bus wire;Node first(wire,0xa01,1),second(wire,0xa02,2),panel(wire,0xa03,3,true);
+    if(mqtt)for(auto *node:{&first,&second,&panel})node->endpoint=HudEndpoint::mqttNode(node->hud.id);
+    panel.save(first);panel.save(second);assert(panel.hud.select(first.hud.id));
+    for(unsigned at=10;at<=1500;at+=10)wire.tick(at);
+    const auto selection=panel.hud.selectionEpoch;
+    ControlCommand jog;jog.op=ControlOp::Jog;jog.axis=0;jog.direction=1;
+    assert(panel.hud.submitTo(second.hud.id,jog,1500)==Result::Deferred);wire.tick(1510);
+    jog.axis=1;assert(panel.hud.submitTo(second.hud.id,jog,1510)==Result::Deferred);
+    for(unsigned at=1520;at<=3000;at+=10)wire.tick(at);
+    assert(second.controller.axes[0].wanted==1 && second.controller.axes[1].wanted==1);
+    assert(!first.controller.moving() && panel.hud.config.selected==first.hud.id && panel.hud.selectionEpoch==selection);
+    ControlCommand stop;stop.op=ControlOp::Stop;stop.axis=0;
+    assert(panel.hud.submitTo(second.hud.id,stop,3000)==Result::Deferred);
+    for(unsigned at=3010;at<=4500;at+=10)wire.tick(at);
+    assert(second.controller.axes[0].wanted==0 && second.controller.axes[1].wanted==1);
+    stop.axis=1;assert(panel.hud.submitTo(second.hud.id,stop,4500)==Result::Deferred);wire.tick(4510);
+    assert(!second.controller.moving());
+    // Loss of the HUD link must expire the addressed jog's existing lease.
+    jog.axis=1;assert(panel.hud.submitTo(second.hud.id,jog,4510)==Result::Deferred);
+    for(unsigned at=4520;at<=5500;at+=10)wire.tick(at);
+    assert(second.controller.axes[0].wanted==0 && second.controller.axes[1].wanted==1);
+    wire.drop=true;
+    for(unsigned at=5510;at<=8500;at+=10)wire.tick(at);
+    assert(!second.controller.moving());
+  }
   for (const bool mqttFirst : {false, true}) {
     Bus wire; Node drive(wire,0x801,1),panel(wire,0x802,2,true);
     const auto udp=drive.endpoint;

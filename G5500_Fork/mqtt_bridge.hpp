@@ -6,13 +6,13 @@ namespace forkrot {
 #if MQTT_SUPPORT
 class MqttBridge {
 public:
-  enum class Operation : uint8_t { Target, Speed, Mode, Stop, Execute, Preset };
+  enum class Operation : uint8_t { Target, Speed, Mode, Stop, Execute, Preset, Jog };
   struct Request {
     uint64_t node=0;
     uint32_t selection=0,session=0,at=0,serial=0;
     float value=0;
     Operation op=Operation::Stop;
-    int8_t axis=-1;
+    int8_t axis=-1,direction=0;
     uint8_t slot=0;
     Mode mode=Mode::Manual;
     bool selected=false;
@@ -40,7 +40,7 @@ public:
   const char *lastResult() const { return lastResult_; }
   const char *baseTopic() const { return base_; }
   size_t nodeCount() const;
-  static constexpr unsigned EntityCount=20;
+  static constexpr unsigned EntityCount=24;
 private:
   struct Node {
     uint64_t id=0;

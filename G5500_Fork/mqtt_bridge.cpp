@@ -50,7 +50,11 @@ constexpr Entity entities[MqttBridge::EntityCount]={
   {"button","preset_3","Пресет 3",nullptr,"preset_3",-1},
   {"button","preset_4","Пресет 4",nullptr,"preset_4",-1},
   {"sensor","name","Поворотка","name",nullptr,-1},
-  {"sensor","node","Идентификатор","node",nullptr,-1}
+  {"sensor","node","Идентификатор","node",nullptr,-1},
+  {"button","left","Влево",nullptr,"left",0},
+  {"button","right","Вправо",nullptr,"right",0},
+  {"button","up","Вверх",nullptr,"up",1},
+  {"button","down","Вниз",nullptr,"down",1}
 };
 #endif
 }
@@ -92,6 +96,9 @@ bool MqttBridge::receive(std::string_view topic,std::string_view payload,bool re
     if(payload!="PRESS")return reject();
     if(topic=="stop" || topic=="stop_az" || topic=="stop_el") {
       request.op=Operation::Stop;request.axis=topic=="stop"?-1:topic=="stop_az"?0:1;
+    } else if(topic=="left" || topic=="right" || topic=="up" || topic=="down") {
+      request.op=Operation::Jog;request.axis=topic=="up" || topic=="down"?1:0;
+      request.direction=topic=="right" || topic=="up"?1:-1;
     } else if(topic=="execute")request.op=Operation::Execute;
     else if(topic.size()==8 && topic.substr(0,7)=="preset_" && topic[7]>='1' && topic[7]<='4') {
       request.op=Operation::Preset;request.slot=uint8_t(topic[7]-'1');
@@ -181,6 +188,7 @@ void MqttBridge::execute(const Request &request,uint32_t at) {
   case Operation::Stop:command.op=ControlOp::Stop;break;
   case Operation::Execute:command.op=ControlOp::Execute;break;
   case Operation::Preset:command.op=ControlOp::Preset;command.slot=request.slot;break;
+  case Operation::Jog:command.op=ControlOp::Jog;command.direction=request.direction;break;
   }
   Result result=Result::Unavailable;
   if(runtime_.hud.isHud()) {
@@ -195,6 +203,7 @@ void MqttBridge::execute(const Request &request,uint32_t at) {
     case ControlOp::Stop:c.stopNow(command.axis,at);result=Result::Ok;break;
     case ControlOp::Execute:result=c.execute(at);break;
     case ControlOp::Preset:result=c.preset(command.slot,at);break;
+    case ControlOp::Jog:result=c.jog(unsigned(command.axis),command.direction,false,at);break;
     default:break;
     }
     runtime_.targetValid=c.targetKnown;
@@ -317,7 +326,7 @@ bool MqttBridge::discovery(Node &node,uint32_t at) {
     if(entity.command)j << ",\"command_topic\":\"" << base_ << '/' << destination << "/set/" << entity.command << "\",\"qos\":0,\"retain\":false";
     if(index==0 || index==1 || index==5 || index==6)j << ",\"unit_of_measurement\":\"°\"";
     if(index==2 || index==4)j << ",\"payload_on\":\"ON\",\"payload_off\":\"OFF\"";
-    if(index>=10 && index<=17)j << ",\"payload_press\":\"PRESS\"";
+    if(!std::strcmp(entity.domain,"button"))j << ",\"payload_press\":\"PRESS\"";
     if(index==9)j << ",\"options\":[\"manual\",\"auto\",\"auto_1h\"]";
     if(index==5 || index==6)j << ",\"min\":" << (entity.axis?snapshot->elRange.start:snapshot->minimum)
         << ",\"max\":" << (entity.axis?snapshot->elRange.end:snapshot->maximum) << ",\"step\":0.1,\"mode\":\"box\"";
