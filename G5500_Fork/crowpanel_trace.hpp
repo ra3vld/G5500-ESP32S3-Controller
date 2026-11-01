@@ -23,6 +23,9 @@ inline void writeCrowPanelView(JsonWriter &j, const CrowPanelView &v) {
 #define CP_FLOAT(name) j << "\"" #name "\":"; writeCrowPanelReal(j, v.name); j << ','
 #define CP_TEXT(name) j << "\"" #name "\":" << jsonQuoted(v.name) << ','
   CP_BOOL(movingNow); CP_BOOL(settingsAvailable); CP_BOOL(enabled);
+  CP_BOOL(menu.open); CP_BOOL(menu.connections); CP_BOOL(menu.local); CP_BOOL(menu.devices);
+  CP_BOOL(menu.brightnessAvailable); CP_BOOL(menu.apAvailable); CP_BOOL(menu.apOn);
+  CP_NUMBER(menu.brightness); CP_NUMBER(menu.epoch); CP_TEXT(menu.device); CP_TEXT(menu.info); CP_TEXT(menu.notice); CP_TEXT(menu.apLabel);
   CP_BOOL(hud); CP_BOOL(hudSelector); CP_TEXT(hudName); CP_TEXT(hudAddress);
   j << "\"hudRows\":[" << jsonQuoted(v.hudRows[0]) << ',' << jsonQuoted(v.hudRows[1]) << ','
     << jsonQuoted(v.hudRows[2]) << "],";
@@ -80,7 +83,7 @@ inline void writeCrowPanelTraceState(JsonWriter &j, const CrowPanelTraceState &s
 // whole new records; a partially sent line always retains its original bytes.
 // On reconnect a newline and fresh metadata delimit any truncated old line.
 // Capacity includes worst-case JSON escaping of every fixed-size view string.
-template<size_t Capacity = 8192, size_t Slots = 3> class CrowPanelTrace {
+template<size_t Capacity = 12288, size_t Slots = 3> class CrowPanelTrace {
   static_assert(Capacity > 256 && Slots > 0, "Invalid trace queue capacity");
   struct Frame { std::array<char, Capacity> bytes{}; size_t size = 0, offset = 0; };
   std::array<Frame, Slots> queue_{};

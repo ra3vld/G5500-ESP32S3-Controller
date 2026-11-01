@@ -38,6 +38,18 @@ class Display {
   Diagnostics &diagnostics_;
   Network &network_;
   MqttService *mqtt_=nullptr;
+  bool menuOpen_=false,menuConnections_=false;
+  uint64_t menuDevice_=0;
+  uint32_t menuEpoch_=0;
+  char menuNotice_[96]{};
+  uint8_t savedBrightness_=100,appliedBrightness_=255;
+  int backlightPin_=-1;
+  bool backlightInitialized_=false,backlightPwm_=false;
+  int backlightPin() const;
+  void applyBrightness();
+  void disableBacklight();
+  void serviceMenu(panel::TouchAction action,uint32_t now);
+  void updateMenuView(PanelMenuView &view,uint32_t now);
   CrowPanelKnob knob_;
   HudKnob hudKnob_;
   Storage &storage_;

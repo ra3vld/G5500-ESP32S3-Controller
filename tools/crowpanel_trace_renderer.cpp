@@ -119,6 +119,10 @@ void field(forkrot::CrowPanelView &v, const std::string &key, const std::string 
 #define REAL(name) if (key == #name) { v.name = real(value); return; }
 #define TEXT(name) if (key == #name) { stringValue(v.name, value); return; }
   BOOL(movingNow) BOOL(settingsAvailable) BOOL(enabled)
+  BOOL(menu.open) BOOL(menu.connections) BOOL(menu.local) BOOL(menu.devices)
+  BOOL(menu.brightnessAvailable) BOOL(menu.apAvailable) BOOL(menu.apOn)
+  if(key=="menu.brightness") {const auto n=natural(value);if(n<10||n>100)throw std::runtime_error("invalid brightness");v.menu.brightness=uint8_t(n);return;}
+  UINT(menu.epoch) TEXT(menu.device) TEXT(menu.info) TEXT(menu.notice) TEXT(menu.apLabel)
   BOOL(hud) BOOL(hudSelector) TEXT(hudName) TEXT(hudAddress)
   TEXT(hudRows[0]) TEXT(hudRows[1]) TEXT(hudRows[2])
   BOOL(dualAxis) BOOL(speedScreen)
@@ -145,7 +149,7 @@ void field(forkrot::CrowPanelView &v, const std::string &key, const std::string 
 }
 void pressed(const std::string &value) {
   const int action = integer(value);
-  if (action < 0 || action > int(forkrot::crowpanel::TouchAction::Settings))
+  if (action < 0 || action > int(forkrot::crowpanel::TouchAction::MenuAp))
     throw std::runtime_error("invalid pressed action");
   ui.setPressed(static_cast<forkrot::crowpanel::TouchAction>(action));
 }

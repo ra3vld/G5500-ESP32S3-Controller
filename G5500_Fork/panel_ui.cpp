@@ -405,8 +405,72 @@ void PanelUi::create(bool round) {
   settingsButton_=button({8,12,88,44},0x183329);
   auto *settingsLabel=buttonLabel(settingsButton_,face(22));lv_label_set_text(settingsLabel,"КАЛ");
   lv_obj_set_hidden(settingsButton_,true);
+  createMenu();
+}
+void PanelUi::createMenu() {
+  menuPanel_=lv_obj_create(root_);lv_obj_remove_style_all(menuPanel_);
+  lv_obj_set_size(menuPanel_,width_,height_);lv_obj_set_scrollable(menuPanel_,false);
+  lv_obj_set_style_bg_color(menuPanel_,lv_color_hex(bg),0);lv_obj_set_style_bg_opa(menuPanel_,LV_OPA_COVER,0);
+  const auto *small=diameter_>=440?face(22):face(11);
+  const auto menuLabel=[&](int top,int width,const lv_font_t *f,uint32_t c) {
+    auto *object=lv_label_create(menuPanel_);lv_obj_set_style_text_font(object,f,0);
+    lv_obj_set_style_text_color(object,lv_color_hex(c),0);lv_obj_set_style_text_align(object,LV_TEXT_ALIGN_CENTER,0);
+    lv_obj_set_width(object,p(width));lv_obj_align(object,LV_ALIGN_TOP_MID,0,y(top));
+    lv_label_set_long_mode(object,LV_LABEL_LONG_DOT);return object;
+  };
+  auto *title=menuLabel(32,300,face(22),text);lv_label_set_text(title,"Настройки");
+  menuDevice_=menuLabel(85,210,small,text);
+  menuBrightness_=menuLabel(153,180,small,targetColor);
+  menuInfo_=menuLabel(210,320,small,text);lv_label_set_long_mode(menuInfo_,LV_LABEL_LONG_CLIP);
+  lv_obj_set_style_text_line_space(menuInfo_,0,0);
+  menuNotice_=menuLabel(292,340,face(11),0xf0b85c);
+  const panel::TouchRect positions[]={{108,380,124,44},{248,380,124,44},{72,76,54,44},{354,76,54,44},
+      {80,140,64,44},{336,140,64,44},{100,324,280,44}};
+  const char *labels[]={"Назад","Связь",LV_SYMBOL_LEFT,LV_SYMBOL_RIGHT,"-","+","ТД"};
+  for(unsigned i=0;i<7;++i) {
+    auto *object=menuButtons_[i]=lv_button_create(menuPanel_);lv_obj_remove_style_all(object);
+    const auto r=positions[i];lv_obj_set_pos(object,x(r.x),y(r.y));lv_obj_set_size(object,p(r.width),std::max(28,p(r.height)));
+    lv_obj_set_style_bg_opa(object,LV_OPA_COVER,0);lv_obj_set_style_bg_color(object,lv_color_hex(0x183329),0);
+    lv_obj_set_style_border_width(object,1,0);lv_obj_set_style_border_color(object,lv_color_hex(muted),0);
+    lv_obj_set_style_radius(object,p(10),0);lv_obj_set_scrollable(object,false);
+    menuButtonLabels_[i]=buttonLabel(object,i==2||i==3?&lv_font_montserrat_14:small);
+    lv_label_set_text(menuButtonLabels_[i],labels[i]);
+  }
+  menuStop_=lv_button_create(menuPanel_);lv_obj_remove_style_all(menuStop_);
+  lv_obj_set_pos(menuStop_,x(160),y(324));lv_obj_set_size(menuStop_,p(160),std::max(28,p(44)));
+  lv_obj_set_style_bg_opa(menuStop_,LV_OPA_COVER,0);lv_obj_set_style_bg_color(menuStop_,lv_color_hex(0x742d35),0);
+  lv_obj_set_style_radius(menuStop_,p(10),0);lv_obj_set_scrollable(menuStop_,false);
+  lv_label_set_text(buttonLabel(menuStop_,small),"СТОП");
+  lv_obj_set_hidden(menuPanel_,true);
+}
+void PanelUi::updateMenu(const PanelView &v) {
+  const auto &m=v.menu;
+  lv_obj_set_hidden(menuPanel_,false);lv_obj_move_to_index(menuPanel_,-1);
+  lv_obj_set_style_bg_color(menuPanel_,lv_color_hex(background_),0);
+  confirmationVisible_=false;
+  touchLayout_={};touchLayout_.mode={};touchLayout_.name={};touchLayout_.peers={};
+  touchLayout_.width=width_;touchLayout_.height=height_;touchLayout_.enabled=false;
+  touchLayout_.menuOpen=true;touchLayout_.menuAccess=true;touchLayout_.menuEpoch=m.epoch;
+  touchLayout_.confirmAllowed=false;
+  set(menuDevice_,m.device);set(menuInfo_,m.info);set(menuNotice_,m.notice);
+  lv_obj_set_y(menuInfo_,y(m.connections||!m.local?140:210));
+  const bool brightness=m.local&&!m.connections;
+  char value[64];std::snprintf(value,sizeof value,m.brightnessAvailable?"Яркость: %u%%":"Яркость: нет",unsigned(m.brightness));
+  set(menuBrightness_,value);lv_obj_set_hidden(menuBrightness_,!brightness);
+  set(menuButtonLabels_[1],m.connections?"Обзор":"Связь");set(menuButtonLabels_[6],m.apLabel);
+  for(unsigned i=0;i<7;++i) {
+    const bool visible=i<2 || (i<4?m.devices:i<6?brightness:m.local&&m.connections&&!v.movingNow);
+    const bool enabled=i<4 || (i<6?m.brightnessAvailable:m.apAvailable);
+    lv_obj_set_hidden(menuButtons_[i],!visible);
+    lv_obj_set_style_opa(menuButtons_[i],enabled?LV_OPA_COVER:LV_OPA_40,0);
+    if(visible&&enabled)touchLayout_.menuButtons[i]=bounds(menuButtons_[i]);
+  }
+  lv_obj_set_hidden(menuStop_,!v.movingNow);
+  touchLayout_.stopArea=bounds(menuStop_);
+  if(v.movingNow)touchLayout_.stop=touchLayout_.stopArea;
 }
 void PanelUi::configureLayout(const PanelView &v) {
+  touchLayout_.menuAccess=!v.hudSelector && !v.speedScreen;
   const bool compact=diameter_<320;
   // Preserve room for touch controls instead of shrinking every widget uniformly.
   if(compact) {
@@ -565,9 +629,18 @@ void PanelUi::configureLayout(const PanelView &v) {
   touchLayout_.width=width_;touchLayout_.height=height_;
   touchLayout_.innerRadius=p(panel::DialTouchInner);touchLayout_.outerRadius=p(panel::DialTouchOuter)+panel::DialTouchExtension;
   touchLayout_.swipeDeadzone=std::max(6,p(12));touchLayout_.swipeFull=std::max(50,p(100));
+  touchLayout_.targetSwipeDeadzone=std::max(12,p(24));
   touchLayout_.enabled=touchLayout_.enabled && v.enabled;
   confirmationCaption_=bounds(targetCaption_,p(8));confirmationAngle_=bounds(target_,p(8));
   layoutCurrent(v);
+  if(compact) {
+    // Give the small goal row a finger-sized hold area. Other controls retain
+    // their ownership through menuTargetHit; short confirmation uses target.
+    const auto &r=touchLayout_.target;
+    const int left=std::max(0,int(r.x)-12),top=std::max(0,int(r.y)-24);
+    const int right=std::min(width_,int(r.x+r.width)+12),bottom=std::min(height_,int(r.y+r.height)+8);
+    touchLayout_.menuTarget={uint16_t(left),uint16_t(top),uint16_t(right-left),uint16_t(bottom-top)};
+  }
 }
 void PanelUi::layoutCurrent(const PanelView &v) {
   if(v.hudSelector || v.speedScreen)return;
@@ -704,6 +777,8 @@ void PanelUi::update(const PanelView &v) {
       previous_.secondaryTarget!=v.secondaryTarget || previous_.autoMode!=v.autoMode || previous_.elevation!=v.elevation)
     ++actionEpoch_;
   previous_=v;previousValid_=true;
+  if(v.menu.open){updateMenu(v);return;}
+  lv_obj_set_hidden(menuPanel_,true);
   lv_obj_set_hidden(hudName_, !v.hud);
   lv_obj_set_hidden(hudAddress_, !v.hud);
   if (v.hud) set(hudName_,v.hudName);
@@ -835,11 +910,8 @@ void PanelUi::update(const PanelView &v) {
   touchLayout_ = {};
   touchLayout_.dualAxis = v.dualAxis;
   touchLayout_.enabled = !v.hudSelector;
-  touchLayout_.target = (v.targetValid || v.secondaryTargetValid || v.statusFault)
-                            ? panel::TouchRect{uint16_t(goalLeft - 4), uint16_t(goalTop),
-                                                   uint16_t(goalRight - goalLeft + 8),
-                                                   uint16_t(goalBottom - goalTop + 4)}
-                            : panel::TouchRect{};
+  touchLayout_.target = panel::TouchRect{uint16_t(goalLeft - 4), uint16_t(goalTop),
+      uint16_t(goalRight - goalLeft + 8),uint16_t(goalBottom - goalTop + 4)};
   for (unsigned i = 0; i < 4; ++i) {
     if(!compact) {
       lv_obj_set_hidden(arrows_[i], v.hudSelector || (i >= 2 && !v.dualAxis));

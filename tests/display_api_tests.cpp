@@ -58,7 +58,7 @@ int main() {
   assert(restored.displaySettings.screen==5&&restored.displaySettings.touch==11&&restored.displaySettings.revision==1);
   const auto saved=restored.displaySettings;
   {
-    auto legacy=encodeDisplay(restored.displaySettings);legacy[2]=1;legacy[5]=0;
+    auto legacy=encodeDisplay(restored.displaySettings);legacy[2]=1;legacy[5]=0;legacy[6]=0;
     const auto crc=displayChecksum(legacy);for(unsigned i=0;i<4;++i)legacy[12+i]=uint8_t(crc>>(8*i));
     Preferences prefs;assert(prefs.begin("panel",false));assert(prefs.putBytes(key,legacy.data(),legacy.size())==legacy.size());prefs.end();
     Runtime migrated;assert(f.storage.loadDisplay(migrated));

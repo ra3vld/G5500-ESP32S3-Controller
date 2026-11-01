@@ -24,6 +24,8 @@
 #include "uart_reply.hpp"
 #include "modbus_serial.hpp"
 #include "modbus_bus.hpp"
+#include "panel_access_point.hpp"
+#include <atomic>
 #include <WiFiServer.h>
 namespace forkrot {
 class MqttService;
@@ -46,7 +48,7 @@ public:
   void selectionChanged() override { resetHudInputs(); }
   bool hudPortValid(unsigned port, unsigned n1mm, unsigned pst, unsigned report) const;
   bool apAlwaysOn() const {
-    return WIFI_SUPPORT && (credentials_.network.choice==NetworkChoice::Ap || credentials_.network.choice==NetworkChoice::SharedHost || wifiSetupAp_ || runtime_.networkTrial || runtime_.recovery || runtime_.hud.config.wifi == HudWifi::Host ||
+    return WIFI_SUPPORT && (panelApOnly_.load() || credentials_.network.choice==NetworkChoice::Ap || credentials_.network.choice==NetworkChoice::SharedHost || wifiSetupAp_ || runtime_.networkTrial || runtime_.recovery || runtime_.hud.config.wifi == HudWifi::Host ||
            (runtime_.hud.config.wifi == HudWifi::Existing && runtime_.controller.hardware.forceAp));
   }
 
@@ -80,6 +82,9 @@ public:
   uint32_t udpDropped() const { return udpDropped_; }
   uint32_t tcpAborts() const { return tcpAborts_; }
   bool startWifi();
+  PanelApResult panelApAllowed(bool enable) const;
+  bool requestPanelAp(bool enable);
+  PanelApResult panelApResult() const {return panelApResult_.load();}
   void connectWifi(const String &ssid, const String &password);
   bool ethernetStarted() const { return ethernet_.started(); }
   bool wifiConnecting() const { return wifiConnectPending_ || (wifiFallback_.trying() && radioWifi.status() != WL_CONNECTED); }
@@ -118,7 +123,8 @@ private:
   void rotctldSend(const String &s);
   void processRotctldCommand(std::string_view input);
   bool configureStation();
-  void restoreApOnlyAfterReconnectFail();
+  bool restoreApOnlyAfterReconnectFail();
+  bool servicePanelAp();
   void serviceApSubnet();
   int formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity);
   Runtime &runtime_;
@@ -186,6 +192,10 @@ private:
   GsReplyPort gsReplyPort = GS_REPLY_USB;
   WifiFallback wifiFallback_;
   bool wifiSetupAp_ = false, wifiConnectPending_ = false;
+  std::atomic<bool> panelApOnly_{false};
+  bool panelWiredOnly_=false;
+  std::atomic<int> panelApRequest_{-1};
+  std::atomic<PanelApResult> panelApResult_{PanelApResult::Idle};
   uint32_t wifiConnectRequestedMs_ = 0;
   DiagnosticStream heapDiagnostics_;
   struct ReportPeer {

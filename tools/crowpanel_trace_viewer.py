@@ -36,10 +36,11 @@ BOOL_FIELDS = frozenset((
     "movingNow", "settingsAvailable", "enabled", "hud", "hudSelector", "dualAxis", "speedScreen", "speedAvailable[0]", "speedAvailable[1]",
     "elevation", "feedback", "targetValid", "uncalibrated", "secondaryUncalibrated", "pending",
     "moving", "autoMode", "autoHour", "secondaryFeedback", "secondaryTargetValid", "secondaryPending",
-    "wifiConnected", "wifiAp", "mqttEnabled", "mqttConnected", "bluetoothEnabled", "bluetoothConnected", "statusFault"))
+    "wifiConnected", "wifiAp", "mqttEnabled", "mqttConnected", "bluetoothEnabled", "bluetoothConnected", "statusFault",
+    "menu.open", "menu.connections", "menu.local", "menu.devices", "menu.brightnessAvailable", "menu.apAvailable", "menu.apOn"))
 INT_FIELDS = frozenset(("direction", "azDirection", "elDirection", "wifiRssi"))
-UINT_FIELDS = frozenset(("speedPercent[0]", "speedPercent[1]"))
-TEXT_FIELDS = frozenset(("hudName", "hudAddress", "hudRows[0]", "hudRows[1]", "hudRows[2]", "ip", "heap", "status"))
+UINT_FIELDS = frozenset(("speedPercent[0]", "speedPercent[1]", "menu.brightness", "menu.epoch"))
+TEXT_FIELDS = frozenset(("hudName", "hudAddress", "hudRows[0]", "hudRows[1]", "hudRows[2]", "ip", "heap", "status", "menu.device", "menu.info", "menu.notice", "menu.apLabel"))
 ARRAY_LENGTHS = {"hudRows": 3, "speedAvailable": 2, "speedPercent": 2}
 
 

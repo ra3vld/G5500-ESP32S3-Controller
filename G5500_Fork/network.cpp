@@ -668,7 +668,7 @@ if(ETHERNET_SUPPORTED && !ethernet_.begin(credentials_.network.ethernet))return 
 #endif
 }
 
-void Network::restoreApOnlyAfterReconnectFail() {
+bool Network::restoreApOnlyAfterReconnectFail() {
 #if WIFI_SUPPORT
 
   const IPAddress apIP = wifiSetupAp_ && (radioWifi.getMode() & WIFI_AP)
@@ -678,7 +678,7 @@ void Network::restoreApOnlyAfterReconnectFail() {
   if (radioWifi.getMode() & WIFI_STA) radioWifi.disconnect(false, false);
   if (!radioWifi.mode(WIFI_AP)) {
     diagnostics_.dbgPrintln("[WIFI] AP mode failed");
-    return;
+    return false;
   }
   const IPAddress apMask(255, 255, 255, 0);
   char apName[33];
@@ -690,9 +690,60 @@ void Network::restoreApOnlyAfterReconnectFail() {
   heapAfterAp_ = heapFreeBytes(); // zero means AP has not been started this boot
   diagnostics_.dbgPrintln(configured && started ? String("[WIFI] AP ready at ") + apIP.toString()
                                                : String("[WIFI] AP start failed"));
+  return configured && started;
 
 #else
+  return false;
+#endif
+}
 
+PanelApResult Network::panelApAllowed(bool enable) const {
+  if(!WIFI_SUPPORT)return PanelApResult::Unavailable;
+  if(runtime_.networkTrial || runtime_.recovery)return PanelApResult::Required;
+  const bool required=credentials_.network.choice==NetworkChoice::Ap || credentials_.network.choice==NetworkChoice::SharedHost ||
+      wifiSetupAp_ || runtime_.networkTrial || runtime_.recovery || runtime_.hud.config.wifi==HudWifi::Host ||
+      (runtime_.hud.config.wifi==HudWifi::Existing && runtime_.controller.hardware.forceAp);
+  const PanelApPolicy policy{bool(WIFI_SUPPORT),runtime_.controller.controlActive(),
+      required,credentials_.wifiSsid.length()!=0,ethernetConnected(),
+      heapFreeBytes()>=MemoryGuard::CriticalFree && heapMaxBlockBytes()>=MemoryGuard::CriticalBlock};
+  return policy.check(enable);
+}
+bool Network::requestPanelAp(bool enable) {
+  const auto allowed=panelApAllowed(enable);
+  if(allowed!=PanelApResult::Idle){panelApResult_.store(allowed);return false;}
+  int expected=-1;
+  if(!panelApRequest_.compare_exchange_strong(expected,-2))return false;
+  panelApResult_.store(PanelApResult::Pending);panelApRequest_.store(enable?1:0);return true;
+}
+bool Network::servicePanelAp() {
+#if WIFI_SUPPORT
+  const int request=panelApRequest_.load();
+  if(request<0)return false;
+  const auto allowed=panelApAllowed(request!=0);
+  if(allowed==PanelApResult::Busy)return true; // A motor command may have arrived after the tap.
+  panelApRequest_.store(-1);
+  if(allowed!=PanelApResult::Idle){panelApResult_.store(allowed);return true;}
+  wifiConnectPending_=false;
+  panelWiredOnly_=false;
+  bool ok=false;
+  if(request) {
+    ok=restoreApOnlyAfterReconnectFail();
+    panelApOnly_.store(ok);
+    wifiFallback_.reset(millis(),false);
+  } else {
+    panelApOnly_.store(false);
+    if(credentials_.wifiSsid.length()) {
+      ok=radioWifi.mode(WIFI_STA) && configureStation();
+      if(ok){radioWifi.begin(credentials_.wifiSsid.c_str(),credentials_.wifiPass.c_str());wifiFallback_.beginAttempt(millis());}
+    } else {ok=radioWifi.mode(WIFI_OFF);panelWiredOnly_=ok;}
+    if(!ok){panelApOnly_.store(restoreApOnlyAfterReconnectFail());}
+  }
+  panelApResult_.store(ok?PanelApResult::Applied:PanelApResult::Failed);
+  diagnostics_.dbgPrintln(ok?(request?"[WIFI] panel: AP only; STA stopped":"[WIFI] panel: AP off; uplink restored"):
+      "[WIFI] panel mode change failed");
+  return true;
+#else
+  return false;
 #endif
 }
 
@@ -739,6 +790,8 @@ void Network::connectWifi(const String &ssid, const String &password) {
 
   credentials_.wifiSsid = ssid;
   credentials_.wifiPass = password;
+  panelApOnly_.store(false);panelApRequest_.store(-1);panelApResult_.store(PanelApResult::Idle);
+  panelWiredOnly_=false;
   // Keep the setup browser reachable until the next reboot, including on ESP32.
   wifiSetupAp_ = true;
   wifiConnectPending_ = true;
@@ -755,7 +808,15 @@ void Network::serviceWifiReconnect() {
   // Keep the current link and pending work intact until local motion settles;
   // a HUD has no local motor loop and can maintain its radio immediately.
   if(!wifiMaintenanceAllowed())return;
+  if(servicePanelAp())return;
+  if(panelApOnly_.load())return;
   const bool wired=ethernetConnected();
+  if(panelWiredOnly_) {
+    if(wired)return;
+    panelWiredOnly_=false;
+    if(!restoreApOnlyAfterReconnectFail())panelApResult_.store(PanelApResult::Failed);
+    wifiFallback_.reset(millis(),false);return;
+  }
   if(wired!=ethernetWasConnected_) {
     ethernetWasConnected_=wired;
     diagnostics_.dbgPrintln(wired ? String("[ETH] IP = ")+ethernetIP().toString()

@@ -26,6 +26,10 @@ class PanelUi {
   panel::TouchRect rect(int left,int top,int width,int height) const;
   lv_obj_t *settingsButton_=nullptr,*actionButton_=nullptr,*actionLabel_=nullptr;
   lv_obj_t *root_=nullptr;
+  lv_obj_t *menuPanel_=nullptr,*menuDevice_=nullptr,*menuInfo_=nullptr,*menuNotice_=nullptr,*menuBrightness_=nullptr;
+  lv_obj_t *menuButtons_[7]{},*menuButtonLabels_[7]{},*menuStop_=nullptr;
+  void createMenu();
+  void updateMenu(const PanelView &view);
   void configureLayout(const PanelView &view);
   void layoutCurrent(const PanelView &view);
   void updateConnectionIndicator(const PanelView &,panel::ConnectionWarning);

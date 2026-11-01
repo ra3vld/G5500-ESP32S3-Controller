@@ -2,11 +2,13 @@
 #pragma once
 #include "build_config.hpp"
 #include "display_settings.hpp"
+#include "panel_menu.hpp"
 #include <cstdint>
 #include <cstring>
 #include <tuple>
 namespace forkrot {
 struct PanelView {
+  PanelMenuView menu;
   uint8_t visible=defaultDisplayFields(DISPLAY_KIND);
   bool shows(DisplayField field) const {return visible&field;}
   bool movingNow=false, settingsAvailable=false, enabled=true;
@@ -35,7 +37,7 @@ struct PanelView {
   bool operator==(const PanelView &v) const {
     return std::tie(movingNow,settingsAvailable,enabled,hud,hudSelector,dualAxis,speedScreen,elevation,feedback,targetValid,uncalibrated,secondaryUncalibrated,pending,moving,autoMode,autoHour,direction,current,target,minimum,maximum,secondaryCurrent,secondaryTarget,secondaryFeedback,secondaryTargetValid,secondaryPending,azDirection,elDirection,sourceId,wifiConnected,wifiAp,wifiRssi,mqttEnabled,mqttConnected,bluetoothEnabled,bluetoothConnected,statusFault) ==
            std::tie(v.movingNow,v.settingsAvailable,v.enabled,v.hud,v.hudSelector,v.dualAxis,v.speedScreen,v.elevation,v.feedback,v.targetValid,v.uncalibrated,v.secondaryUncalibrated,v.pending,v.moving,v.autoMode,v.autoHour,v.direction,v.current,v.target,v.minimum,v.maximum,v.secondaryCurrent,v.secondaryTarget,v.secondaryFeedback,v.secondaryTargetValid,v.secondaryPending,v.azDirection,v.elDirection,v.sourceId,v.wifiConnected,v.wifiAp,v.wifiRssi,v.mqttEnabled,v.mqttConnected,v.bluetoothEnabled,v.bluetoothConnected,v.statusFault) &&
-      hudBackground==v.hudBackground && visible==v.visible &&
+      menu==v.menu && hudBackground==v.hudBackground && visible==v.visible &&
       speedAvailable[0]==v.speedAvailable[0] && speedAvailable[1]==v.speedAvailable[1] && speedPercent[0]==v.speedPercent[0] && speedPercent[1]==v.speedPercent[1] &&
       std::strcmp(hudName,v.hudName)==0 && std::strcmp(hudAddress,v.hudAddress)==0 && std::strcmp(ip,v.ip)==0 && std::strcmp(heap,v.heap)==0 && std::strcmp(status,v.status)==0 &&
       std::strcmp(hudRows[0],v.hudRows[0])==0 && std::strcmp(hudRows[1],v.hudRows[1])==0 && std::strcmp(hudRows[2],v.hudRows[2])==0;

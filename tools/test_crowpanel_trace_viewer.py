@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Replay/renderer regression checks; native checks use the built trace backend."""
 import copy
+import os
 import struct
 import unittest
 import zlib
@@ -154,7 +155,7 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(struct.unpack(">II", png[16:24]), (600, 600))
 
 
-RENDERER = ROOT / "build/crowpanel-trace/renderer"
+RENDERER = ROOT / os.environ.get("TRACE_BUILD_DIR","build/crowpanel-trace") / "renderer"
 
 
 @unittest.skipUnless(RENDERER.is_file(), "Build tools/build_crowpanel_trace_renderer.sh first")
@@ -199,6 +200,17 @@ class NativeTests(unittest.TestCase):
             self.assertNotEqual(renderer.frame(4100), mqtt)
             renderer.update(4200, state(3, 4200, wifiRssi=-55, mqttEnabled=True, mqttConnected=True))
             self.assertEqual(renderer.frame(4200), healthy)
+
+    def test_local_and_remote_settings_menu_replays(self):
+        with NativeRenderer(RENDERER) as renderer:
+            renderer.update(0,state(0,0));main=renderer.frame(0)
+            renderer.update(1,state(1,1,**{"menu.open":True,"menu.local":True,"menu.device":"Этот HUD",
+                "menu.brightnessAvailable":True,"menu.brightness":70,"menu.info":"Память: 123 КБ\nАптайм: 2д 03:04:05"}))
+            local=renderer.frame(1);self.assertNotEqual(local,main)
+            renderer.update(2,state(2,2,**{"menu.open":True,"menu.local":False,"menu.device":"Дача",
+                "menu.info":"MQTT: нет связи\nАптайм: 2д 03:04:05"}))
+            self.assertNotEqual(renderer.frame(2),local)
+            renderer.update(3,state(3,3));self.assertEqual(renderer.frame(3),main)
 
     def test_all_firmware_fields_unicode_and_null_coordinates(self):
         view = next(item.record for item in demo_records() if item.record["type"] == "view")

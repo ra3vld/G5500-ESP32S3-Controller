@@ -17,10 +17,11 @@ inline constexpr const char *DisplayFieldNames[]={
 struct DisplaySettings {
   uint8_t screen=0,touch=0;
   uint8_t visible=DisplayAllFields;
+  uint8_t brightness=100;
   uint32_t revision=0;
   bool samePose(const DisplaySettings &other) const {return screen==other.screen&&touch==other.touch;}
-  bool sameSettings(const DisplaySettings &other) const {return samePose(other)&&visible==other.visible;}
-  bool valid() const {return screen<16&&touch<16&&!(visible&~DisplayAllFields);}
+  bool sameSettings(const DisplaySettings &other) const {return samePose(other)&&visible==other.visible&&brightness==other.brightness;}
+  bool valid() const {return screen<16&&touch<16&&!(visible&~DisplayAllFields)&&brightness>=10&&brightness<=100;}
   unsigned width(unsigned w,unsigned h) const {return screen&1?h:w;}
   unsigned height(unsigned w,unsigned h) const {return screen&1?w:h;}
   panel_point_t physical(int x,int y,int w,int h) const {
@@ -53,14 +54,15 @@ inline uint32_t displayChecksum(const DisplayBytes &b) {
   uint32_t h=2166136261u;for(unsigned i=0;i<12;++i)h=(h^b[i])*16777619u;return h;
 }
 inline DisplayBytes encodeDisplay(const DisplaySettings &s) {
-  DisplayBytes b{{'P','O',2,s.screen,s.touch,s.visible}};
+  DisplayBytes b{{'P','O',3,s.screen,s.touch,s.visible,s.brightness}};
   for(unsigned i=0;i<4;++i)b[8+i]=uint8_t(s.revision>>(8*i));
   const auto crc=displayChecksum(b);for(unsigned i=0;i<4;++i)b[12+i]=uint8_t(crc>>(8*i));return b;
 }
 inline bool decodeDisplay(const DisplayBytes &b,DisplaySettings &s,uint8_t legacyVisible=DisplayAllFields) {
   uint32_t crc=0,revision=0;for(unsigned i=0;i<4;++i){crc|=uint32_t(b[12+i])<<(8*i);revision|=uint32_t(b[8+i])<<(8*i);}
-  if(b[0]!='P'||b[1]!='O'||(b[2]!=1&&b[2]!=2)||b[3]>15||b[4]>15||
-      (b[2]==1?b[5]!=0:bool(b[5]&~DisplayAllFields))||b[6]||b[7]||crc!=displayChecksum(b))return false;
-  s.screen=b[3];s.touch=b[4];s.visible=b[2]==1?legacyVisible:b[5];s.revision=revision;return true;
+  if(b[0]!='P'||b[1]!='O'||b[2]<1||b[2]>3||b[3]>15||b[4]>15||
+      (b[2]==1?b[5]!=0:bool(b[5]&~DisplayAllFields))||
+      (b[2]<3?b[6]!=0:b[6]<10||b[6]>100)||b[7]||crc!=displayChecksum(b))return false;
+  s.screen=b[3];s.touch=b[4];s.visible=b[2]==1?legacyVisible:b[5];s.brightness=b[2]<3?100:b[6];s.revision=revision;return true;
 }
 } // namespace forkrot

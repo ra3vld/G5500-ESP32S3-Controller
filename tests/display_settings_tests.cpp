@@ -19,20 +19,31 @@ int main() {
   for(unsigned visible=0;visible<=DisplayAllFields;++visible) {
     DisplaySettings s;s.screen=5;s.touch=11;s.visible=visible;s.revision=123;
     const auto bytes=encodeDisplay(s);DisplaySettings restored;
-    assert(bytes[2]==2 && decodeDisplay(bytes,restored) && restored.sameSettings(s) && restored.revision==123);
+    assert(bytes[2]==3 && decodeDisplay(bytes,restored) && restored.sameSettings(s) && restored.revision==123);
     auto bad=bytes;bad[5]|=64;
     const auto crc=displayChecksum(bad);for(unsigned i=0;i<4;++i)bad[12+i]=uint8_t(crc>>(8*i));
     assert(!decodeDisplay(bad,restored) && restored.sameSettings(s));
   }
   {
-    auto legacy=encodeDisplay(DisplaySettings{});legacy[2]=1;legacy[3]=5;legacy[4]=11;legacy[5]=0;
+    auto legacy=encodeDisplay(DisplaySettings{});legacy[2]=1;legacy[3]=5;legacy[4]=11;legacy[5]=0;legacy[6]=0;
     const auto crc=displayChecksum(legacy);for(unsigned i=0;i<4;++i)legacy[12+i]=uint8_t(crc>>(8*i));
     for(unsigned kind:{1,3,4,5}) {
       DisplaySettings restored;restored.visible=0;
       assert(decodeDisplay(legacy,restored,defaultDisplayFields(kind)));
       assert(restored.screen==5 && restored.touch==11 && restored.visible==defaultDisplayFields(kind));
-      const auto migrated=encodeDisplay(restored);assert(migrated[2]==2 && migrated[5]==restored.visible);
+      const auto migrated=encodeDisplay(restored);assert(migrated[2]==3 && migrated[5]==restored.visible && restored.brightness==100);
     }
+  }
+  for(unsigned brightness=0;brightness<=255;++brightness) {
+    DisplaySettings s;s.brightness=uint8_t(brightness);auto record=encodeDisplay(s);DisplaySettings restored;
+    const bool valid=brightness>=10&&brightness<=100;
+    assert(s.valid()==valid && decodeDisplay(record,restored)==valid);
+    if(valid)assert(restored.brightness==brightness&&restored.sameSettings(s));
+  }
+  {
+    auto legacy=encodeDisplay(DisplaySettings{});legacy[2]=2;legacy[6]=0;
+    const auto crc=displayChecksum(legacy);for(unsigned i=0;i<4;++i)legacy[12+i]=uint8_t(crc>>(8*i));
+    DisplaySettings s;s.brightness=20;assert(decodeDisplay(legacy,s)&&s.brightness==100);
   }
   for(unsigned pose=0;pose<16;++pose)for(auto shape:{panel_point_t{3,2},{8,5},{32,32}}) {
     const int w=shape.x,h=shape.y,ow=pose&1?h:w,oh=pose&1?w:h;

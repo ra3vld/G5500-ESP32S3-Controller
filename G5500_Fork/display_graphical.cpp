@@ -13,7 +13,137 @@
 #include "drive_fault_text.hpp"
 #include <algorithm>
 #include <cstring>
+#include <esp_timer.h>
 namespace forkrot {
+int Display::backlightPin() const {
+#if DISPLAY_KIND == DISPLAY_CROWPANEL_21 || DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796
+  return board::PIN_BACKLIGHT;
+#else
+  return runtime_.controller.hardware.pins.tftBacklight;
+#endif
+}
+void Display::applyBrightness() {
+  if(!backlightInitialized_) {
+    backlightInitialized_=true;
+    backlightPin_=backlightPin();
+    if(backlightPin_>=0) {
+      backlightPwm_=ledcAttach(backlightPin_,5000,8);
+      if(!backlightPwm_) {pinMode(backlightPin_,OUTPUT);digitalWrite(backlightPin_,HIGH);}
+    }
+  }
+  const auto brightness=runtime_.displaySettings.brightness;
+  if(backlightPwm_ && brightness!=appliedBrightness_) {
+    ledcWrite(backlightPin_,(unsigned(brightness)*255+50)/100);appliedBrightness_=brightness;
+  }
+}
+void Display::disableBacklight() {
+  if(backlightPwm_)ledcWrite(backlightPin_,0);
+  else if(backlightPin()>=0)digitalWrite(backlightPin(),LOW);
+}
+void Display::serviceMenu(panel::TouchAction action,uint32_t now) {
+  using Action=panel::TouchAction;
+  if(action==Action::MenuOpen) {
+    menuOpen_=true;menuConnections_=false;menuDevice_=0;menuNotice_[0]=0;
+    savedBrightness_=runtime_.displaySettings.brightness;
+    speedScreen_=false;hudKnob_.menu=false;knob_.cancelInput();hudKnob_.cancelInput();
+  } else if(!menuOpen_)return;
+  else if(action==Action::MenuBack) {
+    if(runtime_.displaySettings.brightness!=savedBrightness_) {
+      if(runtime_.controller.controlActive()) {
+        std::snprintf(menuNotice_,sizeof menuNotice_,"Дождитесь остановки");redraw_=true;return;
+      }
+      auto settings=runtime_.displaySettings;++settings.revision;
+      if(!storage_.saveDisplay(settings)) {
+        std::snprintf(menuNotice_,sizeof menuNotice_,"Не удалось сохранить яркость");redraw_=true;return;
+      }
+      runtime_.displaySettings=settings;runtime_.displayStorageOk=true;
+    }
+    menuOpen_=false;
+  } else if(action==Action::MenuConnections)menuConnections_=!menuConnections_;
+  else if(action==Action::MenuPrevious || action==Action::MenuNext) {
+    uint64_t previous=0,next=0,last=0;bool found=menuDevice_==0;
+    for(const auto *p=runtime_.hud.peers();p;p=p->next.get())if(p->saved) {
+      if(found && !next)next=p->id;
+      if(p->id==menuDevice_){previous=last;found=true;}
+      last=p->id;
+    }
+    menuDevice_=action==Action::MenuNext?next:(menuDevice_?previous:last);
+    menuNotice_[0]=0;
+  } else if((action==Action::MenuDim || action==Action::MenuBrighten) && !menuDevice_ && backlightPwm_) {
+    auto &brightness=runtime_.displaySettings.brightness;
+    brightness=uint8_t(std::clamp(int(brightness)+(action==Action::MenuDim?-10:10),10,100));
+    applyBrightness();menuNotice_[0]=0;
+  } else if(action==Action::MenuAp && !menuDevice_) {
+    network_.requestPanelAp(!(radioWifi.getMode()&WIFI_AP));menuNotice_[0]=0;
+  } else return;
+  ++menuEpoch_;touchButtons_.cancel();redraw_=true;
+  (void)now;
+}
+void Display::updateMenuView(PanelMenuView &view,uint32_t now) {
+  view.open=menuOpen_;if(!menuOpen_)return;
+  view.connections=menuConnections_;view.epoch=menuEpoch_;
+  view.devices=runtime_.hud.isHud() && runtime_.hud.count()!=0;
+  const auto *peer=runtime_.hud.isHud()?runtime_.hud.peer(menuDevice_):nullptr;
+  if(menuDevice_ && !peer){menuDevice_=0;++menuEpoch_;view.epoch=menuEpoch_;}
+  view.local=!peer;
+  std::snprintf(view.notice,sizeof view.notice,"%s",menuNotice_);
+  char uptime[48];
+  if(peer) {
+    std::snprintf(view.device,sizeof view.device,"%s",peer->label);
+    const bool fresh=peer->fresh(runtime_.hud.now);
+    const char *link=peer->simulated()?"Имитация":peer->endpoint.mqtt?"MQTT":peer->endpoint.uart?(peer->endpoint.address?"RS485":"UART"):"UDP/Wi-Fi";
+    if(!peer->received) {
+      std::snprintf(view.info,sizeof view.info,"Канал: %s\nНет данных устройства",link);return;
+    }
+    // A stale sample is frozen at its reported uptime, never extrapolated as live.
+    panelUptime(uptime,sizeof uptime,(uint64_t(peer->remoteTick)+(fresh?uint32_t(runtime_.hud.now-peer->receivedAt):0))/1000);
+    if(view.connections) {
+      char address[48];
+      if(peer->endpoint.mqtt)std::snprintf(address,sizeof address,"Узел: %012llX",static_cast<unsigned long long>(peer->id));
+      else if(peer->endpoint.uart)std::snprintf(address,sizeof address,"Адрес: %u",unsigned(peer->endpoint.address));
+      else {const IPAddress ip(peer->endpoint.address);std::snprintf(address,sizeof address,"%u.%u.%u.%u:%u",ip[0],ip[1],ip[2],ip[3],unsigned(peer->endpoint.port));}
+      std::snprintf(view.info,sizeof view.info,"Канал: %s\n%s\n%s\nПротокол: HUD/%u\nДанные: %lu с назад",link,fresh?"Связь: есть":"Связь: потеряна",address,
+          unsigned(peer->wireVersion),static_cast<unsigned long>(uint32_t(runtime_.hud.now-peer->receivedAt)/1000));
+    } else {
+      std::snprintf(view.info,sizeof view.info,"%s: %s\nАптайм: %s\nМодель: %s\nПривод: %s\n%s",link,fresh?"есть связь":"нет связи",uptime,
+          peer->state.model==Model::G5500?"G-5500":"G-800",peer->state.fault[0]?"ошибка":
+          peer->state.axes[0].direction||peer->state.axes[1].direction?"движение":"остановлен",
+          fresh?"Данные актуальны":"Последние полученные данные");
+    }
+    std::snprintf(view.notice,sizeof view.notice,"Нет в HUD: яркость, память");return;
+  }
+  std::snprintf(view.device,sizeof view.device,runtime_.hud.isHud()?"Этот HUD":"Этот контроллер");
+  view.brightnessAvailable=backlightPwm_;view.brightness=runtime_.displaySettings.brightness;
+  view.apOn=(radioWifi.getMode()&WIFI_AP)!=0;
+  const auto result=network_.panelApResult();
+  const auto allowed=network_.panelApAllowed(!view.apOn);
+  view.apAvailable=allowed==PanelApResult::Idle && result!=PanelApResult::Pending;
+  std::snprintf(view.apLabel,sizeof view.apLabel,view.apOn?"ТД: выключить":"ТД: включить");
+  if(view.connections) {
+    bool mqttEnabled=false;
+#if MQTT_SUPPORT
+    mqttEnabled=runtime_.mqtt.enabled;
+#endif
+    char wifi[64];
+    if(radioWifi.status()==WL_CONNECTED)std::snprintf(wifi,sizeof wifi,"подключён (%d dBm)",int(radioWifi.RSSI()));
+    else std::snprintf(wifi,sizeof wifi,WIFI_SUPPORT?(network_.wifiConnecting()?"подключение…":"нет связи"):"недоступен");
+    const auto &h=runtime_.controller.hardware;
+    const bool hudSerial=HUD_UART_SUPPORT && runtime_.hud.config.uart;
+    const bool rs485=h.rs485() || (h.hudRs485() && (hudSerial || (MODBUS_RTU_SUPPORT && runtime_.modbus.bus)));
+    std::snprintf(view.info,sizeof view.info,"Wi-Fi: %s\nMQTT: %s\nBluetooth: %s\n%s: %s\nEthernet: %s",wifi,
+        !MQTT_SUPPORT?"недоступен":!mqttEnabled?"выкл.":mqtt_&&mqtt_->connected()?"подключён":"нет связи",
+        !BLUETOOTH_SUPPORT?"недоступен":!h.bluetooth?"выкл.":network_.bluetoothConnected()?"подключён":"нет связи",
+        rs485?"RS485":"UART",rs485?(RS485_SUPPORT?"настроен":"недоступен"):hudSerial||(h.pins.uartRx>=0&&h.pins.uartTx>=0)?"настроен":"выкл.",
+        !ETHERNET_SUPPORTED?"недоступен":ethernetConnected()?"подключён":network_.ethernetStarted()?"нет связи":"выкл.");
+    const auto notice=result==PanelApResult::Pending||result==PanelApResult::Failed?result:allowed;
+    std::snprintf(view.notice,sizeof view.notice,"%s",panelApMessage(notice));
+  } else {
+    panelUptime(uptime,sizeof uptime,uint64_t(esp_timer_get_time())/1000000);
+    std::snprintf(view.info,sizeof view.info,"Память: %lu КБ\nМакс. блок: %lu КБ\nАптайм: %s",
+        static_cast<unsigned long>(heapFreeBytes()/1024),static_cast<unsigned long>(heapMaxBlockBytes()/1024),uptime);
+  }
+  (void)now;
+}
 PanelCommandContext Display::commandContext() const {
   const auto &controller=runtime_.controller;
   return {controller.model,controller.mode,controller.rangeRevision,runtime_.hud.selectionEpoch,
@@ -69,6 +199,9 @@ void Display::serviceTouch() {
     auto layout = presentedLayout_;
     const auto command=commandContext();
     const auto &requested=ui_.touchLayout();
+    layout.menuAccess=layout.menuAccess && requested.menuAccess && !displayFailed_ && touchHealthy && layout.menuOpen==requested.menuOpen &&
+        layout.menuEpoch==requested.menuEpoch && layout.menuOpen==menuOpen_ &&
+        (menuOpen_?layout.menuEpoch==menuEpoch_:presentedCommand_.sameScope(command));
     layout.confirmAllowed=layout.confirmAllowed && requested.confirmAllowed && layout.actionEpoch==requested.actionEpoch &&
                           presentedCommand_==command;
     if(runtime_.controller.moving()) {
@@ -106,6 +239,7 @@ void Display::serviceTouch() {
     trace_.touch(touchHealthy && inputHealthy_, touch, x, y, event, touchButtons_.pressed(), now);
 #endif
     const auto action = event.action;
+    serviceMenu(action,now);
     if (!touch) speedRequested_[0] = speedRequested_[1] = -1;
     if (event.manual && !selectionChanged) {
       if (runtime_.controller.manualAvailable() || event.release) {
@@ -174,7 +308,7 @@ void Display::serviceTouch() {
     if (runtime_.hud.isHud()) {
       if (action == panel::TouchAction::Mode)
         hudKnob_.toggleMode(now);
-      if (touch && !hudTouchDown_ && !speedScreen_) {
+      if (touch && !hudTouchDown_ && !speedScreen_ && !menuOpen_) {
         if (layout.name.contains(x, y))
           hudKnob_.open();
         else if (hudKnob_.menu) {
@@ -219,10 +353,12 @@ void Display::updateLocalDisplay() {
 }
 // Release the view/formatting stack before LVGL enters nested flush callbacks.
 [[gnu::noinline]] void Display::updatePanelView(uint32_t now) {
+    applyBrightness();
   (void)now;
     constexpr bool compact=PanelWidth<320 || PanelHeight<320;
     const auto &controller = runtime_.controller;
     PanelView view;
+    updateMenuView(view.menu,now);
     view.visible=runtime_.displaySettings.visible;
     view.movingNow=controller.moving();
     view.settingsAvailable=DISPLAY_KIND==DISPLAY_ILI9341;
@@ -358,7 +494,9 @@ void Display::updateLocalDisplay() {
     view.wifiConnected = connected;
     view.wifiAp = ap;
     view.wifiRssi = connected ? int(radioWifi.RSSI()) : -127;
-    view.mqttEnabled = MQTT_SUPPORT && runtime_.mqtt.enabled;
+#if MQTT_SUPPORT
+    view.mqttEnabled = runtime_.mqtt.enabled;
+#endif
     view.mqttConnected = view.mqttEnabled && mqtt_ && mqtt_->connected();
     network_.formatAddresses(view.ip, sizeof view.ip, "  ",view.shows(DisplayLocalAddress),view.shows(DisplayApAddress));
     if(compact) {

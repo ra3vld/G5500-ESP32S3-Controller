@@ -52,7 +52,7 @@ void Display::flushFrame(lv_display_t *display, const lv_area_t *area, uint8_t *
       crowpanel_rgb_frame_status(self.panel_, &self.flushGeneration_, &presented) == ESP_OK;
   if (!self.flushPending_) {
     self.displayFailed_=diagnosticFailed=true;
-    if (board::PIN_BACKLIGHT >= 0) digitalWrite(board::PIN_BACKLIGHT, LOW);
+    self.disableBacklight();
     lv_display_flush_ready(display);
   }
 }
@@ -135,7 +135,7 @@ void Display::serviceKnob() {
 #if CROWPANEL_USB_TRACE
   trace_.knob(healthy, down, delta, now);
 #endif
-  if (speedScreen_) {
+  if (speedScreen_ || menuOpen_) {
     knob_.cancelInput(); hudKnob_.cancelInput();
     if (!healthy || (down && !speedKnobDown_)) runtime_.controller.stopNow(-1, now);
     speedKnobDown_ = down;
@@ -161,13 +161,13 @@ bool Display::serviceFrame() {
   if (flushPending_) {
     uint32_t submitted = 0, presented = 0;
     if (crowpanel_rgb_frame_status(panel_, &submitted, &presented) != ESP_OK) {
-      displayFailed_ = diagnosticFailed = true; if (board::PIN_BACKLIGHT >= 0) digitalWrite(board::PIN_BACKLIGHT, LOW);
+      displayFailed_ = diagnosticFailed = true; disableBacklight();
       flushPending_ = false; lv_display_flush_ready(display_); return false;
     }
     const uint32_t elapsed = micros() - flushStarted_;
     if (int32_t(presented - flushGeneration_) < 0) {
       if (elapsed < 150000) return false; // Network/input keep running; no LVGL while DMA owns buffer.
-      ++syncTimeouts; displayFailed_ = diagnosticFailed = true; if (board::PIN_BACKLIGHT >= 0) digitalWrite(board::PIN_BACKLIGHT, LOW);
+      ++syncTimeouts; displayFailed_ = diagnosticFailed = true; disableBacklight();
     } else {++frames;publishFrame();}
     waitMaxUs = std::max(waitMaxUs, elapsed);
     flushPending_ = false;

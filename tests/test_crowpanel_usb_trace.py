@@ -39,10 +39,11 @@ class CrowPanelUsbTraceTests(unittest.TestCase):
         bools = '''movingNow settingsAvailable enabled hud hudSelector dualAxis speedScreen elevation feedback targetValid uncalibrated
                    secondaryUncalibrated pending moving autoMode autoHour secondaryFeedback
                    secondaryTargetValid secondaryPending wifiConnected wifiAp mqttEnabled mqttConnected bluetoothEnabled
-                   bluetoothConnected statusFault'''.split()
+                   bluetoothConnected statusFault menu.open menu.connections menu.local menu.devices
+                   menu.brightnessAvailable menu.apAvailable menu.apOn'''.split()
         numbers = '''direction current target minimum maximum secondaryCurrent secondaryTarget
-                     azDirection elDirection sourceId wifiRssi'''.split()
-        texts = 'hudName hudAddress ip heap status'.split()
+                     azDirection elDirection sourceId wifiRssi menu.brightness menu.epoch'''.split()
+        texts = 'hudName hudAddress ip heap status menu.device menu.info menu.notice menu.apLabel'.split()
         arrays = ['hudRows', 'speedAvailable', 'speedPercent']
         self.assertEqual(set(view), set(bools + numbers + texts + arrays))
         for name in bools:

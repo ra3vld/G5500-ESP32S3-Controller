@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cmath>
 #include <algorithm>
+#include <array>
 
 namespace forkrot::panel {
 struct TouchRect {
@@ -32,7 +33,10 @@ inline float dialBearing(uint16_t x, uint16_t y) {
 }
 inline constexpr TouchRect SpeedTracks[2]{{100, 207, 280, 40}, {100, 302, 280, 40}};
 inline constexpr TouchRect SpeedBack{160, 374, 160, 46};
-enum class TouchAction { None, Mode, Target, Confirm, SpeedOpen, SpeedClose, SpeedValue, Stop, Axis, Settings };
+enum class TouchAction { None, Mode, Target, Confirm, SpeedOpen, SpeedClose, SpeedValue, Stop, Axis, Settings,
+  MenuOpen, MenuBack, MenuConnections, MenuPrevious, MenuNext, MenuDim, MenuBrighten, MenuAp };
+inline constexpr std::array<TouchAction,7> MenuActions{{TouchAction::MenuBack,TouchAction::MenuConnections,
+    TouchAction::MenuPrevious,TouchAction::MenuNext,TouchAction::MenuDim,TouchAction::MenuBrighten,TouchAction::MenuAp}};
 class TouchButtons {
   bool down_ = false;
   TouchAction active_ = TouchAction::None;
@@ -52,17 +56,27 @@ public:
 // Geometry is supplied by the actual LVGL layout. A target tap may become a swipe;
 // started gestures keep ownership until release.
 struct TouchLayout {
-  TouchRect current{}, target{}, arrows[4]{}; // left, right, up, down
+  TouchRect current{}, target{}, menuTarget{}, arrows[4]{}; // left, right, up, down
   bool dualAxis = false, enabled = true, speedScreen = false;
   bool speedEnabled[2]{};
   bool confirmAllowed=true;
+  bool menuOpen=false,menuAccess=false;
+  uint32_t menuEpoch=0;
+  std::array<TouchRect,7> menuButtons{};
   uint32_t actionEpoch=0;
   TouchRect stopArea{};
   TouchRect mode=ModeButton, name=HudNameButton, peers=HudList, rows[3]{}, axis{}, settings{}, stop{};
   TouchRect speedTracks[2]{SpeedTracks[0],SpeedTracks[1]}, speedBack=SpeedBack;
   int centerX=DialCenter, centerY=DialCenter, innerRadius=DialTouchInner, outerRadius=DialTouchOuter;
   unsigned width=480,height=480;
-  int swipeDeadzone=12, swipeFull=100;
+  int swipeDeadzone=12, swipeFull=100, targetSwipeDeadzone=0;
+  bool menuTargetHit(uint16_t x,uint16_t y) const {
+    if(target.contains(x,y))return true;
+    if(!menuTarget.contains(x,y) || current.contains(x,y) || mode.contains(x,y) ||
+        name.contains(x,y) || axis.contains(x,y) || settings.contains(x,y) || stop.contains(x,y))return false;
+    for(const auto &arrow:arrows)if(arrow.contains(x,y))return false;
+    return true;
+  }
   bool dialContains(uint16_t x,uint16_t y) const {
     if(x>=width || y>=height) return false;
     const int dx=int(x)-centerX,dy=int(y)-centerY,r=dx*dx+dy*dy;
@@ -73,7 +87,7 @@ struct TouchLayout {
         180.f/3.14159265358979323846f)+360)%360);
   }
   bool dialHit(uint16_t x,uint16_t y) const {
-    if(speedScreen || current.contains(x,y) || target.contains(x,y) || mode.contains(x,y) ||
+    if(menuOpen || speedScreen || current.contains(x,y) || target.contains(x,y) || (menuAccess && menuTargetHit(x,y)) || mode.contains(x,y) ||
         name.contains(x,y) || axis.contains(x,y) || settings.contains(x,y) || stop.contains(x,y))return false;
     for(const auto &arrow:arrows)if(arrow.contains(x,y))return false;
     return dialContains(x,y);
@@ -88,7 +102,9 @@ struct TouchEvent {
   unsigned axis = 0, percent = 5;
 };
 class TouchGesture {
-  enum class Role { None, Mode, Ring, Target, Swipe, Arrow, Speed, Back, Stop, Axis, Settings } role_ = Role::None;
+  enum class Role { None, Mode, Ring, Target, Swipe, Arrow, Speed, Back, Stop, Axis, Settings, Menu } role_ = Role::None;
+  unsigned menuButton_=0;
+  bool holdCancelled_=false;
   bool down_ = false, cancelled_ = false, blocked_ = false;
   uint16_t startX_ = 0, startY_ = 0, lastX_ = 0, lastY_ = 0;
   float ringBearing_ = -1;
@@ -112,6 +128,7 @@ class TouchGesture {
 public:
   void cancel() { role_=Role::None;down_=false;blocked_=true;tap_=false; }
   bool manualActive() const { return down_ && (role_==Role::Swipe || role_==Role::Arrow); }
+  bool targetHeld() const {return down_ && role_==Role::Target;}
   bool contactDown() const {
     return down_;
   }
@@ -131,7 +148,7 @@ public:
     }
     if (blocked_) {
       down_ = down;
-      if (!down && layout.enabled) {
+      if (!down && (layout.enabled || layout.menuAccess)) {
         blocked_ = false;role_=Role::None;
       }
       return e;
@@ -150,9 +167,17 @@ public:
       startY_ = y;
       mask_ = 0;
       cancelled_ = false;
+      holdCancelled_=false;
       ringBearing_ = -1;
       role_ = Role::None;
-      if (layout.enabled) {
+      if(layout.menuOpen) {
+        if(layout.menuAccess)for(unsigned i=0;i<MenuActions.size();++i)
+          if(layout.menuButtons[i].contains(x,y)){role_=Role::Menu;menuButton_=i;break;}
+      } else if (!layout.speedScreen && layout.menuAccess && layout.menuTargetHit(x,y)) {
+        role_=Role::Target;
+        // Padding around the goal only admits a hold, never a short confirmation.
+        cancelled_=!layout.target.contains(x,y);
+      } else if (layout.enabled) {
         if (layout.speedScreen) {
           tap_ = false;
           if (layout.speedBack.contains(x, y)) role_ = Role::Back;
@@ -188,14 +213,26 @@ public:
         }
       }
     }
-    if (down && (std::abs(int(x) - startX_) > captured_.swipeDeadzone || std::abs(int(y) - startY_) > captured_.swipeDeadzone)) {
-      cancelled_ = true;
+    const int displacement=std::max(std::abs(int(x)-startX_),std::abs(int(y)-startY_));
+    // Goal confirmation stays conservative. A longer hold tolerates more finger
+    // drift before it becomes a swipe, including just outside the goal's label.
+    if(down && displacement>captured_.swipeDeadzone)cancelled_=true;
+    const int swipeStart=role_==Role::Target && captured_.menuAccess?
+        std::max(captured_.swipeDeadzone,captured_.targetSwipeDeadzone):captured_.swipeDeadzone;
+    if (down && displacement>swipeStart) {
+      holdCancelled_=true;
       // A target tap becomes a captured swipe once it leaves the dead zone.
       if (role_ == Role::Target && layout.enabled) {
         role_ = Role::Swipe;
       }
     }
-    if (down && role_ == Role::Speed && layout.enabled && layout.speedScreen) {
+    if(role_==Role::Target && !holdCancelled_ && layout.menuAccess && !layout.menuOpen &&
+        !layout.speedScreen && uint32_t(now-downAt_)>3000) {
+      e.action=TouchAction::MenuOpen;role_=Role::None;blocked_=down;tap_=false;
+    } else if(!down && down_ && role_==Role::Menu && layout.menuOpen && layout.menuAccess &&
+        captured_.menuEpoch==layout.menuEpoch && captured_.menuButtons[menuButton_].contains(x,y) && !cancelled_) {
+      e.action=MenuActions[menuButton_];
+    } else if (down && role_ == Role::Speed && layout.enabled && layout.speedScreen) {
       e.action = TouchAction::SpeedValue; e.axis = arrow_;
       const auto &track=layout.speedTracks[arrow_];
       const int width=std::max(1,int(track.width));
@@ -247,7 +284,7 @@ public:
         e.action = TouchAction::SpeedOpen; tap_ = false;
       } else { tap_ = true; tapAt_ = now; tapX_ = x; tapY_ = y; }
     } else if (cancelled_ || !layout.enabled || (down && role_ != Role::Swipe)) tap_ = false;
-    if (!layout.enabled) {
+    if (!layout.enabled && !(layout.menuAccess && (role_==Role::Target || role_==Role::Menu))) {
       role_ = Role::None;
       blocked_ = true;
     }

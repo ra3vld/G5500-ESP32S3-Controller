@@ -71,7 +71,7 @@ void Display::flushFrame(lv_display_t *display,const lv_area_t *area,uint8_t *pi
   }
   if(!ok && !self.displayFailed_) {
     self.displayFailed_=true;
-    backlight(self.runtime_.controller.hardware.pins.tftBacklight,false);
+    self.disableBacklight();
     self.diagnostics_.dbgPrintln(String("[Display] ST77916 transfer failed: ")+self.panelBus_.error());
   }
   if(ok && lv_display_flush_is_last(display))self.publishFrame();

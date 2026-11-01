@@ -36,7 +36,7 @@ static bool overlaps(const panel::TouchRect &a,const panel::TouchRect &b) {
   return a.width&&b.width&&a.x<b.x+b.width&&b.x<a.x+a.width&&a.y<b.y+b.height&&b.y<a.y+a.height;
 }
 static void checkCurrentLayout(const PanelView &v,const panel::TouchLayout &layout) {
-  if(v.speedScreen||v.hudSelector)return;
+  if(v.menu.open||v.speedScreen||v.hudSelector)return;
   const bool compact=std::min(width,height)<320;
   assert(layout.current.width && layout.current.height && inside(layout.current));
   assert(layout.outerRadius==std::min(width,height)/2+panel::DialTouchExtension);
@@ -99,6 +99,24 @@ int main(int argc,char **argv) {
     checkCurrentLayout(v,ui.touchLayout());
     const auto pixels=image;lv_obj_invalidate(lv_screen_active());lv_refr_now(d);assert(pixels==image);
     for(unsigned i=0;i<4;++i) assert(buffer[i]==0x5aa5 && buffer[buffer.size()-1-i]==0x5aa5);
+    if(v.menu.open) {
+      const auto &l=ui.touchLayout();assert(l.menuOpen && !l.enabled && l.menuAccess && !l.confirmAllowed);
+      assert(!l.current.width && !l.target.width && !l.dialHit(width/2,1));
+      std::vector<panel::TouchRect> controls;
+      for(const auto &r:l.menuButtons)if(r.width)controls.push_back(r);
+      if(v.movingNow){assert(l.stop.width);controls.push_back(l.stop);}
+      for(unsigned i=0;i<controls.size();++i) {
+        const auto &r=controls[i];assert(inside(r));
+        for(unsigned j=0;j<i;++j)assert(!overlaps(r,controls[j]));
+        if(roundPanel)for(int dx:{int(r.x)-width/2,int(r.x+r.width)-width/2})
+          for(int dy:{int(r.y)-height/2,int(r.y+r.height)-height/2})assert(dx*dx+dy*dy<=(width/2)*(width/2));
+      }
+      panel::TouchGesture menu;
+      auto event=press(menu,l,l.menuButtons[0],1);assert(event.action==panel::TouchAction::None && !event.manual);
+      event=menu.sample(false,0,0,l,2);assert(event.action==panel::TouchAction::MenuBack && !event.manual);
+      if(v.movingNow)assert(press(menu,l,l.stop,3).action==panel::TouchAction::Stop);
+      return;
+    }
     auto *stopLabel=findLabel(findLabel,ui.root(),"СТОП");assert(stopLabel);
     for(const char32_t *ch=U"СТОП";*ch;++ch) {
       lv_font_glyph_dsc_t glyph{};
@@ -136,6 +154,23 @@ int main(int argc,char **argv) {
     }
   };
   snapshot("dual");
+  {
+    const auto saved=v;
+    v.menu.open=true;v.menu.local=true;v.menu.devices=true;v.menu.brightnessAvailable=true;v.menu.brightness=70;
+    std::strcpy(v.menu.device,"Этот HUD");
+    std::strcpy(v.menu.info,"Память: 123 КБ\nМакс. блок: 64 КБ\nАптайм: 2д 03:04:05");
+    snapshot("settings-local");
+    v.menu.brightness=100;snapshot("settings-local-full");v.menu.brightness=70;
+    v.menu.connections=true;v.menu.apAvailable=true;
+    std::strcpy(v.menu.info,"Wi-Fi: подключён (-62 dBm)\nMQTT: подключён\nBluetooth: выкл.\nRS485: настроен\nEthernet: недоступен");
+    std::strcpy(v.menu.apLabel,"ТД: включить");std::strcpy(v.menu.notice,"ТД отключает STA");snapshot("settings-connections");
+    v.movingNow=true;snapshot("settings-stop");v.movingNow=false;
+    v.menu.local=false;v.menu.connections=false;
+    std::strcpy(v.menu.device,"Дача · G-5500");
+    std::strcpy(v.menu.info,"MQTT: есть связь\nАптайм: 2д 03:04:05\nМодель: G-5500\nПривод: остановлен\nДанные актуальны");
+    std::strcpy(v.menu.notice,"Нет в HUD: яркость, память");snapshot("settings-peer");
+    v=saved;ui.update(v);settle(d);
+  }
   {
     const auto saved=v;
     auto *wifi=findLabel(findLabel,ui.root(),LV_SYMBOL_WIFI);
@@ -271,7 +306,8 @@ int main(int argc,char **argv) {
       const auto start=ui.touchLayout();const auto &r=fromTarget?start.target:start.current;
       const int sx=r.x+r.width/2,sy=r.y+r.height/2;
       panel::TouchGesture swipe;swipe.sample(false,0,0,start,0);swipe.sample(true,sx,sy,start,10);
-      auto event=swipe.sample(true,sx,sy+start.swipeDeadzone+4,start,20);assert(event.manual&&event.el<0);
+      const int deadzone=fromTarget?start.targetSwipeDeadzone:start.swipeDeadzone;
+      auto event=swipe.sample(true,sx,sy+deadzone+4,start,20);assert(event.manual&&event.el<0);
       const auto gesture=event.gesture;
       v.movingNow=true;v.elDirection=-1;std::strcpy(v.status,"Вращение");ui.update(v);settle(d);
       const auto moving=ui.touchLayout();assert(moving.stop.width);
@@ -480,5 +516,39 @@ int main(int argc,char **argv) {
   v.current=v.minimum+4;v.target=v.maximum-8;snapshot("limits");
   std::strcpy(v.ip,"255.255.255.255  AP: 192.168.4.1");snapshot("network");
   v.statusFault=true;std::strcpy(v.status,"Ошибка AZ: нет изменения положения");snapshot("fault");
+  {
+    const auto saved=v;
+    for(bool offline:{true,false})for(bool hasTarget:{false,true}) {
+      v.hud=offline;v.enabled=!offline;v.statusFault=false;v.movingNow=false;
+      v.targetValid=v.secondaryTargetValid=hasTarget;
+      std::strcpy(v.status,offline?"Нет связи с повороткой":"Остановлен");
+      ui.update(v);settle(d);
+      auto l=ui.touchLayout();
+      assert(l.target.width && l.target.height && inside(l.target) && l.menuAccess);
+      assert(l.confirmAllowed==(!offline&&hasTarget));
+      assert(l.targetSwipeDeadzone==std::max(12,(std::min(width,height)*24+240)/480));
+      if(std::min(width,height)<320) {
+        assert(inside(l.menuTarget));
+        // The padding must preserve nearby controls at every compact layout.
+        for(const auto r:{l.current,l.mode,l.name,l.axis,l.settings,l.stop,l.arrows[0],l.arrows[1]})
+          if(r.width && r.height && !l.target.contains(r.x+r.width/2,r.y+r.height/2))
+            assert(!l.menuTargetHit(r.x+r.width/2,r.y+r.height/2));
+      } else assert(!l.menuTarget.width);
+      panel::TouchGesture hold;
+      const int sx=l.target.x+l.target.width/2,sy=l.target.y+l.target.height-1;
+      assert(hold.sample(true,sx,sy,l,100).action==panel::TouchAction::None);
+      const int drift=l.swipeDeadzone+2;
+      auto event=hold.sample(true,sx+drift,sy+drift,l,200);
+      assert(!event.manual && event.action==panel::TouchAction::None);
+      event=hold.sample(true,sx-drift,sy+drift,l,3100);
+      assert(!event.manual && event.action==panel::TouchAction::None);
+      event=hold.sample(true,sx+drift,sy+drift,l,3101);
+      assert(event.action==panel::TouchAction::MenuOpen && !event.manual);
+      assert(hold.sample(false,0,0,l,3110).action==panel::TouchAction::None);
+    }
+    v.hud=true;v.hudSelector=true;ui.update(v);settle(d);
+    assert(!ui.touchLayout().menuAccess);
+    v=saved;ui.update(v);settle(d);
+  }
   std::printf("PASS %dx%d: native LVGL rendering, buffer bounds, idle redraw, arrows/release, layout-specific STOP and speed controls\n",width,height);
 }

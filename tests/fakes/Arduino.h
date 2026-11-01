@@ -71,6 +71,7 @@ struct FakeHardware {
 };
 inline FakeHardware fakeHardware;
 inline uint32_t millis() { return fakeHardware.now; }
+inline uint32_t micros() {return fakeHardware.now*1000;}
 inline void digitalWrite(int pin, int level) {
   if (fakeHardware.gpioOwned[pin]) {
     fakeHardware.levels[pin] = level;
@@ -91,7 +92,7 @@ inline void rgbLedWrite(int, int, int, int) {}
 inline bool ledcAttach(int pin, unsigned frequency, unsigned resolution) {
   fakeHardware.gpioOwned[pin]=false;
   fakeHardware.events.push_back({"attach", pin, frequency});
-  return int(fakeHardware.attachCalls++) != fakeHardware.failAttachAt && fakeHardware.attachSucceeds && resolution == 10;
+  return int(fakeHardware.attachCalls++) != fakeHardware.failAttachAt && fakeHardware.attachSucceeds && (resolution == 10 || resolution == 8);
 }
 inline void ledcWrite(int pin, uint32_t duty) { fakeHardware.events.push_back({"pwm", pin, duty}); }
 inline void ledcDetach(int pin) { fakeHardware.gpioOwned[pin]=false; fakeHardware.events.push_back({"detach", pin, 0}); }

@@ -94,6 +94,7 @@ int main(int argc, char **argv) {
   CrowPanelView escaped;
   auto fill = [](auto &s) { std::memset(s, 1, sizeof s - 1); s[sizeof s - 1] = 0; };
   fill(escaped.hudName); fill(escaped.hudAddress); fill(escaped.ip); fill(escaped.heap); fill(escaped.status);
+  fill(escaped.menu.device);fill(escaped.menu.info);fill(escaped.menu.notice);fill(escaped.menu.apLabel);
   for (auto &row : escaped.hudRows) fill(row);
   CrowPanelTrace<> maximum;
   maximum.begin(1, "a", "b", "c");

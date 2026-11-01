@@ -341,7 +341,8 @@ void Display::captureTouchMultiEl(uint8_t idx) {
 }
 
 void Display::serviceTouchRecoveryHold() {
-  if (tftPage != TFT_PAGE_DASH || speedScreen_ || runtime_.controller.moving() || touchButtons_.manualActive()) {
+  if (tftPage != TFT_PAGE_DASH || speedScreen_ || menuOpen_ || runtime_.controller.moving() ||
+      touchButtons_.manualActive() || touchButtons_.targetHeld()) {
     touchHoldStartMs = 0;
     touchHoldArmed = false;
     return;
