@@ -11,6 +11,14 @@ Controller rig(){
 }
 void feed(Controller &c,float az,uint32_t now){c.feedbackAt(0,az,true,now);c.feedbackAt(1,90,true,now);c.tick(now);}
 int main(){
+ {auto c=rig();feed(c,90,1000);assert(c.setRuntimeSpeed(0,20,1000)==Result::Ok);
+  assert(c.jog(0,1,false,1000)==Result::Ok);feed(c,90,1000);
+  const auto settings=c.motionSettings[0];const auto epoch=c.stopEpoch;
+  assert(c.configureMotion(0,settings,1001));
+  assert(c.stopEpoch==epoch&&c.axes[0].direction==1&&c.axes[0].speedOutputPercent==20);
+  auto changed=settings;changed.outputLimitPercent=25;
+  assert(c.configureMotion(0,changed,1002));assert(c.stopEpoch!=epoch&&!c.moving());
+ }
  {auto c=rig();feed(c,90,1000);assert(c.jog(0,1,false,1000)==Result::Ok);feed(c,90,1000);
   assert(c.axes[0].direction==1&&c.axes[0].speedOutputPercent==30);
   c.stopNow(-1,1001);assert(!c.moving()&&c.axes[0].speedOutputPercent==0);

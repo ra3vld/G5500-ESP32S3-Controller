@@ -337,6 +337,9 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -DDISPLAY_KIN
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -DDISPLAY_KIND=6 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/pin_map_tests.cpp -o build/pin_map_tests_4_d6
 ./build/pin_map_tests_4_d6
 
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -DDISPLAY_SUPPORT=0 -DLOCAL_INPUT_SUPPORT=0 -DWEB_LIVE_SUPPORT=0 -DRS485_SUPPORT=0 -DOTA_SUPPORT=0 -DLOG_HISTORY_SUPPORT=0 -DRESET_HISTORY_SUPPORT=0 -DN1MM_SUPPORT=1 -DPSTROTATOR_SUPPORT=1 -DROTCTLD_SUPPORT=1 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/esp32_spp_api_tests.cpp -o build/esp32_spp_api_tests
+./build/esp32_spp_api_tests
+
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -DDRIVE_INTERFACE=2 -I G5500_Fork $CORE_SOURCES tests/direct_motion_tests.cpp -o build/direct_motion_tests
 ./build/direct_motion_tests
 

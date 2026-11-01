@@ -211,9 +211,11 @@ void Controller::feedbackAt(unsigned i, float position, bool calibrated, uint32_
 }
 bool Controller::configureMotion(unsigned i, const MotionSettings &settings, uint32_t now) {
   if(remote || i>1 || !settings.valid())return false;
-  stopNow(int(i),now);motionSettings[i]=settings;
-  motionSettings[i].mode=RegulatorMode::Simple;
-  motionSettings[i].kickEnabled=motionSettings[i].holdEnabled=false;
+  auto direct=settings;
+  direct.mode=RegulatorMode::Simple;
+  direct.kickEnabled=direct.holdEnabled=false;
+  if(motionSettings[i]==direct)return true;
+  stopNow(int(i),now);motionSettings[i]=direct;
   resetRuntimeSpeed(i,now);return true;
 }
 Result Controller::resetMotion(int axis, uint32_t now) {

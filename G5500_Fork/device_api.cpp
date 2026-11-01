@@ -1188,12 +1188,20 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       << ",\"rotorName\":" << jsonQuoted(runtime_.protocol.rotorName)
       << ",\"externalAzMode\":" << jsonQuoted(runtime_.protocol.externalAzMode==ExternalAzMode::Mechanical?"mechanical":"shortest")
       << ",\"gs232ManualFollow\":" << (runtime_.protocol.manualFollow.gs232?"true":"false")
+      << ",\"rotctldManualFollow\":" << (runtime_.protocol.manualFollow.rotctld?"true":"false")
+      << ",\"n1mmManualFollow\":" << (runtime_.protocol.manualFollow.n1mm?"true":"false")
+      << ",\"pstManualFollow\":" << (runtime_.protocol.manualFollow.pst?"true":"false")
+      << ",\"n1mmPort\":" << runtime_.loggerSettings.n1mmPort
+      << ",\"pstPort\":" << runtime_.loggerSettings.pstPort
+      << ",\"reportPort\":" << runtime_.loggerSettings.reportPort
+      << ",\"reportHost\":" << jsonQuoted(runtime_.loggerSettings.reportHost)
       << ",\"speedEnabled\":" << (c.speedEnabled?"true":"false")
       << ",\"controlHz\":" << 1000/c.controlPeriodMs()
       << ",\"calMode\":" << jsonQuoted(s.calibrationMode==CAL_MULTI_POINT?"multi":"2")
       << ",\"axes\":[";
     for(unsigned i=0;i<2;++i) {
-      if(i)j << ',';const auto &m=c.motionSettings[i];
+      if(i)j << ',';
+      const auto &m=c.motionSettings[i];
       j << "{\"speedPercent\":" << c.speeds[i].speedPercent
         << ",\"coastDegrees\":" << c.speeds[i].coastDegrees
         << ",\"outputLimit\":" << m.outputLimitPercent

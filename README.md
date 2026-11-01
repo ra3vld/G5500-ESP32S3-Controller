@@ -1,6 +1,6 @@
 # G5500: минимальная прошивка Classic ESP32 SPP
 
-Wi-Fi, компактный веб-интерфейс, встроенный Bluetooth Classic SPP и USB GS-232
+Wi-Fi, компактный веб-интерфейс, встроенный Bluetooth Classic SPP, USB GS-232, rotctld / Hamlib, N1MM и PstRotator
 для ESP32 WROOM/WROVER с Flash 4 МБ. Прямое управление PWM с сохранёнными
 ограничениями движения и защитами. Веб содержит управление, калибровку AZ/EL,
 настройки и сброс ошибок. PID, автотюн, рампа, HUD, WebSocket, MQTT и OTA
