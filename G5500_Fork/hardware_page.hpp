@@ -145,7 +145,7 @@ const background=(()=>{
 /* END STARTUP ACTIVITY */
 let state,metadata,formStamp,savedStamp,dirty=false,busy=false,probe=false,pinError,draftRevision=0,mbRevision=0;
 function hardwareEdited(){dirty=true;++draftRevision;}
-let rebootsLoaded=false;
+let rebootsLoaded=false,pendingHardwareSave;
 const form=document.getElementById('hardware'),msg=document.getElementById('message');
 const names=['driveInterface','simulation','bluetoothEnabled','bluetoothMode','forceApSta','buttonGpio','buttonActiveLow','buttonPullup','pwmInverted'];
 const localNames=['localInputMode','localAzInvert','localElInvert','localAzMin','localAzCenter','localAzMax','localElMin','localElCenter','localElMax','localDeadzone','localHysteresis'];
@@ -212,7 +212,18 @@ for(const field of document.querySelectorAll('fieldset')){
  const details=document.createElement('details');details.className='settings-fold';const summary=document.createElement('summary');summary.textContent=title;details.append(summary);field.before(details);details.append(field);
 }
 
-function failureSummary(){document.getElementById('failures').textContent=state&&state.failureCount!==undefined?'Сбои: '+state.failureCount+' / '+state.failureLimit+'. Счётчик сбрасывается после 15 минут стабильной работы.':'';}
+function failureSummary(){
+ let text=state&&state.failureCount!==undefined?'Сбои: '+state.failureCount+' / '+state.failureLimit+'. Счётчик сбрасывается после 15 минут стабильной работы.':'';
+ if(state?.failureCount&&state.lastFailure&&state.lastFailure!=='none')text+=' Последний сбой запуска: '+(reasons[state.lastFailure]||'Причина неизвестна.');
+ document.getElementById('failures').textContent=text;
+ if(pendingHardwareSave&&state.token!==pendingHardwareSave.token&&!state.trial){
+  if(state.failureCount>pendingHardwareSave.failures){
+   msg.textContent='Сохранённая конфигурация не запустилась. '+(state.recovery?'Устройство в режиме восстановления. ':'Восстановлены подтверждённые настройки. ')+(reasons[state.lastFailure]||reasons[state.reason]||'Проверьте диагностику запуска.');
+   settingsFeedback(msg.textContent);
+  }
+  pendingHardwareSave=null;
+ }
+}
 const singleAxis=c=>['elAdc','elPositive',...(c.driveInterface===2?[]:['elSpeedEnable']),...(c.driveInterface===3?[]:['elNegative'])].every(name=>c.pins[name]<0);
 const hud485=c=>['hudRx','hudTx','hudDe'].every(k=>c.pins[k]>=0);
 const sharedSensorPin=(c,d,pin)=>!!c.azSensor&&!!c.elSensor&&c.azSensorAddress!==c.elSensorAddress&&((d.name==='elSensorSda'&&pin===c.pins.azSensorSda)||(d.name==='elSensorScl'&&pin===c.pins.azSensorScl));
@@ -298,7 +309,7 @@ const refreshReboots=singlePoll(async()=>{
  }catch(e){status.textContent='Не удалось получить журнал: '+e.message;}finally{button.disabled=false;}
 });
 document.getElementById('load-reboots').onclick=refreshReboots;
-async function apply(path,values){if(busy||!state)return;const revision=draftRevision,mb=mbRevision,stamp=credentials();busy=true;msg.textContent='Сохраняем настройки…';settingsFeedback(msg.textContent,'pending');buttons();try{const result=await request(path,{...(path==='/api/hardware'?formStamp:credentials()),...values});msg.textContent=path==='/api/hardware/confirm'?'Сохранено. Настройки подтверждены.':path==='/api/hardware'||path==='/api/hardware/rollback'?(result.confirmationRequired===false?'Сохранено. Устройство перезапускается с подтверждёнными настройками. Дополнительное подтверждение не требуется.':'Сохранено. Устройство перезапускается. После подключения действие на экране, в веб-интерфейсе или начало поворота к цели подтвердит запуск.'):path==='/api/hardware/recovery'?'Сохранено. Устройство перезапускается в режим восстановления.':'Сохранено. Дождитесь перезапуска устройства.';if(path==='/api/hardware'||path==='/api/hardware/rollback'){savedStamp=stamp;if(revision===draftRevision)dirty=false;}if(path==='/api/hardware/modbus'){savedStamp=stamp;if(mb===mbRevision)mbDirty=false;}if(dirty||mbDirty)msg.textContent+=' Есть несохранённые изменения.';settingsFeedback(msg.textContent,'success');probe=false;setTimeout(()=>{busy=false;refresh();},path==='/api/hardware/confirm'?0:4000);}catch(e){msg.textContent=e.message;settingsFeedback(e.message);busy=false;buttons();}}
+async function apply(path,values){if(busy||!state)return;const revision=draftRevision,mb=mbRevision,stamp=credentials();busy=true;msg.textContent='Сохраняем настройки…';settingsFeedback(msg.textContent,'pending');buttons();try{const result=await request(path,{...(path==='/api/hardware'?formStamp:credentials()),...values});msg.textContent=path==='/api/hardware/confirm'?'Сохранено. Настройки подтверждены.':path==='/api/hardware'||path==='/api/hardware/rollback'?(result.confirmationRequired===false?'Сохранено. Устройство перезапускается с подтверждёнными настройками. Дополнительное подтверждение не требуется.':'Сохранено. Устройство перезапускается. После подключения действие на экране, в веб-интерфейсе или начало поворота к цели подтвердит запуск.'):path==='/api/hardware/recovery'?'Сохранено. Устройство перезапускается в режим восстановления.':'Сохранено. Дождитесь перезапуска устройства.';if(path==='/api/hardware'||path==='/api/hardware/rollback'){pendingHardwareSave={token:stamp.token,failures:state.failureCount||0};savedStamp=stamp;if(revision===draftRevision)dirty=false;}if(path==='/api/hardware/modbus'){savedStamp=stamp;if(mb===mbRevision)mbDirty=false;}if(dirty||mbDirty)msg.textContent+=' Есть несохранённые изменения.';settingsFeedback(msg.textContent,'success');probe=false;setTimeout(()=>{busy=false;refresh();},path==='/api/hardware/confirm'?0:4000);}catch(e){msg.textContent=e.message;settingsFeedback(e.message);busy=false;buttons();}}
 form.addEventListener('submit',e=>{e.preventDefault();updatePins();if(pinError)return;const body={};for(const name of names)body[name]=form.elements[name].value;for(const d of metadata.roles){const el=form.elements['pin.'+d.name];if(el)body['pin.'+d.name]=el.value;}apply('/api/hardware',body);});
 let capture=null,polling=false,calibrationPending=false;
 const calibrationStatus=document.getElementById('joystick-status');
