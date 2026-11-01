@@ -1,3 +1,5 @@
+#include "build_config.hpp"
+#if !ESP32_SPP_PROFILE
 // GPL-3.0. Ruckig's separately licensed local core is under src/ruckig/.
 #include "control.hpp"
 #include "src/ruckig/ruckig.hpp"
@@ -2062,3 +2064,5 @@ void Controller::tickAutoTune(uint32_t now) {
   }
 }
 } // namespace forkrot
+
+#endif

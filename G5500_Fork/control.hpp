@@ -161,6 +161,17 @@ struct AutoTuneFailure {
   bool tracking = false;
   unsigned velocityWindowMs = 0;
 };
+#if ESP32_SPP_PROFILE
+struct AutoTuneState {
+  AutoTunePhase phase=AutoTunePhase::Idle;
+  uint32_t id=0;
+  int axis=-1,direction=0;
+  float level=0,validationError=0;
+  const char *reason="disabled";
+  static constexpr bool internal=false;
+  bool active() const { return false; }
+};
+#else
 struct AutoTuneState {
   AutoTuneOptions options{};
   AutoTunePhase phase = AutoTunePhase::Idle;
@@ -227,6 +238,7 @@ struct AutoTuneState {
   std::array<Plateau, 2> confirmedHigh{};
   bool active() const { return phase >= AutoTunePhase::Quiet && phase <= AutoTunePhase::Tracking; }
 };
+#endif
 struct Preset {
   std::string label;
   Target target;
@@ -301,7 +313,7 @@ public:
   void resetRuntimeSpeed(unsigned axis, uint32_t now);
   Result setRuntimeSpeed(unsigned axis, float value, uint32_t now);
   float tolerance(unsigned i) const {
-    if (variableSpeed(i) && motionSettings[i].mode == RegulatorMode::Cascade)
+    if (!ESP32_SPP_PROFILE && variableSpeed(i) && motionSettings[i].mode == RegulatorMode::Cascade)
       return motionSettings[i].positionTolerance;
     return std::min(speeds[i].coastDegrees, range(i).span() / 10);
   }

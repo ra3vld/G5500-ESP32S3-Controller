@@ -154,7 +154,7 @@ int main() {
   {
     Bus stream;Node motor(stream,1,1),panel(stream,2,2,true);
     motor.controller.hardware.drive=DRIVE_BTS7960;motor.controller.speedEnabled=true;
-    motor.controller.motionSettings[0].kickEnabled=true;
+    motor.controller.motionSettings[0].kickEnabled=!ESP32_SPP_PROFILE;
     panel.save(motor);panel.hud.select(1);stream.tick(100);
     assert(panel.hud.active()->wireVersion==5);
     uint32_t previous=0;
@@ -165,10 +165,13 @@ int main() {
     }
     stream.tick(110);assert(motor.controller.axes[0].target==40);
     assert(panel.hud.result(previous).result==Result::Ok);
-    assert(motor.controller.axes[0].motionPhase==MotionPhase::Kick);
-    assert(panel.controller.motionSettings[0].ready&&panel.controller.motionSettings[0].kickEnabled);
-    assert(panel.controller.axes[0].motionPhase==MotionPhase::Kick);
+    const auto runningPhase=ESP32_SPP_PROFILE?MotionPhase::Run:MotionPhase::Kick;
+    assert(motor.controller.axes[0].motionPhase==runningPhase);
+    assert(panel.controller.motionSettings[0].ready&&panel.controller.motionSettings[0].kickEnabled==!ESP32_SPP_PROFILE);
+    assert(panel.controller.axes[0].motionPhase==runningPhase);
     assert(panel.controller.target({9999,0,true,false},false,110)==Result::Invalid);
+#if !ESP32_SPP_PROFILE
+    // Active holding is available only with the full motion engine.
     auto &held=motor.controller.axes[0];held.current=held.target=40;
     held.tracking=false;held.wanted=held.direction=0;held.speedOutputPercent=0;
     held.holdArmed=true;held.motionPhase=MotionPhase::Holding;
@@ -189,6 +192,7 @@ int main() {
     HudKnob detent(panel.hud,panel.controller);
     detent.sample(true,false,0,1300);detent.sample(true,false,-1,1340);stream.tick(1340);
     assert(motor.controller.axes[0].target==60);
+#endif
   }
 
   Bus bus;

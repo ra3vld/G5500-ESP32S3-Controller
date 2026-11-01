@@ -3,6 +3,13 @@
 #include "control.hpp"
 #include "json_writer.hpp"
 namespace forkrot {
+#if ESP32_SPP_PROFILE
+inline const SpeedSettings &reportedSpeed(const Controller &c,unsigned i) { return c.speeds[i]; }
+inline const MotionSettings &reportedMotion(const Controller &c,unsigned i) { return c.motionSettings[i]; }
+inline bool writeAutoTune(JsonWriter &j,const Controller &,bool=false) {
+  j << "{\"phase\":\"disabled\",\"active\":false,\"id\":0,\"axis\":-1}";return j.good();
+}
+#else
 inline const SpeedSettings &reportedSpeed(const Controller &c,unsigned i) {
   return c.autoTune.active() && c.autoTune.axis==int(i) ? c.autoTune.originalSpeed : c.speeds[i];
 }
@@ -101,6 +108,7 @@ inline bool writeAutoTune(JsonWriter &j, const Controller &c, bool full=false) {
   }
   j << '}';return j.good();
 }
+#endif
 inline void writeAxisMotion(JsonWriter &j, const Controller &c, unsigned i) {
   const auto &a=c.axes[i]; const auto &m=reportedMotion(c,i);
   j << ",\"regulatorMode\":" << jsonQuoted(regulatorName(m.mode))

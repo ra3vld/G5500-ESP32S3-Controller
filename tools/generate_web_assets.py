@@ -7,7 +7,8 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCES = ("web_page.hpp", "diagnostic_pages.hpp", "hardware_page.hpp")
+SOURCES = ("web_page.hpp", "web_page_spp.hpp", "diagnostic_pages.hpp", "hardware_page.hpp")
+PROFILE_GUARDS = {"web_page.hpp": "!ESP32_SPP_PROFILE", "web_page_spp.hpp": "ESP32_SPP_PROFILE"}
 ASSET_RE = r'(?:static|inline) constexpr char (\w+)\[\](?: PROGMEM)? = R"(\w+)\((.*?)\)\2";'
 OUTPUT = ROOT / "G5500_Fork/web_assets.hpp"
 POLL_HELPER = ROOT / "tools/web_poll.js"
@@ -45,6 +46,10 @@ def generate(check=False):
                 raise ValueError(f"Stale polling helper in {filename}; regenerate web assets")
             source_path.write_text(updated, encoding="utf-8")
             source = updated
+        guard = PROFILE_GUARDS.get(filename)
+        lines.append(f"// BEGIN ASSETS: {filename}")
+        if guard:
+            lines.append(f"#if {guard}")
         for match in re.finditer(ASSET_RE, source, re.S):
             name, _, html = match.groups()
             raw = html.encode("utf-8")
@@ -60,6 +65,9 @@ def generate(check=False):
             symbol = "forkrot::" + name if filename == "hardware_page.hpp" else name
             lines += [f'static_assert(webAssetHash({symbol}) == 0x{fingerprint:08x}u, "Regenerate web assets: python3 tools/generate_web_assets.py");']
             sizes.append((name, len(raw), len(packed)))
+        if guard:
+            lines.append("#endif")
+        lines.append(f"// END ASSETS: {filename}")
     return "\n".join(lines) + "\n", sizes
 
 

@@ -27,6 +27,7 @@ class BuildConfigTests(unittest.TestCase):
         for name in ['build_platformio.py', 'prepare_sketch.py', 'generate_web_assets.py', 'project_version.py', 'build_capabilities.py', 'web_poll.js', 'web_activity.js']:
             shutil.copy2(ROOT / 'tools' / name, self.root / 'tools' / name)
         shutil.copy2(ROOT / 'platformio.ini', self.root / 'platformio.ini')
+        shutil.copytree(ROOT / 'platformio', self.root / 'platformio')
 
     def edit(self, **settings):
         for name, value in settings.items():
@@ -46,6 +47,20 @@ class BuildConfigTests(unittest.TestCase):
                                  '-x', 'c++', '-'],
                                 input='#include "board.hpp"\n' + assertions, text=True, capture_output=True)
         self.assertEqual(result.returncode == 0, success, result.stderr)
+
+    def test_spp_environments_in_generic_selector(self):
+        for name, hud in [('esp32_spp', 0), ('esp32_spp_hud', 1)]:
+            with self.subTest(profile=name):
+                result = subprocess.run([sys.executable, str(self.root/'tools/build_platformio.py'),
+                                         '--env', name, '--dry-run'], text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                config = configparser.ConfigParser(interpolation=None)
+                config.read(self.root/'build/platformio-config'/f'{name}.ini')
+                self.assertIn(str(self.root/'platformio/esp32_spp.ini'), config.get('platformio', 'extra_configs'))
+                flags = config.get('env:selected', 'build_flags')
+                for required in ['ESP32_SPP_PROFILE=1', 'BLUETOOTH_ENABLED=1', 'N1MM_SUPPORT=1',
+                                 'PSTROTATOR_SUPPORT=1', 'ROTCTLD_SUPPORT=1', f'HUD_SUPPORT={hud}']:
+                    self.assertIn('-D' + required, flags)
 
     def test_feature_dependencies(self):
         flags=['DISPLAY_SUPPORT','LOCAL_INPUT_SUPPORT','WIFI_SUPPORT','ETHERNET_SUPPORT','WEB_LIVE_SUPPORT','WEB_PLAIN_HTML_SUPPORT',

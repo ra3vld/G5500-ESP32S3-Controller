@@ -100,6 +100,9 @@ template<class Writer> void metadata(Writer &j,const Controller &c,const Hud &h)
     j << "{\"regulatorMode\":" << jsonQuoted(regulatorName(m.mode)) << ",\"motionReady\":" << boolean(m.ready)
       << ",\"holdEnabled\":" << boolean(m.mode==RegulatorMode::Cascade&&m.holdEnabled) << '}';
   }
+#if ESP32_SPP_PROFILE
+  j << "],\"autotune\":{\"phase\":\"disabled\",\"active\":false,\"id\":0,\"axis\":-1}";
+#else
   const auto &t=c.autoTune;
   j << "],\"autotune\":{\"phase\":" << jsonQuoted(Controller::autoTunePhaseName(t.phase))
     << ",\"active\":" << boolean(t.active()) << ",\"id\":" << t.id << ",\"axis\":" << t.axis
@@ -112,6 +115,7 @@ template<class Writer> void metadata(Writer &j,const Controller &c,const Hud &h)
       << ",\"trackingDurationMs\":" << t.trackingDurationMs[t.trackingCase/2]
       << ",\"trackingTravel\":" << (t.trackingCase<4?t.trackingSlow:t.trackingFast)*t.trackingDurationMs[t.trackingCase/2]/1000;
   j << '}';
+#endif
 #if HUD_SUPPORT
   char node[17],selected[17];
   std::snprintf(node,sizeof node,"%012llx",static_cast<unsigned long long>(h.id));

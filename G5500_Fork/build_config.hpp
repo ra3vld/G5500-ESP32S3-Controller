@@ -7,6 +7,12 @@
 // Экономия при 0 в байтах: полный firmware.bin / статическая DRAM / IRAM.
 // Пары одного снимка; отдельные результаты не складываются из-за общих зависимостей.
 
+// Compact Classic ESP32 firmware: direct PWM and essential web pages.
+// Select through env:esp32_spp or env:esp32_spp_hud.
+#ifndef ESP32_SPP_PROFILE
+#define ESP32_SPP_PROFILE 0
+#endif
+
 // Compile-time capabilities. Unlike runtime defaults these remove services.
 // При 0, Б (BIN/DRAM/IRAM): ST 190464/8048/424; S3 512560/8040/256.
 // Вместе с WebSocket; heap HTTP/SDK не измерена. WS: stack 6144 Б; очереди выделяются на подключение, общие JSON-снимки — блоками по 256 Б, бинарный снимок 160 Б.

@@ -122,40 +122,43 @@ int main() {
   connect("GET /api/status HTTP/1.1\r\nX: "+std::string(1600,'x')+"\r\n\r\n");
   fakeHeapFree=8172;fakeHeapBlock=1524;
   web.handleClient();assert(testSocket.parsed==0 && testSocket.reset);
+  // Keep pacing coverage independent of the compact main page size.
+  const std::string largePage(256*1024, 'P');
   connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
   fakeHeapFree=8172;fakeHeapBlock=1524;
-  testSocket.handler=[&] { web.sendPage(200,"text/html",WEB_PAGE,sizeof WEB_PAGE-1); };
+  testSocket.handler=[&] { web.sendPage(200,"text/html",largePage.data(),largePage.size()); };
   const auto beforePage=fakeHardware.now;
   web.handleClient();assert(testSocket.handled==1 && !web.writeFailed());
   const auto bodyStart=testSocket.output.find("\r\n\r\n")+4;
-  assert(testSocket.output.find("Content-Length: "+std::to_string(sizeof WEB_PAGE-1))!=std::string::npos);
+  assert(testSocket.output.find("Content-Length: "+std::to_string(largePage.size()))!=std::string::npos);
   // Bulk traffic waits for the control reserve; admitting a fixed-buffer
   // request at low heap must not bypass that reserve.
   fakeHardware.now+=20;web.handleClient();assert(testSocket.output.size()==bodyStart && !web.writeFailed());
   fakeHeapFree=40000;fakeHeapBlock=16384;
   unsigned controlLoops=0;
-  while(testSocket.output.size()<bodyStart+sizeof WEB_PAGE-1 && controlLoops<2000) {
+  while(testSocket.output.size()<bodyStart+largePage.size() && controlLoops<2000) {
     fakeHardware.now+=10;testSocket.sendQuota=256;
     const auto beforeLoop=fakeHardware.now;
     web.handleClient();++controlLoops;
-    if(fakeHardware.now!=beforeLoop || web.writeFailed())std::cerr<<"page failure now="<<fakeHardware.now<<" before="<<beforeLoop<<" elapsed="<<fakeHardware.now-beforePage<<" loops="<<controlLoops<<" bytes="<<testSocket.output.size()-bodyStart<<" total="<<sizeof WEB_PAGE-1<<" cause="<<web.diagnostics().writeCause<<"\n";
+    if(fakeHardware.now!=beforeLoop || web.writeFailed())std::cerr<<"page failure now="<<fakeHardware.now<<" before="<<beforeLoop<<" elapsed="<<fakeHardware.now-beforePage<<" loops="<<controlLoops<<" bytes="<<testSocket.output.size()-bodyStart<<" total="<<largePage.size()<<" cause="<<web.diagnostics().writeCause<<"\n";
     assert(fakeHardware.now==beforeLoop && !web.writeFailed());
   }
   assert(fakeHardware.now-beforePage>250 && controlLoops>100);
-  assert(testSocket.output.substr(bodyStart)==WEB_PAGE && !testSocket.reset);
+  assert(testSocket.output.substr(bodyStart)==largePage && !testSocket.reset);
   assert(testSocket.heapBufferReads==0 && testSocket.parsed==1);
   assert(testSocket.noDelay);
   // A small transport queue returns ENOMEM until ACKs release it. It must
   // delay transmission instead of resetting the connection at the first miss.
   connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
   fakeHeapFree=40000;fakeHeapBlock=16384;testSocket.queueCapacity=1024;
-  const char *compressed=reinterpret_cast<const char *>(WEB_PAGE_GZIP);
-  testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof WEB_PAGE_GZIP); };
+  // The larger hardware asset exercises backpressure even when main is tiny.
+  const char *compressed=reinterpret_cast<const char *>(HARDWARE_PAGE_GZIP);
+  testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof HARDWARE_PAGE_GZIP); };
   const auto failuresBefore=web.diagnostics().writeFailures;
   web.handleClient();
   const auto gzipStart=testSocket.output.find("\r\n\r\n")+4;
   unsigned waiting=0;
-  for(unsigned i=0;testSocket.output.size()<gzipStart+sizeof WEB_PAGE_GZIP && i<2000;++i) {
+  for(unsigned i=0;testSocket.output.size()<gzipStart+sizeof HARDWARE_PAGE_GZIP && i<2000;++i) {
     fakeHardware.now+=5;
     if(i%16==15) testSocket.outstanding=0; // radio/TCP ACK every 80ms
     const auto bytesBefore=testSocket.output.size();
@@ -165,7 +168,7 @@ int main() {
     assert(fakeHardware.now==timeBefore && !web.writeFailed());
   }
   assert(waiting>20 && web.diagnostics().writeFailures==failuresBefore);
-  assert(testSocket.output.substr(gzipStart)==std::string(compressed,sizeof WEB_PAGE_GZIP));
+  assert(testSocket.output.substr(gzipStart)==std::string(compressed,sizeof HARDWARE_PAGE_GZIP));
   // A stable 28 KiB heap (or a fragmented heap below the burst threshold)
   // must still deliver a complete page. The former all-or-nothing gate sent
   // its 200/Content-Length header, then no body until the idle deadline.
@@ -173,7 +176,7 @@ int main() {
     connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
     fakeHeapFree=fragmented?40000:28672;fakeHeapBlock=fragmented?10240:16384;
     testSocket.queueCapacity=1024;
-    testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof WEB_PAGE_GZIP); };
+    testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof HARDWARE_PAGE_GZIP); };
     const auto lowFailures=web.diagnostics().writeFailures;
     const auto started=fakeHardware.now;
     web.handleClient();
@@ -190,7 +193,7 @@ int main() {
     }
     assert(!testSocket.open && !testSocket.reset && fakeHardware.now-started<30000);
     assert(web.diagnostics().writeFailures==lowFailures);
-    assert(testSocket.output.substr(lowStart)==std::string(compressed,sizeof WEB_PAGE_GZIP));
+    assert(testSocket.output.substr(lowStart)==std::string(compressed,sizeof HARDWARE_PAGE_GZIP));
   }
   // JSON fallback also makes progress below the burst reserve, including a
   // temporary deeper dip after its first bytes. Never restart the response.
@@ -210,7 +213,7 @@ int main() {
   // Drain a bounded burst so the complete gzip arrives before HTML's deadline.
   connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
   fakeHeapFree=80000;fakeHeapBlock=65536;
-  testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof WEB_PAGE_GZIP); };
+  testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof HARDWARE_PAGE_GZIP); };
   web.handleClient();
   const auto slowStart=testSocket.output.find("\r\n\r\n")+4;
   unsigned slowLoops=0;
@@ -220,13 +223,13 @@ int main() {
     assert(fakeHardware.now==before && testSocket.output.size()-bytes<=4096);
   }
   assert(!web.writeFailed() && !testSocket.open && slowLoops<30);
-  assert(testSocket.output.substr(slowStart)==std::string(compressed,sizeof WEB_PAGE_GZIP));
+  assert(testSocket.output.substr(slowStart)==std::string(compressed,sizeof HARDWARE_PAGE_GZIP));
   // Reproduce the device's partial gzip response. TCP retransmission can take
   // 3s initially, followed by a longer backoff. The former 2s deadline killed
   // this response; HTML must survive a 9s stall without blocking the loop.
   connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
   fakeHeapFree=40000;fakeHeapBlock=16384;
-  testSocket.handler=[&] { web.sendPage(200,"text/html; charset=utf-8",compressed,sizeof WEB_PAGE_GZIP); };
+  testSocket.handler=[&] { web.sendPage(200,"text/html; charset=utf-8",compressed,sizeof HARDWARE_PAGE_GZIP); };
   const auto failuresBeforeStall=web.diagnostics().writeFailures;
   web.handleClient();
   const auto recoveryStart=testSocket.output.find("\r\n\r\n")+4;
@@ -242,10 +245,10 @@ int main() {
   }
   testSocket.blockWrites=false;testSocket.sendQuota=size_t(-1);
   // Allow the larger settings page to drain after recovery; the loop remains bounded.
-  const auto recoveryDeadline=fakeHardware.now+uint32_t((sizeof WEB_PAGE_GZIP+511)/512)*20+500;
+  const auto recoveryDeadline=fakeHardware.now+uint32_t((sizeof HARDWARE_PAGE_GZIP+511)/512)*20+500;
   while(testSocket.open && fakeHardware.now<recoveryDeadline) { fakeHardware.now+=20;web.handleClient(); }
   assert(!testSocket.open && !testSocket.reset && web.diagnostics().writeFailures==failuresBeforeStall);
-  assert(testSocket.output.substr(recoveryStart)==std::string(compressed,sizeof WEB_PAGE_GZIP));
+  assert(testSocket.output.substr(recoveryStart)==std::string(compressed,sizeof HARDWARE_PAGE_GZIP));
   connect(request);testSocket.handler=[&] { web.sendBuffer(200,"application/json",WEB_PAGE,1500); };
   web.handleClient();const auto statusStart=testSocket.output.find("\r\n\r\n")+4;
   for(unsigned i=0;testSocket.output.size()<statusStart+1500 && i<20;++i) {

@@ -11,17 +11,18 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class WebAssetsTests(unittest.TestCase):
     def test_generated_header_is_current(self):
-        expected, sizes = generate()
+        expected, sizes = generate(check=True)
         self.assertEqual((ROOT / "G5500_Fork/web_assets.hpp").read_text(), expected)
-        self.assertEqual(len(sizes), 5)
+        self.assertEqual(len(sizes), 8)
 
     def test_embedded_assets_decompress_exactly(self):
         header = (ROOT / "G5500_Fork/web_assets.hpp").read_text()
         for filename in SOURCES:
             source = (ROOT / "G5500_Fork" / filename).read_text()
+            asset_section = header.split(f"// BEGIN ASSETS: {filename}\n", 1)[1].split(f"// END ASSETS: {filename}", 1)[0]
             for name, _, html in re.findall(ASSET_RE, source, re.S):
                 with self.subTest(asset=name):
-                    array = re.search(rf'\b{name}_GZIP\[\] PROGMEM = \{{(.*?)\}};', header, re.S).group(1)
+                    array = re.search(rf'\b{name}_GZIP\[\] PROGMEM = \{{(.*?)\}};', asset_section, re.S).group(1)
                     packed = bytes(int(value, 16) for value in re.findall(r'0x([0-9a-f]{2})', array))
                     self.assertEqual(gzip.decompress(packed), html.encode())
                     self.assertLess(len(packed), len(html.encode()))

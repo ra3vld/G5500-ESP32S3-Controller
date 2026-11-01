@@ -1,3 +1,8 @@
+#pragma once
+#include "build_config.hpp"
+#if ESP32_SPP_PROFILE
+#include "web_page_spp.hpp"
+#else
 /* Fork modifications by RA3VLD, 2026-10-12. GPLv3; see docs/upstream.md. */
 #pragma once
 #ifndef ARDUINO
@@ -2289,3 +2294,5 @@ async function saveMqtt(event){
 document.querySelector('#networkSettings > details').addEventListener('toggle',renderMqttSettings);
 </script></body></html>
 )HTML";
+
+#endif

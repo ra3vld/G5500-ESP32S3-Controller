@@ -25,6 +25,7 @@
 
 - [Общий сенсорный интерфейс CrowPanel, GC9A01 и ILI9341](control/display.md).
 - [Классический ESP32 WROOM/WROVER](boards/classic-esp32.md).
+- [Classic ESP32: компактные профили Wi-Fi, веб и встроенного Bluetooth SPP](boards/esp32-spp.md).
 - [ESP32-C3 без дисплея](boards/esp32-c3.md).
 - [WT32-ETH01 с Ethernet](boards/wt32-eth01.md).
 - [Waveshare ESP32-S3-ETH: камера и два BTS7960](boards/waveshare-esp32-s3-eth.md).

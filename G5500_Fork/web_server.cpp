@@ -55,7 +55,7 @@ void WebInterface::setupWeb() {
   web_.on("/diaglog",HTTP_GET,[this] {sendHtml(WEB_PLAIN_HTML_SUPPORT?DIAG_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof DIAG_PAGE-1:0,DIAG_PAGE_GZIP,sizeof DIAG_PAGE_GZIP);});
   web_.on("/resetdiag",HTTP_GET,[this] {sendHtml(WEB_PLAIN_HTML_SUPPORT?RESET_DIAG_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof RESET_DIAG_PAGE-1:0,RESET_DIAG_PAGE_GZIP,sizeof RESET_DIAG_PAGE_GZIP);});
   web_.on("/adc",HTTP_GET,[this] {sendHtml(WEB_PLAIN_HTML_SUPPORT?ADC_TEST_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ADC_TEST_PAGE-1:0,ADC_TEST_PAGE_GZIP,sizeof ADC_TEST_PAGE_GZIP);});
-  for(const char *path : {
+  static const char *const apiPaths[] = {
     "/api/setup",
     "/api/motion/coast",
     "/api/adcdiag",
@@ -99,7 +99,28 @@ void WebInterface::setupWeb() {
     "/api/diagnostics",
     "/api/network",
     "/api/network/confirm",
-    "/api/network/rollback"}) {
+    "/api/network/rollback"};
+#if ESP32_SPP_PROFILE
+  web_.onNotFound([this] {
+    const String uri=web_.uri();
+    if(web_.method()==HTTP_GET && (uri=="/settings" || uri=="/calibration")) {
+      web_.sendHeader("Cache-Control","no-store");
+      if(uri=="/settings")sendHtml(WEB_PLAIN_HTML_SUPPORT?ESSENTIAL_SETTINGS_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ESSENTIAL_SETTINGS_PAGE-1:0,ESSENTIAL_SETTINGS_PAGE_GZIP,sizeof ESSENTIAL_SETTINGS_PAGE_GZIP);
+      else sendHtml(WEB_PLAIN_HTML_SUPPORT?ESSENTIAL_CALIBRATION_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ESSENTIAL_CALIBRATION_PAGE-1:0,ESSENTIAL_CALIBRATION_PAGE_GZIP,sizeof ESSENTIAL_CALIBRATION_PAGE_GZIP);
+      return;
+    }
+    const char *path=nullptr;
+    for(const char *candidate:apiPaths)if(uri==candidate){path=candidate;break;}
+    if(!path){web_.send(404,"application/json","{\"error\":\"not_found\"}");return;}
+    std::array<FormArgument,HTTP_MAX_ARGUMENTS> arguments;
+    const size_t count=web_.args();
+    if(count>arguments.size()){web_.send(400,"application/json","{\"error\":\"too_many_arguments\"}");return;}
+    for(size_t i=0;i<count;++i)arguments[i]={web_.argumentName(i),web_.argumentValue(i)};
+    web_.sendHeader("Cache-Control","no-store");
+    serveApi(web_.method()==HTTP_GET?"GET":web_.method()==HTTP_POST?"POST":"OTHER",path,{arguments.data(),count});
+  });
+#else
+  for(const char *path:apiPaths) {
     web_.on(path,HTTP_ANY,[this,path] {
       std::array<FormArgument,HTTP_MAX_ARGUMENTS> arguments;
       const size_t count=web_.args();
@@ -109,6 +130,7 @@ void WebInterface::setupWeb() {
       serveApi(web_.method()==HTTP_GET?"GET":web_.method()==HTTP_POST?"POST":"OTHER",path,{arguments.data(),count});
     });
   }
+#endif
   web_.begin();
   if(!live_.begin())diagnostics_.dbgPrintln("[LIVE] WebSocket unavailable; HTTP fallback");
   camera_.begin();
