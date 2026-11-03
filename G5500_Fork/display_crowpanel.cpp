@@ -10,6 +10,7 @@
 #include "drive_fault_text.hpp"
 #include <algorithm>
 #include <cstring>
+#include <new>
 #if CROWPANEL_USB_TRACE
 #include <esp_app_desc.h>
 #include <esp_system.h>
@@ -38,17 +39,28 @@ bool IRAM_ATTR onVsync(esp_lcd_panel_handle_t, const esp_lcd_rgb_panel_event_dat
 }
 }
 void Display::flushFrame(lv_display_t *display, const lv_area_t *area, uint8_t *pixels) {
-  (void)area;
-  if (!lv_display_flush_is_last(display) || diagnosticFailed) {
+  if (diagnosticFailed) {
     lv_display_flush_ready(display);
     return;
   }
   auto &self = *static_cast<Display *>(lv_display_get_user_data(display));
-  // Reuse the old framebuffer only after the SRAM refill driver releases it.
+  const void *frame=pixels;
+  if(self.frameComposer_) {
+    // Direct LVGL buffers contain a full logical image. Rotate only this
+    // invalidated rectangle into the inactive physical frame, with IRQs enabled.
+    const auto *source=reinterpret_cast<const uint16_t *>(pixels)+area->y1*480+area->x1;
+    if(!self.frameComposer_->blit(area->x1,area->y1,unsigned(area->x2-area->x1+1),
+        unsigned(area->y2-area->y1+1),source,480)) {
+      self.displayFailed_=diagnosticFailed=true;
+      self.disableBacklight();lv_display_flush_ready(display);return;
+    }
+    frame=self.frameComposer_->pending();
+  }
+  if(!lv_display_flush_is_last(display)) {lv_display_flush_ready(display);return;}
   self.serviceKnob();
   uint32_t presented = 0;
   self.flushStarted_ = micros();
-  self.flushPending_ = esp_lcd_panel_draw_bitmap(self.panel_, 0, 0, 480, 480, pixels) == ESP_OK &&
+  self.flushPending_ = esp_lcd_panel_draw_bitmap(self.panel_, 0, 0, 480, 480, frame) == ESP_OK &&
       crowpanel_rgb_frame_status(self.panel_, &self.flushGeneration_, &presented) == ESP_OK;
   if (!self.flushPending_) {
     self.displayFailed_=diagnosticFailed=true;
@@ -87,11 +99,7 @@ void Display::initLocalDisplay() {
   crowpanel::beginEncoder();
   panel_ = crowpanel::beginPanel();
   if (!panel_) { diagnostics_.dbgPrintln("[CrowPanel] LCD/PSRAM/PCF8574 initialization failed"); return; }
-  if(crowpanel_rgb_set_source_pose(panel_,runtime_.displaySettings.screen)!=ESP_OK) {
-    esp_lcd_panel_del(panel_); panel_ = nullptr;
-    diagnostics_.dbgPrintln("[CrowPanel] orientation setup failed");return;
-  }
-  constexpr size_t bytes = 480 * 480 * sizeof(uint16_t);
+  constexpr size_t bytes=480*480*sizeof(uint16_t);
   void *front = nullptr, *back = nullptr;
   esp_lcd_rgb_panel_event_callbacks_t callbacks{};
   callbacks.on_vsync = onVsync;
@@ -100,17 +108,32 @@ void Display::initLocalDisplay() {
     esp_lcd_panel_del(panel_); panel_ = nullptr;
     diagnostics_.dbgPrintln("[CrowPanel] framebuffer/VSYNC setup failed"); return;
   }
+  if(runtime_.displaySettings.screen) {
+    frameComposer_.reset(new(std::nothrow) crowpanel::FrameComposer);
+    logicalFrames_[0]=heap_caps_calloc(1,bytes,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+    logicalFrames_[1]=heap_caps_calloc(1,bytes,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+    if(!frameComposer_ || !logicalFrames_[0] || !logicalFrames_[1] ||
+       !frameComposer_->begin(static_cast<uint16_t *>(front),static_cast<uint16_t *>(back),
+                              480,480,runtime_.displaySettings.screen)) {
+      for(auto &buffer:logicalFrames_){free(buffer);buffer=nullptr;}
+      frameComposer_.reset();esp_lcd_panel_del(panel_);panel_=nullptr;
+      diagnostics_.dbgPrintln("[CrowPanel] orientation buffers unavailable");return;
+    }
+  }
   lv_init();
   lv_tick_set_cb([]() -> uint32_t { return millis(); });
   display_ = lv_display_create(480, 480);
   if (!display_) {
+    for(auto &buffer:logicalFrames_){free(buffer);buffer=nullptr;}
+    frameComposer_.reset();
     esp_lcd_panel_del(panel_); panel_ = nullptr;
     diagnostics_.dbgPrintln("[CrowPanel] LVGL display allocation failed"); return;
   }
   lv_display_set_color_format(display_, LV_COLOR_FORMAT_RGB565);
   lv_display_set_user_data(display_, this);
-  // DMA starts on front; the first LVGL render must use back.
-  lv_display_set_buffers(display_, back, front, bytes, LV_DISPLAY_RENDER_MODE_DIRECT);
+  // Keep the zero-orientation fast path: LVGL renders directly into DMA buffers.
+  lv_display_set_buffers(display_, frameComposer_?logicalFrames_[0]:back,
+                         frameComposer_?logicalFrames_[1]:front,bytes,LV_DISPLAY_RENDER_MODE_DIRECT);
   lv_display_set_flush_cb(display_, flushFrame);
   diagnosticPanel = panel_;
   ui_.create();
@@ -169,7 +192,7 @@ bool Display::serviceFrame() {
     if (int32_t(presented - flushGeneration_) < 0) {
       if (elapsed < 150000) return false; // Network/input keep running; no LVGL while DMA owns buffer.
       ++syncTimeouts; displayFailed_ = diagnosticFailed = true; disableBacklight();
-    } else {++frames;publishFrame();}
+    } else {if(frameComposer_)frameComposer_->presented();++frames;publishFrame();}
     waitMaxUs = std::max(waitMaxUs, elapsed);
     flushPending_ = false;
     lv_display_flush_ready(display_);

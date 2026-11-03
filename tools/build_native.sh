@@ -11,6 +11,8 @@ python3 -m unittest discover -s tests -p test_check_native.py
 python3 tools/generate_web_assets.py --check
 python3 -m unittest discover -s tests -p web_assets_tests.py
 python3 -m unittest discover -s tests -p test_crowpanel_rgb.py
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/crowpanel_frame_tests.cpp -o build/crowpanel_frame_tests
+./build/crowpanel_frame_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DRGB_INDICATOR_TEST -I tests/rgb_fakes -I tests/fakes -I G5500_Fork tests/rgb_indicator_tests.cpp -o build/rgb_indicator_tests
 ./build/rgb_indicator_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/ota_fakes -I G5500_Fork G5500_Fork/ota.cpp tests/ota_tests.cpp -o build/ota_tests
