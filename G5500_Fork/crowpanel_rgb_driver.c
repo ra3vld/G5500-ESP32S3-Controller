@@ -132,6 +132,7 @@ struct esp_rgb_panel_t {
     gdma_link_list_handle_t dma_restart_links[RGB_LCD_PANEL_MAX_FB_NUM]; // One restart link per framebuffer
 #endif
     uint8_t *fbs[RGB_LCD_PANEL_MAX_FB_NUM]; // Frame buffers
+    uint8_t *scan_fbs[RGB_LCD_PANEL_MAX_FB_NUM]; // Optional physical-orientation copies in PSRAM
     uint8_t *bounce_buffer[RGB_LCD_PANEL_BOUNCE_BUF_NUM]; // Pointer to the bounce buffers
     size_t fb_size;        // Size of frame buffer, in bytes
     size_t bb_size;        // Size of the bounce buffer, in bytes. If not-zero, the driver uses two bounce buffers allocated from internal memory
@@ -247,6 +248,7 @@ static esp_err_t lcd_rgb_panel_destroy(esp_rgb_panel_t *rgb_panel)
         if (rgb_panel->fbs[i]) {
             free(rgb_panel->fbs[i]);
         }
+        free(rgb_panel->scan_fbs[i]);
         if (rgb_panel->dma_fb_links[i]) {
             gdma_del_link_list(rgb_panel->dma_fb_links[i]);
         }
@@ -467,7 +469,27 @@ esp_err_t crowpanel_rgb_set_source_pose(esp_lcd_panel_handle_t panel, uint8_t po
     ESP_RETURN_ON_FALSE(panel && pose<16,ESP_ERR_INVALID_ARG,TAG,"invalid source pose");
     esp_rgb_panel_t *rgb=__containerof(panel,esp_rgb_panel_t,base);
     ESP_RETURN_ON_FALSE(rgb->bb_size && rgb->num_fbs && rgb->fb_bits_per_pixel==16,ESP_ERR_NOT_SUPPORTED,TAG,"orientation needs RGB565 bounce buffers");
+    // Called during display setup. Keep logical LVGL buffers separate from the
+    // physical scanout so the refill ISR always has a contiguous memcpy.
+    uint8_t *pending[RGB_LCD_PANEL_MAX_FB_NUM] = {0};
+    if (pose) {
+        for (size_t i = 0; i < rgb->num_fbs; ++i) {
+            if (rgb->scan_fbs[i]) continue;
+            pending[i] = (uint8_t *)heap_caps_calloc(1, rgb->fb_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+            if (!pending[i]) {
+                for (size_t j = 0; j < rgb->num_fbs; ++j) free(pending[j]);
+                return ESP_ERR_NO_MEM;
+            }
+            panel_copy_rgb565((uint16_t *)pending[i], (const uint16_t *)rgb->fbs[i],
+                0, rgb->fb_size / 2, rgb->timings.h_res, rgb->timings.v_res, pose);
+        }
+    }
+    portENTER_CRITICAL(&rgb->spinlock);
+    for (size_t i = 0; i < rgb->num_fbs; ++i) {
+        if (pending[i]) rgb->scan_fbs[i] = pending[i];
+    }
     __atomic_store_n(&rgb->source_pose,pose,__ATOMIC_RELAXED);
+    portEXIT_CRITICAL(&rgb->spinlock);
     return ESP_OK;
 }
 
@@ -745,10 +767,6 @@ static esp_err_t rgb_panel_draw_bitmap(esp_lcd_panel_t *panel, int x_start, int 
         if (!rgb_panel->bb_size && rgb_panel->flags.fb_behind_cache) {
             ESP_RETURN_ON_ERROR(lcd_rgb_panel_writeback(flush_ptr, bytes_to_flush), TAG, "cache writeback failed");
         }
-        // after the draw buffer finished copying, notify the user to recycle the draw buffer
-        if (cb) {
-            cb(&rgb_panel->base, NULL, rgb_panel->user_ctx);
-        }
     } else {
         ESP_LOGV(TAG, "draw buffer is part of the frame buffer");
         // when this function is called, the frame buffer already reflects the draw buffer changes
@@ -758,10 +776,19 @@ static esp_err_t rgb_panel_draw_bitmap(esp_lcd_panel_t *panel, int x_start, int 
             size_t cache_sync_size = (y_end - y_start) * bytes_per_line;
             ESP_RETURN_ON_ERROR(lcd_rgb_panel_writeback(cache_sync_start, cache_sync_size), TAG, "cache writeback failed");
         }
-        // after the draw buffer finished copying, notify the user to recycle the draw buffer
-        if (cb) {
-            cb(&rgb_panel->base, NULL, rgb_panel->user_ctx);
-        }
+    }
+
+    // Rotate once per submitted frame in task context, with interrupts enabled.
+    // Repeating the PSRAM transpose in every DMA refill can starve the CPU and
+    // trigger the interrupt watchdog before startup reaches the command API.
+    const uint8_t scan_index = draw_buf_copy_to_fb ? rgb_panel->cur_fb_index : draw_buf_fb_index;
+    if (rgb_panel->scan_fbs[scan_index]) {
+        panel_copy_rgb565((uint16_t *)rgb_panel->scan_fbs[scan_index],
+            (const uint16_t *)rgb_panel->fbs[scan_index], 0, fb_size / 2,
+            h_res, v_res, rgb_panel->source_pose);
+    }
+    if (cb) {
+        cb(&rgb_panel->base, NULL, rgb_panel->user_ctx);
     }
 
     // Publish only after cache writeback. VSYNC must never start an unfinished
@@ -974,10 +1001,9 @@ static IRAM_ATTR bool lcd_rgb_panel_fill_bounce_buffer(esp_rgb_panel_t *panel, u
     } else {
         // copy partial frame buffer to the bounce buffer
         // Note: if the frame buffer is behind a cache, and the cache is disabled, crash would happen here when auto write back happens
-        const unsigned pose=__atomic_load_n(&panel->source_pose,__ATOMIC_RELAXED);
-        if(pose)panel_copy_rgb565((uint16_t *)buffer,(const uint16_t *)panel->fbs[panel->bb_fb_index],
-            panel->bounce_pos_px,panel->bb_size/2,panel->timings.h_res,panel->timings.v_res,pose);
-        else memcpy(buffer, &panel->fbs[panel->bb_fb_index][panel->bounce_pos_px * bytes_per_pixel], panel->bb_size);
+        const uint8_t *source = panel->scan_fbs[panel->bb_fb_index];
+        if (!source) source = panel->fbs[panel->bb_fb_index];
+        memcpy(buffer, source + panel->bounce_pos_px * bytes_per_pixel, panel->bb_size);
     }
     // do memory sync if the bounce buffer is behind the cache
     if (panel->flags.bb_behind_cache) {
@@ -1003,12 +1029,14 @@ static IRAM_ATTR bool lcd_rgb_panel_fill_bounce_buffer(esp_rgb_panel_t *panel, u
     }
 
     // Preload the next bit of buffer to the cache memory, this can improve the performance
-    if (panel->num_fbs > 0 && panel->flags.fb_behind_cache && !panel->source_pose) {
+    if (panel->num_fbs > 0 && panel->flags.fb_behind_cache) {
+        const uint8_t *source = panel->scan_fbs[panel->bb_fb_index];
+        if (!source) source = panel->fbs[panel->bb_fb_index];
 #if CONFIG_IDF_TARGET_ESP32S3
-        Cache_Start_DCache_Preload((uint32_t)&panel->fbs[panel->bb_fb_index][panel->bounce_pos_px * bytes_per_pixel],
+        Cache_Start_DCache_Preload((uint32_t)(source + panel->bounce_pos_px * bytes_per_pixel),
                                    panel->bb_size, 0);
 #elif CONFIG_IDF_TARGET_ESP32P4
-        Cache_Start_L2_Cache_Preload((uint32_t)&panel->fbs[panel->bb_fb_index][panel->bounce_pos_px * bytes_per_pixel],
+        Cache_Start_L2_Cache_Preload((uint32_t)(source + panel->bounce_pos_px * bytes_per_pixel),
                                      panel->bb_size, 0);
 #else
 #error "Unsupported target"

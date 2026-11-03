@@ -88,6 +88,7 @@ void Display::initLocalDisplay() {
   panel_ = crowpanel::beginPanel();
   if (!panel_) { diagnostics_.dbgPrintln("[CrowPanel] LCD/PSRAM/PCF8574 initialization failed"); return; }
   if(crowpanel_rgb_set_source_pose(panel_,runtime_.displaySettings.screen)!=ESP_OK) {
+    esp_lcd_panel_del(panel_); panel_ = nullptr;
     diagnostics_.dbgPrintln("[CrowPanel] orientation setup failed");return;
   }
   constexpr size_t bytes = 480 * 480 * sizeof(uint16_t);

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <vector>
 #include "../G5500_Fork/panel_pose.h"
 using esp_err_t = int;
@@ -34,6 +35,23 @@ constexpr int ESP_OK = 0, ESP_ERR_NOT_SUPPORTED = -1, ESP_ERR_NO_MEM = -2, ESP_E
 #define ESP_RETURN_ON_ERROR(call,...) do { int e = (call); if (e != ESP_OK) return e; } while (0)
 #define COPY_PIXEL_CODE_BLOCK(bits) assert(false); // Tests submit complete owned framebuffers.
 static unsigned lockDepth;
+static int failScanAllocation = -1;
+static unsigned orientationCopies;
+#define MALLOC_CAP_SPIRAM 1
+#define MALLOC_CAP_8BIT 2
+static void *heap_caps_calloc(size_t count, size_t size, int) {
+    assert(lockDepth == 0);
+    if (failScanAllocation == 0) return nullptr;
+    if (failScanAllocation > 0) --failScanAllocation;
+    return std::calloc(count, size);
+}
+static void task_copy_rgb565(uint16_t *to, const uint16_t *from, unsigned start,
+                            unsigned count, unsigned w, unsigned h, unsigned pose) {
+    assert(lockDepth == 0); // Orientation must never run inside a refill critical section.
+    ++orientationCopies;
+    panel_copy_rgb565(to, from, start, count, w, h, pose);
+}
+#define panel_copy_rgb565 task_copy_rgb565
 #define portENTER_CRITICAL(lock) (++lockDepth)
 #define portEXIT_CRITICAL(lock) (--lockDepth)
 #define portENTER_CRITICAL_ISR(lock) (++lockDepth)
@@ -55,7 +73,7 @@ struct crowpanel_rgb_restart_stats_t { uint32_t count{}, frame_buffer_mask{}, er
 struct esp_rgb_panel_t {
     esp_lcd_panel_t base;
     int num_fbs{};
-    uint8_t *fbs[3]{}, *bounce_buffer[2]{};
+    uint8_t *fbs[3]{}, *scan_fbs[3]{}, *bounce_buffer[2]{};
     Link *dma_fb_links[3]{}, *dma_restart_links[3]{}, *dma_bb_link{}, *dma_restart_link{};
     size_t fb_size{}, bb_size{}, fb_bits_per_pixel{16}, int_mem_align{4}, ext_mem_align{64};
     uint8_t cur_fb_index{}, bb_fb_index{};

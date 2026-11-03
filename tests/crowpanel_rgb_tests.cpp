@@ -15,7 +15,13 @@ int main() {
         p.cur_fb_index=1;p.flags.fb_behind_cache=false;
         assert(crowpanel_rgb_set_source_pose(nullptr,1)==ESP_ERR_INVALID_ARG);
         assert(crowpanel_rgb_set_source_pose(&p.base,16)==ESP_ERR_INVALID_ARG);
+        failScanAllocation=1; // A partial pair must not become visible to the ISR.
+        assert(crowpanel_rgb_set_source_pose(&p.base,1)==ESP_ERR_NO_MEM);
+        assert(!p.scan_fbs[0]&&!p.scan_fbs[1]&&p.source_pose==0);
+        failScanAllocation=-1;
         assert(crowpanel_rgb_set_source_pose(&p.base,1)==ESP_OK);
+        assert(p.scan_fbs[0]&&p.scan_fbs[1]);
+        const unsigned copies=orientationCopies;
         const uint16_t expected[]={12,8,4,0,13,9,5,1,14,10,6,2,15,11,7,3};
         lcd_rgb_panel_fill_bounce_buffer(&p,reinterpret_cast<uint8_t *>(output.data()));
         for(unsigned i=0;i<8;++i)assert(output[i]==expected[i]);
@@ -23,8 +29,42 @@ int main() {
         lcd_rgb_panel_fill_bounce_buffer(&p,reinterpret_cast<uint8_t *>(output.data()));
         for(unsigned i=0;i<8;++i)assert(output[i]==expected[8+i]);
         assert(p.bb_fb_index==1&&p.bounce_pos_px==0);
+        assert(orientationCopies==copies); // Refill only copies prepared physical pixels.
         for(unsigned i=0;i<16;++i)assert(image[i]==i&&back[i]==99);
         p.bb_size=0;assert(crowpanel_rgb_set_source_pose(&p.base,0)==ESP_ERR_NOT_SUPPORTED);
+        for(auto *fb:p.scan_fbs)std::free(fb);
+    }
+    for(unsigned pose=0;pose<16;++pose) {
+        esp_rgb_panel_t p;p.num_fbs=2;p.fb_size=32;p.bb_size=16;p.timings.h_res=p.timings.v_res=4;
+        std::vector<uint16_t> front(16),back(16),expected(16),output(8);
+        p.fbs[0]=reinterpret_cast<uint8_t *>(front.data());p.fbs[1]=reinterpret_cast<uint8_t *>(back.data());
+        p.flags.fb_behind_cache=false;
+        assert(crowpanel_rgb_set_source_pose(&p.base,pose)==ESP_OK);
+        assert(bool(p.scan_fbs[0])==bool(pose)); // Default orientation needs no extra buffers.
+        for(unsigned frame=0;frame<4;++frame) {
+            const unsigned index=frame%2;
+            auto &logical=index?back:front;
+            for(unsigned y=0;y<4;++y)for(unsigned x=0;x<4;++x) {
+                logical[y*4+x]=uint16_t(frame*16+y*4+x);
+                const auto point=panel_forward(pose,x,y,4,4);
+                expected[point.y*4+point.x]=logical[y*4+x];
+            }
+            assert(rgb_panel_draw_bitmap(&p.base,0,0,4,4,p.fbs[index])==ESP_OK);
+            // Complete the old physical frame before selecting the submitted buffer.
+            p.bounce_pos_px=8;
+            lcd_rgb_panel_fill_bounce_buffer(&p,reinterpret_cast<uint8_t *>(output.data()));
+            assert(p.bb_fb_index==index&&p.frame_presented==p.frame_submitted);
+            const unsigned copies=orientationCopies;
+            for(unsigned half=0;half<2;++half) {
+                portENTER_CRITICAL_ISR(&p.spinlock);
+                lcd_rgb_panel_fill_bounce_buffer(&p,reinterpret_cast<uint8_t *>(output.data()));
+                portEXIT_CRITICAL_ISR(&p.spinlock);
+                for(unsigned i=0;i<8;++i)assert(output[i]==expected[half*8+i]);
+            }
+            assert(orientationCopies==copies);
+            for(unsigned i=0;i<16;++i)assert(logical[i]==frame*16+i);
+        }
+        for(auto *fb:p.scan_fbs)std::free(fb);
     }
 
     std::vector<uint8_t> storage[3];

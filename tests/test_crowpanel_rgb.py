@@ -33,7 +33,8 @@ class CrowPanelRgbTests(unittest.TestCase):
             code += function(source, name).replace(
                 '.flags.bypass_buffer_align_check = true,',
                 '.flags = {.bypass_buffer_align_check = true},').replace(
-                '(uint32_t)&panel->fbs', '(uintptr_t)&panel->fbs') + '\n'
+                '(uint32_t)&panel->fbs', '(uintptr_t)&panel->fbs').replace(
+                '(uint32_t)(source', '(uintptr_t)(source') + '\n'
         code += '#include "crowpanel_rgb_tests.cpp"\n'
         with tempfile.TemporaryDirectory() as folder:
             binary = Path(folder) / 'rgb-tests'
