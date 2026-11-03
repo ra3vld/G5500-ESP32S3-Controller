@@ -98,7 +98,7 @@ static void touch() {
   e = g.sample(true, 252, 218, l);
   assert(e.manual && !e.mask);
   e = g.sample(true, 296, 174, l);
-  assert(e.mask == 3 && std::abs(e.az - .25f) < .001f && std::abs(e.el - .25f) < .001f);
+  assert(e.mask == 3 && std::abs(e.az - .5f) < .001f && std::abs(e.el - .5f) < .001f);
   e = g.sample(true, 470, 230, l);
   assert(e.mask == 3 && e.az == 1 && e.el == 0 && e.action == TouchAction::None);
   e = g.sample(false, 0, 0, l);
@@ -135,7 +135,7 @@ static void touch() {
   assert(e.el == 0 && !e.mask);
   g.sample(false, 0, 0, l);
 }
-static void progressiveSwipe() {
+static void linearSwipe() {
   using namespace crowpanel;
   TouchLayout layout;
   layout.current = {100, 200, 280, 60};
@@ -156,12 +156,12 @@ static void progressiveSwipe() {
       else assert(value * direction > 0);
       if (distance >= 13 && distance <= 100) {
         const float step = magnitude - previous;
-        assert(step + 1e-6f >= previousStep); // Sensitivity increases with displacement.
+        if(previousStep)assert(std::abs(step-previousStep)<1e-6f);
         previousStep = step;
       }
-      if (distance == 34) assert(std::abs(magnitude - .0625f) < 1e-6f);
-      if (distance == 56) assert(std::abs(magnitude - .25f) < 1e-6f);
-      if (distance == 78) assert(std::abs(magnitude - .5625f) < 1e-6f);
+      if (distance == 34) assert(std::abs(magnitude - .25f) < 1e-6f);
+      if (distance == 56) assert(std::abs(magnitude - .5f) < 1e-6f);
+      if (distance == 78) assert(std::abs(magnitude - .75f) < 1e-6f);
       if (distance >= 100) assert(magnitude == 1);
       previous = magnitude;
     }
@@ -224,8 +224,8 @@ static void fullscreenSwipe() {
       assert(e.manual == (startY == 230));
       e = g.sample(true, 296, startY - 56, l);
       assert(e.manual && !e.release && e.gesture && e.action == TouchAction::None);
-      assert(std::abs(e.az - .25f) < .001f);
-      assert(e.el == (dualAxis ? .25f : 0.f));
+      assert(std::abs(e.az - .5f) < .001f);
+      assert(e.el == (dualAxis ? .5f : 0.f));
       const auto gesture = e.gesture;
       const uint8_t mask = dualAxis ? 3 : 1;
       // Redraws may put every other control beneath the finger.
@@ -707,7 +707,7 @@ int main() {
   fullRangeAndSpeedCommands();
   core();
   touch();
-  progressiveSwipe();
+  linearSwipe();
   fullscreenSwipe();
   idleTouchFrames();
   webKeyboardLease();

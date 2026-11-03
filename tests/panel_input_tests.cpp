@@ -21,6 +21,43 @@ static TouchLayout layout() {
 }
 int main() {
   {
+    auto l=layout();l.menuAccess=true;TouchGesture hold;
+    hold.sample(true,120,110,l,100);
+    assert(hold.sample(true,120,110,l,3100).action==TouchAction::None);
+    assert(hold.sample(true,120,110,l,3101).action==TouchAction::MenuOpen);
+  }
+  {
+    for(bool online:{true,false})for(bool left:{false,true}) {
+      auto l=layout();l.menuAccess=true;l.enabled=online;
+      l.secondaryCurrent={uint16_t(left?50:145),100,40,28};
+      const unsigned x=l.secondaryCurrent.x+20,y=114;
+      TouchGesture tap;
+      auto e=tap.sample(true,x,y,l,100);assert(e.action==TouchAction::None);
+      e=tap.sample(false,0,0,l,200);assert(e.action==(online?TouchAction::Axis:TouchAction::None));
+      if(online)assert(e.manual&&e.release&&!e.mask);
+      // A drag that returns to its origin remains a swipe after release.
+      tap.sample(true,x,y,l,1000);
+      e=tap.sample(true,x+25,y-20,l,1100);
+      if(online)assert(e.manual&&e.absoluteSpeed&&e.az>0&&e.el>0);
+      e=tap.sample(true,x,y,l,1200);assert(e.action==TouchAction::None);
+      assert(tap.sample(false,0,0,l,1300).action==TouchAction::None);
+      // Both current values also admit the menu hold, including offline.
+      tap.sample(true,x,y,l,2000);
+      assert(tap.sample(true,x,y,l,5000).action==TouchAction::None);
+      e=tap.sample(true,x,y,l,5001);assert(e.action==TouchAction::MenuOpen);
+      assert(tap.sample(false,0,0,l,5010).action==TouchAction::None);
+      // A context change cannot switch the newly selected axis on release.
+      tap.sample(true,x,y,l,6000);++l.actionEpoch;
+      assert(tap.sample(false,0,0,l,6100).action==TouchAction::None);
+    }
+    auto l=layout();l.menuAccess=true;l.secondaryCurrent={145,100,40,28};
+    TouchGesture primary;
+    primary.sample(true,100,110,l,100);assert(primary.sample(false,0,0,l,150).action==TouchAction::None);
+    primary.sample(true,100,110,l,200);assert(primary.sample(false,0,0,l,250).action==TouchAction::SpeedOpen);
+    l.dualAxis=false;TouchGesture single;
+    single.sample(true,165,114,l,100);assert(single.sample(false,0,0,l,200).action==TouchAction::None);
+  }
+  {
     auto l=layout();l.menuAccess=true;l.targetSwipeDeadzone=12;
     l.menuTarget={38,120,169,52};
     TouchGesture hold;

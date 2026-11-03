@@ -12,7 +12,7 @@ void Network::formatAddresses(char *text,size_t capacity,const char *,bool,bool)
 }
 template<class Tag,auto Member> struct CstAccess {friend auto member(Tag){return Member;}};
 #define ACCESS(name) struct name##Tag {friend auto member(name##Tag);};template struct CstAccess<name##Tag,&Display::name>;
-ACCESS(display_) ACCESS(menuOpen_) ACCESS(presentedLayout_)
+ACCESS(display_) ACCESS(menuOpen_) ACCESS(presentedLayout_) ACCESS(commandContext)
 #undef ACCESS
 int main() {
   Fixture f;
@@ -56,6 +56,25 @@ int main() {
   tick(true,back.x+back.width/2,back.y+back.height/2);
   tick(false,back.x+back.width/2,back.y+back.height/2);
   assert(!(display.*member(menuOpen_Tag{})));
+  const auto axis=[&](){return (display.*member(commandContextTag{}))().axis;};
+  for(unsigned selected:{1u,0u}) {
+    for(unsigned i=0;i<10;++i)tick(false,0,0);
+    auto l=display.*member(presentedLayout_Tag{});auto other=l.secondaryCurrent;
+    assert(other.width);const unsigned ox=other.x+other.width/2,oy=other.y+other.height/2;
+    tick(true,ox,oy);assert(axis()!=selected);
+    tick(false,ox,oy);assert(axis()==selected);
+    for(unsigned i=0;i<10;++i)tick(false,0,0);
+    l=display.*member(presentedLayout_Tag{});other=l.secondaryCurrent;
+    const unsigned sx=other.x+other.width/2,sy=other.y+other.height/2;
+    tick(true,sx,sy);tick(true,sx+30,sy-20);tick(true,sx,sy);
+    tick(false,sx,sy);assert(axis()==selected);
+  }
+  for(unsigned i=0;i<10;++i)tick(false,0,0);
+  auto l=display.*member(presentedLayout_Tag{});
+  const unsigned cx=l.current.x+l.current.width/2,cy=l.current.y+l.current.height/2;
+  for(unsigned i=0;i<302;++i)tick(true,cx,cy);
+  assert(display.*member(menuOpen_Tag{}));
+  tick(false,cx,cy);assert(axis()==0);
   lv_display_delete(display.*member(display_Tag{}));
-  std::puts("PASS: full GC9A01/CST816 path admits the recorded hold, preserves the strict 3s threshold, consumes release and closes on Back");
+  std::puts("PASS: production touch path opens settings from goal/current, consumes release, closes on Back, selects AZ/EL on secondary tap and preserves the axis on a swipe");
 }

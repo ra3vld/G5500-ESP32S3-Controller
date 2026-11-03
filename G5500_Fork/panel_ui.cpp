@@ -633,6 +633,8 @@ void PanelUi::configureLayout(const PanelView &v) {
   touchLayout_.enabled=touchLayout_.enabled && v.enabled;
   confirmationCaption_=bounds(targetCaption_,p(8));confirmationAngle_=bounds(target_,p(8));
   layoutCurrent(v);
+  if(v.dualAxis && !v.speedScreen && !v.hudSelector)
+    touchLayout_.secondaryCurrent=bounds(secondaryAngle_);
   if(compact) {
     // Give the small goal row a finger-sized hold area. Other controls retain
     // their ownership through menuTargetHit; short confirmation uses target.

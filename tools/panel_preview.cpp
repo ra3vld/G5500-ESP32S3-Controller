@@ -518,6 +518,43 @@ int main(int argc,char **argv) {
   v.statusFault=true;std::strcpy(v.status,"Ошибка AZ: нет изменения положения");snapshot("fault");
   {
     const auto saved=v;
+    for(bool elevation:{false,true})for(bool offline:{false,true}) {
+      v.hud=true;v.enabled=!offline;v.dualAxis=true;v.elevation=elevation;
+      v.statusFault=false;v.movingNow=false;v.hudSelector=v.speedScreen=false;v.menu.open=false;
+      std::strcpy(v.status,offline?"Нет связи с повороткой":"");
+      ui.update(v);settle(d);const auto l=ui.touchLayout();
+      if(width==480&&height==480) {
+        assert(l.current.contains(240,240)||l.menuTargetHit(240,240));
+        panel::TouchGesture center;center.sample(true,240,240,l,100);
+        assert(center.sample(true,240,240,l,3101).action==panel::TouchAction::MenuOpen);
+      }
+      assert(l.secondaryCurrent.width && inside(l.secondaryCurrent));
+      const auto &r=l.secondaryCurrent;
+      assert(l.current.contains(r.x,r.y)&&l.current.contains(r.x+r.width-1,r.y+r.height-1));
+      const int sx=r.x+r.width/2,sy=r.y+r.height/2;
+      panel::TouchGesture tap;auto e=tap.sample(true,sx,sy,l,100);
+      assert(e.action==panel::TouchAction::None);
+      e=tap.sample(false,0,0,l,200);
+      assert(e.action==(offline?panel::TouchAction::None:panel::TouchAction::Axis));
+      tap.sample(true,sx,sy,l,1000);
+      e=tap.sample(true,sx+30,sy-30,l,1100);
+      assert(e.action==panel::TouchAction::None);
+      if(!offline)assert(e.manual&&e.az>0&&e.el>0);
+      tap.sample(true,sx,sy,l,1200);
+      assert(tap.sample(false,0,0,l,1300).action==panel::TouchAction::None);
+      // A stationary hold on either value opens settings and consumes release.
+      for(const int x:{sx,int(l.current.x)+4}) {
+        panel::TouchGesture hold;hold.sample(true,x,sy,l,2000);
+        assert(hold.sample(true,x,sy,l,5000).action==panel::TouchAction::None);
+        e=hold.sample(true,x,sy,l,5001);
+        assert(e.action==panel::TouchAction::MenuOpen&&e.manual&&e.release&&!e.mask);
+        assert(hold.sample(false,0,0,l,5010).action==panel::TouchAction::None);
+      }
+    }
+    v=saved;ui.update(v);settle(d);
+  }
+  {
+    const auto saved=v;
     for(bool offline:{true,false})for(bool hasTarget:{false,true}) {
       v.hud=offline;v.enabled=!offline;v.statusFault=false;v.movingNow=false;
       v.targetValid=v.secondaryTargetValid=hasTarget;

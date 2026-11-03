@@ -56,7 +56,7 @@ public:
 // Geometry is supplied by the actual LVGL layout. A target tap may become a swipe;
 // started gestures keep ownership until release.
 struct TouchLayout {
-  TouchRect current{}, target{}, menuTarget{}, arrows[4]{}; // left, right, up, down
+  TouchRect current{}, secondaryCurrent{}, target{}, menuTarget{}, arrows[4]{}; // left, right, up, down
   bool dualAxis = false, enabled = true, speedScreen = false;
   bool speedEnabled[2]{};
   bool confirmAllowed=true;
@@ -121,8 +121,7 @@ class TouchGesture {
       return 0;
     }
     const float fraction = distance >= layout.swipeFull ? 1.f : float(distance - layout.swipeDeadzone) / float(layout.swipeFull-layout.swipeDeadzone);
-    const float magnitude = fraction * fraction;
-    return displacement < 0 ? -magnitude : magnitude;
+    return displacement < 0 ? -fraction : fraction;
   }
 
 public:
@@ -173,10 +172,11 @@ public:
       if(layout.menuOpen) {
         if(layout.menuAccess)for(unsigned i=0;i<MenuActions.size();++i)
           if(layout.menuButtons[i].contains(x,y)){role_=Role::Menu;menuButton_=i;break;}
-      } else if (!layout.speedScreen && layout.menuAccess && layout.menuTargetHit(x,y)) {
-        role_=Role::Target;
+      } else if (!layout.speedScreen && layout.menuAccess &&
+                 (layout.menuTargetHit(x,y) || layout.current.contains(x,y))) {
+        role_=layout.current.contains(x,y)?Role::Swipe:Role::Target;
         // Padding around the goal only admits a hold, never a short confirmation.
-        cancelled_=!layout.target.contains(x,y);
+        cancelled_=role_==Role::Target && !layout.target.contains(x,y);
       } else if (layout.enabled) {
         if (layout.speedScreen) {
           tap_ = false;
@@ -226,8 +226,13 @@ public:
         role_ = Role::Swipe;
       }
     }
-    if(role_==Role::Target && !holdCancelled_ && layout.menuAccess && !layout.menuOpen &&
+    const bool currentHold=role_==Role::Swipe && captured_.menuAccess && !holdCancelled_;
+    if((role_==Role::Target || currentHold) && !holdCancelled_ && layout.menuAccess && !layout.menuOpen &&
         !layout.speedScreen && uint32_t(now-downAt_)>3000) {
+      if(currentHold) {
+        // Close the zero-speed input lease before entering the menu.
+        e.manual=true;e.release=true;e.gesture=gesture_;e.mask=mask_;
+      }
       e.action=TouchAction::MenuOpen;role_=Role::None;blocked_=down;tap_=false;
     } else if(!down && down_ && role_==Role::Menu && layout.menuOpen && layout.menuAccess &&
         captured_.menuEpoch==layout.menuEpoch && captured_.menuButtons[menuButton_].contains(x,y) && !cancelled_) {
@@ -240,7 +245,8 @@ public:
       e.percent=unsigned(5+(95*offset+width/2)/width);
     } else if (!down && down_ && role_ == Role::Back && layout.enabled && layout.speedBack.contains(x, y)) {
       e.action = TouchAction::SpeedClose;
-    } else if (role_ == Role::Swipe || role_ == Role::Arrow) {
+    } else if ((role_ == Role::Swipe || role_ == Role::Arrow) &&
+               !(currentHold && !layout.enabled && layout.menuAccess)) {
       if (down || down_) {
         e.manual = true;
         e.absoluteSpeed = role_ == Role::Swipe;
@@ -277,14 +283,18 @@ public:
                captured_.target.contains(x, y)) {
       e.action = TouchAction::Confirm;
     }
-    if (!down && down_ && role_ == Role::Swipe && !cancelled_ && layout.enabled &&
+    if (!down && down_ && role_==Role::Swipe && !cancelled_ && layout.enabled &&
+        captured_.dualAxis && layout.dualAxis && captured_.actionEpoch==layout.actionEpoch &&
+        captured_.secondaryCurrent.contains(startX_,startY_) && captured_.secondaryCurrent.contains(x,y)) {
+      e.action=TouchAction::Axis;tap_=false;
+    } else if (!down && down_ && role_ == Role::Swipe && !cancelled_ && layout.enabled &&
         captured_.current.contains(x, y) && uint32_t(now - downAt_) <= 250) {
       if (tap_ && uint32_t(now - tapAt_) <= 350 &&
           std::abs(int(x) - tapX_) <= 30 && std::abs(int(y) - tapY_) <= 30) {
         e.action = TouchAction::SpeedOpen; tap_ = false;
       } else { tap_ = true; tapAt_ = now; tapX_ = x; tapY_ = y; }
     } else if (cancelled_ || !layout.enabled || (down && role_ != Role::Swipe)) tap_ = false;
-    if (!layout.enabled && !(layout.menuAccess && (role_==Role::Target || role_==Role::Menu))) {
+    if (!layout.enabled && !(layout.menuAccess && (role_==Role::Target || role_==Role::Menu || currentHold))) {
       role_ = Role::None;
       blocked_ = true;
     }
