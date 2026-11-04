@@ -6,6 +6,7 @@
 #include "hardware_form.hpp"
 #include "pin_json.hpp"
 #include "motion_json.hpp"
+#include "project_version.hpp"
 #include "runtime_metrics.hpp"
 #include "panel_metrics.hpp"
 #include "tcp_memory.hpp"
@@ -736,6 +737,8 @@ void DeviceApi::executeStatus(std::string_view method, std::string_view path, Fo
   if(path=="/api/status" && method=="GET" && web_.value("view")=="minimal") {
     auto &c=runtime_.controller;const auto radio=networkStatusSnapshot();
     output << "{\"profile\":\"direct\",\"ip\":" << jsonQuoted(IPAddress(radio.staIp).toString().c_str())
+      << ",\"hasEl\":" << (c.model==Model::G5500?"true":"false")
+      << ",\"version\":" << jsonQuoted(firmware::VERSION) << ",\"commit\":" << jsonQuoted(firmware::COMMIT)
       << ",\"controlMode\":" << jsonQuoted(Controller::modeName(c.mode))
       << ",\"rangeRevision\":" << c.rangeRevision << ",\"pendingValid\":" << (c.pendingValid?"true":"false")
       << ",\"configurationLocked\":" << (c.configurationLocked?"true":"false") << ",\"recovery\":" << (runtime_.recovery?"true":"false")

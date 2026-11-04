@@ -103,9 +103,10 @@ void WebInterface::setupWeb() {
 #if ESP32_SPP_PROFILE
   web_.onNotFound([this] {
     const String uri=web_.uri();
-    if(web_.method()==HTTP_GET && (uri=="/settings" || uri=="/calibration")) {
+    if(web_.method()==HTTP_GET && (uri=="/settings" || uri=="/calibration" || uri=="/network")) {
       web_.sendHeader("Cache-Control","no-store");
       if(uri=="/settings")sendHtml(WEB_PLAIN_HTML_SUPPORT?ESSENTIAL_SETTINGS_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ESSENTIAL_SETTINGS_PAGE-1:0,ESSENTIAL_SETTINGS_PAGE_GZIP,sizeof ESSENTIAL_SETTINGS_PAGE_GZIP);
+      else if(uri=="/network")sendHtml(WEB_PLAIN_HTML_SUPPORT?ESSENTIAL_NETWORK_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ESSENTIAL_NETWORK_PAGE-1:0,ESSENTIAL_NETWORK_PAGE_GZIP,sizeof ESSENTIAL_NETWORK_PAGE_GZIP);
       else sendHtml(WEB_PLAIN_HTML_SUPPORT?ESSENTIAL_CALIBRATION_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ESSENTIAL_CALIBRATION_PAGE-1:0,ESSENTIAL_CALIBRATION_PAGE_GZIP,sizeof ESSENTIAL_CALIBRATION_PAGE_GZIP);
       return;
     }

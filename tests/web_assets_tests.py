@@ -13,7 +13,7 @@ class WebAssetsTests(unittest.TestCase):
     def test_generated_header_is_current(self):
         expected, sizes = generate(check=True)
         self.assertEqual((ROOT / "G5500_Fork/web_assets.hpp").read_text(), expected)
-        self.assertEqual(len(sizes), 8)
+        self.assertEqual(len(sizes), 9)
 
     def test_embedded_assets_decompress_exactly(self):
         header = (ROOT / "G5500_Fork/web_assets.hpp").read_text()
