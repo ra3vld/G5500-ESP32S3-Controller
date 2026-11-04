@@ -6,7 +6,35 @@
 #include <cassert>
 #include <cstdio>
 using namespace forkrot;
+static void encoderStepTargets() {
+  for(float step:{.1f,.5f,1.f,5.f,20.f,90.f}) {
+    Controller c=forkrot::testController();c.feedback(100,40,true,true);
+    CrowPanelKnob knob(c);knob.sample(true,false,0,50,false,step);
+    knob.sample(true,false,1,90,false,step);
+    assert(std::abs(c.axes[0].target-(100+step))<.001f);
+    knob.sample(true,false,2,130,false,step);
+    assert(std::abs(c.axes[0].target-(100+3*step))<.001f);
+    knob.sample(true,false,1,170,true,step);
+    assert(std::abs(c.axes[0].target-(100+2*step))<.001f);
+    knob.sample(true,false,10000,210,false,step);assert(c.axes[0].target==450);
+    knob.sample(true,false,-10000,250,false,step);assert(c.axes[0].target==0);
+    c.stopNow(-1,290);
+    knob.sample(true,false,1,330,false,step);
+    assert(std::abs(c.axes[0].target-(100+step))<.001f);
+  }
+  Controller c=forkrot::testController();c.feedback(100,40,true,true);
+  const auto azTarget=c.axes[0].target;
+  CrowPanelKnob knob(c);knob.sample(true,false,0,50,false,2.5f);
+  knob.sample(true,true,0,100,false,2.5f);
+  knob.sample(true,true,3,150,false,2.5f);
+  assert(knob.axis()==1 && c.axes[1].target==47.5f && c.axes[0].target==azTarget);
+  knob.sample(true,false,0,190,false,2.5f);knob.sample(true,false,0,230,false,2.5f);
+  knob.sample(true,false,0,700,false,2.5f);
+  assert(knob.axis()==0 && c.axes[1].target==47.5f && c.axes[1].tracking);
+  knob.sample(true,false,-1,740,false,2.5f);assert(c.axes[0].target==97.5f);
+}
 int main() {
+  encoderStepTargets();
   QuadratureDecoder decoder(2);
   decoder.reset(3);
   assert(decoder.update(1) == 0);

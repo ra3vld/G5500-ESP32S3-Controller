@@ -62,9 +62,9 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 .device-section{margin-top:14px;border-top:1px solid var(--b);padding-top:14px}.device-section summary{line-height:1.4;padding:4px 0}.device-section[open] summary{margin-bottom:14px}
 .device-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.device-fields .field{min-width:0}.device-fields label{display:block;margin-bottom:7px;color:var(--m);font-size:14px;line-height:1.4}.device-fields input,.device-fields select{min-height:44px;max-width:100%}
 .device-panel .btn{min-height:44px;font-size:15px;padding:10px 16px;border-radius:10px;cursor:pointer;touch-action:manipulation;overflow-wrap:anywhere}.device-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}.device-panel form{margin:0}.device-panel .hint{margin:12px 0}.device-address{display:grid;gap:12px;padding:16px 0}.device-address>.btn{justify-self:start}
-.device-list{display:grid;gap:10px}.device-peer{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px}.device-peer.select-only{grid-template-columns:minmax(0,1fr)}.device-peer>.btn:first-child{text-align:left}.device-peer-note{grid-column:1/-1;color:var(--m);font-size:13px}.device-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0;font-size:13px;color:var(--m)}.device-pagination>span{text-align:center;overflow-wrap:anywhere}
-.hud-background{grid-column:1/-1;display:flex;align-items:center;flex-wrap:wrap;gap:8px;color:var(--m);font-size:14px}.hud-background select{min-width:0;max-width:100%;min-height:44px}.hud-background-swatch{width:24px;height:24px;flex:none;border:1px solid #678091;border-radius:5px}
-@media(max-width:600px){.device-fields{grid-template-columns:minmax(0,1fr);gap:14px}.device-actions>.btn,.device-address>.btn{width:100%}.device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}.device-peer>.btn:first-child{grid-column:1/-1}.device-pagination .btn{padding:10px 12px}}
+.device-list{display:grid;gap:10px}.device-peer{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}.device-peer.managed{grid-template-columns:minmax(0,1fr) auto;column-gap:6px;align-items:start}.device-peer>.btn:first-child{text-align:left}.device-peer-actions{display:flex;gap:6px}.device-peer-note{color:var(--m);font-size:13px}.device-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0;font-size:13px;color:var(--m)}.device-pagination>span{flex:1;text-align:center;overflow-wrap:anywhere}
+.hud-background{grid-column:1/-1;display:grid;grid-template-columns:auto 24px minmax(0,1fr);align-items:center;gap:8px;max-width:380px;color:var(--m);font-size:14px}.hud-background select{min-width:0;max-width:100%;min-height:44px}.hud-background-swatch{width:24px;height:24px;border:1px solid #678091;border-radius:5px}
+@media(max-width:600px){.device-fields{grid-template-columns:minmax(0,1fr);gap:14px}.device-actions>.btn,.device-address>.btn{width:100%}.device-peer.managed{grid-template-columns:minmax(0,1fr)}.device-peer-actions{display:grid;grid-template-columns:minmax(0,1fr) auto auto}#settingsPanel .device-peer-actions .btn{font-size:12px;padding:10px 8px}.device-pagination .btn{padding:10px 12px}}
 [hidden]{display:none!important}.nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--a);outline-offset:2px}
 .history-intro{margin:20px 0}.history-intro h2{font-size:24px;margin:0 0 8px}.history-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}.history-entry.card{margin:0;padding:18px 20px}.history-entry h3{font-size:16px;color:var(--a);margin:0 0 12px}.history-entry ul{margin:0;padding-left:20px;line-height:1.6;font-size:15px}.history-entry li+li{margin-top:8px}#historyPanel{padding-bottom:16px}
 .current-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;padding:12px;font-size:13px}.current-status span{display:block;color:var(--m);margin-bottom:5px}.current-status b{font-size:14px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.current-status .online,#networkStatus .online{color:var(--a)}.current-status .offline,#networkStatus .offline{color:#e5a94f}
@@ -145,6 +145,14 @@ body.settings-view .nav{position:static}
 #settingsPanel .inline-message{font-size:13px;line-height:1.5;margin-top:12px;color:#b8daca;overflow-wrap:anywhere}
 #settingsPanel .device-list{gap:12px}
 #settingsPanel .device-peer{gap:8px;padding:12px;border:1px solid #294153;border-radius:9px;background:#0c1822}
+#settingsPanel .device-peer.managed{column-gap:6px}
+#settingsPanel .device-peer>.btn:first-child{justify-content:flex-start;text-align:left}
+#settingsPanel .hud-search-method{margin-top:10px;padding:12px;border:1px solid #294153;border-radius:9px;background:#0c1822}
+#settingsPanel .hud-search-method>summary,#settingsPanel .hud-manual-address>summary{min-height:44px;padding:10px 0;line-height:1.5;color:#c9d8e3}
+#settingsPanel .hud-search-method .device-actions{margin-top:12px}
+#settingsPanel .hud-manual-address{margin-top:12px}
+#settingsPanel .hud-search-method .device-address{padding-bottom:0}
+#settingsPanel .hud-search-results{margin:20px 0 12px;font-size:14px}
 #settingsPanel .device-pagination{margin:16px 0;gap:12px}
 #settingsPanel .device-address{padding:16px 0;gap:16px}
 #settingsPanel .device-peer-note{line-height:1.5}
@@ -160,7 +168,7 @@ body.settings-view .nav{position:static}
 #settingsPanel canvas{margin-top:16px}
 .action-feedback{max-height:50dvh;overflow-y:auto}
 @media(max-width:760px){#settingsPanel .range-editors,#settingsPanel .calibration-grid{grid-template-columns:minmax(0,1fr)}#networkStatus .kv{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:600px){.settings-details>summary{padding:10px 14px;gap:12px}.settings-details>summary h2{font-size:16px}.settings-content{padding:16px}#networkStatus .settings-content{padding:10px 14px}#settingsPanel .row,#settingsPanel .device-fields{grid-template-columns:minmax(0,1fr);gap:16px}#settingsPanel .settings-pane{padding:12px}#settingsPanel .form-actions>.btn{width:100%}#settingsPanel .form-actions{gap:10px}#settingsPanel .range-form .row{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel .profile-options{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel #azmc{grid-column:1/-1}#settingsPanel .device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.settings-details>summary{padding:10px 14px;gap:12px}.settings-details>summary h2{font-size:16px}.settings-content{padding:16px}#networkStatus .settings-content{padding:10px 14px}#settingsPanel .row,#settingsPanel .device-fields{grid-template-columns:minmax(0,1fr);gap:16px}#settingsPanel .settings-pane{padding:12px}#settingsPanel .form-actions>.btn{width:100%}#settingsPanel .form-actions{gap:10px}#settingsPanel .range-form .row{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel .profile-options{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel #azmc{grid-column:1/-1}}
 
 .camera-image{display:block;width:100%;max-width:640px;aspect-ratio:4/3;object-fit:contain;margin:12px auto 0;border-radius:10px;background:#08121a}.camera-image[hidden]{display:none}
 /* Form controls have separate metrics; text-field rules never style checkboxes. */
@@ -257,7 +265,7 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 </div>
 <section class="card hide" id="hudSelector" aria-labelledby="hudSelectorLabel"><div class="label" id="hudSelectorLabel">Поворотки</div>
 <div class="device-list" id="hudPeers" style="margin-top:10px"></div>
-<div class="device-pagination"><button class="btn" id="hudPrev" onclick="hudPage(-1)">Назад</button><span id="hudPageInfo"></span><button class="btn" id="hudNext" onclick="hudPage(1)">Далее</button></div>
+<div class="device-pagination"><button class="btn" id="hudPrev" onclick="hudPage(-1)" hidden>Назад</button><span id="hudPageInfo"></span><button class="btn" id="hudNext" onclick="hudPage(1)" hidden>Далее</button></div>
 </section>
 <section class="card" id="cameraCard" hidden aria-labelledby="cameraTitle"><h2 id="cameraTitle">Камера</h2><p id="cameraMessage" class="hint" role="status">Подключение к камере…</p><img id="cameraImage" class="camera-image" alt="Изображение с камеры" hidden width="640" height="480"/></section>
 <div class="card current-status" id="currentStatus" aria-label="Текущий статус устройства">
@@ -286,7 +294,10 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 </div><p class="hint">Автоследование сразу выполняет новые числовые цели выбранного протокола, сохраняя ручной режим. «С подтверждением» оставляет цель для запуска кнопкой. В автоматическом режиме цели всех протоколов выполняются сразу. Направления и STOP выполняются сразу в обоих режимах; при активной предустановке внешние команды движения отклоняются.</p></div>
 <div class="hint" id="buildInfo"></div>
 <div class="settings-group" id="hardwareSettings"><h3>Оборудование</h3><p class="hint">Привод, имитация, Bluetooth, точка доступа и кнопка настраиваются с проверкой после перезапуска.</p><a class="btn" href="/hardware">Настроить оборудование</a> <a href="/recovery">Восстановление доступа</a></div>
-<div class="hide" id="encoderSettings"><label class="check-field"><input checked="" id="encoderInverted" aria-describedby="encoderInverted-help" name="encoderInverted" type="checkbox"/> Инверсия энкодера</label><p class="field-help" id="encoderInverted-help">Меняет направление изменения цели при вращении энкодера. На направление вращения двигателя не влияет.</p></div>
+<section class="settings-group hide" id="encoderSettings"><h3>Энкодер</h3>
+<div class="device-fields"><div class="field"><label for="encoderStepDegrees">Шаг энкодера, ° на щелчок</label><input id="encoderStepDegrees" name="encoderStepDegrees" type="number" min="0.1" max="90" step="0.1" value="20" required aria-describedby="encoderStepDegrees-help"/><p class="field-help" id="encoderStepDegrees-help">От 0,1 до 90°. Один шаг для AZ и EL, в том числе при повороте нажатой ручки. В HUD применяется к выбранной поворотке. По умолчанию — 20°.</p></div></div>
+<label class="check-field"><input checked="" id="encoderInverted" aria-describedby="encoderInverted-help" name="encoderInverted" type="checkbox"/> Инверсия энкодера</label><p class="field-help" id="encoderInverted-help">Меняет направление изменения цели при вращении энкодера. На направление вращения двигателя не влияет.</p>
+<div class="form-actions" data-setup-save><button class="btn good" type="submit">Сохранить энкодер</button></div></section>
 <div class="settings-group" id="speedSettings"><h3>Скорость и плавность движения</h3><label class="check-field" id="analogSpeedToggle"><input id="speedEnabled" aria-describedby="speedEnabled-help" name="speedEnabled" type="checkbox"/> Управлять скоростью через внешний модуль 0–5 В</label><p class="field-help" id="speedEnabled-help">Включите только при подключённом модуле регулировки скорости 0–5 В. Изменение этого режима останавливает привод.</p>
 <h4>Азимут · AZ</h4><div class="row">
 
@@ -374,20 +385,27 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <p class="hint">Команды программ, подключённых к HUD, идут выбранной поворотке.</p>
 <p class="field-help">Для каждой поворотки можно выбрать фон экрана HUD. Цвет сохраняется на этом пульте и переключается вместе с повороткой во всех раскладках.</p>
 <div class="device-list" id="hudPeerSettings"></div>
-<div class="device-pagination"><button class="btn" id="hudSettingsPrev" onclick="hudPage(-1)">Назад</button><span id="hudSettingsPageInfo"></span><button class="btn" id="hudSettingsNext" onclick="hudPage(1)">Далее</button></div>
-<section class="settings-group"><h3>Добавить поворотку</h3>
-<div class="form-actions"><button class="btn" onclick="hudSearch()">Найти по UDP</button><button class="btn" id="hudUartSearch" onclick="hudSearch(true)">Найти по UART</button><button class="btn" id="hudMqttSearch" data-feature="mqtt" onclick="hudSearchMqtt()">Найти по MQTT</button></div>
-<form class="device-address" onsubmit="event.preventDefault();hudSearchRs485()">
-<div class="device-fields"><div class="field"><label for="hudBusFirst">RS‑485 · первый адрес</label><input id="hudBusFirst" type="number" min="1" max="247" value="1" required/></div><div class="field"><label for="hudBusLast">Последний адрес</label><input id="hudBusLast" type="number" min="1" max="247" value="247" required/></div></div>
-<button class="btn" id="hudBusSearch">Найти на шине RS‑485</button><p class="field-help">Для режима «Modbus RTU с маркером». Адреса опрашиваются по очереди; полный поиск может занять несколько минут. Адреса ведущих пропускаются.</p></form>
+<div class="device-pagination"><button class="btn" id="hudSettingsPrev" onclick="hudPage(-1)" hidden>Назад</button><span id="hudSettingsPageInfo"></span><button class="btn" id="hudSettingsNext" onclick="hudPage(1)" hidden>Далее</button></div>
+<section class="settings-group" id="hudDiscovery"><h3>Добавить поворотку</h3>
+<details class="hud-search-method" name="hud-search" id="hudUdpDiscovery" data-feature="hudUdp" open><summary>По сети · UDP</summary>
+<div class="device-actions"><button class="btn" onclick="hudSearch()">Найти по UDP</button></div>
+<details class="hud-manual-address" id="hudManualAddress"><summary>Указать IP вручную</summary>
 <form class="device-address" onsubmit="event.preventDefault();hudSearch(false,true)">
 <div class="device-fields"><div class="field"><label for="hudAddress">IP контроллера</label><input aria-describedby="hudAddress-help" id="hudAddress" placeholder="192.168.4.1"/><p class="field-help" id="hudAddress-help">IPv4-адрес контроллера, если поиск в сети его не нашёл. Адрес указан в веб-интерфейсе самого контроллера.</p></div><div class="field"><label for="hudPeerPort">UDP-порт HUD</label><input aria-describedby="hudPeerPort-help" id="hudPeerPort" max="65535" min="1" type="number" value="4534"/><p class="field-help" id="hudPeerPort-help">UDP-порт HUD на добавляемом контроллере. Он должен совпадать с портом в его настройках связи.</p></div></div>
-<button class="btn">Проверить адрес</button></form>
+<button class="btn">Проверить адрес</button></form></details></details>
+<details class="hud-search-method" name="hud-search" id="hudWiredDiscovery" data-feature="hudUart"><summary>По кабелю · UART / RS‑485</summary>
+<div class="device-actions"><button class="btn" id="hudUartSearch" onclick="hudSearch(true)">Найти по UART</button></div>
+<form class="device-address" id="hudRs485Discovery" onsubmit="event.preventDefault();hudSearchRs485()">
+<div class="device-fields"><div class="field"><label for="hudBusFirst">RS‑485 · первый адрес</label><input id="hudBusFirst" type="number" min="1" max="247" value="1" required/></div><div class="field"><label for="hudBusLast">Последний адрес</label><input id="hudBusLast" type="number" min="1" max="247" value="247" required/></div></div>
+<button class="btn" id="hudBusSearch">Найти на шине RS‑485</button><p class="field-help">Для режима «Modbus RTU с маркером». Адреса опрашиваются по очереди; полный поиск может занять несколько минут. Адреса ведущих пропускаются.</p></form></details>
+<details class="hud-search-method" name="hud-search" id="hudMqttDiscovery" data-feature="mqtt"><summary>Через брокер · MQTT</summary>
 <p class="field-help" id="hudTransportHelp">Основное подключение HUD — UDP. Используйте MQTT, только если подключение по UDP невозможно.</p>
-<form class="device-address" data-feature="mqtt" onsubmit="event.preventDefault();hudAddMqtt()"><div class="field"><label for="hudMqttId">ID контроллера MQTT</label><input id="hudMqttId" pattern="[0-9A-Fa-f]{12}" maxlength="12" required placeholder="001122334455"/><p class="field-help">ID из настроек контроллера. На обоих устройствах включите MQTT и укажите один брокер.</p></div><button class="btn">Добавить по MQTT</button></form>
+<div class="device-actions"><button class="btn" id="hudMqttSearch" data-feature="mqtt" onclick="hudSearchMqtt()">Найти по MQTT</button></div>
+<form class="device-address" data-feature="mqtt" onsubmit="event.preventDefault();hudAddMqtt()"><div class="field"><label for="hudMqttId">ID контроллера MQTT</label><input id="hudMqttId" pattern="[0-9A-Fa-f]{12}" maxlength="12" required placeholder="001122334455"/><p class="field-help">ID из настроек контроллера. На обоих устройствах включите MQTT и укажите один брокер.</p></div><button class="btn">Добавить по MQTT</button></form></details>
+<h4 class="hud-search-results">Найденные поворотки</h4>
 <p class="hint" id="hudBusProgress" role="status"></p>
 <div class="device-list" id="hudDiscovered"></div>
-<div class="device-pagination"><button class="btn" onclick="hudDiscoveryPage(-1)">Назад</button><span id="hudDiscoveryInfo"></span><button class="btn" onclick="hudDiscoveryPage(1)">Далее</button></div>
+<div class="device-pagination"><button class="btn" id="hudDiscoveryPrev" onclick="hudDiscoveryPage(-1)" hidden>Назад</button><span id="hudDiscoveryInfo"></span><button class="btn" id="hudDiscoveryNext" onclick="hudDiscoveryPage(1)" hidden>Далее</button></div>
 </section></div>
 <section class="settings-group"><h3>Роль устройства и связь</h3>
 <form id="hudConfig" onsubmit="saveHudDevice(event)"><div class="device-fields">
@@ -1027,7 +1045,7 @@ function fillPreset(){
  f.elements.label.value=p.label;f.elements.az.value=p.target.az;f.elements.el.value=p.target.el;
 }
 async function savePreset(e){e.preventDefault();await forkPost('/api/preset',Object.fromEntries(new FormData(e.target)))}
-async function saveFork(e){e.preventDefault();const revision=setupDraftRevision(e.target),body=Object.fromEntries(new FormData(e.target));if(window._forkState?.build?.drive==='YAESU')body.speedEnabled=e.target.elements.speedEnabled.checked?'true':'false';else delete body.speedEnabled;if(window._forkState?.build?.display==='CROWPANEL_21')body.encoderInverted=e.target.elements.encoderInverted.checked?'true':'false';else delete body.encoderInverted;if(window._forkState?.deviceRole==='hud')for(const key of Object.keys(body))if(!['rotorName','n1mmPort','pstPort','reportPort','reportHost','encoderInverted','n1mmManualFollow','pstManualFollow','gs232ManualFollow','rotctldManualFollow','externalAzMode'].includes(key))delete body[key];if(await forkPost('/api/settings',body))clearSavedSetupDraft(e.target,revision);}
+async function saveFork(e){e.preventDefault();const revision=setupDraftRevision(e.target),body=Object.fromEntries(new FormData(e.target));if(window._forkState?.build?.drive==='YAESU')body.speedEnabled=e.target.elements.speedEnabled.checked?'true':'false';else delete body.speedEnabled;if(window._forkState?.build?.display==='CROWPANEL_21')body.encoderInverted=e.target.elements.encoderInverted.checked?'true':'false';else{delete body.encoderInverted;delete body.encoderStepDegrees;}if(window._forkState?.deviceRole==='hud')for(const key of Object.keys(body))if(!['rotorName','n1mmPort','pstPort','reportPort','reportHost','encoderInverted','encoderStepDegrees','n1mmManualFollow','pstManualFollow','gs232ManualFollow','rotctldManualFollow','externalAzMode'].includes(key))delete body[key];if(await forkPost('/api/settings',body))clearSavedSetupDraft(e.target,revision);}
 
 const simpleMotionKeys=['speedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees','coastDegrees','decelerationFactor'];
 const motionFields=[["OutputLimitPercent","Максимальный выход, %","Общий предел выхода, включая пусковой импульс. Проверьте допустимый уровень подключённого каскада.",1.0,100.0,"any","common"],["KickPercent","Пусковой импульс, %","Может превышать рабочий выход, но не общий предел. Например, старт 50%, движение 5%.",1.0,100.0,"any","kick"],["MovementDegrees","Подтверждение движения, °","Изменение угла для обнаружения страгивания. Выберите выше шума датчика.",0.001,10.0,"any","common"],["SustainingPercent","Минимальный выход движения, %","Нижняя граница выхода после страгивания в каскаде и при ручном управлении ШИМ. 0 — без ограничения выхода снизу. Разгон и торможение остаются плавными; STOP и защита отключают выход.",0,100,"1","common"],["Velocity","Скорость, °/с","Предельная скорость профиля движения в каскадном режиме.",0.001,360.0,"any","cascade"],["Acceleration","Ускорение, °/с²","Ограничение ускорения профиля в обоих направлениях.",0.001,1000.0,"any","cascade"],["Deceleration","Торможение, °/с²","Допустимое замедление профиля. Подберите по инерции механизма.",0.001,1000.0,"any","cascade"],["Jerk","Рывок, °/с³","Ограничение изменения ускорения S-профиля. Меньше — плавнее.",0.001,10000.0,"any","cascade"],["PositionKp","Положение · P","Пропорциональная составляющая внешнего контура.",0.0,1000.0,"any","cascade"],["PositionKi","Положение · I","Интегральная составляющая внешнего контура. 0 — отключена.",0.0,1000.0,"any","cascade"],["PositionKd","Положение · D","Гашение движения по производной измеренного положения. 0 — отключено.",0.0,1000.0,"any","cascade"],["VelocityKp","Скорость · P","Пропорциональная составляющая внутреннего контура.",0.0,10000.0,"any","cascade"],["VelocityKi","Скорость · I","Интегральная составляющая внутреннего контура. 0 — отключена.",0.0,10000.0,"any","cascade"],["VelocityKd","Скорость · D","Производная измеренной скорости с фильтрацией. 0 — отключена.",0.0,10000.0,"any","cascade"],["Feedforward","Упреждение выхода, % на °/с","Приближённый выход на единицу скорости; ПИД исправляет остаточную ошибку.",0.0,100000.0,"any","cascade"],["PositionTolerance","Допуск положения, °","Допустимая ошибка при завершении наведения. Выберите по разрешению и шуму датчика.",0.001,90.0,"any","cascade"],["HoldResumeDegrees","Возобновлять удержание за, °","Независимый порог начала коррекции. Обычно 1°; выход снимается в зоне половины этого порога или меньшего допуска положения.",0.001,180.0,"any","cascade"],["StoppedVelocity","Порог остановки, °/с","Измеренная скорость, ниже которой механизм считается остановленным.",0.001,10.0,"any","cascade"],["KickMs","Предел пускового импульса, мс","Задаёт нарастание пускового выхода. В обычном движении подтверждение ожидается не меньше срока контроля заклинивания.",20.0,10000.0,"1","kick"],["KickReleaseMs","Снятие пускового импульса, мс","Плавный переход от пускового выхода к рабочему после обнаружения движения.",20.0,2000.0,"1","kick"],["VelocityWindowMs","Окно оценки скорости, мс","Большее окно уменьшает шум, но увеличивает задержку. Не больше срока свежести.",40.0,600.0,"1","common"],["DerivativeFilterMs","Фильтр D, мс","Сглаживание производных обоих ПИД. Большее время сильнее подавляет шум.",20.0,2000.0,"1","cascade"],["FeedbackTimeoutMs","Срок свежести датчика, мс","При отсутствии новых измерений дольше этого срока выход отключается.",100.0,5000.0,"1","common"],["HoldReverseMs","Пауза реверса в серворежиме, мс","0 — без паузы. Задаёт ожидание между выключением одного направления и включением другого только при активном удержании.",0,2000,"1","cascade"],["SettleMs","Подтверждение позиции, мс","Положение и скорость должны оставаться в допуске всё это время.",20.0,5000.0,"1","cascade"],["StallMs","Контроль заклинивания, мс","Отключение при отсутствии движения под ненулевым выходом. Смена цели таймер не сбрасывает.",500.0,30000.0,"1","common"]];
@@ -1376,7 +1394,8 @@ function updateFork(j){
  setText(document.getElementById('speedOutput'),j.speedOutputPercent.toFixed(1)+'%');
  if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements.speedEnabled.checked=j.speedEnabled;
  document.getElementById('encoderSettings').classList.toggle('hide',j.build?.display!=='CROWPANEL_21');
- if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements.encoderInverted.checked=j.encoderInverted??true;
+ f.elements.encoderStepDegrees.disabled=j.build?.display!=='CROWPANEL_21';
+ if(first||(!f.dataset.dirty&&!f.contains(document.activeElement))){f.elements.encoderInverted.checked=j.encoderInverted??true;f.elements.encoderStepDegrees.value=j.encoderStepDegrees??20;}
  document.querySelector('#presetEditor [name=el]').min=j.elStart??0;document.querySelector('#presetEditor [name=el]').max=j.elMax??180;
  document.querySelector('#presetEditor [name=az]').min=j.azStart??0;document.querySelector('#presetEditor [name=az]').max=j.azMax??(j.azMode===36?360:450);
  if(first)fillPreset();
@@ -1811,8 +1830,16 @@ document.querySelectorAll('.movebtn').forEach(function(b){
 let hudSelection,hudBackgroundSaving=0;
 const hudBackgrounds=[['Стандартный','#0a111c'],['Тёмно-синий','#081e3a'],['Тёмно-зелёный','#092c20'],['Тёмно-бирюзовый','#073035'],['Тёмно-фиолетовый','#241334'],['Бордовый','#35131e'],['Тёмно-коричневый','#302113'],['Графитовый','#181b20'],['Чёрный','#000000']];
 let hudOffset=0,hudDiscoveredOffset=0,hudTotal=0,hudDiscoveryTotal=0,hudPollBusy=false,hudLastPoll=0;
-async function hudPage(delta){hudOffset=Math.max(0,Math.min(Math.max(0,hudTotal-1),hudOffset+delta*8));await loadHudPeers()}
-async function hudDiscoveryPage(delta){hudDiscoveredOffset=Math.max(0,Math.min(Math.max(0,hudDiscoveryTotal-1),hudDiscoveredOffset+delta*8));await loadHudDiscovery()}
+function hudLastOffset(total){return Math.floor(Math.max(0,total-1)/8)*8}
+async function hudPage(delta){hudOffset=Math.max(0,Math.min(hudLastOffset(hudTotal),hudOffset+delta*8));await loadHudPeers()}
+async function hudDiscoveryPage(delta){hudDiscoveredOffset=Math.max(0,Math.min(hudLastOffset(hudDiscoveryTotal),hudDiscoveredOffset+delta*8));await loadHudDiscovery()}
+function hudPagination(prefix,offset,total){
+ const prev=document.getElementById(prefix+'Prev'),next=document.getElementById(prefix+'Next');
+ prev.hidden=next.hidden=total<=8;prev.disabled=offset===0;next.disabled=offset+8>=total;
+ const range=`${offset+1}–${Math.min(offset+8,total)}`;
+ document.getElementById(prefix+(prefix==='hudDiscovery'?'Info':'PageInfo')).textContent=prefix==='hudDiscovery'?
+  'Найдено: '+total+(total>8?' · '+range:''):total?range+' / '+total:'Добавьте поворотку';
+}
 function hudRow(peer,discovered,manage=false){
  const row=document.createElement('div');row.className='device-peer'+(!discovered&&!manage?' select-only':'');
  const select=document.createElement('button');select.className='btn'+(peer.selected?' good':'');
@@ -1822,12 +1849,14 @@ function hudRow(peer,discovered,manage=false){
  select.textContent=peer.name+(peer.transport==='mqtt'?' · MQTT':'')+(peer.busAddress?' · RS‑485 №'+peer.busAddress:'')+' · '+(peer.online?'AZ '+position('az')+(peer.hasEl===false?'':' / EL '+position('el'))+(peer.moving?' · вращение':''):'нет связи')+' · '+age;
  select.onclick=async()=>{await forkPost(discovered?'/api/hud/peers':'/api/hud/select',{id:peer.id});await loadHudPeers();if(discovered)await loadHudDiscovery()};row.append(select);
  if(manage&&!discovered&&peer.transport!=='simulation'){
+  row.classList.add('managed');
+  const actions=document.createElement('div');actions.className='device-peer-actions';row.append(actions);
   if(window._forkState?.build?.features?.mqtt!==false){
-   const link=document.createElement('button');link.className='btn';link.textContent=peer.transport==='mqtt'?'Перейти на UDP':'Перейти на MQTT';
-   link.onclick=async()=>{const data={id:peer.id,transport:peer.transport==='mqtt'?'wifi':'mqtt'};if(data.transport==='wifi'){const address=prompt('IPv4 контроллера');if(!address)return;data.address=address;data.port=String(window._forkState?.hudPort||4534);}await forkPost('/api/hud/peers',data);await loadHudPeers();};row.append(link);
+   const link=document.createElement('button');link.className='btn peer-transport';link.textContent=peer.transport==='mqtt'?'Перейти на UDP':'Перейти на MQTT';
+   link.onclick=async()=>{const data={id:peer.id,transport:peer.transport==='mqtt'?'wifi':'mqtt'};if(data.transport==='wifi'){const address=prompt('IPv4 контроллера');if(!address)return;data.address=address;data.port=String(window._forkState?.hudPort||4534);}await forkPost('/api/hud/peers',data);await loadHudPeers();};actions.append(link);
   }
-  const rename=document.createElement('button');rename.className='btn';rename.textContent='Имя';rename.onclick=async()=>{const name=prompt('Имя поворотки',peer.name);if(name!==null){await forkPost('/api/hud/peers',{id:peer.id,name});await loadHudPeers()}};row.append(rename);
-  const remove=document.createElement('button');remove.className='btn';remove.textContent='Удалить';remove.onclick=async()=>{await forkPost('/api/hud/peers',{id:peer.id,action:'remove'});await loadHudPeers()};row.append(remove);
+  const rename=document.createElement('button');rename.className='btn';rename.textContent='Имя';rename.onclick=async()=>{const name=prompt('Имя поворотки',peer.name);if(name!==null){await forkPost('/api/hud/peers',{id:peer.id,name});await loadHudPeers()}};actions.append(rename);
+  const remove=document.createElement('button');remove.className='btn';remove.textContent='Удалить';remove.onclick=async()=>{await forkPost('/api/hud/peers',{id:peer.id,action:'remove'});await loadHudPeers()};actions.append(remove);
   const field=document.createElement('label');field.className='hud-background';
   const caption=document.createElement('span');caption.textContent='Фон HUD';
   const swatch=document.createElement('span');swatch.className='hud-background-swatch';swatch.setAttribute('aria-hidden','true');
@@ -1841,18 +1870,27 @@ function hudRow(peer,discovered,manage=false){
 }
 async function loadHudPeers(){
  if(otaBusy||hudPollBusy)return;hudPollBusy=true;
- try{const data=await background.read('peers','/api/hud/peers?offset='+hudOffset);hudTotal=data.total;
+ try{let data=await background.read('peers','/api/hud/peers?offset='+hudOffset);
+ if(hudOffset>hudLastOffset(data.total)){hudOffset=hudLastOffset(data.total);data=await background.read('peers','/api/hud/peers?offset='+hudOffset);}
+ hudTotal=data.total;
  const box=document.getElementById('hudPeers');box.replaceChildren(...data.items.map(p=>hudRow(p,false)));
  const settings=document.getElementById('hudPeerSettings');
  if(!hudBackgroundSaving&&!settings.querySelector('.hud-background select:focus'))settings.replaceChildren(...data.items.map(p=>hudRow(p,false,true)));
- for(const prefix of ['hud','hudSettings']){
-  document.getElementById(prefix+'PageInfo').textContent=hudTotal?`${hudOffset+1}–${Math.min(hudOffset+8,hudTotal)} / ${hudTotal}`:'Добавьте поворотку';
-  document.getElementById(prefix+'Prev').disabled=hudOffset===0;document.getElementById(prefix+'Next').disabled=hudOffset+8>=hudTotal;
- }
+ for(const prefix of ['hud','hudSettings'])hudPagination(prefix,hudOffset,hudTotal);
  }catch(e){}finally{hudPollBusy=false;hudLastPoll=Date.now()}
 }
 let hudScanTimer;
-async function loadHudDiscovery(){if(otaBusy)return;try{const data=await background.read('discovery','/api/hud/peers?discovered=1&offset='+hudDiscoveredOffset,'json',()=>!document.getElementById('settingsPanel').hidden);hudDiscoveryTotal=data.total;document.getElementById('hudDiscovered').replaceChildren(...data.items.map(p=>hudRow(p,true)));document.getElementById('hudBusProgress').textContent=data.scanActive?'Поиск RS‑485: адрес '+data.scanAddress+' / '+data.scanLast:'';document.getElementById('hudDiscoveryInfo').textContent='Найдено: '+data.total;clearTimeout(hudScanTimer);if(data.scanActive)hudScanTimer=setTimeout(loadHudDiscovery,1000)}catch(e){}}
+async function loadHudDiscovery(){
+ if(otaBusy)return;
+ try{const read=()=>background.read('discovery','/api/hud/peers?discovered=1&offset='+hudDiscoveredOffset,'json',()=>!document.getElementById('settingsPanel').hidden);
+ let data=await read();
+ if(hudDiscoveredOffset>hudLastOffset(data.total)){hudDiscoveredOffset=hudLastOffset(data.total);data=await read();}
+ hudDiscoveryTotal=data.total;document.getElementById('hudDiscovered').replaceChildren(...data.items.map(p=>hudRow(p,true)));
+ document.getElementById('hudBusProgress').textContent=data.scanActive?'Поиск RS‑485: адрес '+data.scanAddress+' / '+data.scanLast:'';
+ hudPagination('hudDiscovery',hudDiscoveredOffset,hudDiscoveryTotal);
+ clearTimeout(hudScanTimer);if(data.scanActive)hudScanTimer=setTimeout(loadHudDiscovery,1000);
+ }catch(e){}
+}
 async function hudSearchMqtt(){if(await forkPost('/api/hud/discover',{transport:'mqtt'})){hudDiscoveredOffset=0;setTimeout(loadHudDiscovery,500);setTimeout(loadHudDiscovery,1800);}}
 async function hudAddMqtt(){if(await forkPost('/api/hud/peers',{id:document.getElementById('hudMqttId').value,transport:'mqtt'}))await loadHudPeers();}
 async function hudSearchRs485(){if(Number(document.getElementById('hudBusFirst').value)>Number(document.getElementById('hudBusLast').value)){alert('Первый адрес должен быть не больше последнего');return;}if(await forkPost('/api/hud/discover',{transport:'rs485',first:document.getElementById('hudBusFirst').value,last:document.getElementById('hudBusLast').value})){hudDiscoveredOffset=0;await loadHudDiscovery();}}
@@ -2247,7 +2285,7 @@ function renderFeatures(features){
  for(const [id,key] of [['wifiIpSettings','wifi'],['ethIpSettings','ethernet']]){const e=document.getElementById(id);if(e)e.hidden=features[key]===false;}
  hudUartFields();
  const udp=document.getElementById('hudAddress');if(udp)udp.closest('form').hidden=features.hudUdp===false;
- const search=document.getElementById('hudBusSearch');if(search)search.hidden=features.rs485===false||features.modbus===false;
+ const search=document.getElementById('hudRs485Discovery');if(search)search.hidden=features.rs485===false||features.modbus===false;
  const role=document.getElementById('deviceRole');if(role)for(const o of role.options)if(o.value==='hud')o.hidden=features.hud===false;
  renderMqttSettings();
 }

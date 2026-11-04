@@ -1,6 +1,7 @@
 // HUD selection and knob gestures; no GPIO or display dependencies. GPL-3.0.
 #pragma once
 #include "hud.hpp"
+#include "encoder_settings.hpp"
 #include <algorithm>
 namespace forkrot {
 class HudKnob {
@@ -153,7 +154,8 @@ public:
     }
     click_ = resume_ = false;
   }
-  void sample(bool healthy, bool pressed, int delta, uint32_t now, bool inverted = true) {
+  void sample(bool healthy, bool pressed, int delta, uint32_t now, bool inverted = true,
+              float stepDegrees = DefaultEncoderStepDegrees) {
     sync();
     if (menu && uint32_t(now - menuAt_) >= 10000)
       menu = false;
@@ -228,8 +230,8 @@ public:
       resume_ = click_ = false;
       const unsigned selected = axis();
       const auto &a = controller_.axes[selected];
-      const float base = controller_.intendedTarget(selected, a.tracking || a.holdArmed ? a.target : a.current);
-      const float next = std::clamp(base + (inverted ? -float(delta) : float(delta)) * 20.f, controller_.range(selected).start,
+      const float base = controller_.intendedTarget(selected, a.tracking || a.holdArmed || a.completed ? a.target : a.current);
+      const float next = std::clamp(base + (inverted ? -float(delta) : float(delta)) * checkedEncoderStepDegrees(stepDegrees), controller_.range(selected).start,
                                     controller_.range(selected).end);
       recordResult(
           controller_.target({selected ? 0.f : next, selected ? next : 0.f, selected == 0, selected == 1}, false, now), now);

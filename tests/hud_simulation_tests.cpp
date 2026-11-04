@@ -14,7 +14,30 @@ struct Transport : HudTransport {
     return false;
   }
 };
+static void encoderStepTargets() {
+  Controller c;Protocol p(c);Hud hud(c,p);hud.config.role=DeviceRole::Hud;hud.begin(1,2);
+  assert(hud.setSimulationEnabled(true)&&hud.select(HUD_SIMULATION_ID));
+  HudKnob knob(hud,c);knob.sample(true,false,0,50,false,.5f);
+  // Two detents arriving before the HUD ACK must accumulate from the intended target.
+  knob.sample(true,false,1,60,false,.5f);knob.sample(true,false,1,70,false,.5f);
+  hud.service(80);c.tick(80);assert(std::abs(c.axes[0].target-1.f)<.001f);
+  knob.sample(true,false,2,100,true,.1f);hud.service(110);c.tick(110);
+  assert(std::abs(c.axes[0].target-.8f)<.001f);
+  knob.sample(true,true,0,150,false,2.5f);knob.sample(true,true,3,190,false,2.5f);
+  hud.service(200);c.tick(200);assert(knob.axis()==1&&c.axes[1].target==7.5f);
+  const auto request=hud.requestId();
+  knob.sample(true,false,0,210,false,2.5f);knob.sample(true,false,0,250,false,2.5f);
+  knob.sample(true,false,0,700,false,2.5f);
+  assert(knob.axis()==0&&hud.requestId()==request&&c.axes[1].target==7.5f);
+  knob.sample(true,false,1000,740,false,90);hud.service(750);c.tick(750);assert(c.axes[0].target==450);
+  knob.sample(true,false,-1000,780,false,90);hud.service(790);c.tick(790);assert(c.axes[0].target==0);
+  c.stopNow(-1,800);hud.service(810);c.tick(810);
+  const auto position=c.axes[0].current;
+  knob.sample(true,false,1,850,false,.1f);hud.service(860);c.tick(860);
+  assert(std::abs(c.axes[0].target-position-.1f)<.001f);
+}
 int main() {
+  encoderStepTargets();
   Controller mirror;
   const auto hardware = mirror.hardware;
   Protocol protocol(mirror);

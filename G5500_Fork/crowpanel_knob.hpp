@@ -1,5 +1,6 @@
 #pragma once
 #include "control.hpp"
+#include "encoder_settings.hpp"
 #include <algorithm>
 namespace forkrot {
 // UI gestures are independent of GPIO and use the same controller as web/GS-232.
@@ -34,7 +35,7 @@ class CrowPanelKnob {
         (resumeTarget_.hasEl && controller_.axes[1].target != resumeTarget_.el))) canResume_ = false;
   }
 public:
-  static constexpr float StepDegrees = 20.f;
+  static constexpr float StepDegrees = DefaultEncoderStepDegrees;
   bool modeChanged = false;
   Result lastResult = Result::Ok;
   explicit CrowPanelKnob(Controller &controller) : controller_(controller) {}
@@ -97,7 +98,8 @@ public:
     lastResult = controller_.execute(now);
   }
   // A failed PCF8574 read cancels the gesture; recovery requires stable release.
-  void sample(bool healthy, bool pressed, int delta, uint32_t now, bool inverted = true) {
+  void sample(bool healthy, bool pressed, int delta, uint32_t now, bool inverted = true,
+              float stepDegrees = DefaultEncoderStepDegrees) {
     synchronize(inverted);
     if (!healthy) {
       stop(now);
@@ -137,8 +139,10 @@ public:
       canResume_ = false;
       const unsigned selected = axis();
       const auto &axis = controller_.axes[selected];
-      const float origin = axis.tracking || axis.holdArmed ? axis.target : axis.current;
-      const float next = std::clamp(origin + (inverted_ ? -float(delta) : float(delta)) * StepDegrees, controller_.range(selected).start,
+      // Completed sub-tolerance steps still form an edited target. STOP clears
+      // completed/tracking, so a new gesture after STOP starts at the position.
+      const float origin = axis.tracking || axis.holdArmed || axis.completed ? axis.target : axis.current;
+      const float next = std::clamp(origin + (inverted_ ? -float(delta) : float(delta)) * checkedEncoderStepDegrees(stepDegrees), controller_.range(selected).start,
                                    controller_.range(selected).end);
       // Every detent updates the controller immediately, including during motion.
       Target target{selected ? 0.f : next, selected ? next : 0.f, selected == 0, selected == 1};

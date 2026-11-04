@@ -90,6 +90,7 @@ bool writeStateJson(JsonWriter &json, const Controller &controller, const Protoc
        << ",\"controlMode\":" << jsonQuoted(Controller::modeName(controller.mode))
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
        << ",\"encoderInverted\":" << (settings.encoderInverted ? "true" : "false")
+       << ",\"encoderStepDegrees\":" << settings.encoderStepDegrees
 #endif
        << ",\"remainingMs\":" << controller.remaining(now)
        << ",\"pendingValid\":" << (controller.pendingValid ? "true" : "false")
@@ -255,6 +256,11 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
         ok = value.empty() || ip(value);
       } else if (key == "encoderInverted")
         ok = boolean(value, next.encoderInverted);
+      else if (key == "encoderStepDegrees") {
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+        ok = number(value, next.encoderStepDegrees) && validEncoderStepDegrees(next.encoderStepDegrees);
+#endif
+      }
       else if (key == "n1mmManualFollow")
         ok = boolean(value, follow.n1mm);
       else if (key == "pstManualFollow")
@@ -363,6 +369,14 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     if (has(form, "encoderInverted")) {
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
       valid = boolean(get(form, "encoderInverted"), next.encoderInverted) && valid;
+#else
+      valid = false;
+#endif
+    }
+    if (has(form, "encoderStepDegrees")) {
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+      valid = number(get(form, "encoderStepDegrees"), next.encoderStepDegrees) &&
+              validEncoderStepDegrees(next.encoderStepDegrees) && valid;
 #else
       valid = false;
 #endif

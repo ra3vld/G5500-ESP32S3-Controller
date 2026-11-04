@@ -158,6 +158,25 @@ int main() {
   storage.saveForkSettings(runtime); storage.loadForkSettings(loaded);
   assert(loaded.loggerSettings.encoderInverted);
   assert(stateJson(c, runtime.protocol, runtime.loggerSettings, 0).find("\"encoderInverted\":true") != std::string::npos);
+  // Missing legacy key preserves 20 degrees; API accepts finite fractional steps atomically.
+  assert(runtime.loggerSettings.encoderStepDegrees==20);
+  auto stepSetting=[&](const char *value){return api(c,runtime.protocol,runtime.loggerSettings,"/api/settings",{{"encoderStepDegrees",value}},0);};
+  for(const char *value:{"0.1","0,5","2.5","90"}) {
+    assert(stepSetting(value).status==200);assert(storage.saveForkSettings(runtime));
+    storage.loadForkSettings(loaded);assert(loaded.loggerSettings.encoderStepDegrees==runtime.loggerSettings.encoderStepDegrees);
+  }
+  for(const char *value:{"","0","-1","0.099","90.1","nan","inf","1deg"}) {
+    const auto before=runtime.loggerSettings.encoderStepDegrees;
+    assert(api(c,runtime.protocol,runtime.loggerSettings,"/api/settings",{{"encoderStepDegrees",value},{"encoderInverted","false"}},0).status==400);
+    assert(runtime.loggerSettings.encoderStepDegrees==before&&runtime.loggerSettings.encoderInverted);
+  }
+  Preferences::failedKey="encstep";assert(!storage.saveForkSettings(runtime));Preferences::failedKey.clear();
+  for(float bad:{0.f,-1.f,91.f,NAN,INFINITY}) {
+    Preferences::database["forkcfg"]["encstep"]=bad;storage.loadForkSettings(loaded);
+    assert(loaded.loggerSettings.encoderStepDegrees==20);
+  }
+  Preferences::database["forkcfg"].erase("encstep");storage.loadForkSettings(loaded);
+  assert(loaded.loggerSettings.encoderStepDegrees==20);
   hw.applyOutputs(); hw.allStop(); hw.filteredMv(0); hw.filteredMv(1);
   assert(fakeHardware.events.empty() && fakeHardware.readsRaw == 0 && fakeHardware.readsMv == 0);
   std::puts("PASS: simulated 13.4 deg/s, exact arrival, STOP, manual/auto, reverse, limits, millis wrap; no GPIO/ADC");

@@ -168,14 +168,16 @@ void Display::serviceKnob() {
   }
   speedKnobDown_ = false;
   if (runtime_.hud.isHud()) {
-    hudKnob_.sample(healthy, down, delta, now, runtime_.loggerSettings.encoderInverted);
+    hudKnob_.sample(healthy, down, delta, now, runtime_.loggerSettings.encoderInverted,
+                    runtime_.loggerSettings.encoderStepDegrees);
     if (hudKnob_.selectionChanged) {
       hudKnob_.selectionChanged = false;
       if (!storage_.saveHudConfig(runtime_.hud.config))
         runtime_.hud.catalogError = true;
     }
   } else
-    knob_.sample(healthy, down, delta, now, runtime_.loggerSettings.encoderInverted);
+    knob_.sample(healthy, down, delta, now, runtime_.loggerSettings.encoderInverted,
+                 runtime_.loggerSettings.encoderStepDegrees);
   hardware_.controlRotator(); // Apply STOP immediately, including while awaiting VSYNC.
 }
 TouchSample Display::readTouch() {

@@ -196,6 +196,7 @@ void DeviceApi::writeConfiguration(JsonWriter &j) {
     << ",\"speedEnabled\":" << (c.speedEnabled?"true":"false");
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   j << ",\"encoderInverted\":" << (s.encoderInverted?"true":"false");
+  j << ",\"encoderStepDegrees\":" << s.encoderStepDegrees;
 #endif
   for(unsigned i=0;i<2;++i) {
     const auto &speed=reportedSpeed(c,i);const char *prefix=i?"el":"az";

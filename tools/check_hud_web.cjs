@@ -20,6 +20,7 @@ const state=async url=>(await fetch(url+'/api/status')).json();
   assert.equal(await simulationSetting.isChecked(),false);
   await simulationSetting.check();
   await page.waitForFunction(()=>window._forkState?.hudSimulationEnabled===true);
+  await page.locator('#hudManualAddress > summary').click();
   for(const [port,name] of [[process.env.ROTOR_PORT,'R101'],[process.env.ROTOR_TWO_PORT,'R102']]) {
    await page.locator('#hudAddress').fill('127.0.0.1');
    await page.locator('#hudPeerPort').fill(port);

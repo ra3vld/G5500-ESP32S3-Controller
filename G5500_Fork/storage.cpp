@@ -913,6 +913,8 @@ void Storage::loadForkSettings(Runtime &runtime) {
                                         : forkrot::ExternalAzMode::Shortest);
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   runtime.loggerSettings.encoderInverted = prefs_.getBool("encinv", true);
+  runtime.loggerSettings.encoderStepDegrees = forkrot::checkedEncoderStepDegrees(
+      prefs_.getFloat("encstep", forkrot::DefaultEncoderStepDegrees));
 #endif
   prefs_.end();
   if (runtime.controller.hardware.drive != DRIVE_YAESU || runtime.controller.hardware.simulation) {
@@ -1056,6 +1058,7 @@ bool Storage::saveForkSettings(const Runtime &runtime) {
   putBool("azmech", runtime.protocol.externalAzMode == forkrot::ExternalAzMode::Mechanical);
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   putBool("encinv", runtime.loggerSettings.encoderInverted);
+  putFloat("encstep", runtime.loggerSettings.encoderStepDegrees);
 #endif
   prefs_.end();
   if(!valid)return false;

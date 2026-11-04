@@ -271,7 +271,7 @@ void Application::controllerSetup() {
 #elif DISPLAY_KIND == DISPLAY_LCD1602
   diagnostics_.dbgPrintln("LCD1602: current/target, mode/wait and PWM output bars; touch disabled");
 #elif DISPLAY_KIND == DISPLAY_CROWPANEL_21
-  diagnostics_.dbgPrintln("CrowPanel 2.1: RGB dashboard, encoder 20 deg, touch mode/STOP");
+  diagnostics_.dbgPrintln("CrowPanel 2.1: RGB dashboard, encoder, touch mode/STOP");
 #else
   diagnostics_.dbgPrintln("Display and touch: disabled; Web control and calibration available");
 #endif
