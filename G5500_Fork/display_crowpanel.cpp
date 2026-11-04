@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstring>
 #include <new>
+#include <esp_timer.h>
 #if CROWPANEL_USB_TRACE
 #include <esp_app_desc.h>
 #include <esp_system.h>
@@ -25,7 +26,9 @@ uint32_t frames = 0, waitMaxUs = 0, syncTimeouts = 0;
 bool diagnosticFailed = false;
 esp_lcd_panel_handle_t diagnosticPanel = nullptr;
 bool IRAM_ATTR onVsync(esp_lcd_panel_handle_t, const esp_lcd_rgb_panel_event_data_t *, void *) {
-  const uint32_t at = micros();
+  // Arduino micros() lives in Flash in the prebuilt SDK. VSYNC also runs
+  // during OTA Flash writes, when only IRAM code and internal data are safe.
+  const uint32_t at = static_cast<uint32_t>(esp_timer_get_time());
   portENTER_CRITICAL_ISR(&vsyncMux);
   if (vsyncs) {
     const uint32_t gap = at - vsyncLastUs;
@@ -57,6 +60,15 @@ void Display::flushFrame(lv_display_t *display, const lv_area_t *area, uint8_t *
     frame=self.frameComposer_->pending();
   }
   if(!lv_display_flush_is_last(display)) {lv_display_flush_ready(display);return;}
+  if(self.otaScreen_) {
+    if(crowpanel_rgb_ota_frame(self.panel_,static_cast<const uint16_t *>(frame))!=ESP_OK) {
+      self.displayFailed_=diagnosticFailed=true;self.disableBacklight();
+    } else {
+      if(self.frameComposer_)self.frameComposer_->presented();
+      ++frames;
+    }
+    lv_display_flush_ready(display);return;
+  }
   self.serviceKnob();
   uint32_t presented = 0;
   self.flushStarted_ = micros();
@@ -150,7 +162,7 @@ void Display::initLocalDisplay() {
       "[CrowPanel] ST7701 480x480; 8MHz double framebuffer, 20-line SRAM bounce; encoder ready");
 }
 void Display::serviceKnob() {
-  if (!inputReady_) return;
+  if (!inputReady_ || otaScreen_) return;
   const uint32_t now = millis();
   if (uint32_t(now - lastInput_) < 5) return;
   lastInput_ = now;

@@ -40,8 +40,15 @@ void Ota::begin(Stop stop, void *context) {
 void Ota::lock() {
   if (!locked_) { locked_ = true; if (stop_) stop_(context_); }
 }
+void Ota::publish(OtaStage stage) {
+  const OtaProgress next{stage,otaPercent(received_,total_,stage==OtaStage::Complete)};
+  if(next.stage==shown_.stage && next.percent==shown_.percent)return;
+  shown_=next;
+  if(progress_)progress_(context_,next);
+}
 void Ota::fail(const char *error) {
   Update.abort(); writing_ = false; error_ = error;
+  publish(OtaStage::Error);
 }
 const char *Ota::start(uint32_t size) {
   if (!capacity_.available()) return capacity_.reason();
@@ -51,8 +58,10 @@ const char *Ota::start(uint32_t size) {
   if (arduino_) { ArduinoOTA.end(); arduino_ = false; }
 #endif
   lock(); total_ = size; received_ = 0; error_ = ""; touched_ = millis();
+  publish(OtaStage::Preparing);
   if (!Update.begin(size, U_FLASH)) { fail("begin_failed"); return error_; }
   writing_ = true;
+  publish(OtaStage::Writing);
   return nullptr;
 }
 const char *Ota::write(uint32_t offset, std::string_view data) {
@@ -71,14 +80,17 @@ const char *Ota::write(uint32_t offset, std::string_view data) {
     fail("write_failed"); return error_;
   }
   received_ += data.size(); touched_ = millis();
+  publish(OtaStage::Writing);
   return nullptr;
 }
 const char *Ota::finish() {
   if (!writing_) return "no_update";
   if (received_ != total_) return "incomplete_image";
   // end() validates the complete ESP image before changing the boot slot.
+  publish(OtaStage::Verifying);
   if (!Update.end()) { fail("invalid_image"); return error_; }
   writing_ = false; complete_ = true; reboot();
+  publish(OtaStage::Complete);
   return nullptr;
 }
 void Ota::cancel() { if (writing_) fail("cancelled"); }
@@ -93,11 +105,14 @@ const char *Ota::armArduino() {
   for (unsigned i = 0; i < 2; ++i) std::snprintf(password_ + i * 8, 9, "%08lx", static_cast<unsigned long>(esp_random()));
   ArduinoOTA.setHostname(hostname_).setPassword(password_).setRebootOnSuccess(false).setTimeout(10000);
   ArduinoOTA.onStart([this] {
-    lock(); error_ = "";
+    lock(); error_ = "";received_=total_=0;publish(OtaStage::Preparing);
     if (ArduinoOTA.getCommand() != U_FLASH) fail("firmware_only");
   });
-  ArduinoOTA.onProgress([this](unsigned received, unsigned total) { received_ = received; total_ = total; });
-  ArduinoOTA.onEnd([this] { complete_ = true; reboot(); });
+  ArduinoOTA.onProgress([this](unsigned received, unsigned total) {
+    received_ = received; total_ = total;
+    publish(received && received==total?OtaStage::Verifying:OtaStage::Writing);
+  });
+  ArduinoOTA.onEnd([this] { complete_ = true; reboot();publish(OtaStage::Complete); });
   ArduinoOTA.onError([this](ota_error_t error) {
     // A failed authentication never interrupts the running controller.
     if (locked_) fail(error == OTA_CONNECT_ERROR ? "connect_failed" : "arduino_failed");

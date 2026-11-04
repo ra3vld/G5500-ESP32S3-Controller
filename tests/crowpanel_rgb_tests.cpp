@@ -7,6 +7,55 @@ static void restartDuringWriteback() {
     assert(started == observed->dma_restart_links[0]);
 }
 int main() {
+#if CROWPANEL_HAS_OTA
+    {
+        esp_rgb_panel_t p;p.num_fbs=2;p.fb_size=32;p.bb_size=16;
+        uint16_t image[16]{};image[0]=image[15]=0xffff;
+        p.fbs[0]=reinterpret_cast<uint8_t *>(image);
+        for(int fail:{0,1}) {
+            failScanAllocation=fail;
+            assert(crowpanel_rgb_ota_frame(&p.base,image)==ESP_ERR_NO_MEM);
+            assert(!p.ota_bitmap&&!p.ota_staging&&!otaDmaRecreated);
+        }
+        failScanAllocation=-1;
+        assert(crowpanel_rgb_ota_frame(nullptr,image)==ESP_ERR_INVALID_ARG);
+        assert(crowpanel_rgb_ota_frame(&p.base,nullptr)==ESP_OK);
+        assert(otaDmaRecreated==1&&otaDmaStarted==1&&otaIrqEnabled==1);
+        assert(p.ota_bitmap[0]==0x80&&p.ota_bitmap[1]==1);
+        image[0]=0;image[1]=0xffff;
+        assert(crowpanel_rgb_ota_frame(&p.base,image)==ESP_OK);
+        assert(p.ota_bitmap[0]==0x40&&otaDmaRecreated==1);
+        Link link{};p.ota_restart_addr=reinterpret_cast<uintptr_t>(&link);
+        uint16_t bounce[2][8]{};p.bounce_buffer[0]=reinterpret_cast<uint8_t *>(bounce[0]);
+        p.bounce_buffer[1]=reinterpret_cast<uint8_t *>(bounce[1]);
+        p.flags.need_restart=true;
+        p.fbs[0]=p.fbs[1]=reinterpret_cast<uint8_t *>(uintptr_t(1));
+        cacheDisabled=true;
+        lcd_rgb_panel_try_restart_transmission(&p);
+        cacheDisabled=false;
+        assert(started==&link);
+        std::free(p.ota_bitmap);std::free(p.ota_staging);
+    }
+#endif
+    {
+        // Cache-off OTA refill must never touch PSRAM or request prefetch/writeback.
+        esp_rgb_panel_t p;p.num_fbs=2;p.fb_size=32;p.bb_size=16;
+        uint8_t mono[]={0x81,0x5a};uint16_t output[8]{};
+        p.ota_bitmap=mono;p.flags.fb_behind_cache=p.flags.bb_behind_cache=true;
+        p.fbs[0]=p.fbs[1]=reinterpret_cast<uint8_t *>(uintptr_t(1));
+        const auto syncs=syncCalls;
+        cacheDisabled=true;
+        lcd_rgb_panel_fill_bounce_buffer(&p,reinterpret_cast<uint8_t *>(output));
+        for(unsigned i=0;i<8;++i)assert(output[i]==((mono[0]&(0x80>>i))?0xffff:0));
+        lcd_rgb_panel_fill_bounce_buffer(&p,reinterpret_cast<uint8_t *>(output));
+        for(unsigned i=0;i<8;++i)assert(output[i]==((mono[1]&(0x80>>i))?0xffff:0));
+        assert(syncCalls==syncs&&p.bounce_pos_px==0);
+        cacheDisabled=false;
+        for(unsigned bits=0;bits<256;++bits) {
+            uint8_t byte=bits,packed=0;crowpanel_ota_expand(output,&byte,8);
+            crowpanel_ota_pack(&packed,output,8);assert(packed==byte);
+        }
+    }
     {
         esp_rgb_panel_t p;p.num_fbs=2;p.fb_size=32;p.bb_size=16;p.timings.h_res=p.timings.v_res=4;
         std::vector<uint16_t> image(16),back(16,99),output(8);

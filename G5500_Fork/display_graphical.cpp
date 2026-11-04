@@ -163,7 +163,7 @@ void Display::startAfterCalibrationLoad() {
 #endif
 }
 void Display::serviceTouch() {
-  if(!inputReady_ || !display_) return;
+  if(!inputReady_ || !display_ || otaScreen_) return;
   serviceKnob();
 #if CROWPANEL_USB_TRACE
   // Pump even while the display is waiting for VSYNC or has failed.
@@ -335,7 +335,7 @@ void Display::updateLocalDisplay() {
 #if CROWPANEL_USB_TRACE
   serviceTrace(millis());
 #endif
-  if (!display_ || displayFailed_) return;
+  if (!display_ || displayFailed_ || otaScreen_) return;
   if (!serviceFrame()) return;
   const uint32_t now = millis();
 #if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_ILI9341

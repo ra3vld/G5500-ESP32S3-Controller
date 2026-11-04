@@ -1,6 +1,7 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
 #include "build_config.hpp"
+#include "ota_progress.hpp"
 #include <optional>
 #if GRAPHICAL_DISPLAY
 #include "runtime.hpp"
@@ -76,6 +77,7 @@ class Display {
   bool rendering_=false,settingsRequested_=false;
   bool redraw_=true,inputHealthy_=true,touchHealthy_=true,inputReady_=false,displayFailed_=false;
   bool flushPending_=false;
+  bool otaScreen_=false;
   uint32_t flushGeneration_=0,flushStarted_=0;
   bool serviceFrame();
   static constexpr unsigned PanelWidth=DISPLAY_KIND==DISPLAY_ST77916?360:DISPLAY_KIND==DISPLAY_ST7796?480:DISPLAY_KIND==DISPLAY_CROWPANEL_21?480:DISPLAY_KIND==DISPLAY_GC9A01?240:320;
@@ -157,6 +159,7 @@ public:
   void loadTouchCalibration();
   void startAfterCalibrationLoad();
   void initLocalDisplay();void serviceTouch();void updateLocalDisplay();
+  void showOta(const OtaProgress &progress);
 };
 }
 #elif DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_LCD1602
@@ -181,6 +184,7 @@ public:
   void serviceTouch() {}
   void initLocalDisplay();
   void updateLocalDisplay();
+  void showOta(const OtaProgress &){}
 };
 }
 #else
@@ -207,6 +211,7 @@ public:
   void serviceTouch() {}
   void initLocalDisplay() {}
   void updateLocalDisplay() {}
+  void showOta(const OtaProgress &){}
 };
 } // namespace forkrot
 

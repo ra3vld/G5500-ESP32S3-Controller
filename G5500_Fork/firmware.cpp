@@ -133,6 +133,9 @@ void Application::controllerSetup() {
     if(self.runtime_.hud.isHud())self.network_.serviceHud();
     self.runtime_.controller.configurationLocked=true;
   },this);
+  ota_.setProgress([](void *context,const OtaProgress &progress) {
+    static_cast<Application *>(context)->display_.showOta(progress);
+  });
   if (!runtime_.recovery) hardware_.beginDirections();
   if (!runtime_.hud.isHud())
     hardware_.allStop();
