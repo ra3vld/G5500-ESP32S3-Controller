@@ -76,6 +76,8 @@ async function snapshot(s,name){
      await s.page.locator('#recovery-network button[type=submit]').click();await s.page.waitForFunction(()=>!recoveryNetworkBusy);
      assert.match(await s.page.locator('#recovery-network-message').textContent(),/Сеть сохранена/);
      assert((await s.rpc('GET','/api/hardware')).body.recovery);await snapshot(s,'recovery-'+width);
+     assert.equal(await s.page.locator('#recovery-manual-open').getAttribute('aria-expanded'),'true');
+     await s.page.locator('#recovery-manual-open').click();assert(await s.page.locator('#manual-settings').isHidden());
      await s.page.locator('#recovery-manual-open').click();assert(await s.page.locator('#manual-settings').isVisible());
      await s.page.locator('#recovery-resume').click();await s.page.waitForFunction(()=>document.getElementById('message').textContent.startsWith('Сохранено.'));
      await s.rpc('POST','/__fixture/reboot');assert(!(await s.rpc('GET','/api/hardware')).body.recovery);

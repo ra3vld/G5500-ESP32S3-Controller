@@ -37,7 +37,12 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8'
    await page.goto('http://recovery-confirm.test/recovery');
    await page.waitForFunction(()=>state?.recovery&&!!metadata&&!document.getElementById('save').disabled);
    assert(await page.locator('#confirm').isHidden());
-   if(action==='changed')await page.locator('[name=forceApSta]').selectOption('1');
+   if(action!=='rollback')await page.locator('#recovery-manual-open').click();
+   if(action==='changed'){
+    const section=page.locator('details.settings-fold').filter({has:page.locator('[name=forceApSta]')});
+    await section.locator(':scope > summary').click();
+    await page.locator('[name=forceApSta]').selectOption('1');
+   }
    await page.locator(action==='rollback'?'#rollback':'#save').click();
    await page.waitForFunction(()=>document.getElementById('message').textContent.startsWith('Сохранено'));
    const saved=trace.findLast(r=>r.method==='POST'&&['/api/hardware','/api/hardware/rollback'].includes(r.path));
