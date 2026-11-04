@@ -137,6 +137,9 @@ void Display::initLocalDisplay() {
   lv_display_set_flush_cb(display_, flushFrame);
   diagnosticPanel = panel_;
   ui_.create();
+  drawInput_.begin(ui_.root(), [](void *context) {
+    static_cast<Display *>(context)->serviceKnob();
+  }, this);
   ui_.update(CrowPanelView{});
 #if CROWPANEL_USB_TRACE
   trace_.view(CrowPanelView{}, crowpanel::TouchAction::None, CrowPanelTraceState{}, millis());

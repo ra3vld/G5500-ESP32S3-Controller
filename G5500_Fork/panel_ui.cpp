@@ -446,7 +446,9 @@ void PanelUi::createMenu() {
 void PanelUi::updateMenu(const PanelView &v) {
   const auto &m=v.menu;
   lv_obj_set_hidden(menuPanel_,false);lv_obj_move_to_index(menuPanel_,-1);
-  lv_obj_set_style_bg_color(menuPanel_,lv_color_hex(background_),0);
+  if(lv_color_to_u32(lv_obj_get_style_bg_color(menuPanel_,LV_PART_MAIN))!=
+      lv_color_to_u32(lv_color_hex(background_)))
+    lv_obj_set_style_bg_color(menuPanel_,lv_color_hex(background_),0);
   confirmationVisible_=false;
   touchLayout_={};touchLayout_.mode={};touchLayout_.name={};touchLayout_.peers={};
   touchLayout_.width=width_;touchLayout_.height=height_;touchLayout_.enabled=false;
@@ -462,7 +464,9 @@ void PanelUi::updateMenu(const PanelView &v) {
     const bool visible=i<2 || (i<4?m.devices:i<6?brightness:m.local&&m.connections&&!v.movingNow);
     const bool enabled=i<4 || (i<6?m.brightnessAvailable:m.apAvailable);
     lv_obj_set_hidden(menuButtons_[i],!visible);
-    lv_obj_set_style_opa(menuButtons_[i],enabled?LV_OPA_COVER:LV_OPA_40,0);
+    const auto opacity=enabled?LV_OPA_COVER:LV_OPA_40;
+    if(lv_obj_get_style_opa(menuButtons_[i],LV_PART_MAIN)!=opacity)
+      lv_obj_set_style_opa(menuButtons_[i],opacity,0);
     if(visible&&enabled)touchLayout_.menuButtons[i]=bounds(menuButtons_[i]);
   }
   lv_obj_set_hidden(menuStop_,!v.movingNow);
@@ -610,9 +614,23 @@ void PanelUi::configureLayout(const PanelView &v) {
   lv_obj_set_width(speedBack_,p(showStop?130:160));
   lv_obj_set_hidden(settingsButton_,!v.settingsAvailable || v.hud || v.speedScreen || v.hudSelector);
   touchLayout_.mode=bounds(modeButton_);
-  touchLayout_.name=v.hud && v.shows(DisplayName)?bounds(hudName_,p(4)):
-      !showStop && v.hud && v.shows(DisplayControllerAddress)?bounds(hudAddress_,p(4)):panel::TouchRect{};
   touchLayout_.axis=v.dualAxis && v.shows(DisplayAxis)?bounds(axis_,p(8)):panel::TouchRect{};
+  touchLayout_.name={};
+  if(v.hud && !v.speedScreen) {
+    int left=width_,top=height_,right=0,bottom=0;
+    for(auto *obj:{hudName_,hudAddress_})if(!lv_obj_is_hidden(obj)) {
+      const auto r=bounds(obj);left=std::min(left,int(r.x));top=std::min(top,int(r.y));
+      right=std::max(right,int(r.x+r.width));bottom=std::max(bottom,int(r.y+r.height));
+    }
+    if(right>left) {
+      const int pad=std::max(8,p(12)),gap=std::max(2,p(2));
+      left=std::max(0,left-pad);right=std::min(width_,right+pad);
+      top=std::max(0,top-pad);bottom=std::min(height_,bottom+pad);
+      for(const auto r:{touchLayout_.mode,touchLayout_.axis})
+        if(r.width && r.y>=top)bottom=std::min(bottom,int(r.y)-gap);
+      touchLayout_.name={uint16_t(left),uint16_t(top),uint16_t(right-left),uint16_t(std::max(0,bottom-top))};
+    }
+  }
   touchLayout_.peers=bounds(hudList_);
   for(unsigned i=0;i<3;++i) touchLayout_.rows[i]=bounds(hudRows_[i],p(4));
   touchLayout_.settings=v.settingsAvailable && !v.hud && !v.speedScreen && !v.hudSelector?bounds(settingsButton_):panel::TouchRect{};
@@ -1004,7 +1022,9 @@ void PanelUi::update(const PanelView &v) {
       set(speedValues_[i], value);
       color(speedValues_[i], v.speedAvailable[i] ? text : muted);
       lv_bar_set_value(speedBars_[i], int(v.speedPercent[i]), LV_ANIM_OFF);
-      lv_obj_set_style_opa(speedBars_[i], v.speedAvailable[i] ? LV_OPA_COVER : LV_OPA_30, 0);
+      const auto opacity=v.speedAvailable[i]?LV_OPA_COVER:LV_OPA_30;
+      if(lv_obj_get_style_opa(speedBars_[i],LV_PART_MAIN)!=opacity)
+        lv_obj_set_style_opa(speedBars_[i],opacity,0);
     }
   }
 }

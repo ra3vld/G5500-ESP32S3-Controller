@@ -4,6 +4,31 @@
 #include <cstdio>
 using forkrot::crowpanel::FrameComposer;
 int main() {
+  {
+    std::vector<uint16_t> a(64*48),b(a),patch(4,0x1234);
+    FrameComposer frame;assert(frame.begin(a.data(),b.data(),64,48,0));
+    assert(frame.blit(1,2,2,2,patch.data()));assert(frame.blit(60,2,2,2,patch.data()));
+    assert(frame.presented()==8); // Do not copy the unchanged gap between two patches.
+    assert(a==b);
+    // More than 32 patches remain bounded and preserve the whole back buffer.
+    for(unsigned i=0;i<100;++i)assert(frame.blit(i%64,i/64,1,1,patch.data()));
+    frame.presented();assert(a==b);
+  }
+  for(unsigned pose=0;pose<16;++pose) {
+    constexpr unsigned w=96,h=80,stride=103;
+    const unsigned lw=pose&1?h:w,lh=pose&1?w:h;
+    std::vector<uint16_t> a(w*h+2,0x5aa5),b(a),pixels(stride*lh);
+    for(unsigned i=0;i<pixels.size();++i)pixels[i]=uint16_t(i*13+7);
+    FrameComposer frame;assert(frame.begin(a.data()+1,b.data()+1,w,h,pose));
+    assert(frame.blit(1,2,lw-3,lh-5,pixels.data(),stride));
+    const auto pending=frame.pending();
+    for(unsigned y=0;y<lh-5;++y)for(unsigned x=0;x<lw-3;++x) {
+      const auto p=panel_forward(pose,int(x+1),int(y+2),int(lw),int(lh));
+      assert(pending[p.y*w+p.x]==pixels[y*stride+x]);
+    }
+    assert(frame.presented()==(lw-3)*(lh-5));assert(a==b);
+    assert(a.front()==0x5aa5&&a.back()==0x5aa5&&b.front()==0x5aa5&&b.back()==0x5aa5);
+  }
   for(unsigned pose=0;pose<16;++pose)for(auto shape:{panel_point_t{13,9},panel_point_t{32,32}}) {
     const unsigned w=unsigned(shape.x),h=unsigned(shape.y),lw=pose&1?h:w,lh=pose&1?w:h;
     std::vector<uint16_t> a(w*h+2,0x5aa5),b(a),expected(w*h,0),patch(20);

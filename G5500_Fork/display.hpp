@@ -13,6 +13,7 @@
 #if DISPLAY_KIND == DISPLAY_CROWPANEL_21
 #include "crowpanel_board.hpp"
 #include "crowpanel_frame.hpp"
+#include "crowpanel_draw_input.hpp"
 #include <memory>
 #if CROWPANEL_USB_TRACE
 #include "crowpanel_trace.hpp"
@@ -94,6 +95,7 @@ class Display {
 #if DISPLAY_KIND == DISPLAY_CROWPANEL_21
   esp_lcd_panel_handle_t panel_=nullptr;
   std::unique_ptr<crowpanel::FrameComposer> frameComposer_;
+  crowpanel::DrawInput drawInput_;
   void *logicalFrames_[2]{};
 #if CROWPANEL_USB_TRACE
   CrowPanelTrace<> trace_;

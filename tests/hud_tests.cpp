@@ -69,6 +69,138 @@ void Bus::tick(uint32_t at) {
   pump();
 }
 int main() {
+  // A slow frame can leave only one released sample between two presses.
+  // Commit that release once stable, even if the next sample is already down.
+  for(uint32_t start:{100u,UINT32_MAX-250})for(bool bounce:{false,true}) {
+    Bus bus;Node first(bus,101,101),second(bus,102,102),panel(bus,103,103,true);
+    assert(panel.hud.setSimulationEnabled(false));panel.save(first);panel.save(second);
+    assert(panel.hud.select(101));bus.tick(start);
+    HudKnob knob(panel.hud,panel.controller);knob.sample(true,false,0,start+40);
+    knob.sample(true,true,0,start+50);knob.sample(true,false,0,start+100);
+    knob.sample(true,true,0,start+(bounce?115:160));
+    knob.sample(true,false,0,start+210);knob.sample(true,false,0,start+250);
+    assert(panel.hud.config.selected==(bounce?101u:102u));
+    assert(!first.controller.moving()&&!second.controller.moving());
+  }
+  {
+    Bus bus;Node first(bus,101,101),second(bus,102,102),panel(bus,103,103,true);
+    assert(panel.hud.setSimulationEnabled(false));panel.save(first);panel.save(second);
+    assert(panel.hud.select(101));bus.tick(100);
+    assert(panel.controller.target({180,0,true,false},false,110)==Result::Deferred);bus.tick(120);
+    HudKnob knob(panel.hud,panel.controller);knob.sample(true,false,0,140);
+    knob.sample(true,true,0,150);knob.sample(true,false,0,200);
+    knob.sample(true,true,0,260);bus.tick(270);
+    assert(!first.controller.moving()); // The committed first release sends STOP.
+    knob.sample(true,false,0,310);knob.sample(true,false,0,350);bus.tick(360);
+    assert(panel.hud.config.selected==102&&!first.controller.axes[0].tracking&&!second.controller.moving());
+  }
+  // Reverse only catalogue scrolling, independently of the target inversion.
+  for(bool inverted:{false,true}) {
+    Bus bus;Node first(bus,101,101),second(bus,102,102),third(bus,103,103),panel(bus,104,104,true);
+    assert(panel.hud.setSimulationEnabled(false));panel.save(first);panel.save(second);panel.save(third);
+    assert(panel.hud.add(105,{105,4534,false},"Discovered only",false));
+    assert(panel.hud.select(101));bus.tick(100);
+    HudKnob knob(panel.hud,panel.controller);knob.sample(true,false,0,140,inverted);
+    knob.open();assert(knob.menu&&knob.highlighted==101);
+    knob.sample(true,false,1,180,inverted);assert(knob.highlighted==103);
+    knob.sample(true,false,-1,220,inverted);assert(knob.highlighted==101);
+    knob.sample(true,false,-1,260,inverted);assert(knob.highlighted==102);
+    knob.sample(true,false,2,300,inverted);assert(knob.highlighted==103);
+    assert(panel.hud.config.selected==101&&!first.controller.moving()&&!second.controller.moving());
+    knob.sample(true,true,0,340,inverted);knob.sample(true,false,0,350,inverted);
+    knob.sample(true,false,0,390,inverted);assert(!knob.menu&&panel.hud.config.selected==103);
+    bus.tick(400);
+    const float previous=panel.controller.axes[0].current;
+    knob.sample(true,false,1,440,inverted);bus.tick(450);
+    assert(third.controller.axes[0].target==previous+(inverted?-20.f:20.f));
+  }
+  for(uint32_t start:{100u,UINT32_MAX-250}) {
+    for(uint32_t interval:{499u,500u,501u}) {
+      Bus bus;Node first(bus,101,101),second(bus,102,102),panel(bus,103,103,true);
+      assert(panel.hud.setSimulationEnabled(false));panel.save(first);panel.save(second);
+      assert(panel.hud.select(101));bus.tick(start);
+      HudKnob clicks(panel.hud,panel.controller);
+      clicks.sample(true,false,0,start);
+      clicks.sample(true,true,0,start+40);
+      clicks.sample(true,false,0,start+50);clicks.sample(true,false,0,start+90);
+      clicks.sample(true,true,0,start+90+interval-70);
+      clicks.sample(true,false,0,start+90+interval-40);
+      clicks.sample(true,false,0,start+90+interval);
+      assert(panel.hud.config.selected==(interval<=500?102u:101u));
+      assert(!first.controller.moving()&&!second.controller.moving());
+    }
+    Bus bus;Node motor(bus,101,101),panel(bus,102,102,true);
+    assert(panel.hud.setSimulationEnabled(false));panel.save(motor);
+    assert(panel.hud.select(101));bus.tick(start);
+    assert(panel.controller.target({200,0,true,false},true,start)==Result::Deferred);
+    bus.tick(start+1);
+    HudKnob clicks(panel.hud,panel.controller);
+    clicks.sample(true,false,0,start+1);
+    clicks.sample(true,true,0,start+40);
+    clicks.sample(true,false,0,start+50);clicks.sample(true,false,0,start+90);
+    clicks.sample(true,false,0,start+590);bus.tick(start+590);
+    assert(panel.controller.pendingValid&&!motor.controller.moving());
+    clicks.sample(true,false,0,start+591);bus.tick(start+591);
+    assert(!panel.controller.pendingValid&&motor.controller.axes[0].tracking);
+  }
+  {
+    Bus cycling;Node first(cycling,101,101),second(cycling,102,102),third(cycling,103,103),panel(cycling,104,104,true);
+    assert(panel.hud.setSimulationEnabled(false));
+    panel.save(first);panel.save(second);panel.save(third);
+    assert(panel.hud.add(105,{105,4534,false},"Discovered only",false));
+    assert(panel.hud.select(101));cycling.tick(100);
+    panel.hud.peer(103)->received=false; // Saved offline peers remain in the cycle.
+    HudKnob knob(panel.hud,panel.controller);uint32_t now=100;
+    knob.sample(true,false,0,now+=40);
+    for(const uint64_t expected:{102u,103u,101u}) {
+      if(expected==103)panel.hud.peer(103)->received=false;
+      for(unsigned n=0;n<2;++n) {
+        knob.sample(true,true,0,now+=40);
+        knob.sample(true,false,0,now+=10);knob.sample(true,false,0,now+=40);
+      }
+      assert(panel.hud.config.selected==expected && knob.selectionChanged && !knob.menu);
+      knob.selectionChanged=false;
+      knob.sample(true,false,0,now+=400);
+      cycling.tick(now);assert(!first.controller.moving()&&!second.controller.moving()&&!third.controller.moving());
+    }
+    // No selection starts from the first saved peer, and a one-peer cycle is a no-op.
+    assert(panel.hud.select(0));knob.nextController();assert(panel.hud.config.selected==101);
+    assert(panel.hud.remove(102)&&panel.hud.remove(103));knob.selectionChanged=false;
+    knob.selectAxis();const auto axis=knob.axis(),epoch=panel.hud.selectionEpoch;
+    for(unsigned n=0;n<2;++n) {
+      knob.sample(true,true,0,now+=40);
+      knob.sample(true,false,0,now+=10);knob.sample(true,false,0,now+=40);
+    }
+    assert(panel.hud.config.selected==101 && panel.hud.selectionEpoch==epoch && knob.axis()==axis && !knob.selectionChanged);
+    assert(panel.hud.remove(101));knob.nextController();assert(!panel.hud.config.selected);
+    panel.save(first);panel.save(second);assert(panel.hud.select(101));
+    HudKnob wrapped(panel.hud,panel.controller);now=UINT32_MAX-120;
+    wrapped.sample(true,false,0,now+=40);
+    for(unsigned n=0;n<2;++n) {
+      wrapped.sample(true,true,0,now+=40);
+      wrapped.sample(true,false,0,now+=10);wrapped.sample(true,false,0,now+=40);
+    }
+    assert(panel.hud.config.selected==102);
+    assert(panel.hud.setSimulationEnabled(true));
+    knob.nextController();assert(panel.hud.config.selected==HUD_SIMULATION_ID);
+    knob.nextController();assert(panel.hud.config.selected==101);
+  }
+  {
+    // The first click still stops the old drive. The second selects a peer
+    // instead of resuming the paused target or confirming the new peer's goal.
+    Bus cycling;Node first(cycling,101,101),second(cycling,102,102),panel(cycling,103,103,true);
+    assert(panel.hud.setSimulationEnabled(false));panel.save(first);panel.save(second);
+    assert(panel.hud.select(101));cycling.tick(100);
+    panel.controller.target({180,0,true,false},false,110);cycling.tick(120);
+    assert(first.controller.moving());
+    HudKnob knob(panel.hud,panel.controller);knob.sample(true,false,0,160);
+    knob.sample(true,true,0,200);knob.sample(true,false,0,210);knob.sample(true,false,0,250);
+    cycling.tick(260);assert(!first.controller.moving()&&panel.hud.config.selected==101);
+    knob.sample(true,true,0,290);knob.sample(true,false,0,300);knob.sample(true,false,0,340);
+    assert(panel.hud.config.selected==102);
+    knob.sample(true,false,0,800);cycling.tick(810);
+    assert(!first.controller.axes[0].tracking&&!second.controller.moving());
+  }
   // Addressed direction buttons renew the destination's jog without selecting it.
   for(bool mqtt:{false,true}) {
     Bus wire;Node first(wire,0xa01,1),second(wire,0xa02,2),panel(wire,0xa03,3,true);
@@ -182,15 +314,16 @@ int main() {
     knob.sample(true,false,0,200);knob.sample(true,true,0,240);
     knob.sample(true,false,0,280);knob.sample(true,false,0,320);stream.tick(320);
     assert(!motor.controller.axes[0].holdArmed&&!motor.controller.moving());
-    knob.sample(true,false,0,360);knob.sample(true,true,0,400);
-    knob.sample(true,false,0,440);knob.sample(true,false,0,480);
-    knob.sample(true,false,0,840);stream.tick(840);
+    knob.sample(true,false,0,860);knob.sample(true,true,0,900);
+    knob.sample(true,false,0,940);knob.sample(true,false,0,980);
+    stream.tick(1000); // Keep transport/feedback serviced while awaiting the single click.
+    knob.sample(true,false,0,1481);stream.tick(1481);
     assert(motor.controller.axes[0].holdArmed);
-    for(unsigned at=860;at<=1240;at+=20) stream.tick(at);
+    for(unsigned at=1500;at<=1880;at+=20) stream.tick(at);
     assert(panel.controller.axes[0].holdArmed&&!panel.controller.axes[0].tracking);
     panel.controller.axes[0].current=40.2f;panel.controller.axes[0].tracking=false;
     HudKnob detent(panel.hud,panel.controller);
-    detent.sample(true,false,0,1300);detent.sample(true,false,-1,1340);stream.tick(1340);
+    detent.sample(true,false,0,1940);detent.sample(true,false,-1,1980);stream.tick(1980);
     assert(motor.controller.axes[0].target==60);
 #endif
   }
@@ -573,12 +706,14 @@ int main() {
     knob.sample(true, false, 0, 1470);
     gestures.tick(1480);
     assert(!motor.controller.moving());
-    knob.sample(true, false, 0, 1490);
-    knob.sample(true, true, 0, 1500);
-    knob.sample(true, false, 0, 1510);
-    knob.sample(true, false, 0, 1550);
-    knob.sample(true, false, 0, 1910);
-    gestures.tick(1920);
+    // A later single click resumes; a quick second click belongs to cycling.
+    knob.sample(true, false, 0, 2090);
+    knob.sample(true, true, 0, 2100);
+    knob.sample(true, false, 0, 2110);
+    knob.sample(true, false, 0, 2150);
+    gestures.tick(2200);
+    knob.sample(true, false, 0, 2651);
+    gestures.tick(2660);
     assert(motor.controller.axes[0].tracking && motor.controller.axes[0].target == 180);
   }
   // A fully transmitted program sequence survives link loss; switching clears an unsent sequence.

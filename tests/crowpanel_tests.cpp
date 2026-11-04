@@ -99,6 +99,43 @@ int main() {
   assert(crowpanel::limitOpacity(NAN) == 0);
   assert(crowpanel::shortestBearingDelta(359, 1) == 2);
   assert(crowpanel::shortestBearingDelta(1, 359) == -2);
+  for(uint32_t start:{100u,UINT32_MAX-250})for(bool bounce:{false,true}) {
+    Controller controller=forkrot::testController();controller.feedback(100,20,true,true);
+    CrowPanelKnob knob(controller);knob.sample(true,false,0,start+40);
+    knob.sample(true,true,0,start+50);knob.sample(true,false,0,start+100);
+    knob.sample(true,true,0,start+(bounce?115:160));
+    knob.sample(true,false,0,start+210);knob.sample(true,false,0,start+250);
+    assert(knob.axis()==(bounce?0u:1u)&&!controller.moving());
+  }
+  // The double-click window includes 500 ms and uses wrap-safe elapsed time.
+  for (uint32_t start : {100u, UINT32_MAX - 250}) {
+    for (uint32_t interval : {499u, 500u, 501u}) {
+      Controller controller = forkrot::testController();
+      controller.feedback(100, 20, true, true);
+      CrowPanelKnob clicks(controller);
+      clicks.sample(true, false, 0, start);
+      clicks.sample(true, true, 0, start + 40);
+      clicks.sample(true, false, 0, start + 50);
+      clicks.sample(true, false, 0, start + 90);
+      clicks.sample(true, true, 0, start + 90 + interval - 70);
+      clicks.sample(true, false, 0, start + 90 + interval - 40);
+      clicks.sample(true, false, 0, start + 90 + interval);
+      assert(clicks.axis() == (interval <= 500 ? 1u : 0u));
+      assert(!controller.moving() && !controller.axes[0].tracking);
+    }
+    Controller controller = forkrot::testController();
+    controller.feedback(100, 20, true, true);
+    assert(controller.target({200, 0, true, false}, true, start) == Result::Pending);
+    CrowPanelKnob clicks(controller);
+    clicks.sample(true, false, 0, start);
+    clicks.sample(true, true, 0, start + 40);
+    clicks.sample(true, false, 0, start + 50);
+    clicks.sample(true, false, 0, start + 90);
+    clicks.sample(true, false, 0, start + 590);
+    assert(controller.pendingValid && !controller.axes[0].tracking);
+    clicks.sample(true, false, 0, start + 591);
+    assert(!controller.pendingValid && controller.axes[0].tracking);
+  }
   Controller c = forkrot::testController();
   c.feedback(100, 20, true, true);
   CrowPanelKnob knob(c);
@@ -115,25 +152,25 @@ int main() {
   sample(false, 2); assert(c.axes[0].target == 160 && c.moving());
   sample(false, -1); assert(c.axes[0].target == 140 && c.moving());
   press(); assert(c.axes[0].target == 140 && !c.moving()); // First press after rotation pauses.
-  release(); sample(false, 0, 351); assert(!c.moving());
+  release(); sample(false, 0, 501); assert(!c.moving());
   assert(!c.axes[0].tracking); // stop press cannot restart on release
-  press(); release(); sample(false, 0, 351);
+  press(); release(); sample(false, 0, 501);
   assert(c.axes[0].target == 140 && c.axes[0].tracking); // Second click resumes the same target.
   c.tick(now); assert(c.moving());
-  press(); release(); sample(false, 0, 351); assert(!c.moving());
+  press(); release(); sample(false, 0, 501); assert(!c.moving());
   sample(false, 1); assert(c.axes[0].target == 125 && c.axes[0].tracking); // After STOP start at current.
   knob.stop(now);
   press(); release(); press(); release();
   assert(knob.axis() == 1 && !c.moving());
   sample(false, -1000); assert(c.axes[1].target == 0 && c.axes[1].tracking);
   sample(false, 1000); assert(c.axes[1].target == 180);
-  press(); sample(true, 0, 1201); release(); sample(false, 0, 351);
+  press(); sample(true, 0, 1201); release(); sample(false, 0, 501);
   assert(c.mode == Mode::Manual && !knob.modeChanged && !c.moving());
   knob.modeChanged = false;
   // Touch uses the same toggle, cancels a pending click and never starts movement.
   sample(false, 1); press(); release();
   knob.toggleMode(now);
-  sample(false, 0, 351);
+  sample(false, 0, 501);
   assert(c.mode == Mode::Auto && knob.modeChanged && !c.moving());
   c.setMode(Mode::AutoHour, now);
   knob.toggleMode(now);
@@ -147,7 +184,7 @@ int main() {
   c.stop(); sample(false); assert(!c.axes[1].tracking);
   // A pending external target still requires a short click in manual mode.
   assert(c.target({200, 0, true, false}, true, now) == Result::Pending);
-  press(); release(); sample(false, 0, 351);
+  press(); release(); sample(false, 0, 501);
   assert(c.axes[0].target == 200 && c.axes[0].tracking && !c.pendingValid);
   // Touch confirmation executes a pending goal even during motion; it is not STOP.
   if (knob.axis()) knob.selectAxis();
@@ -199,7 +236,7 @@ int main() {
   assert(arrived.target({200, 0, true, false}, true, 220) == Result::Pending);
   completed.sample(true, true, 0, 250); completed.sample(true, true, 0, 290);
   completed.sample(true, false, 0, 330); completed.sample(true, false, 0, 370);
-  completed.sample(true, false, 0, 730);
+  completed.sample(true, false, 0, 871);
   assert(arrived.axes[0].target == 200 && arrived.axes[0].tracking && !arrived.pendingValid);
   // Pause both unfinished axes, resume on a single click, keep double/long gestures safe.
   Controller paused = forkrot::testController();
@@ -213,23 +250,23 @@ int main() {
   auto pauseRelease = [&] { pauseSample(false); pauseSample(false); };
   pauseSample(false);
   paused.target({100, 80, true, true}, false, at); paused.tick(at);
-  pausePress(); assert(!paused.moving()); pauseRelease(); pauseSample(false, 351);
+  pausePress(); assert(!paused.moving()); pauseRelease(); pauseSample(false, 501);
   assert(!paused.moving());
-  pausePress(); pauseRelease(); pauseSample(false, 351);
+  pausePress(); pauseRelease(); pauseSample(false, 501);
   assert(paused.axes[0].tracking && paused.axes[1].tracking && paused.moving());
   assert(paused.axes[0].target == 100 && paused.axes[1].target == 80);
-  pausePress(); pauseRelease(); pauseSample(false, 351);
-  pausePress(); pauseSample(true, 1201); pauseRelease(); pauseSample(false, 351);
+  pausePress(); pauseRelease(); pauseSample(false, 501);
+  pausePress(); pauseSample(true, 1201); pauseRelease(); pauseSample(false, 501);
   assert(!paused.moving() && paused.mode == Mode::Manual); // Holding only changes the displayed axis.
-  pausePress(); pauseRelease(); pauseSample(false, 351); assert(!paused.moving());
+  pausePress(); pauseRelease(); pauseSample(false, 501); assert(!paused.moving());
   paused.target({100, 80, true, true}, false, at); paused.tick(at);
-  pausePress(); pauseRelease(); pauseSample(false, 351);
-  pausePress(); pauseRelease(); pausePress(); pauseRelease(); pauseSample(false, 351);
+  pausePress(); pauseRelease(); pauseSample(false, 501);
+  pausePress(); pauseRelease(); pausePress(); pauseRelease(); pauseSample(false, 501);
   assert(pauseKnob.axis() == 1 && !paused.moving()); // Double-click selects axis, cancels resume.
   paused.target({100, 80, true, true}, false, at); paused.tick(at);
-  pausePress(); pauseRelease(); pauseSample(false, 351);
+  pausePress(); pauseRelease(); pauseSample(false, 501);
   paused.stop(); // External STOP invalidates a knob pause.
-  pausePress(); pauseRelease(); pauseSample(false, 351); assert(!paused.moving());
+  pausePress(); pauseRelease(); pauseSample(false, 501); assert(!paused.moving());
   // A quick click immediately after a detent may produce only one pressed sample.
   // STOP must win over accumulated rotation; bounce/release must not resume it.
   Controller quick = forkrot::testController();
@@ -251,8 +288,8 @@ int main() {
   quickKnob.sample(true, true, 0, 520);
   quickKnob.sample(true, false, 0, 530);
   quickKnob.sample(true, false, 0, 560);
-  quickKnob.sample(true, false, 0, 911);
-  quick.tick(911);
+  quickKnob.sample(true, false, 0, 1061);
+  quick.tick(1061);
   assert(quick.moving() && quick.axes[0].target == 120);
   Controller tapped = forkrot::testController();
   tapped.feedback(400, 20, true, true);

@@ -101,6 +101,9 @@ public:
   void sample(bool healthy, bool pressed, int delta, uint32_t now, bool inverted = true,
               float stepDegrees = DefaultEncoderStepDegrees) {
     synchronize(inverted);
+    // Preserve a released interval even when its next sample is another press.
+    if(healthy && !blocked_ && pressed && !raw_ && down_ && uint32_t(now-rawAt_)>=30)
+      sample(true,false,0,rawAt_+30,inverted,stepDegrees);
     if (!healthy) {
       stop(now);
       blocked_ = true; raw_ = down_ = false; long_ = false; rawAt_ = now;
@@ -123,7 +126,7 @@ public:
       } else {
         released = true;
         if (!long_ && !handledOnPress_) {
-          if (click_ && uint32_t(now - clickAt_) <= 350) { selectAxis(); click_ = false; }
+          if (click_ && uint32_t(now - clickAt_) <= 500) { selectAxis(); click_ = false; }
           else { click_ = true; clickAt_ = now; }
         }
       }
@@ -131,7 +134,7 @@ public:
     if (down_ && !long_ && uint32_t(now - downAt_) >= 350) {
       long_ = true; click_ = canResume_ = false;
     }
-    if (click_ && !down_ && !raw_ && uint32_t(now - clickAt_) > 350) {
+    if (click_ && !down_ && !raw_ && uint32_t(now - clickAt_) > 500) {
       click_ = false; confirm(now);
     }
     if (delta && raw_ == down_ && !released && (!down_ || uint32_t(now - downAt_) >= 30)) {

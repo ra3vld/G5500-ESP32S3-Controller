@@ -371,6 +371,7 @@ void Application::controllerLoop() {
   network_.serviceWifiReconnect();
   checkpoint("wifi");
   diagnostics_.serviceRssiHistory();
+  checkpoint("rssi");
   if (runtime_.hud.settingsDirty) {
     runtime_.hud.settingsDirty = false;
     storage_.saveForkSettings(runtime_);
@@ -383,12 +384,15 @@ void Application::controllerLoop() {
     runtime_.hud.presetsDirty = false;
     storage_.saveProfilePresets(runtime_);
   }
+  checkpoint("hudStorage");
   if (runtime_.controller.controlPeriodMs() < 20) updatePosition();
   hardware_.controlRotator();
   display_.serviceTouch();
+  checkpoint("displayInput");
   display_.updateLocalDisplay();
-  hardware_.updateRgb();
   checkpoint("display");
+  hardware_.updateRgb();
+  checkpoint("rgb");
   runtimeMetrics.recordLoop(uint32_t(micros() - startedUs));
   web_server_.wait(runtime_.controller.loopDelayMs(millis()));
 }

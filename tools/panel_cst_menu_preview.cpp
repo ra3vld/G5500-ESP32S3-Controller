@@ -75,6 +75,22 @@ int main() {
   for(unsigned i=0;i<302;++i)tick(true,cx,cy);
   assert(display.*member(menuOpen_Tag{}));
   tick(false,cx,cy);assert(axis()==0);
+  for(unsigned i=0;i<10;++i)tick(false,0,0);
+  auto mb=(display.*member(presentedLayout_Tag{})).menuButtons[0];
+  tick(true,mb.x+mb.width/2,mb.y+mb.height/2);tick(false,0,0);
+  for(unsigned i=0;i<10;++i)tick(false,0,0);
+  auto *second=f.runtime.hud.add(34,{124,4534,false},"Second",true);assert(second);
+  second->received=true;second->receivedAt=millis();second->state=peer->state;
+  const auto epoch=f.runtime.hud.selectionEpoch;
+  // The address/header edge was outside the old name-only hitbox on 240x240.
+  assert((display.*member(presentedLayout_Tag{})).name.contains(50,38));
+  tick(true,50,38);assert(f.runtime.hud.config.selected==34);
+  for(unsigned i=0;i<20;++i)tick(true,120,120);
+  assert(f.runtime.hud.config.selected==34 && !f.runtime.controller.moving());
+  tick(false,0,0);for(unsigned i=0;i<10;++i)tick(false,0,0);
+  tick(true,50,38);assert(f.runtime.hud.config.selected==12);
+  tick(false,0,0);assert(f.runtime.hud.selectionEpoch==epoch+2);
+  Runtime restored;f.storage.loadHud(restored,false);assert(restored.hud.config.selected==12);
   lv_display_delete(display.*member(display_Tag{}));
-  std::puts("PASS: production touch path opens settings from goal/current, consumes release, closes on Back, selects AZ/EL on secondary tap and preserves the axis on a swipe");
+  std::puts("PASS: production touch path opens settings, selects axes on release, preserves swipes and switches peers from the expanded header without repeat or movement");
 }

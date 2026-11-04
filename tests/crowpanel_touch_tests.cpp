@@ -692,11 +692,9 @@ static void fullRangeAndSpeedCommands() {
       assert(motor.c.axes[1-selected].tracking && !knob.menu);
       motor.c.stop();
       for (unsigned n=0;n<10;++n) bus.tick(now+=50);
-      // Persistently select the other axis using the existing double click.
-      for (unsigned n=0;n<2;++n) {
-        knob.sample(true,true,0,now+=40,false);
-        knob.sample(true,false,0,now+=10,false); knob.sample(true,false,0,now+=40,false);
-      }
+      // Persistent axis selection now comes from the screen; the temporary
+      // pressed-and-turned modifier must still work in either direction.
+      knob.selectAxis();
       assert(knob.axis()==1-selected);
     }
   }

@@ -8,7 +8,7 @@ class HudKnob {
   Hud &hud_;
   Controller &controller_;
   bool raw_ = false, down_ = false, long_ = false, blocked_ = true, click_ = false;
-  bool resume_ = false;
+  bool resume_ = false, doubleArmed_ = false;
   Target resumeTarget_{};
   uint32_t pauseRequest_ = 0, pauseEpoch_ = 0;
   uint32_t edgeAt_ = 0, downAt_ = 0, clickAt_ = 0, epoch_ = 0, menuAt_ = 0, stopEpoch_ = 0;
@@ -29,7 +29,7 @@ class HudKnob {
     if (epoch_ != hud_.selectionEpoch) {
       epoch_ = hud_.selectionEpoch;
       axis_ = 0;
-      resume_ = click_ = false;
+      resume_ = click_ = doubleArmed_ = false;
       pauseRequest_ = 0;
       menu = false;
       long_ = true;
@@ -55,7 +55,7 @@ public:
   uint64_t highlighted = 0;
   Result lastResult = Result::Ok;
   explicit HudKnob(Hud &h, Controller &c) : hud_(h), controller_(c) {}
-  void cancelInput() { raw_ = down_ = click_ = resume_ = false; blocked_ = true; }
+  void cancelInput() { raw_ = down_ = click_ = resume_ = doubleArmed_ = false; blocked_ = true; }
   unsigned axis() const { return controller_.model == Model::G5500 && down_ && !menu ? 1 - axis_ : axis_; }
   bool busyNotice(uint32_t now) {
     // A rejected command is a short notification, not the rotator's state.
@@ -64,12 +64,12 @@ public:
       busyNotice_ = false;
     return busyNotice_;
   }
-  void selectAxis() { sync();axis_=controller_.model==Model::G5500?1-axis_:0;resume_=click_=false; }
+  void selectAxis() { sync();axis_=controller_.model==Model::G5500?1-axis_:0;resume_=click_=doubleArmed_=false; }
   void confirmPending(uint32_t now) {
     sync();
     const unsigned selected = axis();
     if (!menu && controller_.hasDriveError()) {
-      resume_ = click_ = false;
+      resume_ = click_ = doubleArmed_ = false;
       pauseRequest_ = 0;
       long_ = true;
       recordResult(controller_.resetMotion(-1, now), now);
@@ -77,7 +77,7 @@ public:
     }
     if (menu || controller_.mode != Mode::Manual || !controller_.pendingValid ||
         !(selected ? controller_.pending.hasEl : controller_.pending.hasAz)) return;
-    resume_ = click_ = false;
+    resume_ = click_ = doubleArmed_ = false;
     pauseRequest_ = 0;
     long_ = true;
     recordResult(controller_.execute(now), now);
@@ -86,7 +86,7 @@ public:
     sync();
     const unsigned selected = axis();
     if (menu) return;
-    resume_ = click_ = false;
+    resume_ = click_ = doubleArmed_ = false;
     pauseRequest_ = 0;
     long_ = true;
     const float target = nearest(bearing, controller_.axes[selected].current, controller_.range(selected));
@@ -94,24 +94,35 @@ public:
   }
   void stop(uint32_t now) {
     controller_.stopNow(-1, now);
-    resume_ = click_ = false;
+    resume_ = click_ = doubleArmed_ = false;
     recordResult(hud_.lastResult(), now);
   }
   void toggleMode(uint32_t now) {
     ControlCommand c;
     c.op = ControlOp::ToggleMode;
     recordResult(hud_.submit(c), now);
-    resume_ = click_ = false;
+    resume_ = click_ = doubleArmed_ = false;
     long_ = true;
   }
   void choose(uint64_t id) {
     if (hud_.select(id)) {
       selectionChanged = true;
       menu = false;
-      resume_ = click_ = false;
+      resume_ = click_ = doubleArmed_ = false;
+      pauseRequest_ = 0;
       epoch_ = hud_.selectionEpoch;
       axis_ = 0;
     }
+  }
+  void nextController() {
+    resume_=click_=doubleArmed_=false;pauseRequest_=0;
+    HudPeer *first=nullptr;bool passed=false;
+    for(auto *p=hud_.peers();p;p=p->next.get())if(p->saved) {
+      if(!first)first=p;
+      if(passed){choose(p->id);return;}
+      if(p->id==hud_.config.selected)passed=true;
+    }
+    if(first && first->id!=hud_.config.selected)choose(first->id);
   }
   void moveSelection(int delta) {
     const size_t count = hud_.count();
@@ -152,11 +163,16 @@ public:
             break;
           }
     }
-    click_ = resume_ = false;
+    click_ = resume_ = doubleArmed_ = false;
   }
   void sample(bool healthy, bool pressed, int delta, uint32_t now, bool inverted = true,
               float stepDegrees = DefaultEncoderStepDegrees) {
     sync();
+    // Finish a stable release before a new press overwrites its timestamp.
+    // Rendering may leave no intermediate sample after the debounce deadline.
+    if(healthy && !blocked_ && pressed && !raw_ && down_ && uint32_t(now-edgeAt_)>=30)
+      sample(true,false,0,edgeAt_+30,inverted,stepDegrees);
+    if(doubleArmed_ && uint32_t(now-clickAt_)>500)doubleArmed_=false;
     if (menu && uint32_t(now - menuAt_) >= 10000)
       menu = false;
     if (!healthy) {
@@ -164,7 +180,7 @@ public:
         stop(now);
       blocked_ = true;
       raw_ = down_ = false;
-      click_ = false;
+      click_ = doubleArmed_ = false;
       return;
     }
     if (pressed != raw_) {
@@ -184,7 +200,7 @@ public:
         downAt_ = now;
         long_ = false;
         if (!menu && hud_.available() && controller_.hasDriveError()) {
-          resume_ = click_ = false;
+          resume_ = click_ = doubleArmed_ = false;
           pauseRequest_ = 0;
           long_ = true;
           recordResult(controller_.resetMotion(-1, now), now);
@@ -194,6 +210,8 @@ public:
         if (!long_) {
           if (menu) {
             choose(highlighted);
+          } else if (doubleArmed_ && uint32_t(now-clickAt_)<=500) {
+            nextController();
           } else if (active()) {
             resumeTarget_ = {controller_.axes[0].target, controller_.axes[1].target,
                              controller_.axes[0].tracking || controller_.axes[0].holdArmed,
@@ -202,20 +220,18 @@ public:
             stop(now);
             pauseRequest_ = hud_.requestId();
             resume_ = resumeTarget_.hasAz || resumeTarget_.hasEl;
-          } else if (click_ && uint32_t(now - clickAt_) <= 350) {
-            axis_ = controller_.model == Model::G5500 ? 1 - axis_ : 0;
-            click_ = resume_ = false;
+            doubleArmed_=true;clickAt_=now;
           } else {
-            click_ = true;
+            click_ = doubleArmed_ = true;
             clickAt_ = now;
           }
         }
       }
     }
     if (down_ && !long_ && uint32_t(now - downAt_) >= 350) {
-      long_ = true; click_ = resume_ = false;
+      long_ = true; click_ = resume_ = doubleArmed_ = false;
     }
-    if (click_ && !raw_ && !down_ && uint32_t(now - clickAt_) > 350) {
+    if (click_ && !raw_ && !down_ && uint32_t(now - clickAt_) > 500) {
       click_ = false;
       recordResult(resume_ && !controller_.pendingValid ? controller_.target(resumeTarget_, false, now)
                                                        : controller_.execute(now), now);
@@ -223,11 +239,11 @@ public:
     }
     if (delta && raw_ == down_ && !released && (!down_ || uint32_t(now - downAt_) >= 30)) {
       if (menu) {
-        moveSelection(delta);
+        moveSelection(-delta);
         return;
       }
       if (down_) long_ = true;
-      resume_ = click_ = false;
+      resume_ = click_ = doubleArmed_ = false;
       const unsigned selected = axis();
       const auto &a = controller_.axes[selected];
       const float base = controller_.intendedTarget(selected, a.tracking || a.holdArmed || a.completed ? a.target : a.current);

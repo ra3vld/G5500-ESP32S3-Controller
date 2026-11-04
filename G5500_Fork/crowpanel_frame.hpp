@@ -9,11 +9,27 @@
 namespace forkrot::crowpanel {
 class FrameComposer {
   static constexpr unsigned MaxRows=480;
+  static constexpr unsigned MaxPatches=32;
+  struct Patch {uint16_t left,top,right,bottom;};
   uint16_t *front_=nullptr,*back_=nullptr;
   unsigned width_=0,height_=0,pose_=0;
-  std::array<uint16_t,MaxRows> left_{},right_{};
-  void clearDirty() {
-    for(unsigned y=0;y<height_;++y){left_[y]=uint16_t(width_);right_[y]=0;}
+  std::array<Patch,MaxPatches> dirty_{};
+  unsigned dirtyCount_=0;
+  void clearDirty() {dirtyCount_=0;}
+  void addDirty(Patch patch) {
+    for(unsigned i=0;i<dirtyCount_;++i) {
+      auto &known=dirty_[i];
+      if(known.left<=patch.left && known.top<=patch.top &&
+          known.right>=patch.right && known.bottom>=patch.bottom)return;
+    }
+    if(dirtyCount_<dirty_.size())dirty_[dirtyCount_++]=patch;
+    else {
+      // A bounded fallback still copies every changed pixel if a caller sends
+      // more patches than LVGL's normal invalid-area list can hold.
+      auto &last=dirty_.back();
+      last.left=std::min(last.left,patch.left);last.right=std::max(last.right,patch.right);
+      last.top=std::min(last.top,patch.top);last.bottom=std::max(last.bottom,patch.bottom);
+    }
   }
 public:
   bool begin(uint16_t *front,uint16_t *back,unsigned width,unsigned height,unsigned pose) {
@@ -39,17 +55,18 @@ public:
         else for(unsigned col=0;col<width;++col)back_[at+int(col)*stepX]=pixels[row*stride+col];
       }
     } else {
-      // Write neighbouring physical pixels together, without per-pixel geometry.
-      for(unsigned col=0;col<width;++col)
-        for(unsigned row=0;row<height;++row)
-          back_[first+int(col)*stepX+int(row)*stepY]=pixels[row*stride+col];
+      // A full-height transpose rereads distant PSRAM cache lines per column.
+      // Tiles keep both source rows and neighbouring physical writes nearby.
+      constexpr unsigned Tile=16;
+      for(unsigned top=0;top<height;top+=Tile)
+        for(unsigned left=0;left<width;left+=Tile)
+          for(unsigned col=left;col<std::min(left+Tile,width);++col)
+            for(unsigned row=top;row<std::min(top+Tile,height);++row)
+              back_[first+int(col)*stepX+int(row)*stepY]=pixels[row*stride+col];
     }
     const auto end=panel_forward(pose_,x+int(width)-1,y+int(height)-1,int(logicalWidth),int(logicalHeight));
-    const unsigned l=unsigned(std::min(start.x,end.x)),r=unsigned(std::max(start.x,end.x))+1;
-    for(int row=std::min(start.y,end.y);row<=std::max(start.y,end.y);++row) {
-      left_[row]=uint16_t(std::min(unsigned(left_[row]),l));
-      right_[row]=uint16_t(std::max(unsigned(right_[row]),r));
-    }
+    addDirty({uint16_t(std::min(start.x,end.x)),uint16_t(std::min(start.y,end.y)),
+        uint16_t(std::max(start.x,end.x)+1),uint16_t(std::max(start.y,end.y)+1)});
     return true;
   }
   // Call only after DMA releases the previous frame. Both buffers then contain
@@ -57,9 +74,13 @@ public:
   size_t presented() {
     std::swap(front_,back_);
     size_t copied=0;
-    for(unsigned y=0;y<height_;++y)if(left_[y]<right_[y]) {
-      const unsigned count=right_[y]-left_[y],at=y*width_+left_[y];
-      std::memcpy(back_+at,front_+at,count*sizeof(uint16_t));copied+=count;
+    for(unsigned i=0;i<dirtyCount_;++i) {
+      const auto patch=dirty_[i];
+      const unsigned count=patch.right-patch.left;
+      for(unsigned y=patch.top;y<patch.bottom;++y) {
+        const unsigned at=y*width_+patch.left;
+        std::memcpy(back_+at,front_+at,count*sizeof(uint16_t));copied+=count;
+      }
     }
     clearDirty();return copied;
   }

@@ -256,6 +256,15 @@ int main(int argc,char **argv) {
       assert(lv_obj_is_hidden(findLabel(findLabel,ui.root(),v.ip))==!bool(mask&(DisplayLocalAddress|DisplayApAddress)));
       assert(bool(ui.touchLayout().axis.width)==bool(mask&DisplayAxis));
       assert(bool(ui.touchLayout().name.width)==bool(mask&(DisplayName|DisplayControllerAddress)));
+      const auto header=ui.touchLayout().name;
+      if(header.width) {
+        assert(!overlaps(header,ui.touchLayout().mode)&&!overlaps(header,ui.touchLayout().axis));
+        if(mask&DisplayControllerAddress) {
+          auto *line=findLabel(findLabel,ui.root(),compact?v.hudAddress:"hud:192.168.3.234 · 0.0°..450.0°");
+          lv_area_t a;lv_obj_get_coords(line,&a);
+          assert(header.contains((a.x1+a.x2)/2,(a.y1+a.y2)/2));
+        }
+      }
       auto *axis=findLabel(findLabel,ui.root(),compact?"AZ":"АЗИМУТ · AZ");assert(axis);
       assert(lv_obj_is_hidden(axis)==!bool(mask&DisplayAxis));
       auto *address=findLabel(findLabel,ui.root(),compact?v.hudAddress:"hud:192.168.3.234 · 0.0°..450.0°");assert(address);
