@@ -12,7 +12,7 @@ void Network::formatAddresses(char *text,size_t capacity,const char *,bool,bool)
 }
 template<class Tag,auto Member> struct CstAccess {friend auto member(Tag){return Member;}};
 #define ACCESS(name) struct name##Tag {friend auto member(name##Tag);};template struct CstAccess<name##Tag,&Display::name>;
-ACCESS(display_) ACCESS(menuOpen_) ACCESS(presentedLayout_) ACCESS(commandContext)
+ACCESS(display_) ACCESS(menuOpen_) ACCESS(presentedLayout_) ACCESS(commandContext) ACCESS(ui_)
 #undef ACCESS
 int main() {
   Fixture f;
@@ -91,6 +91,35 @@ int main() {
   tick(true,50,38);assert(f.runtime.hud.config.selected==12);
   tick(false,0,0);assert(f.runtime.hud.selectionEpoch==epoch+2);
   Runtime restored;f.storage.loadHud(restored,false);assert(restored.hud.config.selected==12);
+  const auto findCaption=[&](auto &&self,lv_obj_t *object)->lv_obj_t * {
+    if(lv_obj_check_type(object,&lv_label_class)&&!std::strcmp(lv_label_get_text(object),"Цель"))return object;
+    for(uint32_t i=0;i<lv_obj_get_child_count(object);++i)
+      if(auto *found=self(self,lv_obj_get_child(object,i)))return found;
+    return nullptr;
+  };
+  auto *caption=findCaption(findCaption,(display.*member(ui_Tag{})).root());assert(caption);
+  const auto checkColor=[&](uint32_t expected) {
+    for(unsigned i=0;i<4;++i)tick(false,0,0);
+    assert(lv_color_to_u32(lv_obj_get_style_text_color(caption,LV_PART_MAIN))==lv_color_to_u32(lv_color_hex(expected)));
+  };
+  // HUD uses the peer's tolerance, not the panel's local drive defaults.
+  auto &c=f.runtime.controller;
+  for(unsigned i=0;i<2;++i) {
+    peer->state.axes[i].targetKnown=true;peer->state.axes[i].target=100-i*60;
+    peer->state.axes[i].current=peer->state.axes[i].target+.5f;
+    peer->state.tolerance[i]=.5f;
+    c.speeds[i].coastDegrees=0;
+  }
+  peer->state.apply(c,f.runtime.protocol,millis());checkColor(0x65717e);
+  peer->state.tolerance[1]=.25f;peer->state.apply(c,f.runtime.protocol,millis());checkColor(0x64cfff);
+  peer->state.tolerance[1]=.5f;peer->state.apply(c,f.runtime.protocol,millis());checkColor(0x65717e);
+  // A direct controller uses the same dead zone as a real repeated target.
+  f.runtime.hud.config.role=DeviceRole::Controller;c.remote=nullptr;
+  for(unsigned i=0;i<2;++i) {c.speeds[i].coastDegrees=.5f;c.motionSettings[i].ready=true;}
+  checkColor(0x65717e);
+  assert(c.target({100,40,true,true},false,millis())==Result::Ok&&!c.moving());checkColor(0x65717e);
+  c.axes[1].current=40.75f;checkColor(0x64cfff);
+  assert(c.target({100,40,true,true},false,millis())==Result::Ok&&c.moving());checkColor(0x64cfff);
   lv_display_delete(display.*member(display_Tag{}));
   std::puts("PASS: production touch path opens settings, selects axes on release, preserves swipes and switches peers from the expanded header without repeat or movement");
 }

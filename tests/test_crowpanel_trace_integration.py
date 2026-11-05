@@ -42,6 +42,8 @@ class CrowPanelTraceIntegrationTests(unittest.TestCase):
             self.assertIn('hudName=' + 'Пульт "А"\\Б'.encode().hex(), command)
             self.assertIn('speedAvailable[0]=1', command)
             self.assertIn('speedAvailable[1]=0', command)
+            self.assertIn('tolerance=0.5', command)
+            self.assertIn('secondaryTolerance=0.25', command)
             envelopes = [json.loads(line) for line in journal.read_text().splitlines()]
             self.assertTrue(all(item['schema'] == 'crowpanel.recording' for item in envelopes))
             replay = subprocess.run([sys.executable, str(ROOT / 'tools/crowpanel_trace.py'),

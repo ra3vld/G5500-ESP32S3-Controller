@@ -132,6 +132,7 @@ void field(forkrot::CrowPanelView &v, const std::string &key, const std::string 
   BOOL(uncalibrated) BOOL(secondaryUncalibrated)
   BOOL(pending) BOOL(moving) BOOL(autoMode) BOOL(autoHour)
   INT(direction) REAL(current) REAL(target) REAL(minimum) REAL(maximum)
+  REAL(tolerance) REAL(secondaryTolerance)
   REAL(secondaryCurrent) REAL(secondaryTarget)
   BOOL(secondaryFeedback) BOOL(secondaryTargetValid) BOOL(secondaryPending)
   INT(azDirection) INT(elDirection)

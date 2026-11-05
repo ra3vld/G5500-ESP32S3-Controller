@@ -452,6 +452,7 @@ void Display::updateLocalDisplay() {
     view.feedback = online && controller.axes[axis].calibrated;
     view.uncalibrated = online && !controller.axes[axis].calibrated;
     view.current = controller.axes[axis].current;
+    view.tolerance = controller.effectiveTolerance(axis);
     view.direction = controller.axes[axis].direction;
     view.pending = controller.pendingValid && (axis ? controller.pending.hasEl : controller.pending.hasAz);
     view.targetValid = online && (view.pending || controller.axes[axis].targetKnown);
@@ -460,6 +461,7 @@ void Display::updateLocalDisplay() {
     view.secondaryFeedback = view.dualAxis && online && controller.axes[other].calibrated;
     view.secondaryUncalibrated = view.dualAxis && online && !controller.axes[other].calibrated;
     view.secondaryCurrent = controller.axes[other].current;
+    view.secondaryTolerance = controller.effectiveTolerance(other);
     view.secondaryPending = view.dualAxis && controller.pendingValid &&
                             (other ? controller.pending.hasEl : controller.pending.hasAz);
     view.secondaryTargetValid =

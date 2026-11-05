@@ -37,6 +37,7 @@ inline void writeCrowPanelView(JsonWriter &j, const CrowPanelView &v) {
   CP_BOOL(uncalibrated); CP_BOOL(secondaryUncalibrated);
   CP_BOOL(pending); CP_BOOL(moving); CP_BOOL(autoMode); CP_BOOL(autoHour);
   CP_NUMBER(direction); CP_FLOAT(current); CP_FLOAT(target); CP_FLOAT(minimum); CP_FLOAT(maximum);
+  CP_FLOAT(tolerance); CP_FLOAT(secondaryTolerance);
   CP_FLOAT(secondaryCurrent); CP_FLOAT(secondaryTarget);
   CP_BOOL(secondaryFeedback); CP_BOOL(secondaryTargetValid); CP_BOOL(secondaryPending);
   CP_NUMBER(azDirection); CP_NUMBER(elDirection); CP_NUMBER(sourceId);

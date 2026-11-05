@@ -156,6 +156,32 @@ int main(int argc,char **argv) {
   snapshot("dual");
   {
     const auto saved=v;
+    auto *caption=findLabel(findLabel,ui.root(),"Цель");assert(caption);
+    auto *primary=findLabel(findLabel,ui.root(),"210.0°");assert(primary);
+    auto *secondary=findLabel(findLabel,ui.root()," / 80.0°");assert(secondary);
+    const auto checkGoalColor=[&](uint32_t expected) {
+      ui.update(v);settle(d);
+      for(auto *label:{caption,primary,secondary})
+        assert(lv_color_to_u32(lv_obj_get_style_text_color(label,LV_PART_MAIN))==lv_color_to_u32(lv_color_hex(expected)));
+    };
+    v.current=v.target;v.secondaryCurrent=v.secondaryTarget;
+    snapshot("target-reached");checkGoalColor(0x65717e);
+    v.tolerance=.5f;v.secondaryTolerance=.25f;
+    v.current-=.5f;v.secondaryCurrent-=.25f;
+    snapshot("target-within-tolerance");checkGoalColor(0x65717e);
+    v.tolerance=.49f;checkGoalColor(0x64cfff); // Only tolerance changes: invalidate the cached view.
+    v.tolerance=.5f;v.secondaryTolerance=.24f;checkGoalColor(0x64cfff);
+    v.secondaryTolerance=.25f;checkGoalColor(0x65717e);
+    v.secondaryFeedback=false;checkGoalColor(0x64cfff);
+    v.secondaryFeedback=true;v.movingNow=true;checkGoalColor(0x64cfff);
+    v.movingNow=false;v.autoMode=false;v.pending=true;checkGoalColor(0x65717e);
+    v.target+=10;checkGoalColor(0xf0b85c); // A new pending target keeps its confirmation color.
+    v.pending=false;checkGoalColor(0x64cfff);
+    v.targetValid=v.secondaryTargetValid=false;checkGoalColor(0x64cfff);
+    v=saved;ui.update(v);settle(d);
+  }
+  {
+    const auto saved=v;
     v.menu.open=true;v.menu.local=true;v.menu.devices=true;v.menu.brightnessAvailable=true;v.menu.brightness=70;
     std::strcpy(v.menu.device,"Этот HUD");
     std::strcpy(v.menu.info,"Память: 123 КБ\nМакс. блок: 64 КБ\nАптайм: 2д 03:04:05");

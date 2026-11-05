@@ -15,7 +15,7 @@ LV_FONT_DECLARE(panel_font_128)
 namespace forkrot {
 namespace {
 constexpr uint32_t bg = 0x0a111c, text = 0xeff5ff, muted = 0x8fabc3;
-constexpr uint32_t targetColor = 0x64cfff;
+constexpr uint32_t targetColor = 0x64cfff, reachedTargetColor = 0x65717e;
 constexpr uint32_t wifiWarning = 0xffd54f, wifiDisconnected = 0xff6b6b;
 constexpr lv_point_precise_t wifiSlash[] = {{2, 2}, {26, 26}};
 constexpr int dialRadius = 227;
@@ -862,9 +862,10 @@ void PanelUi::update(const PanelView &v) {
   }
   set(secondaryTarget_, v.dualAxis ? value : "");
   set(targetCaption_, compact && confirmation ? ((v.elevation!=pendingOther)?"ЕХАТЬ · EL":"ЕХАТЬ · AZ") : confirmation ? "ЕХАТЬ" : "Цель");
-  color(targetCaption_, confirmation ? 0xf0b85c : targetColor);
-  color(target_, confirmation ? 0xf0b85c : targetColor);
-  color(secondaryTarget_, confirmation ? 0xf0b85c : targetColor);
+  const auto goalColor=v.targetReached()?reachedTargetColor:confirmation?0xf0b85c:targetColor;
+  color(targetCaption_, goalColor);
+  color(target_, goalColor);
+  color(secondaryTarget_, goalColor);
   // Fit continuous multi-turn coordinates inside the ring, leaving room for jog arrows.
   auto fit = [&](lv_obj_t *primary, lv_obj_t *secondary, const lv_font_t *initial, int maximumWidth) {
     const lv_font_t *chosen = initial;
