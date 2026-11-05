@@ -61,6 +61,7 @@ public:
   void persistRssiYear(const RssiHistory &history);
 
 private:
+  bool retireLegacyCalibration();
   bool compactResetHistory();
   static constexpr size_t SettingsReserveEntries = 32;
   static bool diagnosticStorageRoom(size_t entries);

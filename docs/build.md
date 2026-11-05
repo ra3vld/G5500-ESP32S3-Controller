@@ -10,8 +10,9 @@
 
 | Компонент | Версия | Когда нужен |
 |---|---|---|
-| Arduino-ESP32 | 3.3.11 | всегда |
-| pioarduino espressif32 | 55.03.311 | PlatformIO |
+| pioarduino Core | 6.2.0 | PlatformIO |
+| Arduino-ESP32 | 3.3.12 | всегда |
+| pioarduino espressif32 | 55.03.312-1 | PlatformIO |
 | Adafruit GFX | 1.12.1 | ILI9341 и GC9A01 |
 | Adafruit ILI9341 | 1.6.2 | TFT |
 | Adafruit GC9A01A | 1.1.0 | ESP32-2424S012C; также нужны GFX и BusIO |
@@ -36,7 +37,7 @@ CrowPanel 2.1 (DHE03921D): `pio run -e crowpanel_21` или `./tools/build_ardui
 
 Перед сборкой из Git выполните `python3 tools/project_version.py`, чтобы обновить версию и хеш коммита в прошивке. Повторяйте команду после изменения исходников или переключения коммита. PlatformIO, `build_arduino.sh` и `prepare_sketch.py` делают это автоматически. В архиве исходников сохраняются сведения о версии на момент упаковки. Если ни Git, ни сохранённых сведений нет, версия получает суффикс `+unknown`, а коммит — значение `unknown`.
 
-Добавьте URL `https://espressif.github.io/arduino-esp32/package_esp32_index.json`, установите **esp32 by Espressif Systems 3.3.11** и только библиотеки выбранного дисплея. XPT2046: [официальный ZIP v1.4](https://github.com/PaulStoffregen/XPT2046_Touchscreen/archive/refs/tags/v1.4.zip).
+Добавьте URL `https://espressif.github.io/arduino-esp32/package_esp32_index.json`, установите **esp32 by Espressif Systems 3.3.12** и только библиотеки выбранного дисплея. XPT2046: [официальный ZIP v1.4](https://github.com/PaulStoffregen/XPT2046_Touchscreen/archive/refs/tags/v1.4.zip).
 
 Откройте `G5500_Fork/G5500_Fork.ino`; измените значения в `build_config.hpp`. Все заголовки профилей должны остаться рядом со скетчем. `BOARD_AUTO` выбирает распиновку по плате IDE. При включённом Bluetooth `BT_AUTO` выбирает транспорт по чипу. Таблицу разделов выбирайте отдельно в **Tools → Partition Scheme**: в исходной папке нет `partitions.csv`, который перекрывал бы меню.
 
@@ -69,7 +70,7 @@ PlatformIO и `tools/prepare_sketch.py` автоматически исключ�
 
 ```sh
 arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-arduino-cli core install esp32:esp32@3.3.11 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+arduino-cli core install esp32:esp32@3.3.12 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 # Только выбранный дисплей:
 arduino-cli lib install 'LiquidCrystal@1.0.7'
 # либо ILI9341: lvgl@9.6.0, GFX@1.12.1, ILI9341@1.6.2, BusIO@1.17.2 и официальный ZIP XPT2046 v1.4
@@ -83,6 +84,8 @@ DISPLAY_KIND=1 ./tools/build_arduino.sh s2-mini
 `DISPLAY_KIND`: 0 NONE, 1 ILI9341, 2 LCD1602, 3 CrowPanel, 4 GC9A01, 5 ST7796, 6 ST77916. CrowPanel и GC9A01 требуют соответствующего профиля платы. Старый `DISPLAY_ENABLED=0/1` остаётся алиасом NONE/TFT; несовместимые флаги отклоняются. Привод, Bluetooth и кнопка выбираются в вебе после сборки. Скрипт допускает `ARDUINO_CLI`, `ARDUINO_CONFIG_FILE`, `FQBN`, `BUILD_JOBS`; исходники и результаты изолированы в `build/arduino-<target>` и `artifacts/arduino-<target>`. Прежние аппаратные `-D` задают только начальные значения нового устройства; сохранённая конфигурация имеет приоритет.
 
 ## PlatformIO
+
+Установите Core: `python -m pip install -r requirements-platformio.txt`. Проверьте `pio --version`: должна отображаться версия 6.2.0. Пакеты этой версии SDK устанавливаются отдельно от пакетов других проектов; каталог задаёт `packages_dir` в `platformio.ini`.
 
 Скрипт выбирает экранные зависимости согласно общему заголовку и параметрам:
 

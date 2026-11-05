@@ -1543,10 +1543,10 @@ async function setCalMode(m){await calibrationAction('/api/calmode?m='+m,m==='mu
 async function calibrationAction(path,success){
  const url=new URL(path,location.origin),point=url.searchParams.get('p');
  if(point){const axis=point.startsWith('el')||point.endsWith('2')?'el':'az';if(document.getElementById(axis+'RangeForm').dataset.dirty){settingsFeedback('Сначала примените диапазон '+axis.toUpperCase()+', затем запишите положения.');return false;}}
- const notice=beginSettingsAction('Сохранение калибровки…',path);if(!notice)return false;
+ const notice=beginSettingsAction('Сохранение калибровки…',path);if(!notice)return false;let saved=false;
  try{const r=await settingsRequest(path);if(!r.ok){notice.finish(false,r.status===403?'Калибровка доступна на контроллере поворотки':'Не удалось сохранить калибровку. Повторите после проверки устройства.');return false;}
- notice.finish(true,success);await upd(true);await Promise.all([loadAzCalibration(),loadElCalibration()]);return true;
- }catch(e){notice.finish(false,'Подтверждение не получено. Проверьте связь и состояние калибровки перед повтором.');return false;}
+ saved=true;await refreshCalibration();notice.finish(true,success);return true;
+ }catch(e){notice.finish(false,saved?'Калибровка сохранена, но не удалось обновить показания. Обновите страницу.':'Подтверждение не получено. Проверьте связь и состояние калибровки перед повтором.');return false;}
 }
 async function setAzMode(m){await azPost('/api/azrange',{profile:m===36?'p36':'p45'})}
 async function resetCal(axis,cm){
@@ -1559,22 +1559,31 @@ function azEndPreview(){const f=document.getElementById('azRangeForm');azRangeEn
 document.getElementById('azRangeForm').addEventListener('input',e=>{e.currentTarget.dataset.dirty='1';azEndPreview();renderAxisCalibration('az',window._forkState)});
 function calibrationContext(axis){const j=window._forkState;return j?[j.deviceRole,j.model,j[axis+'Profile'],j[axis+'RangeRevision']].join(':'):''}
 const calibrationLoads={};
-async function loadAxisCalibration(axis){
+async function loadAxisCalibration(axis,force=false){
  if(window._forkState?.deviceRole==='hud'||(axis==='el'&&window._forkState?.model!=='G5500'))return;
  const context=calibrationContext(axis),token={context};
- if(calibrationLoads[axis]?.context===context){calibrationLoads[axis].refresh=true;return;}
+ const pending=calibrationLoads[axis];
+ if(pending?.context===context){if(!force)return pending.promise;await pending.promise;if(context!==calibrationContext(axis))return;return loadAxisCalibration(axis,true);}
  calibrationLoads[axis]=token;
  const message=document.getElementById(axis+'RangeMessage');
- try{const r=await settingsRequest('/api/'+axis+'cal');if(!r.ok)throw Error('read');const j=r.json();
+ token.promise=(async()=>{
+ try{const r=await settingsRequest('/api/'+axis+'cal',force?{method:'GET'}:{});if(!r.ok)throw Error('read');const j=r.json();
  if(context!==calibrationContext(axis)||calibrationLoads[axis]!==token)return;
  window['_'+axis+'Cal']=j;window['_'+axis+'CalContext']=context;
  const f=document.getElementById(axis+'RangeForm');if(!f.dataset.dirty&&!f.contains(document.activeElement)){f.elements.start.value=j.customStart;f.elements.span.value=j.customSpan;(axis==='az'?azEndPreview:elEndPreview)()}
  renderAxisCalibration(axis,window._forkState);
  if(j.storageFault)message.textContent='Ошибка сохранённой калибровки. Сбросьте калибровку и настройте её заново.';
- }catch(e){message.textContent='Не удалось прочитать калибровку';}
- finally{if(calibrationLoads[axis]===token){delete calibrationLoads[axis];if(token.refresh)loadAxisCalibration(axis);}}
+ }catch(e){message.textContent='Не удалось прочитать калибровку';if(force)throw e;}
+ finally{if(calibrationLoads[axis]===token)delete calibrationLoads[axis];}
+ })();return token.promise;
 }
-async function loadAzCalibration(){return loadAxisCalibration('az')}
+async function loadAzCalibration(force=false){return loadAxisCalibration('az',force)}
+async function refreshCalibration(){
+ if(!await upd(true))throw Error('status');
+ // Explicit readback follows the write; it must not reuse a pre-write response
+ // or be deferred by the background polling pool.
+ await loadAzCalibration(true);await loadElCalibration(true);
+}
 function renderCalibrationPoints(axis,mode,points,custom,storageFault){
  const encoder=window._forkState?.[axis+'Sensor']&&window._forkState[axis+'Sensor']!=='ADC',unit=encoder?'отсч.':'мВ';
  const prefix=axis+(mode==='2'?'2':''),list=document.getElementById(prefix+'PointList');
@@ -1610,13 +1619,13 @@ async function axisCalibrationPost(axis,path,body,notice=null){
  const rangeForm=document.getElementById(axis+'RangeForm');if(path!=='/api/'+axis+'range'&&rangeForm.dataset.dirty){settingsFeedback('Сначала примените диапазон '+axis.toUpperCase()+', затем запишите положения.');return false;}
  const label=axis.toUpperCase();notice=notice||beginSettingsAction('Сохранение '+label+'…',path+JSON.stringify(body));if(!notice)return false;
  notice.update('Сохранение '+label+'…');
- const message=document.getElementById(axis+'RangeMessage'),revision=setupDraftRevision(rangeForm);
+ const message=document.getElementById(axis+'RangeMessage'),revision=setupDraftRevision(rangeForm);let saved=false;
  try{const r=await settingsRequest(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});const j=r.json();
  if(!r.ok||j.ok===false){const error=j.error==='invalid_point'?'Проверьте угол: точка должна быть внутри диапазона, без повторов; максимум 16 точек.':j.error==='invalid_range'?'Проверьте начало и полный ход.':'Не удалось сохранить настройки '+label;setText(message,error);notice.finish(false,error);return false;}
  const text=body.op?(body.op==='add_capture'?'Точка '+label+' '+body.angle+'° добавлена, текущее показание датчика запомнено':body.op==='capture'?'Положение '+label+' '+body.angle+'° запомнено':body.op==='add'?'Точка '+label+' '+body.angle+'° добавлена':'Точка '+label+' '+body.angle+'° удалена'):'Диапазон '+label+' сохранён';
- if(path==='/api/'+axis+'range')clearSavedSetupDraft(rangeForm,revision);setText(message,text);notice.finish(true,text);
- await upd(true);await (axis==='az'?loadAzCalibration():loadElCalibration());return true;
- }catch(e){const error='Подтверждение не получено. Проверьте связь и настройки '+label+' перед повтором.';setText(message,error);notice.finish(false,error);return false;}
+ saved=true;if(path==='/api/'+axis+'range')clearSavedSetupDraft(rangeForm,revision);
+ await refreshCalibration();setText(message,text);notice.finish(true,text);return true;
+ }catch(e){const error=saved?'Настройки '+label+' сохранены, но не удалось обновить показания. Обновите страницу.':'Подтверждение не получено. Проверьте связь и настройки '+label+' перед повтором.';setText(message,error);notice.finish(false,error);return false;}
 }
 async function azPost(path,body){return axisCalibrationPost('az',path,body)}
 async function saveAzRange(e){e.preventDefault();const f=e.target;await azPost('/api/azrange',{profile:'custom',start:f.elements.start.value,span:f.elements.span.value})}
@@ -1630,7 +1639,7 @@ async function useCustomRange(){return useCustomAxisRange('az')}
 async function addAzPoint(e){e.preventDefault();if(await azPost('/api/azcal',{op:'add_capture',angle:azPointAngle.value}))azPointAngle.value=''}
 function elEndPreview(){const f=document.getElementById('elRangeForm');elRangeEnd.textContent=(Number(f.elements.start.value)+Number(f.elements.span.value)).toFixed(1)+'°'}
 document.getElementById('elRangeForm').addEventListener('input',e=>{e.currentTarget.dataset.dirty='1';elEndPreview();renderAxisCalibration('el',window._forkState)});
-async function loadElCalibration(){return loadAxisCalibration('el')}
+async function loadElCalibration(force=false){return loadAxisCalibration('el',force)}
 async function elPost(path,body){return axisCalibrationPost('el',path,body)}
 async function saveElRange(e){e.preventDefault();const f=e.target;await elPost('/api/elrange',{profile:'custom',start:f.elements.start.value,span:f.elements.span.value})}
 async function useCustomElRange(){return useCustomAxisRange('el')}
@@ -1673,16 +1682,17 @@ async function saveAp(){
  catch(e){notice.finish(false,'Подтверждение не получено. Проверьте связь и настройки точки доступа перед повтором.');}
 }
 function pct(v,m){v=Math.max(0,Math.min(m,v));return(v/m*100).toFixed(1)+'%'}
-let statusPending=false,statusRefreshQueued=false,statusController=null;
+let statusPending=null,statusRefreshQueued=null,statusController=null;
 async function upd(force=false){
 if(otaBusy||keyboardHeld()||!background.visible())return;
 if(liveFresh()&&!force)return;
-if(statusPending){if(force)statusRefreshQueued=true;return;}
-statusPending=true;
+if(statusPending){if(!force)return;if(!statusRefreshQueued)statusRefreshQueued=statusPending.then(()=>{statusRefreshQueued=null;return upd(true)});return statusRefreshQueued;}
+let statusDone;statusPending=new Promise(resolve=>statusDone=resolve);let updated=false;
 const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5000);statusController=controller;
-try{const j=await background.read('status','/api/status','json',()=>true,controller);if(!j||typeof j!=='object'||!['controller','hud'].includes(j.deviceRole))throw new Error('invalid status');
+try{let j;if(force){const r=await settingsRequest('/api/status',{signal:controller.signal},5000);if(!r.ok)throw Error('read');j=r.json();}else j=await background.read('status','/api/status','json',()=>true,controller);if(!j||typeof j!=='object'||!['controller','hud'].includes(j.deviceRole))throw new Error('invalid status');
 connection.httpOnline=true;connection.httpLast=Date.now();connection.state=liveFresh()&&live.state?{...j,...live.state}:j;updateConnection();
 httpState=j;connectLive(j.livePort);queueLiveRender();
+updated=true;
 if(document.querySelector('#calibrationSettings details').open){loadAzCalibration();loadElCalibration();}
 }catch(e){
  if(controller.signal.aborted&&keyboardHeld())return;
@@ -1690,7 +1700,7 @@ if(document.querySelector('#calibrationSettings details').open){loadAzCalibratio
  renderMqttStatus(null,true);
  const wifi=document.getElementById('statusWifi'),addresses=networkAddresses(httpState);setText(wifi,['Нет связи',...(addresses.length?['Последние адреса:',...addresses]:[])].join('\n'));wifi.className='offline';wifi.title='Не удалось обновить статус устройства';
  for(const id of ['statusBt','statusSignal','statusMemory','statusUptime']){const node=document.getElementById(id);setText(node,'—');node.className='';}
-}finally{clearTimeout(timeout);statusController=null;statusPending=false;if(statusRefreshQueued){statusRefreshQueued=false;queueMicrotask(()=>upd(true));}}}
+}finally{clearTimeout(timeout);statusController=null;statusPending=null;statusDone();}return updated;}
 function currentPosition(j,axis){
  if(j.deviceRole==='hud'&&!j.hudOnline)return '—';
  if(j.axes?.[axis==='az'?0:1]?.calibrated===false)return 'NC';

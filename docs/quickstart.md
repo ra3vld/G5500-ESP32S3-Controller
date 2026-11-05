@@ -13,7 +13,7 @@
 1. Установите [Visual Studio Code](https://code.visualstudio.com/) и [Git](https://git-scm.com/downloads). В Linux также нужен пакет `python3-venv`.
 2. В VS Code откройте **Extensions** (`Ctrl+Shift+X`), установите одно расширение: [pioarduino IDE](https://marketplace.visualstudio.com/items?itemName=pioarduino.pioarduino-ide) или [PlatformIO IDE](https://marketplace.visualstudio.com/items?itemName=platformio.platformio-ide). Дождитесь установки компонентов и перезапустите VS Code. Команда `pio` входит в комплект расширения.
 3. Через **File → Open Folder** откройте корень этого проекта, где находится `platformio.ini`. Нужная версия платформы ESP32 от pioarduino уже задана в нём и загрузится при первой сборке.
-4. Откройте терминал расширения кнопкой **PlatformIO: New Terminal** на нижней панели VS Code и проверьте `pio --version`. Из этого терминала можно сразу выполнять [команды сборки](build.md#platformio).
+4. Откройте терминал расширения кнопкой **PlatformIO: New Terminal** на нижней панели VS Code, выполните `python -m pip install -r requirements-platformio.txt` и проверьте `pio --version` (6.2.0). Из этого терминала можно выполнять [команды сборки](build.md#platformio).
 
 Без VS Code можно установить [PlatformIO Core по официальной инструкции](https://docs.platformio.org/en/latest/core/installation/methods/installer-script.html).
 

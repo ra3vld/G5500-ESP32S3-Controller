@@ -15,7 +15,7 @@ import time
 from project_version import generate
 from build_capabilities import partition_capabilities
 ROOT=Path(__file__).resolve().parents[1]
-PINNED_PLATFORM='https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip'
+PINNED_PLATFORM='https://github.com/pioarduino/platform-espressif32/releases/download/55.03.312-1/platform-espressif32.zip'
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--tool',choices=['all','arduino','platformio'],default='all')
 p.add_argument('--arduino-cli',default=os.environ.get('ARDUINO_CLI','arduino-cli'))
@@ -32,6 +32,7 @@ p.add_argument('--select',choices=['all','lcd','smoke'],default='all',help='Opti
 p.add_argument('--boards',nargs='+',choices=['s3','s2-mini','esp32','wt32-eth01'],default=['s3','s2-mini','esp32'])
 p.add_argument('--run-name',help='Separate result/build directory for a focused validation run')
 a=p.parse_args()
+packages_dir='${platformio.core_dir}/packages-pioarduino-55.03.312-1' if a.platform==PINNED_PLATFORM else '${platformio.core_dir}/packages-matrix-'+hashlib.sha256(a.platform.encode()).hexdigest()[:12]
 if a.run_name and not re.fullmatch(r'[A-Za-z0-9_-]+',a.run_name):p.error('Invalid run name')
 out=ROOT/'artifacts/build-matrix';work_root=ROOT/'build/matrix'
 if a.run_name:out=out/a.run_name;work_root=work_root/a.run_name
@@ -93,7 +94,7 @@ def build(tool,board,display,bt,drive):
             if a.library_dir:deps='lib_extra_dirs = '+str(a.library_dir.resolve())+'\n'
             elif display==2:deps='lib_deps = arduino-libraries/LiquidCrystal @ 1.0.7\n'
             else:deps='lib_deps =\n adafruit/Adafruit GFX Library @ 1.12.1\n adafruit/Adafruit ILI9341 @ 1.6.2\n adafruit/Adafruit BusIO @ 1.17.2\n https://github.com/PaulStoffregen/XPT2046_Touchscreen/archive/refs/tags/v1.4.zip\n'
-        config.write_text(f'[platformio]\nsrc_dir = {snapshot}\nbuild_dir = {work}/objects\nlibdeps_dir = {work}/libdeps\n[env:matrix]\nplatform = {a.platform}\nboard = '+('esp32-s3-devkitc-1' if board=='s3' else 'lolin_s2_mini' if board=='s2-mini' else 'wt32-eth01' if board=='wt32-eth01' else 'esp32dev' if board=='esp32' else 'esp32-s2-saola-1')+f'\nframework = arduino\nboard_build.flash_mode = '+('dio' if board in ('s2-mini','esp32','wt32-eth01') else 'qio')+('\nboard_build.f_flash = 40000000L' if board in ('esp32','wt32-eth01') else '')+f'\nboard_upload.flash_size = '+('16MB' if board=='s3' else '4MB')+f'\nboard_upload.maximum_size = {app_size}\nboard_build.partitions = {source}/'+partition_file+'\n'+memory+'build_flags = '+extra+' '+flags+'\nlib_ldf_mode = '+('deep' if board=='wt32-eth01' else 'chain+')+'\n'+deps)
+        config.write_text('[platformio]\npackages_dir = '+packages_dir+f'\nsrc_dir = {snapshot}\nbuild_dir = {work}/objects\nlibdeps_dir = {work}/libdeps\n[env:matrix]\nplatform = {a.platform}\nboard = '+('esp32-s3-devkitc-1' if board=='s3' else 'lolin_s2_mini' if board=='s2-mini' else 'wt32-eth01' if board=='wt32-eth01' else 'esp32dev' if board=='esp32' else 'esp32-s2-saola-1')+f'\nframework = arduino\nboard_build.flash_mode = '+('dio' if board in ('s2-mini','esp32','wt32-eth01') else 'qio')+('\nboard_build.f_flash = 40000000L' if board in ('esp32','wt32-eth01') else '')+f'\nboard_upload.flash_size = '+('16MB' if board=='s3' else '4MB')+f'\nboard_upload.maximum_size = {app_size}\nboard_build.partitions = {source}/'+partition_file+'\n'+memory+'build_flags = '+extra+' '+flags+'\nlib_ldf_mode = '+('deep' if board=='wt32-eth01' else 'chain+')+'\n'+deps)
         cmd=[a.pio,'run','-c',str(config),'-e','matrix','-j',str(a.jobs)]
         binary=work/'objects/matrix/firmware.bin'
     child_env=os.environ.copy()

@@ -41,10 +41,11 @@ def sdk_matches(packages, defaults):
     return True
 
 
-def configuration(defaults, hud=False):
+def configuration(defaults, hud=False, cached=False):
     profile = 'esp32_spp_hud' if hud else 'esp32_spp'
     return ('[platformio]\nextra_configs = base.ini, platformio/esp32_spp.ini\nsrc_dir = G5500_Fork\n'
             f'[env:esp32_spp_sdk]\nextends = env:{profile}\n'
+            + ('platform_packages = framework-arduinoespressif32-libs @ 5.5.5+sha.b774170ff46\n' if cached else '') +
             'custom_sdkconfig =\n' +
             ''.join(' ' + line + '\n' for line in defaults.splitlines()))
 
@@ -63,7 +64,7 @@ def main():
     parser.add_argument('--jobs', type=int, default=4)
     parser.add_argument('--hud', action='store_true', help='Enable the HUD UDP transport')
     parser.add_argument('--project-dir', type=Path, default=ROOT / 'build/esp32-spp-project')
-    parser.add_argument('--packages-dir', type=Path, default=ROOT / '.pio/packages-esp32-spp')
+    parser.add_argument('--packages-dir', type=Path, default=ROOT / '.pio/packages-esp32-spp-55.03.312-1')
     parser.add_argument('--output', type=Path, default=ROOT / 'build/esp32-spp-firmware')
     args = parser.parse_args()
     if args.jobs < 1:
@@ -81,8 +82,9 @@ def main():
     subprocess.run([sys.executable, str(ROOT / 'tools/project_version.py'), '--output',
                     str(project / 'G5500_Fork/build_identity.hpp')], check=True)
     defaults = (ROOT / 'tools/sdkconfig_esp32_spp.defaults').read_text()
-    write_changed(project / 'platformio.ini', configuration(defaults, args.hud))
-    if sdk_matches(packages, defaults):
+    cached = sdk_matches(packages, defaults)
+    write_changed(project / 'platformio.ini', configuration(defaults, args.hud, cached))
+    if cached:
         seed_cached_sdk(project, packages, defaults)
     else:
         sources = project / 'vendor'
