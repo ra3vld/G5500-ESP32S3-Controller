@@ -310,6 +310,8 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -pthread -I G5500_Fork tests/mq
 
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/panel_connection_tests.cpp -o build/panel_connection_tests
 ./build/panel_connection_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/panel_presentation_tests.cpp -o build/panel_presentation_tests
+./build/panel_presentation_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/panel_menu_tests.cpp -o build/panel_menu_tests
 ./build/panel_menu_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork -I tests $CORE_SOURCES tools/mqtt_host.cpp -o build/mqtt_host

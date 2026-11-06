@@ -82,13 +82,19 @@ int main() {
   auto *second=f.runtime.hud.add(34,{124,4534,false},"Second",true);assert(second);
   second->received=true;second->receivedAt=millis();second->state=peer->state;
   const auto epoch=f.runtime.hud.selectionEpoch;
-  // The address/header edge was outside the old name-only hitbox on 240x240.
-  assert((display.*member(presentedLayout_Tag{})).name.contains(50,38));
-  tick(true,50,38);assert(f.runtime.hud.config.selected==34);
+  // Keep the address center selectable, while the old expanded corner belongs
+  // to the ring again rather than switching the active controller.
+  const auto headerLayout=display.*member(presentedLayout_Tag{});
+  assert(headerLayout.nameHit(120,38));
+  assert(!headerLayout.nameHit(50,38)&&headerLayout.dialHit(50,38));
+  tick(true,50,38);tick(false,50,38);
+  assert(f.runtime.hud.config.selected==12);
+  for(unsigned i=0;i<10;++i)tick(false,0,0);
+  tick(true,120,38);assert(f.runtime.hud.config.selected==34);
   for(unsigned i=0;i<20;++i)tick(true,120,120);
   assert(f.runtime.hud.config.selected==34 && !f.runtime.controller.moving());
   tick(false,0,0);for(unsigned i=0;i<10;++i)tick(false,0,0);
-  tick(true,50,38);assert(f.runtime.hud.config.selected==12);
+  tick(true,120,38);assert(f.runtime.hud.config.selected==12);
   tick(false,0,0);assert(f.runtime.hud.selectionEpoch==epoch+2);
   Runtime restored;f.storage.loadHud(restored,false);assert(restored.hud.config.selected==12);
   const auto findCaption=[&](auto &&self,lv_obj_t *object)->lv_obj_t * {
@@ -99,7 +105,7 @@ int main() {
   };
   auto *caption=findCaption(findCaption,(display.*member(ui_Tag{})).root());assert(caption);
   const auto checkColor=[&](uint32_t expected) {
-    for(unsigned i=0;i<4;++i)tick(false,0,0);
+    for(unsigned i=0;i<60;++i)tick(false,0,0);
     assert(lv_color_to_u32(lv_obj_get_style_text_color(caption,LV_PART_MAIN))==lv_color_to_u32(lv_color_hex(expected)));
   };
   // HUD uses the peer's tolerance, not the panel's local drive defaults.
@@ -118,7 +124,10 @@ int main() {
   for(unsigned i=0;i<2;++i) {c.speeds[i].coastDegrees=.5f;c.motionSettings[i].ready=true;}
   checkColor(0x65717e);
   assert(c.target({100,40,true,true},false,millis())==Result::Ok&&!c.moving());checkColor(0x65717e);
-  c.axes[1].current=40.75f;checkColor(0x64cfff);
+  c.axes[1].current=41;checkColor(0x65717e); // Short outliers retain the dim colour.
+  for(unsigned i=0;i<160;++i)tick(false,0,0);
+  checkColor(0x64cfff); // A sustained displacement is still reported.
+  c.axes[1].current=40.75f;
   assert(c.target({100,40,true,true},false,millis())==Result::Ok&&c.moving());checkColor(0x64cfff);
   lv_display_delete(display.*member(display_Tag{}));
   std::puts("PASS: production touch path opens settings, selects axes on release, preserves swipes and switches peers from the expanded header without repeat or movement");

@@ -212,7 +212,7 @@ void Display::serviceTouch() {
     layout.enabled = layout.enabled && !displayFailed_ && touchHealthy && !runtime_.controller.movementBlocked() &&
                      presentedCommand_.sameScope(command) && (!hud || runtime_.hud.available()) &&
                      (!hud || (!hudKnob_.menu && (touchButtons_.contactDown() ||
-                                                  !layout.name.contains(x, y))));
+                                                  !layout.nameHit(x, y))));
     const bool selectionChanged = touchSelection_ != runtime_.hud.selectionEpoch;
     const bool contextChanged=selectionChanged || inputRangeRevision_!=runtime_.controller.rangeRevision || inputModel_!=runtime_.controller.model;
     inputRangeRevision_=runtime_.controller.rangeRevision;inputModel_=runtime_.controller.model;
@@ -309,7 +309,7 @@ void Display::serviceTouch() {
       if (action == panel::TouchAction::Mode)
         hudKnob_.toggleMode(now);
       if (touch && !hudTouchDown_ && !speedScreen_ && !menuOpen_) {
-        if (layout.name.contains(x, y))
+        if (layout.nameHit(x, y))
           hudKnob_.open();
         else if (hudKnob_.menu) {
           if(layout.rows[0].contains(x,y)) hudKnob_.moveSelection(-1);

@@ -8,11 +8,14 @@
 #include "panel_input.hpp"
 #include "panel_view.hpp"
 #include "panel_connection.hpp"
+#include "panel_presentation.hpp"
 #include "ota_progress.hpp"
 namespace forkrot {
 class PanelUi {
   PanelView previous_;
   bool previousValid_=false;
+  panel::Presentation presentation_;
+  panel::Presentation::Result presented_;
   uint32_t actionEpoch_=0;
   uint32_t background_=0x0a111c;
   int width_=480,height_=480,diameter_=480;

@@ -12,6 +12,11 @@ LV_FONT_DECLARE(panel_font_64)
 LV_FONT_DECLARE(panel_font_72)
 LV_FONT_DECLARE(panel_font_96)
 LV_FONT_DECLARE(panel_font_128)
+#define SINGLE_FONT(size) LV_FONT_DECLARE(panel_font_##size##_95)
+SINGLE_FONT(144) SINGLE_FONT(128) SINGLE_FONT(112) SINGLE_FONT(96) SINGLE_FONT(80)
+SINGLE_FONT(72) SINGLE_FONT(64) SINGLE_FONT(56) SINGLE_FONT(48) SINGLE_FONT(40)
+SINGLE_FONT(24) SINGLE_FONT(18) SINGLE_FONT(14)
+#undef SINGLE_FONT
 namespace forkrot {
 namespace {
 constexpr uint32_t bg = 0x0a111c, text = 0xeff5ff, muted = 0x8fabc3;
@@ -19,6 +24,7 @@ constexpr uint32_t targetColor = 0x64cfff, reachedTargetColor = 0x65717e;
 constexpr uint32_t wifiWarning = 0xffd54f, wifiDisconnected = 0xff6b6b;
 constexpr lv_point_precise_t wifiSlash[] = {{2, 2}, {26, 26}};
 constexpr int dialRadius = 227;
+constexpr int headerShift = 10;
 constexpr int currentMarkerSize = 20, targetMarkerSize = 26;
 constexpr lv_point_precise_t arrowLeft[] = {{25, 7}, {12, 18}, {25, 29}};
 constexpr lv_point_precise_t arrowRight[] = {{11, 7}, {24, 18}, {11, 29}};
@@ -285,7 +291,7 @@ void PanelUi::create(bool round) {
   lv_obj_set_clickable(limits_, false);
   lv_obj_add_event_cb(limits_, drawLimits, LV_EVENT_DRAW_MAIN, this);
   // Smaller panels reserve this space for jog arrows and pending targets.
-  const int headerOffset = diameter_ >= 480 ? 10 : 0;
+  const int headerOffset = (diameter_ >= 480 ? 10 : 0) + headerShift;
   hudName_ = label(panel::HudNameButton.y + headerOffset, 230, 22, text);
   lv_label_set_long_mode(hudName_, LV_LABEL_LONG_DOT);
   lv_obj_set_height(hudName_,face(22)->line_height);
@@ -478,9 +484,9 @@ void PanelUi::configureLayout(const PanelView &v) {
   const bool compact=diameter_<320;
   // Preserve room for touch controls instead of shrinking every widget uniformly.
   if(compact) {
-    lv_obj_set_pos(modeButton_,x(224),y(90));lv_obj_set_size(modeButton_,p(160),28);
+    lv_obj_set_pos(modeButton_,x(224),y(90+headerShift));lv_obj_set_size(modeButton_,p(160),28);
     if(lv_obj_get_style_align(axis_,LV_PART_MAIN)!=LV_ALIGN_TOP_LEFT) lv_obj_set_align(axis_,LV_ALIGN_TOP_LEFT);
-    lv_obj_set_pos(axis_,x(110),y(100));lv_obj_set_width(axis_,p(108));
+    lv_obj_set_pos(axis_,x(110),y(100+headerShift));lv_obj_set_width(axis_,p(108));
     set(axis_,v.hudSelector?"":v.dualAxis?(v.elevation?"EL":"AZ"):"AZ");
     font(axis_,face(28));
     const bool confirm=!v.autoMode && ((v.targetValid && v.pending) || (v.secondaryTargetValid && v.secondaryPending));
@@ -616,6 +622,7 @@ void PanelUi::configureLayout(const PanelView &v) {
   touchLayout_.mode=bounds(modeButton_);
   touchLayout_.axis=v.dualAxis && v.shows(DisplayAxis)?bounds(axis_,p(8)):panel::TouchRect{};
   touchLayout_.name={};
+  touchLayout_.nameRadius=p(dialRadius-targetMarkerSize/2-4);
   if(v.hud && !v.speedScreen) {
     int left=width_,top=height_,right=0,bottom=0;
     for(auto *obj:{hudName_,hudAddress_})if(!lv_obj_is_hidden(obj)) {
@@ -623,7 +630,7 @@ void PanelUi::configureLayout(const PanelView &v) {
       right=std::max(right,int(r.x+r.width));bottom=std::max(bottom,int(r.y+r.height));
     }
     if(right>left) {
-      const int pad=std::max(8,p(12)),gap=std::max(2,p(2));
+      const int pad=std::max(4,p(8)),gap=std::max(2,p(2));
       left=std::max(0,left-pad);right=std::min(width_,right+pad);
       top=std::max(0,top-pad);bottom=std::min(height_,bottom+pad);
       for(const auto r:{touchLayout_.mode,touchLayout_.axis})
@@ -707,6 +714,7 @@ void PanelUi::layoutCurrent(const PanelView &v) {
         lv_obj_get_style_text_letter_space(obj,LV_PART_MAIN),0,LV_COORD_MAX,LV_TEXT_FLAG_NONE);return int(size.x);
   };
   panel::TouchRect chosen{},arrows[4]{};const lv_font_t *selected=nullptr,*secondary=other;
+  unsigned selectedIndex=0;
   const int horizontalWidth=compact?std::max(24,p(48)):buttonSize;
   const int horizontalHeight=buttonSize,verticalHeight=std::max(24,p(28));
   for(unsigned candidate=0;candidate<currentFontCount_&&!selected;++candidate) {
@@ -738,17 +746,31 @@ void PanelUi::layoutCurrent(const PanelView &v) {
           for(unsigned k=0;k<i;++k)if(overlap(placed[i],placed[k],gap)){clear=false;break;}
         }
         if(!clear)continue;
-        selected=f;secondary=small;chosen=row;std::copy(std::begin(placed),std::end(placed),arrows);break;
+        selected=f;selectedIndex=candidate;secondary=small;chosen=row;std::copy(std::begin(placed),std::end(placed),arrows);break;
       }
       if(selected)break;
     }
   }
   if(!selected)return;
+  // Fit using the original size, then shrink the one-axis reading by 5%.
+  // Keep its touch region and arrows stable; no transformed framebuffer layer.
+  if(!v.dualAxis) {
+    static const lv_font_t *const singleFonts[]={&panel_font_144_95,&panel_font_128_95,
+#if !PANEL_COMPACT_FONTS
+      &panel_font_112_95,&panel_font_96_95,&panel_font_80_95,
+#else
+      &panel_font_96_95,&panel_font_80_95,
+#endif
+      &panel_font_72_95,&panel_font_64_95,&panel_font_56_95,&panel_font_48_95,
+      &panel_font_40_95,&panel_font_24_95,&panel_font_18_95,&panel_font_14_95};
+    selected=singleFonts[selectedIndex];
+  }
   other=secondary;
   font(angle_,selected);font(secondaryAngle_,other);
   const int mainWidth=measure(angle_,selected),otherWidth=v.dualAxis?measure(secondaryAngle_,other):0;
   const int baseline=chosen.y+std::max(int(selected->line_height-selected->base_line),v.dualAxis?int(other->line_height-other->base_line):0);
-  lv_obj_set_pos(angle_,chosen.x+(v.elevation&&v.dualAxis?otherWidth:0),baseline-selected->line_height+selected->base_line);
+  lv_obj_set_pos(angle_,chosen.x+(v.dualAxis?(v.elevation?otherWidth:0):(int(chosen.width)-mainWidth)/2),
+      v.dualAxis?baseline-selected->line_height+selected->base_line:chosen.y+(int(chosen.height)-selected->line_height)/2);
   lv_obj_set_pos(secondaryAngle_,chosen.x+(v.elevation?0:mainWidth),baseline-other->line_height+other->base_line);
   touchLayout_.current=chosen;
   for(auto &r:touchLayout_.arrows)r={};
@@ -778,11 +800,13 @@ void PanelUi::updateConnectionIndicator(const PanelView &v,panel::ConnectionWarn
   connectionWarning_=warning;
 }
 void PanelUi::update(const PanelView &v) {
+  const auto shown=presentation_.update(v,lv_tick_get());
   const auto warning=diameter_<320?panel::ConnectionWarning::None:connectionIndicator_.update(v,lv_tick_get());
-  if(previousValid_ && previous_==v) {
+  if(previousValid_ && previous_==v && presented_==shown) {
     if(warning!=connectionWarning_)updateConnectionIndicator(v,warning);
     return;
   }
+  presented_=shown;
   const uint32_t background = hudBackgroundColor(v.hud ? v.hudBackground : 0);
   if (background_ != background) {
     background_ = background;
@@ -831,13 +855,13 @@ void PanelUi::update(const PanelView &v) {
   set(range_, value);
   lv_obj_set_hidden(range_, v.hud || v.hudSelector);
   if (v.feedback) {
-    std::snprintf(value, sizeof value, "%.0f°", double(v.current));
+    std::snprintf(value, sizeof value, "%.0f°", double(shown.current.degrees));
   } else {
     std::snprintf(value, sizeof value, "%s", v.uncalibrated ? "NC" : "—");
   }
   set(angle_, value);
   if (v.secondaryFeedback) {
-    std::snprintf(value, sizeof value, v.elevation ? "%.0f° / " : " / %.0f°", double(v.secondaryCurrent));
+    std::snprintf(value, sizeof value, v.elevation ? "%.0f° / " : " / %.0f°", double(shown.secondary.degrees));
   } else {
     std::snprintf(value, sizeof value, v.elevation ? "%s / " : " / %s",
                   v.secondaryUncalibrated ? "NC" : "—");
@@ -862,7 +886,7 @@ void PanelUi::update(const PanelView &v) {
   }
   set(secondaryTarget_, v.dualAxis ? value : "");
   set(targetCaption_, compact && confirmation ? ((v.elevation!=pendingOther)?"ЕХАТЬ · EL":"ЕХАТЬ · AZ") : confirmation ? "ЕХАТЬ" : "Цель");
-  const auto goalColor=v.targetReached()?reachedTargetColor:confirmation?0xf0b85c:targetColor;
+  const auto goalColor=shown.reached?reachedTargetColor:confirmation?0xf0b85c:targetColor;
   color(targetCaption_, goalColor);
   color(target_, goalColor);
   color(secondaryTarget_, goalColor);
@@ -897,13 +921,14 @@ void PanelUi::update(const PanelView &v) {
     return x;
   };
   font(axis_, compact?face(28):v.dualAxis && confirmation ? face(11) : face(22));
-  const int goalY = idle ? 344 : confirmation ? (v.dualAxis ? 300 : 250) : (v.dualAxis ? 316 : 282);
+  const int goalShift=confirmation && !compact?headerShift:0;
+  const int goalY = (idle ? 344 : confirmation ? (v.dualAxis ? 300 : 250) : (v.dualAxis ? 316 : 282))+goalShift;
   lv_obj_update_layout(targetCaption_);
   const int captionWidth = lv_obj_get_width(targetCaption_);
   const int goalX = compact ? 0 : row(target_, secondaryTarget_, goalFont, face(22), goalY,
                         prominent ? 0 : captionWidth + p(12));
   if(!compact) lv_obj_set_pos(targetCaption_, prominent ? (width_ - captionWidth) / 2 : goalX,
-                 prominent ? y(v.dualAxis ? 266 : 210)
+                 prominent ? y((v.dualAxis ? 266 : 210)+goalShift)
                               : y(goalY) + goalFont->line_height - goalFont->base_line -
                                     captionFont->line_height + captionFont->base_line);
   for (auto *obj : {angle_, secondaryAngle_, targetCaption_, target_, secondaryTarget_}) {
@@ -977,8 +1002,8 @@ void PanelUi::update(const PanelView &v) {
   const bool contextChanged = sourceId_ != v.sourceId || elevation_ != v.elevation || maximum_ != v.maximum || minimum_ != v.minimum;
   const bool maximumValid = std::isfinite(v.maximum) && std::isfinite(v.minimum) && v.maximum > v.minimum;
   const bool rangeValid = v.feedback && std::isfinite(v.current) && maximumValid;
-  const auto lower = rangeValid ? crowpanel::limitOpacity(v.current - v.minimum) : uint8_t(0);
-  const auto upper = rangeValid ? crowpanel::limitOpacity(v.maximum - v.current) : uint8_t(0);
+  const auto lower = rangeValid ? crowpanel::limitOpacity(shown.current.position - v.minimum) : uint8_t(0);
+  const auto upper = rangeValid ? crowpanel::limitOpacity(v.maximum - shown.current.position) : uint8_t(0);
   const bool targetRangeValid = maximumValid && v.targetValid && std::isfinite(v.target) &&
                                 v.target >= v.minimum && v.target <= v.maximum;
   const auto targetLower = targetRangeValid ? crowpanel::limitOpacity(v.target - v.minimum) : uint8_t(0);
@@ -1001,7 +1026,7 @@ void PanelUi::update(const PanelView &v) {
   if(limitChanged) updateLimitBand(limitBand_,lower,upper);
   if(targetLimitChanged) updateLimitBand(targetLimitBand_,targetLower,targetUpper);
   sourceId_ = v.sourceId; elevation_ = v.elevation;
-  updateMarker(currentMotion_, v.current, v.feedback, contextChanged, false);
+  updateMarker(currentMotion_, shown.current.position, v.feedback, contextChanged, false);
   updateMarker(targetMotion_, v.target, v.targetValid, contextChanged, true);
   configureLayout(v);
   lv_obj_set_hidden(speedPanel_, !v.speedScreen);

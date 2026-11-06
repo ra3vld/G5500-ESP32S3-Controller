@@ -68,12 +68,13 @@ struct TouchLayout {
   TouchRect mode=ModeButton, name=HudNameButton, peers=HudList, rows[3]{}, axis{}, settings{}, stop{};
   TouchRect speedTracks[2]{SpeedTracks[0],SpeedTracks[1]}, speedBack=SpeedBack;
   int centerX=DialCenter, centerY=DialCenter, innerRadius=DialTouchInner, outerRadius=DialTouchOuter;
+  int nameRadius=0;
   unsigned width=480,height=480;
   int swipeDeadzone=12, swipeFull=100, targetSwipeDeadzone=0;
   bool menuTargetHit(uint16_t x,uint16_t y) const {
     if(target.contains(x,y))return true;
     if(!menuTarget.contains(x,y) || current.contains(x,y) || mode.contains(x,y) ||
-        name.contains(x,y) || axis.contains(x,y) || settings.contains(x,y) || stop.contains(x,y))return false;
+        nameHit(x,y) || axis.contains(x,y) || settings.contains(x,y) || stop.contains(x,y))return false;
     for(const auto &arrow:arrows)if(arrow.contains(x,y))return false;
     return true;
   }
@@ -82,13 +83,18 @@ struct TouchLayout {
     const int dx=int(x)-centerX,dy=int(y)-centerY,r=dx*dx+dy*dy;
     return r>=innerRadius*innerRadius && r<=outerRadius*outerRadius;
   }
+  bool nameHit(uint16_t x,uint16_t y) const {
+    if(!name.contains(x,y))return false;
+    const int dx=int(x)-centerX,dy=int(y)-centerY;
+    return !nameRadius || dx*dx+dy*dy<=nameRadius*nameRadius;
+  }
   float bearing(uint16_t x,uint16_t y) const {
     return float((std::lround(std::atan2(float(int(x)-centerX),float(centerY-int(y))) *
         180.f/3.14159265358979323846f)+360)%360);
   }
   bool dialHit(uint16_t x,uint16_t y) const {
     if(menuOpen || speedScreen || current.contains(x,y) || target.contains(x,y) || (menuAccess && menuTargetHit(x,y)) || mode.contains(x,y) ||
-        name.contains(x,y) || axis.contains(x,y) || settings.contains(x,y) || stop.contains(x,y))return false;
+        nameHit(x,y) || axis.contains(x,y) || settings.contains(x,y) || stop.contains(x,y))return false;
     for(const auto &arrow:arrows)if(arrow.contains(x,y))return false;
     return dialContains(x,y);
   }
