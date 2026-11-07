@@ -75,6 +75,7 @@ public:
   void relieveMemory(uint32_t free, uint32_t largest) { live_.relieveMemory(free,largest); }
 
 private:
+  bool handleMqttRequest(std::string_view request);
   bool handleHardwareRequest(std::string_view request);
   bool handleOtaRequest(std::string_view request);
   void sendHtml(const char *raw, size_t rawSize, const unsigned char *gzip, size_t gzipSize);

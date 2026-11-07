@@ -20,6 +20,7 @@ body.embedded #display-settings{display:none!important}
 <form id="recovery-network" hidden><label>Подключение после выхода<select name="choice"><option value="1">Точка доступа устройства</option><option value="0">Wi-Fi через роутер · DHCP</option><option value="4">Ethernet · DHCP</option></select></label><div id="recovery-wifi-fields"><label>Имя сети (SSID)<input name="ssid" maxlength="32" autocomplete="off"></label><label>Пароль сети<input name="pass" type="password" autocomplete="new-password"><small>Введите пароль заново; пустое поле — открытая сеть.</small></label></div><label id="recovery-ap-field">Новый пароль точки доступа<input name="apPass" type="password" maxlength="63" autocomplete="new-password"><small>8–63 символа. Пустое поле — доступ без пароля.</small></label><button type="submit">Сохранить исправление сети</button><p id="recovery-network-message" role="status"></p></form></div>
 <div class="recovery-choice"><h2>2. Ошибка после изменения оборудования</h2><p>Верните последний подтверждённый привод и GPIO. Калибровка и сетевые настройки сохранятся.</p><div id="recovery-rollback-place"></div></div>
 <div class="recovery-choice"><h2>3. Нужно исправить GPIO или другие параметры</h2><p>Откройте ручную настройку, измените нужные поля и нажмите «Сохранить и перезапустить». После успешного запуска подтвердите конфигурацию.</p><button type="button" class="section-toggle" id="recovery-manual-open" aria-controls="manual-settings" aria-expanded="false">Открыть ручную настройку</button></div>
+<div class="recovery-choice" id="recovery-mqtt"><h2>MQTT и память</h2><p>В восстановлении MQTT и TLS не запускаются. Можно также выключить их для следующего обычного запуска. Адрес брокера и пароль сохранятся.</p><button type="button" id="recovery-mqtt-disable">Отключить MQTT и TLS</button><p id="recovery-mqtt-message" role="status" aria-live="polite"></p></div>
 <p id="recovery-next" role="status">После исправления сети нажмите «Запустить устройство» ниже. Запуск использует подтверждённые настройки оборудования. Если их ещё нет, сначала выполните ручную настройку.</p><button type="button" id="recovery-resume" aria-describedby="recovery-resume-reason" disabled>Запустить устройство</button><p id="recovery-resume-reason" class="note" role="status">Ожидаем загрузку состояния устройства.</p>
 </section><p id="message" role="status" aria-live="polite"></p><div id="manual-settings"><p id="pin-validation-top" class="error" role="alert"></p><form id="hardware"><fieldset><legend>Привод</legend><label>Режим привода<select name="driveMode"><option value="0">Штатный блок Yaesu</option><option value="1">LEFT / RIGHT + SPEED_PWM</option><option value="2">LEFT_PWM / RIGHT_PWM (+ ENABLE) · BTS7960</option><option value="3">DIR + SPEED_PWM</option><option value="simulation">Имитация движения</option><option value="mechanics">Имитация с симуляцией механики</option></select></label>
 <input type="hidden" name="driveInterface"><input type="hidden" name="simulation"><small id="drive-simulation-help" hidden>Модель учитывает инерцию, трение и люфт. После STOP выход отключается сразу, а виртуальная механика останавливается с выбегом. Моторные GPIO и датчики положения не используются.</small>
@@ -198,11 +199,20 @@ function recoveryResumeBlockReason(){
 }
 function renderRecoveryGuide(){
  const active=!!state?.recovery;document.getElementById('recovery-guide').hidden=!active;recoveryNetwork.hidden=!active;document.body.classList.toggle('recovery-guided',active);
+ document.getElementById('recovery-mqtt').hidden=!active||metadata?.features?.mqtt===false;
+ document.getElementById('recovery-mqtt-disable').disabled=busy||recoveryNetworkBusy||!state||!metadata;
  if(active&&!recoveryGuided){recoveryGuided=true;document.querySelector('h1').textContent='Восстановление';document.getElementById('manual-settings').hidden=true;document.getElementById('recovery-rollback-place').append(document.getElementById('rollback'));form.before(hardwareNetwork.closest('details'));hardwareNetwork.insertBefore(recoveryNetwork,hardwareNetwork.querySelector('label'));}
  if(!active&&recoveryGuided){location.replace('/?setup=skip#control');return;}
  const reason=recoveryResumeBlockReason(),button=document.getElementById('recovery-resume'),message=document.getElementById('recovery-resume-reason');
  button.disabled=!!reason;button.title=reason;message.textContent=reason;message.hidden=!reason;renderRecoveryDisclosures();
 }
+document.getElementById('recovery-mqtt-disable').onclick=async()=>{
+ if(busy||recoveryNetworkBusy||!state?.recovery)return;
+ busy=true;buttons();const message=document.getElementById('recovery-mqtt-message');message.textContent='Отключаем MQTT…';
+ try{await request('/api/mqtt',{enabled:'0',tls:'0'});message.textContent='MQTT и TLS отключены. Настройка сохранена без перезагрузки.';}
+ catch(e){message.textContent='Не удалось отключить MQTT: '+e.message;}
+ finally{busy=false;buttons();}
+};
 document.getElementById('recovery-manual-open').onclick=()=>{const manual=document.getElementById('manual-settings');manual.hidden=!manual.hidden;renderRecoveryDisclosures();if(!manual.hidden)manual.scrollIntoView({block:'start',behavior:'smooth'});};
 function loadRecoveryNetwork(){
  if(recoveryNetworkLoaded)return Promise.resolve();if(recoveryNetworkLoading)return recoveryNetworkLoading;

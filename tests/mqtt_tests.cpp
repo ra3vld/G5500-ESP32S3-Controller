@@ -15,6 +15,17 @@ int main(int argc,char **argv){
   {
     MqttConfig c;auto bytes=encodeMqtt(c);MqttConfig decoded;
     assert(decodeMqtt(bytes,decoded) && decoded==c);
+    const auto checksum=[](MqttRecord &record){
+      uint32_t crc=2166136261u;for(size_t i=0;i<record.size()-4;++i)crc=(crc^record[i])*16777619u;
+      for(unsigned i=0;i<4;++i)record[record.size()-4+i]=uint8_t(crc>>(i*8));
+    };
+    auto legacy=bytes;legacy[2]=1;checksum(legacy);
+    assert(decodeMqtt(legacy,decoded)&&!decoded.tls&&decoded==c);
+    legacy[7]=1;checksum(legacy);assert(!decodeMqtt(legacy,decoded));
+    c.tls=true;auto secure=encodeMqtt(c);assert(secure.size()==bytes.size());
+    assert(decodeMqtt(secure,decoded)&&decoded==c&&decoded.tls);
+    secure[7]=2;checksum(secure);assert(!decodeMqtt(secure,decoded));
+    c.tls=false;
     bytes[10]^=1;assert(!decodeMqtt(bytes,decoded));
     c.enabled=true;assert(c.validate());assert(mqttText("broker.local",c.host));assert(!c.validate());
     assert(!mqttText(std::string(96,'x'),c.host));assert(!mqttText(std::string_view("a\0b",3),c.host));

@@ -32,13 +32,17 @@ class BuildCapabilitiesTests(unittest.TestCase):
     def test_effective_firmware_defaults_and_overrides(self):
         # Let the C++ preprocessor evaluate actual profile/default expressions.
         for board, flash, slots, ota, plain in [(4, 4, 0, 0, 0), (9, 4, 0, 0, 0),
-                                               (4, 8, 1, 1, 1), (1, 16, 1, 1, 1)]:
+                                               (4, 8, 1, 0, 1), (1, 16, 1, 1, 1)]:
             with self.subTest(board=board, flash=flash):
                 assertions = '#include "build_config.hpp"\n' + f'static_assert(bool(ARDUINO_OTA_SUPPORT)=={ota});\nstatic_assert(bool(WEB_PLAIN_HTML_SUPPORT)=={plain});\n'
                 cmd = ['g++', '-std=c++17', '-fsyntax-only', '-x', 'c++', '-I', str(ROOT/'G5500_Fork'),
                        f'-DBOARD_PROFILE={board}', f'-DG5500_BUILD_FLASH_BYTES={flash << 20}',
                        f'-DG5500_HAS_OTA_PARTITIONS={slots}', '-']
                 subprocess.run(cmd, input=assertions, text=True, check=True, capture_output=True)
+                if board == 4:
+                    explicit_ota = '#include "build_config.hpp"\n' + f'static_assert(ARDUINO_OTA_SUPPORT=={slots});\n'
+                    subprocess.run(cmd[:-1]+['-DOTA_SUPPORT=1', '-'], input=explicit_ota,
+                                   text=True, check=True, capture_output=True)
                 forced = '#include "build_config.hpp"\nstatic_assert(WEB_PLAIN_HTML_SUPPORT==1);\nstatic_assert(ARDUINO_OTA_SUPPORT==0);\n'
                 subprocess.run(cmd[:-1]+['-DWEB_PLAIN_HTML_SUPPORT=1', '-DARDUINO_OTA_SUPPORT=0', '-'],
                                input=forced, text=True, check=True, capture_output=True)

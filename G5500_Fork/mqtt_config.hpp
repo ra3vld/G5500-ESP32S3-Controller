@@ -7,7 +7,7 @@
 #include <string_view>
 namespace forkrot {
 struct MqttConfig {
-  bool enabled=false, discovery=HOME_ASSISTANT_DISCOVERY_SUPPORT;
+  bool enabled=false, discovery=HOME_ASSISTANT_DISCOVERY_SUPPORT, tls=false;
   uint16_t port=1883;
   char host[96]{}, username[64]{}, password[96]{}, discoveryPrefix[48]="homeassistant";
   const char *validate() const {
@@ -21,7 +21,7 @@ struct MqttConfig {
     return nullptr;
   }
   bool operator==(const MqttConfig &o) const {
-    return enabled==o.enabled && discovery==o.discovery && port==o.port &&
+    return enabled==o.enabled && discovery==o.discovery && tls==o.tls && port==o.port &&
       !std::strcmp(host,o.host) && !std::strcmp(username,o.username) && !std::strcmp(password,o.password) &&
       !std::strcmp(discoveryPrefix,o.discoveryPrefix);
   }
@@ -29,7 +29,7 @@ struct MqttConfig {
 inline constexpr size_t MqttRecordSize=8+96+64+96+48+4;
 using MqttRecord=std::array<uint8_t,MqttRecordSize>;
 inline MqttRecord encodeMqtt(const MqttConfig &c) {
-  MqttRecord b{'M','Q',1,uint8_t(c.enabled),uint8_t(c.discovery),uint8_t(c.port),uint8_t(c.port>>8),0};
+  MqttRecord b{'M','Q',2,uint8_t(c.enabled),uint8_t(c.discovery),uint8_t(c.port),uint8_t(c.port>>8),uint8_t(c.tls)};
   size_t at=8;
   const auto copy=[&](const char *s,size_t size){std::memcpy(b.data()+at,s,size);at+=size;};
   copy(c.host,sizeof c.host);copy(c.username,sizeof c.username);copy(c.password,sizeof c.password);copy(c.discoveryPrefix,sizeof c.discoveryPrefix);
@@ -38,12 +38,15 @@ inline MqttRecord encodeMqtt(const MqttConfig &c) {
   return b;
 }
 inline bool decodeMqtt(const MqttRecord &b,MqttConfig &c) {
-  if(b[0]!='M'||b[1]!='Q'||b[2]!=1||b[3]>1||b[4]>1||b[7])return false;
-  MqttConfig next;next.enabled=b[3];next.discovery=b[4];next.port=uint16_t(b[5])|(uint16_t(b[6])<<8);
+  if(b[0]!='M'||b[1]!='Q'||(b[2]!=1 && b[2]!=2)||b[3]>1||b[4]>1||b[7]>(b[2]==1?0:1))return false;
+  MqttConfig next;next.enabled=b[3];next.discovery=b[4];next.tls=b[7];next.port=uint16_t(b[5])|(uint16_t(b[6])<<8);
   size_t at=8;
   const auto copy=[&](char *s,size_t size){std::memcpy(s,b.data()+at,size);at+=size;};
   copy(next.host,sizeof next.host);copy(next.username,sizeof next.username);copy(next.password,sizeof next.password);copy(next.discoveryPrefix,sizeof next.discoveryPrefix);
-  if(next.validate() || encodeMqtt(next)!=b)return false;
+  auto canonical=encodeMqtt(next);canonical[2]=b[2];
+  uint32_t crc=2166136261u;for(size_t i=0;i<canonical.size()-4;++i)crc=(crc^canonical[i])*16777619u;
+  for(unsigned i=0;i<4;++i)canonical[canonical.size()-4+i]=uint8_t(crc>>(i*8));
+  if(next.validate() || canonical!=b)return false;
   c=next;return true;
 }
 template<size_t N> inline bool mqttText(std::string_view text,char (&out)[N]) {

@@ -9,9 +9,16 @@
 #include "hardware.hpp"
 #include "heap_metrics.hpp"
 #include "wifi_access.hpp"
-#include "wifi_memory.hpp"
 #include "ethernet.hpp"
 #include <mqtt_client.h>
+#if MQTT_TLS_SUPPORT
+#include <esp_crt_bundle.h>
+#include <esp_sntp.h>
+#include <ctime>
+#if !CONFIG_MBEDTLS_CERTIFICATE_BUNDLE || !CONFIG_MQTT_TRANSPORT_SSL
+#error "MQTT TLS requires SDK certificate bundle and SSL transport support"
+#endif
+#endif
 #include <esp_transport.h>
 #include <tcp_peer.hpp>
 #include <nvs.h>
@@ -27,6 +34,8 @@ struct MqttService::Impl {
   std::atomic<bool> connected{false};
   std::atomic<int> connectError{0};
   std::atomic<int> transportErrorType{0},socketError{0},transportError{0};
+  std::atomic<int> tlsError{0},tlsVerifyFlags{0};
+  std::atomic<bool> retryNeeded{false};
   std::atomic<uint32_t> stackFree{0};
   std::atomic<uint32_t> epoch{0},outboxBytes{0},outboxAt{0};
   TaskHandle_t worker=nullptr;
@@ -44,7 +53,6 @@ struct MqttService::Impl {
   std::atomic<bool> hudSocketReady{false};
   std::atomic<uint32_t> hudPublishMaxUs{0},hudPublishFailures{0};
   uint32_t hudEpoch=0,hudQueryAt=0,hudThrottled=0,hudControlDeferred=0,hudServiceMaxUs=0;
-  bool offlineQueued=false;
   nvs_handle_t registry=0;
   nvs_iterator_t iterator=nullptr;
   bool registryStarted=false;
@@ -171,7 +179,12 @@ struct MqttService::Impl {
       stopping.store(true);schedule();
       while(!workerStopped.load())vTaskDelay(1);
     }
-    if(client){esp_mqtt_client_stop(client);retirePeer();esp_mqtt_client_destroy(client);}
+    if(client) {
+      // stop() sends a clean DISCONNECT, which suppresses the broker's LWT.
+      // The publisher has joined: send one retained offline state first.
+      if(connected.load() && esp_mqtt_client_publish(client,willTopic,"offline",7,0,true)<0)retirePeer();
+      esp_mqtt_client_stop(client);retirePeer();esp_mqtt_client_destroy(client);
+    }
     if(iterator)nvs_release_iterator(iterator);
     if(registry)nvs_close(registry);
   }
@@ -181,7 +194,8 @@ struct MqttService::Impl {
     self.stackFree.store(uxTaskGetStackHighWaterMark(nullptr));
     if(eventId==MQTT_EVENT_BEFORE_CONNECT) {
       self.retirePeer();self.tcpMssLimit.store(0);
-      char scheme[]="mqtt";self.transport=esp_mqtt_client_get_transport(self.client,scheme);
+      char plain[]="mqtt",secure[]="mqtts";
+      self.transport=esp_mqtt_client_get_transport(self.client,self.owner.runtime_.mqtt.tls?secure:plain);
     } else if(eventId==MQTT_EVENT_CONNECTED) {
       const int fd=self.transport?esp_transport_get_socket(self.transport):-1;
       self.peer=tcpPeerEndpoint(fd);
@@ -198,6 +212,7 @@ struct MqttService::Impl {
 #endif
       self.epoch.fetch_add(1);
       self.connected.store(true);self.connectError.store(0);
+      self.tlsError.store(0);self.tlsVerifyFlags.store(0);
       self.bridge.connection(!self.paused);
       char topic[80];std::snprintf(topic,sizeof topic,"%s/+/set/+",self.bridge.baseTopic());
       esp_mqtt_client_subscribe(self.client,topic,0);
@@ -216,6 +231,7 @@ struct MqttService::Impl {
       self.disconnects.fetch_add(1);self.retirePeer();self.tcpMssLimit.store(0);
       self.epoch.fetch_add(1);
       self.connected.store(false);self.bridge.connection(false);
+      if(self.owner.runtime_.mqtt.tls)self.retryNeeded.store(true);
     } else if(eventId==MQTT_EVENT_DATA) {
       const std::string_view topic(event->topic?event->topic:"",size_t(event->topic_len));
       const bool discovery=topic=="g5500/hud/discover";
@@ -242,11 +258,14 @@ struct MqttService::Impl {
         self.transportErrorType.store(int(event->error_handle->error_type));
         self.socketError.store(event->error_handle->esp_transport_sock_errno);
         self.transportError.store(event->error_handle->esp_tls_last_esp_err);
+        self.tlsError.store(event->error_handle->esp_tls_stack_err);
+        self.tlsVerifyFlags.store(event->error_handle->esp_tls_cert_verify_flags);
       }
       self.connected.store(false);self.bridge.connection(false);
       const auto peer=tcpPeerEndpoint(self.transport?esp_transport_get_socket(self.transport):-1);
       if(peer.valid)self.peer=peer;
       self.retirePeer();
+      if(self.owner.runtime_.mqtt.tls)self.retryNeeded.store(true);
     }
     // The publisher polls every 250 ms. Callbacks only update atomics and the
     // ingress queue; they must not touch a task handle during start/teardown.
@@ -258,7 +277,12 @@ struct MqttService::Impl {
 #endif
     esp_mqtt_client_config_t settings{};
     settings.broker.address.hostname=config.host;settings.broker.address.port=config.port;
-    settings.broker.address.transport=MQTT_TRANSPORT_OVER_TCP;
+    settings.broker.address.transport=config.tls?MQTT_TRANSPORT_OVER_SSL:MQTT_TRANSPORT_OVER_TCP;
+#if MQTT_TLS_SUPPORT
+    // The SDK bundle stays in Flash; do not keep a PEM copy or parsed CA store.
+    // Hostname and certificate validity checks remain enabled.
+    if(config.tls)settings.broker.verification.crt_bundle_attach=esp_crt_bundle_attach;
+#endif
     settings.credentials.client_id=clientId;
     if(config.username[0])settings.credentials.username=config.username;
     if(config.password[0])settings.credentials.authentication.password=config.password;
@@ -267,7 +291,14 @@ struct MqttService::Impl {
     settings.session.last_will={willTopic,"offline",7,1,1};
     settings.task.stack_size=6144;settings.task.priority=1;
     settings.buffer.size=1024;settings.buffer.out_size=1024;settings.outbox.limit=2048;
-    settings.network.timeout_ms=2000;settings.network.reconnect_timeout_ms=10000;
+    settings.network.timeout_ms=2000;
+    // Every TLS handshake, including retries, must pass the main-loop memory
+    // and motion guards. The SDK must not start one independently under load.
+    settings.network.disable_auto_reconnect=config.tls;
+    // Even with automatic reconnect disabled, the SDK waits for half this
+    // interval between task turns after a disconnect. Keep stop()/destroy()
+    // responsive; the owner loop enforces the actual 10-second TLS cooldown.
+    settings.network.reconnect_timeout_ms=config.tls?100:10000;
     client=esp_mqtt_client_init(&settings);
     if(!client || esp_mqtt_client_register_event(client,MQTT_EVENT_ANY,event,this)!=ESP_OK ||
         esp_mqtt_client_start(client)!=ESP_OK)return false;
@@ -285,20 +316,43 @@ MqttService::MqttService(Runtime &r,DeviceActions &a,Hardware &h):runtime_(r),ac
 MqttService::~MqttService()=default;
 void MqttService::service() {
 #if defined(ARDUINO_ARCH_ESP32) && defined(ARDUINO)
-  if(!runtime_.mqttStorageOk){error_="mqtt_storage_failed";return;}
-  if(!runtime_.mqtt.enabled){error_="disabled";return;}
   if(runtime_.recovery){pause();return;}
-  if(!impl_) {
-    if(!runtime_.hud.isHud() && runtime_.controller.controlActive()){error_="motion_active";return;}
-    if(!ethernetConnected() && radioWifi.status()!=WL_CONNECTED && !(radioWifi.getMode()&WIFI_AP)){error_="network_unavailable";return;}
-    constexpr size_t Reserve=24576;
-    if(heapFreeBytes()<MemoryGuard::HealthyFree+Reserve || heapMaxBlockBytes()<sizeof(Impl)+MemoryGuard::HealthyBlock) {error_="mqtt_memory_limited";return;}
-    impl_.reset(new(std::nothrow) Impl(*this));
-    if(!impl_ || !impl_->begin()){impl_.reset();error_="mqtt_start_failed";return;}
+  if(!runtime_.mqttStorageOk){pause();error_="mqtt_storage_failed";return;}
+  if(!runtime_.mqtt.enabled){pause();error_="disabled";return;}
+  if(impl_ && impl_->retryNeeded.load()) {
+    tlsError_=impl_->tlsError.load();tlsVerifyFlags_=impl_->tlsVerifyFlags.load();
+    brokerError_=impl_->connectError.load();
+    pause();retryAt_=millis();retryPending_=true;error_="mqtt_tls_retry";
   }
-  if(impl_->paused) {
-    if(!impl_->offlineQueued)impl_->offlineQueued=Impl::publish(impl_.get(),impl_->willTopic,"offline",true,1);
-    return;
+  if(!impl_) {
+    if(retryPending_ && uint32_t(millis()-retryAt_)<10000)return;
+    retryPending_=false;
+    if(!runtime_.hud.isHud() && runtime_.controller.controlActive()){error_="motion_active";return;}
+    if(!ethernetConnected() && radioWifi.status()!=WL_CONNECTED && (runtime_.mqtt.tls || !(radioWifi.getMode()&WIFI_AP))){error_="network_unavailable";return;}
+    if(runtime_.mqtt.tls) {
+#if !MQTT_TLS_SUPPORT
+      error_="mqtt_tls_unavailable";return;
+#endif
+    }
+    // TLS uses the prebuilt SDK's record buffers and handshake workspace.
+    // These are conservative admission limits, not a measured TLS heap peak.
+    const size_t reserve=runtime_.mqtt.tls?65536:24576;
+    const size_t block=runtime_.mqtt.tls?32768:MemoryGuard::HealthyBlock;
+    if(heapFreeBytes()<MemoryGuard::HealthyFree+reserve || heapMaxBlockBytes()<std::max<size_t>(sizeof(Impl)+MemoryGuard::HealthyBlock,block)) {
+      error_=runtime_.mqtt.tls?"mqtt_tls_memory_limited":"mqtt_memory_limited";return;
+    }
+#if MQTT_TLS_SUPPORT
+    if(runtime_.mqtt.tls && std::time(nullptr)<=1700000000) {
+#if NTP_SUPPORT
+      // Wi-Fi may have appeared after the boot-time NTP attempt. Start the
+      // shared clock service once, without blocking control or creating a task.
+      if(!esp_sntp_enabled())configTime(0,0,"pool.ntp.org","time.nist.gov");
+#endif
+      error_="mqtt_tls_time_required";return;
+    }
+#endif
+    impl_.reset(new(std::nothrow) Impl(*this));
+    if(!impl_ || !impl_->begin()){impl_.reset();retryAt_=millis();retryPending_=true;error_="mqtt_start_failed";return;}
   }
   error_=impl_->connected.load()?"":"connecting";
   const auto epoch=impl_->epoch.load();
@@ -342,10 +396,23 @@ bool MqttService::sendHud(const HudEndpoint &endpoint,const uint8_t *bytes,size_
 void MqttService::pause() {
 #if defined(ARDUINO_ARCH_ESP32) && defined(ARDUINO)
   if(impl_) {
-    if(!impl_->paused){impl_->paused=true;impl_->bridge.connection(false);}
-    if(!impl_->offlineQueued)impl_->offlineQueued=Impl::publish(impl_.get(),impl_->willTopic,"offline",true,1);
+    impl_->paused=true;
+    impl_->bridge.connection(false);
+    runtime_.hud.disconnectMqtt();
+    // Join both tasks and destroy the transport, TLS context and all queues.
+    // Never leave an idle TLS session resident in recovery or after disable.
+    impl_.reset();
   }
 #endif
+  error_=runtime_.recovery?"recovery":"disabled";
+}
+void MqttService::configure(const MqttConfig &config) {
+  // Call only on the owner loop, with outputs stopped and NVS verified.
+  // Callbacks retain their old credentials until both tasks have been joined.
+  pause();
+  runtime_.mqtt=config;runtime_.mqttStorageOk=true;
+  retryPending_=false;tlsError_=tlsVerifyFlags_=brokerError_=0;
+  error_=runtime_.recovery?"recovery":config.enabled?"not_started":"disabled";
 }
 bool MqttService::connected() const {
 #if defined(ARDUINO_ARCH_ESP32) && defined(ARDUINO)
@@ -358,17 +425,18 @@ void MqttService::writeStatus(JsonWriter &j, bool compact) const {
   j << "\"supported\":true,\"connected\":";
 #if defined(ARDUINO_ARCH_ESP32) && defined(ARDUINO)
   j << (impl_ && impl_->connected.load()?"true":"false") << ",\"error\":" << jsonQuoted(error_);
-  if(compact) {
-    if(impl_)j << ",\"brokerError\":" << impl_->connectError.load();
-    return;
-  }
+  j << ",\"tlsError\":" << (impl_?impl_->tlsError.load():tlsError_)
+    << ",\"tlsVerifyFlags\":" << (impl_?impl_->tlsVerifyFlags.load():tlsVerifyFlags_)
+    << ",\"clientAllocated\":" << (impl_?"true":"false")
+    << ",\"brokerError\":" << (impl_?impl_->connectError.load():brokerError_);
+  if(compact)return;
   if(impl_)j << ",\"baseTopic\":" << jsonQuoted(impl_->bridge.baseTopic()) << ",\"nodes\":" << impl_->bridge.nodeCount()
     << ",\"rejected\":" << impl_->bridge.rejected() << ",\"dropped\":" << impl_->bridge.dropped()
     << ",\"commands\":" << impl_->bridge.commands() << ",\"lastResult\":" << jsonQuoted(impl_->bridge.lastResult())
     << ",\"requestId\":" << impl_->bridge.pendingRequest() << ",\"outboxBytes\":" << impl_->outboxBytes.load()
     << ",\"outboxAgeMs\":" << uint32_t(millis()-impl_->outboxAt.load())
     << ",\"stackFreeBytes\":" << impl_->stackFree.load()
-    << ",\"publishStackFreeBytes\":" << impl_->publishStackFree.load() << ",\"brokerError\":" << impl_->connectError.load();
+    << ",\"publishStackFreeBytes\":" << impl_->publishStackFree.load();
   if(impl_)j << ",\"disconnects\":" << impl_->disconnects.load() << ",\"tcpRetired\":" << impl_->tcpRetired.load()
     << ",\"transportErrorType\":" << impl_->transportErrorType.load() << ",\"socketError\":" << impl_->socketError.load()
     << ",\"transportError\":" << impl_->transportError.load()

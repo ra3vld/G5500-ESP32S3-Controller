@@ -281,22 +281,22 @@ static void mqttApiTests() {
     assert(f.call("POST","/api/mqtt","enabled=1&host=broker.local"+token,false).status==503);
     assert(r.setup.required&&!r.setupRestartRequired&&!f.restart.pending());Preferences::failedBytesKey.clear();
     assert(f.call("POST","/api/mqtt","enabled=1&host=broker.local&password=wizard-secret"+token,false).status==200);
-    assert(r.setupRestartRequired&&!f.restart.pending());
+    assert(!r.setupRestartRequired&&!f.restart.pending());
     assert(f.call("POST","/api/setup","action=end_save"+token,false).status==200);
     WiFi.connectionStatus=0;
     assert(f.call("POST","/api/setup","action=complete&generation="+std::to_string(r.setup.generation)+token,false).status==409);
     assert(r.setup.required&&!f.restart.pending());
     const auto saved=f.call("GET","/api/mqtt",{},false);
     assert(saved.status==200&&saved.body.find("\"host\":\"broker.local\"")!=std::string::npos&&saved.body.find("\"hasPassword\":true")!=std::string::npos);
-    assert(!r.mqtt.enabled&&r.mqtt.password[0]==0); // The active client keeps its original credentials until restart.
+    assert(r.mqtt.enabled&&std::string(r.mqtt.password)=="wizard-secret"); // Applied without restarting the setup session.
     const auto active=f.call("GET","/api/status",{},false);
-    assert(active.body.find("\"mqtt\":{\"enabled\":false")!=std::string::npos&&active.body.find("wizard-secret")==std::string::npos);
+    assert(active.body.find("\"mqtt\":{\"enabled\":true")!=std::string::npos&&active.body.find("wizard-secret")==std::string::npos);
     assert(f.call("POST","/api/setup","action=begin_save"+token,false).status==200);
     assert(f.call("POST","/api/mqtt","host=corrected.local"+token,false).status==200);
     assert(f.call("POST","/api/setup","action=end_save"+token,false).status==200);
     WiFi.connectionStatus=WL_CONNECTED;
     assert(f.call("POST","/api/setup","action=complete&generation="+std::to_string(r.setup.generation)+token,false).status==200);
-    assert(!r.setup.required&&!r.controller.setupRequired&&r.setup.step==SetupStep::Done&&f.restart.pending());
+    assert(!r.setup.required&&!r.controller.setupRequired&&r.setup.step==SetupStep::Done&&!f.restart.pending());
     Runtime reboot;MqttConfig mqtt;assert(f.storage.loadSetup(reboot)&&!reboot.setup.required);
     assert(f.storage.loadMqtt(mqtt)&&mqtt.enabled&&std::string(mqtt.host)=="corrected.local"&&std::string(mqtt.password)=="wizard-secret");
   }
@@ -308,19 +308,39 @@ static void mqttApiTests() {
     MqttConfig config;assert(f.storage.loadMqtt(config)&&!config.enabled);
     assert(f.call("GET","/api/mqtt").body.find("\"hasPassword\":false")!=std::string::npos);
     assert(f.call("POST","/api/mqtt","enabled=1").status==400);
-    for(const char *bad:{"enabled=yes","port=0","port=65536","unknown=1","host=bad%2Fhost","discoveryPrefix=a%2F%2B"})assert(f.call("POST","/api/mqtt",bad).status==400);
+    for(const char *bad:{"enabled=yes","tls=yes","port=0","port=65536","unknown=1","host=bad%2Fhost","discoveryPrefix=a%2F%2B"})assert(f.call("POST","/api/mqtt",bad).status==400);
     bool stopped=false;
     assert(f.runtime.controller.jog(0,1,false,millis())==Result::Ok);
     Preferences::beforeBytesWrite=[&](const char *key){if(std::string(key)=="config1"){stopped=!f.runtime.controller.moving();}};
     const auto result=f.call("POST","/api/mqtt","enabled=1&host=broker.local&username=radio&password=secret%2B%26");
     Preferences::beforeBytesWrite={};assert(result.status==200&&stopped);
-    assert(!f.runtime.mqtt.enabled); // Client configuration is immutable until reboot.
+    assert(f.runtime.mqtt.enabled&&!f.restart.pending()&&result.body=="{\"ok\":true,\"restart\":false}");
     assert(f.storage.loadMqtt(config)&&config.enabled&&std::string(config.password)=="secret+&");
     f.runtime.mqtt=config;
     auto get=f.call("GET","/api/mqtt");assert(get.body.find("secret")==std::string::npos && get.body.find("\"hasPassword\":true")!=std::string::npos);
     assert(f.call("POST","/api/mqtt","username=new").status==200);
     assert(f.storage.loadMqtt(config)&&std::string(config.password)=="secret+&");f.runtime.mqtt=config;
     assert(f.call("POST","/api/mqtt","password=").status==200);assert(f.storage.loadMqtt(config)&&!config.password[0]);
+#if MQTT_TLS_SUPPORT
+    Preferences::failedBytesKey="config1";
+    assert(f.call("POST","/api/mqtt","tls=1&port=8883").status==503);
+    assert(!f.runtime.mqtt.tls&&f.runtime.mqtt.port==1883&&!f.restart.pending());
+    Preferences::failedBytesKey.clear();
+    const auto tls=f.call("POST","/api/mqtt","tls=1&port=8883");
+    assert(tls.status==200&&f.runtime.mqtt.tls&&!f.restart.pending());
+    assert(f.storage.loadMqtt(config)&&config.tls&&config.port==8883);
+    assert(f.call("GET","/api/mqtt").body.find("\"tlsSupported\":true")!=std::string::npos);
+#else
+    const auto tls=f.call("POST","/api/mqtt","tls=1&port=8883");
+    assert(tls.status==501&&!f.runtime.mqtt.tls&&!f.restart.pending());
+#endif
+    f.runtime.recovery=true;f.runtime.controller.configurationLocked=true;
+    assert(f.call("GET","/api/mqtt").status==200);
+    const auto hardwareBefore=f.runtime.hardwareRecord.generation;
+    const auto disable=f.call("POST","/api/mqtt","enabled=0&tls=0");
+    assert(disable.status==200&&!f.runtime.mqtt.enabled&&!f.runtime.mqtt.tls&&!f.restart.pending());
+    assert(f.runtime.recovery&&f.runtime.controller.configurationLocked&&f.runtime.hardwareRecord.generation==hardwareBefore);
+    assert(f.storage.loadMqtt(config)&&!config.enabled&&!config.tls&&std::string(config.host)=="broker.local");
   }
   {
     Fixture f;Preferences::failedBytesKey="config1";
@@ -329,6 +349,8 @@ static void mqttApiTests() {
     MqttConfig config;assert(f.storage.saveMqtt(config));
     auto &record=std::get<Preferences::Bytes>(Preferences::database["mqtt"]["config1"]);record[2]^=1;
     assert(!f.storage.loadMqtt(config));
+    f.runtime.mqttStorageOk=false;f.runtime.recovery=true;
+    assert(f.call("POST","/api/mqtt","enabled=0&tls=0").status==200&&f.runtime.mqttStorageOk);
   }
 #endif
 }
@@ -1328,9 +1350,16 @@ int main(int argc,char **argv) {
   assert(!r.controller.configurationLocked);
   f.storage.loadHardware(r);assert(!r.hardwareTrial && !r.recovery);assert(f.storage.finishHardwareBoot(r));
   assert(f.call("POST","/api/hardware/probe","token=11&generation=1").status==409);
+#if OTA_SUPPORT
   const auto otaStatus=f.call("GET","/api/ota");assert(otaStatus.status==200 && otaStatus.body.size()<=COMMAND_PAGE_MAX);
   assert(f.call("POST","/api/ota/arduino","token=wrong").status==403);
   assert(f.call("POST","/api/ota/reboot","token=wrong").status==403);
+#else
+  for(const auto path:{"/api/ota","/api/ota/arduino","/api/ota/reboot"}) {
+    const auto response=f.call(path==std::string_view("/api/ota")?"GET":"POST",path,"token=wrong");
+    assert(response.status==501 && response.body.find("feature_disabled")!=response.body.npos);
+  }
+#endif
   assert(f.call("POST","/api/device","role=hud&wifi=existing&uart=0&port=4600").status==400);
   assert(f.call("POST","/api/device","role=hud&wifi=existing&uart=0&port=4534").status==200);
   r.hud.config.role=DeviceRole::Hud;

@@ -367,7 +367,7 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
   const bool hardwarePath=path=="/api/hardware" || path.substr(0,14)=="/api/hardware/";
   const bool stop=path=="/api/hardware/stop" || (path=="/api/move" && (web_.value("d")=="S" || web_.value("d")=="A" || web_.value("d")=="E"));
   if(ota_.locked() && !stop && path!="/api/status" && path!="/api/diaglog" && path!="/api/diagnostics" && path.substr(0,8)!="/api/ota") { reply(503,"update_locked"); return; }
-  if(runtime_.recovery && !stop && !hardwarePath && path!="/api/status" && path!="/api/network" && path!="/api/diagnostics" && path!="/api/diaglog" && path!="/api/resetreason" && path!="/api/resethistory" && path!="/api/wifi" && path!="/api/ap") { reply(409,"recovery_only"); return; }
+  if(runtime_.recovery && !stop && !hardwarePath && path!="/api/status" && path!="/api/mqtt" && path!="/api/network" && path!="/api/diagnostics" && path!="/api/diaglog" && path!="/api/resetreason" && path!="/api/resethistory" && path!="/api/wifi" && path!="/api/ap") { reply(409,"recovery_only"); return; }
   if (path=="/api/hardware/activity") {
     if (method!="POST") { reply(405,"method_not_allowed"); return; }
     runtime_.noteUserActivity(); reply(200,""); return;
@@ -1501,10 +1501,10 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
         const auto &e=arguments.entries[i];
         for(size_t k=0;k<i;++k)if(arguments.entries[k].first==e.first)invalid=true;
         if(e.first=="setupToken")continue;
-        if(e.first=="enabled" || e.first=="discovery") {
+        if(e.first=="enabled" || e.first=="discovery" || e.first=="tls") {
           const bool valid=e.second=="true" || e.second=="false" || e.second=="1" || e.second=="0";
           if(!valid)invalid=true;
-          else (e.first=="enabled"?next.enabled:next.discovery)=e.second=="true" || e.second=="1";
+          else (e.first=="enabled"?next.enabled:e.first=="tls"?next.tls:next.discovery)=e.second=="true" || e.second=="1";
         } else if(e.first=="host")invalid|=!mqttText(e.second,next.host);
         else if(e.first=="username")invalid|=!mqttText(e.second,next.username);
         else if(e.first=="password")invalid|=!mqttText(e.second,next.password);
@@ -1515,21 +1515,25 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
       }
       if(invalid || next.validate()){reply(400,invalid?"invalid_mqtt_config":next.validate());return;}
       if(!HOME_ASSISTANT_DISCOVERY_SUPPORT && web_.hasArg("discovery") && next.discovery){reply(501,"feature_disabled");return;}
+      if(!MQTT_TLS_SUPPORT && web_.hasArg("tls") && next.tls){reply(501,"feature_disabled");return;}
       const bool changed=!(next==config) || !runtime_.mqttStorageOk;
       if(changed) {
         runtime_.controller.stopNow(-1,millis());hardware_.applyOutputs();
         if(!storage_.saveMqtt(next)){reply(503,"mqtt_storage_failed");return;}
-        // Keep the running client's credentials immutable until the safe restart.
-        configurationRestart(setupBatch);
+        if(mqtt_)mqtt_->configure(next);
+        else {runtime_.mqtt=next;runtime_.mqttStorageOk=true;}
       }
-      output << "{\"ok\":true,\"restart\":" << (changed?"true":"false") << '}';return;
+      output << "{\"ok\":true,\"restart\":false}";return;
     }
     output << "{\"enabled\":" << (config.enabled?"true":"false") << ",\"host\":" << jsonQuoted(config.host)
       << ",\"port\":" << config.port << ",\"username\":" << jsonQuoted(config.username)
+      << ",\"tls\":" << (config.tls?"true":"false") << ",\"tlsSupported\":" << (MQTT_TLS_SUPPORT?"true":"false")
       << ",\"hasPassword\":" << (config.password[0]?"true":"false") << ",\"discovery\":"
       << (config.discovery && HOME_ASSISTANT_DISCOVERY_SUPPORT?"true":"false") << ",\"discoveryPrefix\":" << jsonQuoted(config.discoveryPrefix)
       << ",\"storageOk\":" << (runtime_.mqttStorageOk?"true":"false") << ',';
-    if(mqtt_)mqtt_->writeStatus(output);else output << "\"supported\":true,\"connected\":false,\"error\":\"not_started\"";
+    // Wire clients assemble bounded pages. Volatile detailed counters (notably
+    // outboxAgeMs) change the revision on every page; keep them HTTP-only.
+    if(mqtt_)mqtt_->writeStatus(output,command);else output << "\"supported\":true,\"connected\":false,\"error\":\"not_started\"";
     output << '}';return;
   }
 #endif

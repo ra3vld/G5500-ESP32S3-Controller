@@ -58,6 +58,7 @@ public:
   explicit WebServer(int){}
   virtual ~WebServer()=default;
   virtual void handleClient() { ++testSocket.baseHandled; }
+  void send(int,const char *,const char *) { assert(false && "unexpected stock response"); }
   NetworkClient &client() { return _currentClient; }
 protected:
   virtual size_t _currentClientWrite(const char *,size_t n) { return n; }

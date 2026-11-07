@@ -20,8 +20,8 @@ state.mqtt={supported:true,enabled:false,storageOk:true,connected:false,error:'d
    if(url.pathname==='/api/move'&&req.method()==='POST')moves.push(new URLSearchParams(req.postData()));
    if(url.pathname==='/api/target'&&req.method()==='POST')targets.push(new URLSearchParams(req.postData()));
    if(url.pathname==='/api/mqtt'){
-    if(req.method()==='GET'){++reads;return route.fulfill({json:{enabled:false,host:'mqtt.local',port:1883,username:'radio',hasPassword:true,discovery:true,discoveryPrefix:'homeassistant',error:'disabled'}});}
-    posts.push(new URLSearchParams(req.postData()));return route.fulfill({status:fail?503:200,json:fail?{ok:false,error:'mqtt_storage_failed'}:{ok:true,restart:true}});
+    if(req.method()==='GET'){++reads;return route.fulfill({json:{enabled:false,tls:false,tlsSupported:true,host:'mqtt.local',port:1883,username:'radio',hasPassword:true,discovery:true,discoveryPrefix:'homeassistant',error:'disabled'}});}
+    posts.push(new URLSearchParams(req.postData()));return route.fulfill({status:fail?503:200,json:fail?{ok:false,error:'mqtt_storage_failed'}:{ok:true,restart:false}});
    }
    if(url.pathname.startsWith('/api/'))return route.fulfill({json:{ok:true,items:[],values:[],samples:[]}});
    return route.fulfill({contentType:'text/html; charset=utf-8',body:html});
@@ -41,7 +41,7 @@ state.mqtt={supported:true,enabled:false,storageOk:true,connected:false,error:'d
   // Both blocks update without reading configuration or disturbing drafts.
   assert.equal(reads,0);
   state.mqtt.connected=false;
-  for(const [error,label] of Object.entries({network_unavailable:'Нет сети',mqtt_memory_limited:'Недостаточно памяти',mqtt_start_failed:'Ошибка запуска',mqtt_storage_failed:'Ошибка настроек',not_started:'Ожидает запуска'})){
+  for(const [error,label] of Object.entries({network_unavailable:'Нет сети',mqtt_memory_limited:'Недостаточно памяти',mqtt_tls_memory_limited:'Недостаточно памяти для TLS',mqtt_tls_time_required:'TLS ожидает время NTP',mqtt_tls_retry:'Повтор TLS через 10 с',recovery:'Отключён в восстановлении',mqtt_start_failed:'Ошибка запуска',mqtt_storage_failed:'Ошибка настроек',not_started:'Ожидает запуска'})){
    state.mqtt.error=error;await checkStatus(label,'offline');
   }
   state.mqtt.error='connecting';state.mqtt.brokerError=5;await checkStatus('Отказ брокера (код 5)','offline');
@@ -71,21 +71,26 @@ state.mqtt={supported:true,enabled:false,storageOk:true,connected:false,error:'d
   await page.locator('#mqttDeviceId').click();
   assert.equal(await page.locator('#mqttDeviceId').evaluate(e=>e.value.slice(e.selectionStart,e.selectionEnd)),state.deviceId);
   assert.equal(await page.locator('#mqttSave').isDisabled(),false);
+  await page.locator('#mqttTls').check();assert.equal(await page.locator('#mqttPort').inputValue(),'8883');
+  await page.locator('#mqttPort').fill('28883');await page.locator('#mqttTls').uncheck();assert.equal(await page.locator('#mqttPort').inputValue(),'28883');
+  await page.locator('#mqttTls').check();assert.equal(await page.locator('#mqttPort').inputValue(),'28883');
   for(const width of [1100,390]){
    await page.setViewportSize({width,height:900});await page.locator('#networkStatus').scrollIntoViewIfNeeded();
    await page.locator('#networkStatus').screenshot({path:path.join(out,`status-network-${width}.png`)});
   }
   for(const width of [1100,390,320]){
-   await page.setViewportSize({width,height:900});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'overflow '+width);
+   await page.setViewportSize({width,height:1600});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'overflow '+width);
    await page.screenshot({path:path.join(out,`network-${width}.png`),fullPage:true});
    await page.locator('#mqttSettings').scrollIntoViewIfNeeded();
    assert(await page.locator('#mqttSettings').evaluate(e=>e.scrollWidth<=e.clientWidth),'MQTT form overflow '+width);
    await page.locator('#mqttSettings').screenshot({path:path.join(out,`mqtt-${width}.png`)});
   }
   await page.locator('#mqttHost').fill('unsaved.local');await page.evaluate(()=>upd(true));assert.equal(await page.locator('#mqttHost').inputValue(),'unsaved.local');assert.equal(reads,1);
-  await page.locator('#mqttSave').click();await page.waitForFunction(()=>mqttMessage.textContent.includes('перезапускается'));assert(!posts.at(-1).has('password'));
+  await page.locator('#mqttSave').click();await page.waitForFunction(()=>mqttMessage.textContent.includes('Настройки MQTT сохранены'));assert(!posts.at(-1).has('password'));assert.equal(posts.at(-1).get('tls'),'1');
+  await page.locator('#mqttTls').uncheck();await page.locator('#mqttSave').click();await page.waitForTimeout(100);assert.equal(posts.at(-1).get('tls'),'0');
   await page.locator('#mqttPassword').fill('пароль & +');await page.locator('#mqttSave').click();await page.waitForTimeout(100);assert.equal(posts.at(-1).get('password'),'пароль & +');assert.equal(await page.locator('#mqttPassword').inputValue(),'');
   fail=true;await page.locator('#mqttClearPassword').check();await page.locator('#mqttSave').click();await page.waitForFunction(()=>mqttMessage.textContent.includes('mqtt_storage_failed'));assert.equal(posts.at(-1).get('password'),'');
+  state.build.features.mqttTls=false;await page.evaluate(()=>upd(true));await page.waitForFunction(()=>mqttTlsFields.hidden);
   state.build.features.mqtt=false;state.build.features.rssiHistory=false;state.build.features.hud=false;state.build.features.ota=false;
   await page.evaluate(()=>upd(true));await page.waitForFunction(()=>mqttSettings.hidden);assert(await page.locator('#signalSettings').isHidden());assert(await page.locator('#otaSettings').isHidden());
   await checkStatus('Недоступен в сборке');

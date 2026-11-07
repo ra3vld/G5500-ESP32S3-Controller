@@ -70,6 +70,11 @@ async function snapshot(s,name){
    {
     const s=await instance(browser,{width,recovery:true});try{
      assert(await s.page.locator('#recovery-guide').isVisible());assert(await s.page.locator('#manual-settings').isHidden());
+     assert.equal((await s.rpc('POST','/api/mqtt','enabled=1&tls=1&host=broker.example&port=8883&password=keep-secret')).status,200);
+     await s.page.locator('#recovery-mqtt-disable').click();
+     await s.page.waitForFunction(()=>document.getElementById('recovery-mqtt-message').textContent.includes('отключены'));
+     const mqtt=(await s.rpc('GET','/api/mqtt')).body;assert.equal(mqtt.enabled,false);assert.equal(mqtt.tls,false);assert.equal(mqtt.hasPassword,true);
+     await s.page.locator('#recovery-mqtt').screenshot({path:out+'/mqtt-recovery-'+width+'.png'});
      await s.page.locator('#hardwareStop').click();assert(!(await s.rpc('GET','/api/hardware')).moving);
      await s.page.locator('#recovery-network-open').click();await s.page.waitForFunction(()=>recoveryNetworkLoaded);
      await s.page.locator('#recovery-network [name=choice]').selectOption('0');await s.page.locator('#recovery-network [name=ssid]').fill('Fixed-router');await s.page.locator('#recovery-network [name=pass]').fill('password123');

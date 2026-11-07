@@ -157,6 +157,48 @@ int main() {
                           BTS7960_PWM_INVERTED=0, USER_BUTTON_GPIO=0, USER_BUTTON_ACTIVE_LOW=1,
                           USER_BUTTON_PULLUP=1, AZ_STOP_TOLERANCE_DEG='5.0f', EL_STOP_TOLERANCE_DEG='5.0f'))
 
+    def test_classic_esp32_resource_defaults(self):
+        reduced = dict(BLUETOOTH_SPP_SUPPORT=0, WEB_LIVE_SUPPORT=0, LOG_HISTORY_SUPPORT=0,
+                       RSSI_HISTORY_SUPPORT=0, OTA_SUPPORT=0, ARDUINO_OTA_SUPPORT=0,
+                       WIFI_COMPACT_BUFFERS=1, WEB_INTERFACE_ENABLED=1, COMMAND_API_SUPPORT=1,
+                       MQTT_SUPPORT=1, MQTT_TLS_SUPPORT=1, HOME_ASSISTANT_DISCOVERY_SUPPORT=1,
+                       HUD_SUPPORT=1, HUD_UDP_SUPPORT=1, HUD_UART_SUPPORT=1,
+                       RESET_HISTORY_SUPPORT=1, ESP32_SPP_PROFILE=0)
+        for flags in (['BOARD_PROFILE=4'], ['CONFIG_IDF_TARGET_ESP32=1']):
+            self.compile(reduced, flags)
+        for display in (1, 2, 6):
+            self.compile(reduced, ['BOARD_PROFILE=4', f'DISPLAY_KIND={display}'])
+        # Explicit service flags still win over the board defaults.
+        self.compile(dict(BLUETOOTH_SPP_SUPPORT=1, WEB_LIVE_SUPPORT=1, LOG_HISTORY_SUPPORT=1,
+                          RSSI_HISTORY_SUPPORT=1, OTA_SUPPORT=1, WIFI_COMPACT_BUFFERS=0),
+                     ['BOARD_PROFILE=4', 'BLUETOOTH_SPP_SUPPORT=1', 'WEB_LIVE_SUPPORT=1',
+                      'LOG_HISTORY_SUPPORT=1', 'RSSI_HISTORY_SUPPORT=1', 'OTA_SUPPORT=1',
+                      'WIFI_COMPACT_BUFFERS=0'])
+        self.compile(dict(BLUETOOTH_SPP_SUPPORT=1, BLUETOOTH_BACKEND=2),
+                     ['BOARD_PROFILE=4', 'ESP32_SPP_PROFILE=1', 'BLUETOOTH_ENABLED=1'])
+
+    def test_other_boards_keep_service_defaults(self):
+        for board in (1, 2, 3, 5, 6, 7, 8, 9, 10):
+            display = {5: 3, 8: 4, 10: 5}.get(board, 0)
+            self.compile(dict(BLUETOOTH_SPP_SUPPORT=int(board in (6, 10)), WEB_LIVE_SUPPORT=1,
+                              LOG_HISTORY_SUPPORT=1, RSSI_HISTORY_SUPPORT=1, OTA_SUPPORT=1,
+                              WIFI_COMPACT_BUFFERS=0),
+                         [f'BOARD_PROFILE={board}', f'DISPLAY_KIND={display}'])
+
+    def test_esp32_environment_service_composition(self):
+        for name in ('esp32_4mb', 'esp32_4mb_mqtt_tls', 'esp32_4mb_lcd', 'esp32_4mb_tft', 'esp32_4mb_noweb',
+                     'esp32_4mb_ota', 'esp32_4mb_ota_compact', 'esp32_8mb_ota',
+                     'esp32_spp', 'esp32_spp_hud'):
+            with self.subTest(profile=name):
+                selected = self.selected_config('--env', name)
+                flags = re.findall(r'-D([^\s]+)', selected['build_flags'])
+                spp = name in ('esp32_spp', 'esp32_spp_hud')
+                self.compile(dict(BLUETOOTH_SPP_SUPPORT=int(spp), WEB_LIVE_SUPPORT=0,
+                                  LOG_HISTORY_SUPPORT=0, RSSI_HISTORY_SUPPORT=0,
+                                  OTA_SUPPORT=int('_ota' in name or name.endswith('_noweb')),
+                                  WEB_INTERFACE_ENABLED=int(not name.endswith('_noweb')),
+                                  MQTT_SUPPORT=int(not spp)), flags)
+
     def test_round_c3_profile(self):
         self.compile(dict(SELECTED_BOARD=8, FORK_C3=1, FORK_S3=0, FORK_CLASSIC_ESP32=0,
                           USER_BUTTON_GPIO=9, DRIVE_SIMULATION=0, TFT_DISPLAY_ENABLED=0),
@@ -260,7 +302,7 @@ int main() {
         for flag, board, backend in [('ARDUINO_LOLIN_S2_MINI=1', 3, 1),
                                      ('CONFIG_IDF_TARGET_ESP32S2=1', 2, 1),
                                      ('CONFIG_IDF_TARGET_ESP32S3=1', 1, 1),
-                                     ('CONFIG_IDF_TARGET_ESP32=1', 4, 2)]:
+                                     ('CONFIG_IDF_TARGET_ESP32=1', 4, 1)]:
             with self.subTest(flag=flag):
                 self.compile(dict(SELECTED_BOARD=board, BLUETOOTH_BACKEND=backend, DRIVE_SIMULATION=0,
                                   **{'forkrot::board::WIFI_AP_ALWAYS_ON': 0}), [flag, 'BLUETOOTH_ENABLED=1'])
@@ -345,7 +387,8 @@ int main() {
                                  '--env', 'esp32_4mb', '--dry-run', *args], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         config = configparser.ConfigParser(interpolation=None)
-        config.read(self.root / 'build/platformio-config/esp32_4mb.ini')
+        name = args[args.index('--env') + 1] if '--env' in args else 'esp32_4mb'
+        config.read(self.root / f'build/platformio-config/{name}.ini')
         return config['env:selected']
 
     def test_motion_rate_build_option(self):
@@ -484,6 +527,14 @@ int main() {
         self.assertEqual(result.returncode, 0, result.stderr)
         sketch = self.root / 'build/arduino-esp32-8mb/G5500_Fork'
         self.assertEqual((sketch / 'partitions.csv').read_bytes(), (self.source / 'partitions_esp32_8mb.csv').read_bytes())
+        for flags, enabled in [([], 1), (['-DOTA_SUPPORT=0'], 0)]:
+            result = subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++17', '-fsyntax-only',
+                                     '-DBOARD_PROFILE=4', *flags, '-x', 'c++', '-'],
+                                    input=f'#include "{sketch}/build_config.hpp"\n'
+                                          f'static_assert(OTA_SUPPORT=={enabled});\n'
+                                          f'static_assert(ARDUINO_OTA_SUPPORT=={enabled});\n',
+                                    text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == '__main__':

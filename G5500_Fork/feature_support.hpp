@@ -16,7 +16,7 @@ inline constexpr Feature buildFeatures[] = {
   {"modbus", MODBUS_RTU_SUPPORT}, {"ota", OTA_SUPPORT}, {"arduinoOta", ARDUINO_OTA_SUPPORT},
   {"camera", CAMERA_ENABLED}, {"logHistory", LOG_HISTORY_SUPPORT}, {"rssiHistory", RSSI_HISTORY_SUPPORT},
   {"resetHistory", RESET_HISTORY_SUPPORT}, {"ntp", NTP_SUPPORT}, {"mqtt", MQTT_SUPPORT},
-  {"homeAssistantDiscovery", HOME_ASSISTANT_DISCOVERY_SUPPORT}
+  {"mqttTls", MQTT_TLS_SUPPORT}, {"homeAssistantDiscovery", HOME_ASSISTANT_DISCOVERY_SUPPORT}
 };
 inline void writeBuildFeatures(JsonWriter &j) {
   j << '{'; bool first=true;

@@ -46,7 +46,8 @@ void WebInterface::setupWeb() {
     if(!self.runtime_.recovery && request.substr(0,16)=="GET /api/status ") {
       self.serveApi("GET","/api/status",{},true);return true;
     }
-    return self.handleHardwareRequest(request) || (!self.runtime_.recovery && self.handleOtaRequest(request));
+    return self.handleMqttRequest(request) || self.handleHardwareRequest(request) ||
+        (!self.runtime_.recovery && self.handleOtaRequest(request));
   },this);
   if(runtime_.recovery) {web_.begin();return;}
   static const char *headers[]={"Accept-Encoding"};web_.collectHeaders(headers,1);
