@@ -6,7 +6,7 @@ const root=path.resolve(__dirname,'..');
 const out=process.env.ARTIFACT_DIR||path.join(root,'local-notes/mqtt-web');
 const html=fs.readFileSync(path.join(root,'G5500_Fork/web_page.hpp'),'utf8').split('R"HTML(')[1].split(')HTML";')[0];
 const state=JSON.parse(execFileSync(process.env.SIM_CORE||path.join(root,'build/simulator'),{input:'step 0\n',encoding:'utf8'}).trim()).state;
-state.deviceRole='controller';state.build.features={...state.build.features,mqtt:true,webLive:false};state.livePort=0;
+state.deviceId='aabbccddeeff';state.deviceRole='controller';state.build.features={...state.build.features,mqtt:true,webLive:false};state.livePort=0;
 state.mqtt={supported:true,enabled:false,storageOk:true,connected:false,error:'disabled'};
 (async()=>{
  const browser=await chromium.launch({...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),headless:true,args:['--no-sandbox']});
@@ -33,6 +33,9 @@ state.mqtt={supported:true,enabled:false,storageOk:true,connected:false,error:'d
    await page.waitForFunction(({text,style})=>['statusMqtt','mqttstate'].every(id=>{const n=document.getElementById(id);return n.textContent===text&&n.className===style;}),{text,style});
   };
   await checkStatus('Отключён');
+  assert.equal(await page.locator('#networkDeviceId').textContent(),state.deviceId);
+  assert.equal(await page.locator('#mqttDeviceId').inputValue(),state.deviceId);
+  assert.equal(await page.locator('#mqttDeviceId').getAttribute('readonly'),'');
   state.mqtt.enabled=true;state.mqtt.error='connecting';await checkStatus('Подключение…','offline');
   state.mqtt.connected=true;state.mqtt.error='';await checkStatus('Подключён','online');
   // Both blocks update without reading configuration or disturbing drafts.
@@ -65,6 +68,9 @@ state.mqtt={supported:true,enabled:false,storageOk:true,connected:false,error:'d
   await page.getByRole('tab',{name:'Настройки',exact:true}).click();await page.locator('#networkSettings > details').evaluate(e=>e.open=true);
   await page.waitForFunction(()=>document.getElementById('mqttHost').value==='mqtt.local');
   assert.equal(await page.locator('#mqttPassword').inputValue(),'');
+  await page.locator('#mqttDeviceId').click();
+  assert.equal(await page.locator('#mqttDeviceId').evaluate(e=>e.value.slice(e.selectionStart,e.selectionEnd)),state.deviceId);
+  assert.equal(await page.locator('#mqttSave').isDisabled(),false);
   for(const width of [1100,390]){
    await page.setViewportSize({width,height:900});await page.locator('#networkStatus').scrollIntoViewIfNeeded();
    await page.locator('#networkStatus').screenshot({path:path.join(out,`status-network-${width}.png`)});

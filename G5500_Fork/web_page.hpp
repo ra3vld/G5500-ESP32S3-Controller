@@ -424,10 +424,12 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <div id="ethernetStatus" hidden>Ethernet: <b id="ethip">-</b> <span id="ethstate"></span></div><div>IP клиента (STA): <b id="ip">-</b></div><div>IP точки доступа: <b id="apip">-</b></div><div>TCP rotctld: <b>4533</b></div><div>Режим: <b id="mode">-</b></div><div>Уровень Wi-Fi: <b id="rssi">-</b></div><div>Качество: <b id="sig">-</b></div>
 <div class="hide" id="btlinkrow">Bluetooth-соединение: <b id="btlinkstate" role="status">-</b></div>
 <div><span id="btlabel">Bluetooth</span>: <b id="btstate" role="status">-</b></div><div id="bttransport">-</div>
+<div>ID устройства: <b class="mono" id="networkDeviceId" style="user-select:all">—</b></div>
 <div>MQTT: <b id="mqttstate" role="status">—</b></div>
 <div class="hide" id="btmacrow">Bluetooth MAC: <b class="mono" id="btmac">-</b></div></div><div class="hint hide" id="bthelp">Этот MAC нужен в Look4Sat. Подключение видно и без передачи команд; сопряжение в Android само по себе не означает активное соединение.</div>
 </div></details></section><section class="card settings-section" id="networkSettings"><details class="settings-details"><summary><h2>Настройки сети<span class="section-caption">Подключение, IP-адреса и точка доступа</span></h2></summary><div class="settings-content">
 <section class="settings-group" id="mqttSettings" hidden><h3>MQTT и Home Assistant</h3>
+<div class="field"><label for="mqttDeviceId">ID устройства</label><input id="mqttDeviceId" class="mono" readonly value="—" aria-describedby="mqttDeviceIdHelp" onfocus="this.select()" onclick="this.select()"><p class="field-help" id="mqttDeviceIdHelp">Постоянный ID доступен и при выключенном MQTT. Нажмите на поле, чтобы выделить ID для копирования. При прямом подключении контроллера к MQTT-серверу сервиса укажите этот ID в обоих полях: «ID шлюза» и «ID поворотки».</p></div>
 <form id="mqttForm" onsubmit="saveMqtt(event)"><label class="check-field"><input id="mqttEnabled" type="checkbox"> Подключаться к MQTT</label>
 <div class="row"><div class="field"><label for="mqttHost">Сервер MQTT</label><input id="mqttHost" maxlength="95" placeholder="192.168.1.10" autocomplete="off"></div><div class="field"><label for="mqttPort">Порт TCP</label><input id="mqttPort" type="number" min="1" max="65535" value="1883" required></div></div>
 <div class="row"><div class="field"><label for="mqttUsername">Логин</label><input id="mqttUsername" maxlength="63" autocomplete="off"></div><div class="field"><label for="mqttPassword">Пароль MQTT</label><input id="mqttPassword" type="password" maxlength="95" autocomplete="new-password" placeholder="Оставьте пустым, чтобы сохранить пароль"></div></div>
@@ -1739,6 +1741,8 @@ document.getElementById('hardwareTrialConfirm').onclick=async()=>{
 };
 setInterval(renderHardwareTrial,1000);
 function renderStatus(j){
+const deviceId=typeof j.deviceId==='string'&&/^[0-9a-f]{12}$/i.test(j.deviceId)?j.deviceId.toLowerCase():'—';
+setText(document.getElementById('networkDeviceId'),deviceId);const mqttDeviceId=document.getElementById('mqttDeviceId');if(mqttDeviceId.value!==deviceId)mqttDeviceId.value=deviceId;
 updateCamera(j);
 setText(az,currentPosition(j,'az'));setText(el,currentPosition(j,'el'));
 for(const axis of ['az','el'])document.getElementById(axis).title=currentPosition(j,axis)==='NC'?'NC — not calibrated: ось не откалибрована':'';
