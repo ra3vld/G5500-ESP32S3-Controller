@@ -16,3 +16,22 @@
 .post-install .text-link:hover{background:#214f32}
 .post-install .text-link:focus-visible{outline:3px solid #123822;outline-offset:5px}
 .post-install .small{color:#28503a;font-size:18px;line-height:1.55}
+.preset-fields{border:0;padding:0;margin:20px 0;min-width:0;display:grid;gap:14px}
+.preset-fields label{display:grid;gap:7px;font-size:14px}
+.preset-fields input:not([type=checkbox]),.preset-fields select{width:100%;min-width:0;min-height:44px;border:1px solid var(--line,#343e48);border-radius:8px;padding:10px 12px;background:#101820;color:#e6edf3;font:inherit}
+.preset-fields .preset-check{display:flex;align-items:center;gap:10px;line-height:1.5}
+.preset-check input{width:18px;height:18px;flex-shrink:0;accent-color:#9be6b4}
+.preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+#presetMqttManual{display:grid;gap:14px}
+.preset-fields p{margin:0;line-height:1.6}
+.preset-panel a{color:#9be6b4;overflow-wrap:anywhere}
+.preset-actions{display:flex;gap:12px;flex-wrap:wrap}
+.preset-actions button,.preset-progress button{min-height:44px;padding:12px 16px;border:1px solid #53665a;border-radius:8px;background:#24382c;color:#dcffe7;font:inherit;cursor:pointer}
+.preset-actions button:disabled{opacity:.5;cursor:default}
+.preset-progress{margin-top:20px;border:1px solid #496555;border-radius:12px;background:#13271b;padding:20px;line-height:1.6;overflow-wrap:anywhere}
+.preset-progress[data-error=true]{border-color:#eeaa78;background:#30251c}
+.preset-progress ol{padding-left:22px;font-size:14px}
+.preset-progress a{display:block;margin-top:14px}
+.preset-progress button{margin:12px 8px 0 0}
+.preset-progress .preset-primary-link{padding:16px;background:#9be6b4;color:#123822;border-radius:8px;font-weight:750}
+@media(max-width:520px){.preset-grid{grid-template-columns:1fr}.preset-actions button{width:100%}}

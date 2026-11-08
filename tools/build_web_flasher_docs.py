@@ -33,7 +33,7 @@ class Links(HTMLParser):
                 self.targets.append(values[key])
 
 
-def build(output):
+def build(output, website_only=False):
     output = Path(output).resolve()
     docs = output / 'documentation'
     docs.mkdir(exist_ok=True)
@@ -91,12 +91,22 @@ def build(output):
                 broken.append((str(page.relative_to(output)), url, 'missing anchor'))
     catalog_path = output / 'catalog.json'
     catalog = json.loads(catalog_path.read_text())
-    # The site job starts from a fresh checkout; the ignored header is not
-    # downloaded with firmware artifacts. Capture its exact identity here too.
-    if generate(ROOT) != catalog['identity']:
-        raise ValueError('Documentation sources and firmware catalog identities differ')
     for profile in catalog['profiles']:
         assert (docs / profile['docs']).with_suffix('.html').is_file(), profile['id']
+    if not website_only:
+        bundle_sources(output, catalog)
+    report = {'pages': len(rendered), 'broken_links': broken}
+    (output / 'documentation-check.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
+    if broken:
+        raise ValueError('Documentation links are invalid: ' + json.dumps(broken, ensure_ascii=False))
+    print('Documentation: ' + str(len(rendered)) + ' pages; all local files and anchors resolve')
+
+
+def bundle_sources(output, catalog):
+    # Firmware releases bind their source archive and docs to the build. A UI
+    # overlay updates the user guide but keeps that released archive/catalog.
+    if generate(ROOT) != catalog['identity']:
+        raise ValueError('Documentation sources and firmware catalog identities differ')
     archive = output / 'source-code.zip'
     entries = []
     for name in ('G5500_Fork', 'tools', 'platformio', 'web-flasher', 'docs', 'tests', 'hardware', '.github/workflows'):
@@ -113,11 +123,6 @@ def build(output):
     catalog['source_archive_sha256'] = hashlib.sha256(archive.read_bytes()).hexdigest()
     catalog['documentation_base'] = './documentation/'
     catalog_path.write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + '\n')
-    report = {'pages': len(rendered), 'broken_links': broken}
-    (output / 'documentation-check.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
-    if broken:
-        raise ValueError('Documentation links are invalid: ' + json.dumps(broken, ensure_ascii=False))
-    print('Documentation: ' + str(len(rendered)) + ' pages; all local files and anchors resolve')
 
 
 def rewrite(url):
@@ -132,4 +137,6 @@ def rewrite(url):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True)
-    build(parser.parse_args().output)
+    parser.add_argument('--website-only', action='store_true', help='Update documentation while preserving released firmware source archive and catalog')
+    args=parser.parse_args()
+    build(args.output, website_only=args.website_only)

@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
@@ -30,6 +31,23 @@ class SiteUpdateTests(unittest.TestCase):
         sums.write_text('0' * 64 + '  unrelated.zip\n')
         with self.assertRaisesRegex(ValueError, 'checksum'):
             verify_archive(archive, sums)
+
+    def test_website_docs_preserve_release_catalog_and_source_archive(self):
+        import build_web_flasher_docs as docs
+        source=self.root/'source';source.mkdir();(source/'docs').mkdir();(source/'hardware').mkdir()
+        (source/'README.md').write_text('# Controller\n')
+        (source/'docs'/'web-flasher.md').write_text('# Настройка\nНовая форма MQTT и USB.\n')
+        site=self.root/'site';site.mkdir()
+        (site/'index.html').write_text('<html></html>')
+        (site/'style.css').write_text('body{}')
+        catalog=b'{"identity":{"version":"1.1.0","commit":"released","dirty":false},"profiles":[],"source_archive":"./source-code.zip"}\n'
+        (site/'catalog.json').write_bytes(catalog)
+        (site/'source-code.zip').write_bytes(b'unchanged released firmware sources')
+        with patch.object(docs,'ROOT',source),patch.object(docs,'generate',side_effect=AssertionError('must not relabel firmware')):
+            docs.build(site,website_only=True)
+        self.assertEqual((site/'catalog.json').read_bytes(),catalog)
+        self.assertEqual((site/'source-code.zip').read_bytes(),b'unchanged released firmware sources')
+        self.assertIn('Новая форма MQTT',(site/'documentation/docs/web-flasher.html').read_text())
 
     def test_extract_and_existing_output(self):
         archive = self.root / 'site.zip'

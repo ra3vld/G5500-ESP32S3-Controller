@@ -1,7 +1,8 @@
-import {cp, readFile, writeFile, readdir} from 'node:fs/promises';
+import {cp, readFile, writeFile} from 'node:fs/promises';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {patchVendor} from './patch_web_flasher_vendor.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -14,19 +15,13 @@ if (docs.status !== 0) process.exit(docs.status || 1);
 // Use the publisher's complete browser distribution, including chip loaders
 // and serial stubs. No CDN or npm resolution is needed in the user's browser.
 await cp(path.join(root, 'node_modules/esp-web-tools/dist/web'), path.join(output, 'vendor'), {recursive: true});
+for (const name of ['provisioning.js','serial-api.js']) await cp(path.join(root, 'web-flasher', name), path.join(output, name));
 // ESP Web Tools 10.4.0 has no public flash completion event. Bridge its
 // actual flash callback, keeping error/cancel distinct from successful writing.
 // Pin the exact upstream fragment: a dependency change must fail the build.
-const dialogFiles = (await readdir(path.join(output, 'vendor'))).filter((name) => /^install-dialog-.*\.js$/.test(name));
-if (dialogFiles.length !== 1) throw new Error('Unexpected ESP Web Tools dialog distribution');
-const dialogFile = path.join(output, 'vendor', dialogFiles[0]);
-const dialog = await readFile(dialogFile, 'utf8');
-const callback = 'this._installState=e,"finished"===e.state?';
-if (dialog.split(callback).length !== 2) throw new Error('ESP Web Tools flash callback changed');
-await writeFile(dialogFile, dialog.replace(callback,
-  'this._installState=e,this.dispatchEvent(new CustomEvent("g5500-flash-state",{detail:e,bubbles:true,composed:true})),"finished"===e.state?'));
+await patchVendor(output);
 // Retain attribution and the complete licenses in every published site.
-const licenses = ['Local modification to ESP Web Tools 10.4.0: dispatch g5500-flash-state from the original flash callback for the post-install connection guide.'];
+const licenses = ['Local modification to ESP Web Tools 10.4.0: dispatch cancellable g5500-flash-state from the original flash callback; a successful install can hand the released USB port to device preconfiguration.'];
 for (const name of ['esp-web-tools', 'esptool-js', 'lit', 'lit-element', 'lit-html', '@lit/reactive-element', '@material/web', 'tslib', 'improv-wifi-serial-sdk', 'pako', 'atob-lite']) {
   const folder = path.join(root, 'node_modules', name);
   const pkg = JSON.parse(await readFile(path.join(folder, 'package.json'), 'utf8'));

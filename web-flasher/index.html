@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
+  <meta name="g5500-service" content="https://rotator.r3v.ru">
   <meta name="description" content="Выбор готовой прошивки G5500 Controller и установка на ESP32 через USB из браузера.">
   <title>G5500 · Выбор и установка прошивки</title>
   <link rel="icon" type="image/svg+xml" sizes="any" href="./images/favicon.svg">
@@ -45,10 +46,58 @@
           <div id="profileNotes" class="profile-notes"></div>
           <a id="documentation" class="text-link" target="_blank" rel="noopener noreferrer">Подключение и настройка <span aria-hidden="true">↗</span></a>
         </section>
+        <section class="panel preset-panel" aria-labelledby="presetHeading">
+          <div class="section-heading"><span class="step">03</span><div><h2 id="presetHeading">Предварительные настройки</h2><p>Заполнив форму сейчас, вы сможете передать параметры плате по USB сразу после прошивки.</p></div></div>
+          <label class="confirmation"><input id="presetEnabled" type="checkbox"><span>Настроить устройство после записи прошивки</span></label>
+          <p id="presetUnavailable" class="small muted" hidden></p>
+          <form id="presetForm" autocomplete="off" hidden>
+            <fieldset id="presetFields" class="preset-fields">
+              <legend class="sr-only">Настройки устройства</legend>
+              <label>Имя контроллера<input id="presetName" maxlength="31" pattern="[A-Za-z0-9 _-]{1,31}" placeholder="Оставить текущее имя"></label>
+              <p class="small muted">До 31 символа: латинские буквы, цифры, пробел, дефис и подчёркивание.</p>
+              <label>Wi-Fi SSID<input id="presetSsid" maxlength="32" placeholder="Не менять сеть Wi-Fi" autocomplete="off"></label>
+              <label>Пароль Wi-Fi<input id="presetWifiPassword" type="password" maxlength="64" autocomplete="new-password"></label>
+              <label class="preset-check"><input id="presetOpenWifi" type="checkbox"> Открытая сеть Wi-Fi без пароля</label>
+              <div class="preset-grid">
+                <label>Настройка IP<select id="presetIpMode"><option value="preserve">Не менять</option><option value="dhcp">Автоматически — DHCP</option><option value="static">Статический IP</option></select></label>
+                <label>Интерфейс<select id="presetInterface"><option value="wifi">Wi-Fi</option><option id="presetEthernet" value="eth">Ethernet</option></select></label>
+              </div>
+              <div id="presetStatic" class="preset-grid" hidden>
+                <label>IP-адрес<input id="presetAddress" inputmode="decimal" placeholder="192.168.1.50"></label>
+                <label>Маска<input id="presetMask" inputmode="decimal" value="255.255.255.0"></label>
+                <label>Шлюз<input id="presetGateway" inputmode="decimal" placeholder="192.168.1.1"></label>
+                <label>DNS<input id="presetDns" inputmode="decimal" placeholder="192.168.1.1"></label>
+              </div>
+              <label>MQTT<select id="presetMqttMode"><option value="preserve">Не менять настройки MQTT</option><option value="manual">Свой MQTT-брокер</option><option value="service">Подключить к rotator.r3v.ru</option><option value="off">Выключить MQTT</option></select></label>
+              <p id="presetMqttUnavailable" class="small muted" hidden>В выбранной прошивке MQTT отсутствует.</p>
+              <div id="presetMqttManual" hidden>
+                <div class="preset-grid"><label>Адрес брокера<input id="presetMqttHost" maxlength="95" placeholder="192.168.1.10 или mqtt.example.com"></label><label>Порт<input id="presetMqttPort" type="number" min="1" max="65535" value="1883"></label></div>
+                <label class="preset-check"><input id="presetMqttTls" type="checkbox"> TLS с проверкой сертификата сервера</label>
+                <div class="preset-grid"><label>Логин MQTT<input id="presetMqttUser" maxlength="63" autocomplete="off"></label><label>Пароль MQTT<input id="presetMqttPassword" type="password" maxlength="95" autocomplete="new-password"></label></div>
+                <label class="preset-check"><input id="presetMqttKeepPassword" type="checkbox"> Сохранить пароль, уже записанный в плате</label>
+                <label class="preset-check"><input id="presetDiscovery" type="checkbox"> Home Assistant Discovery</label>
+                <label id="presetDiscoveryField" hidden>Префикс Discovery<input id="presetDiscoveryPrefix" value="homeassistant" maxlength="47"></label>
+              </div>
+              <p id="presetServiceHelp" class="small muted" hidden>После записи считываем ID платы. Вы подтвердите привязку в своём аккаунте rotator.r3v.ru, и MQTT-параметры будут переданы плате по USB. Для Home Assistant используйте свой брокер.</p>
+              <p class="small muted">Привязку к <a href="https://rotator.r3v.ru" target="_blank" rel="noopener noreferrer">rotator.r3v.ru</a> можно выполнить позже вручную. Свой MQTT-брокер работает независимо от сервиса.</p>
+              <p class="small muted">Wi-Fi и параметры своего MQTT-брокера передаются только плате по USB. Форма не сохраняет пароли между посещениями. Оборудование и калибровка проверяются отдельно в интерфейсе устройства.</p>
+            </fieldset>
+            <div class="preset-actions"><button id="presetApply" type="submit">Подключиться по USB и применить настройки</button><button id="presetCancel" type="button" hidden>Остановить настройку</button></div>
+          </form>
+          <div id="presetProgress" class="preset-progress" role="status" hidden>
+            <strong id="presetStatus"></strong><ol id="presetLog"></ol>
+            <a id="presetConsent" class="preset-primary-link" target="_blank" rel="noopener noreferrer" hidden>Открыть rotator.r3v.ru и подтвердить привязку ↗</a>
+            <a id="presetDeviceLink" target="_blank" rel="noopener noreferrer" hidden>Открыть мой шек ↗</a>
+            <a id="presetLocalLink" target="_blank" rel="noopener noreferrer" hidden>Открыть интерфейс устройства ↗</a>
+            <button id="presetRefresh" type="button" hidden>Проверить связь с сервисом</button>
+            <button id="presetRestartLink" type="button" hidden>Начать привязку к сервису заново</button>
+            <button id="presetNewDevice" type="button" hidden>Настроить другую плату</button>
+          </div>
+        </section>
       </div>
       <aside class="installation">
         <section class="panel install-panel" aria-labelledby="installHeading">
-          <div class="section-heading"><span class="step">03</span><div><h2 id="installHeading">Установите прошивку</h2><p id="selectedName"></p></div></div>
+          <div class="section-heading"><span class="step">04</span><div><h2 id="installHeading">Установите прошивку</h2><p id="selectedName"></p></div></div>
           <div id="buildStatus" class="build-status"></div>
           <div id="memory" class="memory" hidden>
             <div class="memory-heading"><span>Раздел приложения</span><strong id="flashPercent" class="mono"></strong></div>

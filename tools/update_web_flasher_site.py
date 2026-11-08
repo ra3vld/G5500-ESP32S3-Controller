@@ -4,13 +4,15 @@ import argparse
 import json
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 import zipfile
 
 from check_web_flasher_catalog import verify
 from project_version import resolve
 from web_flasher import ROOT, sha256
 
-ASSETS = ('index.html', 'app.js', 'style.css', 'images/favicon.svg')
+ASSETS = ('index.html', 'app.js', 'style.css', 'provisioning.js', 'serial-api.js', 'images/favicon.svg')
 
 
 def verify_archive(archive, checksums):
@@ -50,12 +52,15 @@ def update(archive, checksums, tag, output=ROOT / 'dist/web-flasher', allow_dirt
         target = output / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / 'web-flasher' / name, target)
+    vendor = subprocess.check_output(['node', str(ROOT / 'tools/patch_web_flasher_vendor.mjs'), str(output)], text=True).strip()
+    subprocess.run([sys.executable, str(ROOT / 'tools/build_web_flasher_docs.py'), '--output', str(output), '--website-only'], check=True)
     audit = verify(output, firmware_tag=tag)
     assert (output / 'catalog.json').read_bytes() == original_catalog
     assert firmware == {str(p.relative_to(output)): sha256(p) for p in (output / 'firmware').rglob('*') if p.is_file()}
     record = dict(schema=1, website=ui, firmware_tag=tag, firmware=audit['identity'],
                   firmware_source_sha256=audit['source_sha256'], release_archive_sha256=sha256(archive),
-                  assets={name: sha256(output / name) for name in ASSETS})
+                  assets={name: sha256(output / name) for name in (*ASSETS, vendor, 'documentation-check.json',
+                      *(str(p.relative_to(output)) for p in sorted((output / 'documentation').rglob('*')) if p.is_file()))})
     (output / 'site-identity.json').write_text(json.dumps(record, indent=2) + '\n')
     print(f'Website updated: {audit["profiles"]} released firmware profiles unchanged; UI {ui["commit"]}')
 

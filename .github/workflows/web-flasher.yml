@@ -7,9 +7,13 @@ on:
     paths-ignore:
       - 'web-flasher/index.html'
       - 'web-flasher/app.js'
+      - 'web-flasher/provisioning.js'
+      - 'web-flasher/serial-api.js'
       - 'web-flasher/style.css'
       - 'web-flasher/images/favicon.svg'
       - 'tools/update_web_flasher_site.py'
+      - 'tools/patch_web_flasher_vendor.mjs'
+      - 'tools/check_preconfiguration.cjs'
       - 'tools/check_web_flasher_catalog.py'
       - 'tools/check_web_flasher.cjs'
       - 'tests/test_update_web_flasher_site.py'

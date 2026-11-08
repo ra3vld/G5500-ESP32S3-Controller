@@ -1,3 +1,4 @@
+import {Preconfigurator} from './provisioning.js';
 const $ = (id) => document.getElementById(id);
 const labels = [
   ['WEB_INTERFACE_ENABLED', 'Веб-управление'], ['WEB_LIVE_SUPPORT', 'Live / WebSocket'],
@@ -11,7 +12,7 @@ const labels = [
 ];
 const serviceLabels = {mqtt:'MQTT / Home Assistant', ethernet:'Ethernet', rs485:'RS-485 / Modbus RTU'};
 let catalog, selected, libraryReady = false, libraryError = false, locked = false;
-let installer, installButton;
+let installer, installButton, presets, serialBusy = false;
 const kib = (bytes) => (bytes / 1024).toLocaleString('ru-RU', {maximumFractionDigits: 1}) + ' КиБ';
 const mib = (bytes) => (bytes / 1048576).toLocaleString('ru-RU', {maximumFractionDigits: 2}) + ' МиБ';
 const node = (tag, text, className) => {
@@ -52,6 +53,7 @@ function renderInstaller() {
   // including synthetic clicks on its disabled parent/custom element.
   installer.addEventListener('click', (event) => {
     if (installButton.disabled) {event.preventDefault(); event.stopImmediatePropagation();}
+    else if (!presets.prepare()) {event.preventDefault(); event.stopImmediatePropagation();}
   }, true);
   installer.append(installButton);
   installer.append(Object.assign(node('span', browserIssue(), 'small muted'), {slot: 'unsupported'}));
@@ -65,6 +67,7 @@ function chooseProfile(id, updateURL = true) {
   const restoreRadioFocus = document.activeElement?.matches('input[name="profile"]');
   selected = catalog.profiles.find((p) => p.id === id);
   if (!selected) return;
+  presets?.select(selected);
   $('postInstall').hidden = true;
   $('confirmHardware').checked = false;
   $('boardSelect').value = selected.board;
@@ -200,11 +203,12 @@ function connectionsURL(profile) {
 }
 
 function setLocked(value) {
-  locked = value;
-  $('boardSelect').disabled = value;
-  for (const input of $('profileChoices').querySelectorAll('input')) input.disabled = value;
-  for (const input of $('serviceChoices').querySelectorAll('input')) input.disabled = value || input.dataset.available !== 'true';
-  $('confirmHardware').disabled = value;
+  locked = value || serialBusy;
+  presets?.lock(locked);
+  $('boardSelect').disabled = locked;
+  for (const input of $('profileChoices').querySelectorAll('input')) input.disabled = locked;
+  for (const input of $('serviceChoices').querySelectorAll('input')) input.disabled = locked || input.dataset.available !== 'true';
+  $('confirmHardware').disabled = locked;
   updateInstall();
 }
 
@@ -232,6 +236,7 @@ async function main() {
       setLocked(Boolean(dialog));
       if (!dialog || observedDialogs.has(dialog)) return;
       observedDialogs.add(dialog);
+      presets.observeDialog(dialog);
       const profile = selected;
       dialog.addEventListener('g5500-flash-state', (event) => {
         if (event.target !== dialog) return;
@@ -246,6 +251,7 @@ async function main() {
       });
     })
       .observe(document.body, {childList: true});
+    presets = new Preconfigurator({setBusy:(value) => {serialBusy = value; setLocked(Boolean(document.querySelector('ewt-install-dialog')));}});
     const hash = new URLSearchParams(location.hash.slice(1)).get('profile');
     chooseProfile(catalog.profiles.some((p) => p.id === hash) ? hash : catalog.profiles[0].id, false);
     $('workspace').hidden = false;

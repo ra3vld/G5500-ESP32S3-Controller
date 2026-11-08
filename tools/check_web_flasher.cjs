@@ -5,7 +5,7 @@ const http = require('node:http');
 const {chromium} = require('playwright');
 
 const root = path.resolve(__dirname, '..');
-const directory = path.join(root, 'dist/web-flasher');
+const directory = process.env.WEB_FLASHER_SITE || path.join(root, 'dist/web-flasher');
 const original = JSON.parse(fs.readFileSync(path.join(directory, 'catalog.json')));
 const types = {'.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.json':'application/json', '.webp':'image/webp', '.svg':'image/svg+xml'};
 const server = http.createServer((request, response) => {
@@ -27,7 +27,7 @@ function readyCatalog() {
     // Explicit UI fixtures; these are never written to the published site.
     const capabilities = Object.fromEntries(['WEB_INTERFACE_ENABLED','WIFI_SUPPORT','MQTT_SUPPORT',
       'HOME_ASSISTANT_DISCOVERY_SUPPORT','GS232_SUPPORT','ROTCTLD_SUPPORT','N1MM_SUPPORT','PSTROTATOR_SUPPORT',
-      'HUD_SUPPORT','MODBUS_RTU_SUPPORT','BLUETOOTH_SUPPORT','WEB_LIVE_SUPPORT','OTA_SUPPORT','G5500_HAS_OTA_PARTITIONS'].map((name) => [name, true]));
+      'HUD_SUPPORT','MODBUS_RTU_SUPPORT','BLUETOOTH_SUPPORT','WEB_LIVE_SUPPORT','OTA_SUPPORT','G5500_HAS_OTA_PARTITIONS','COMMAND_API_SUPPORT','MQTT_TLS_SUPPORT'].map((name) => [name, true]));
     for (const [key, flags] of Object.entries({mqtt:['MQTT_SUPPORT','HOME_ASSISTANT_DISCOVERY_SUPPORT'],ethernet:['ETHERNET_SUPPORT'],rs485:['RS485_SUPPORT','MODBUS_RTU_SUPPORT']})) {
       for (const flag of flags) capabilities[flag] = profile.services[key];
     }
@@ -268,7 +268,7 @@ function readyCatalog() {
     assert.match(await page.locator('#selectedName').innerText(), /Полная.*без SPP/);
     // The pinned vendor bridge must be present in the actual shipped callback.
     const dialogName = fs.readdirSync(path.join(directory, 'vendor')).find((n) => /^install-dialog-.*\.js$/.test(n));
-    assert.match(fs.readFileSync(path.join(directory, 'vendor', dialogName), 'utf8'), /this\._installState=e,this\.dispatchEvent\(new CustomEvent\("g5500-flash-state"/);
+    assert.match(fs.readFileSync(path.join(directory, 'vendor', dialogName), 'utf8'), /this\._installState=e;if\(!this\.dispatchEvent\(new CustomEvent\("g5500-flash-state",\{detail:e,bubbles:true,composed:true,cancelable:true\}\)\)\)\{this\._handleClose\(\);return\}/);
     for (const [board, profile, expected] of [
       ['guition','esp32_2424s012c','esp32-2424s012c.html#местный-релейный-привод'],
       ['crowpanel','crowpanel_21','crowpanel-21.html#подключения'],

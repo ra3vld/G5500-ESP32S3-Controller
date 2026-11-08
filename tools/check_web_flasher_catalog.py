@@ -34,7 +34,9 @@ def verify(site, base_url=None, firmware_tag=None):
     identity = released_identity(firmware_tag) if firmware_tag else resolve()
     digest = source_digest()
     assert catalog['identity'] == identity
-    files = {'catalog.json', 'index.html', 'app.js', 'style.css', 'THIRD_PARTY_LICENSES.txt', 'images/favicon.svg'}
+    files = {'catalog.json', 'index.html', 'app.js', 'style.css', 'provisioning.js', 'serial-api.js', 'THIRD_PARTY_LICENSES.txt', 'images/favicon.svg'}
+    for name in ('provisioning.js','serial-api.js'):
+        assert (site / name).read_bytes() == (Path(__file__).resolve().parents[1] / 'web-flasher' / name).read_bytes()
     assert (site / 'images/favicon.svg').read_bytes() == (Path(__file__).resolve().parents[1] / 'web-flasher/images/favicon.svg').read_bytes()
     revisions = set()
     for profile, actual in zip(expected, catalog['profiles']):

@@ -6,9 +6,16 @@ on:
     paths:
       - 'web-flasher/index.html'
       - 'web-flasher/app.js'
+      - 'web-flasher/provisioning.js'
+      - 'web-flasher/serial-api.js'
       - 'web-flasher/style.css'
       - 'web-flasher/images/favicon.svg'
       - 'tools/update_web_flasher_site.py'
+      - 'tools/patch_web_flasher_vendor.mjs'
+      - 'tools/build_web_flasher_docs.py'
+      - 'docs/web-flasher.md'
+      - 'docs/api/command-api.md'
+      - 'tools/check_preconfiguration.cjs'
       - 'tools/check_web_flasher_catalog.py'
       - 'tools/check_web_flasher.cjs'
       - 'tests/test_update_web_flasher_site.py'
@@ -40,6 +47,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - run: python3 -m pip install Markdown==3.5.2
       - run: python3 -m unittest discover -s tests -p test_update_web_flasher_site.py
       - id: release
         name: Download the latest stable release website
@@ -61,6 +69,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - run: npm run test:web-flasher
+      - run: npm run test:preconfiguration
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist/web-flasher
