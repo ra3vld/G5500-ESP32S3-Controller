@@ -2,7 +2,7 @@ name: Firmware and web flasher
 
 on:
   push:
-    branches: [main, web_flasher]
+    branches: [main]
     tags: ['v*']
     paths-ignore:
       - 'web-flasher/index.html'
