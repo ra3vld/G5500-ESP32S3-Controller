@@ -21,7 +21,7 @@ export class ServiceLink {
       response = await fetch(this.origin + '/api/provisioning/' + path, {method:'POST', credentials:'omit', cache:'no-store',
         headers:{'Content-Type':'application/json'}, body:JSON.stringify(body), signal:AbortSignal.timeout(15000)});
       data = await response.json();
-    } catch {throw Error('Нет связи с rotator.r3v.ru. Проверьте интернет и повторите — текущая привязка сохранена в этой вкладке.');}
+    } catch {throw Error('Нет связи с rotator.r3v.ru. Проверьте интернет и блокировщики запросов, затем повторите — текущая привязка сохранена в этой вкладке.');}
     if (!response.ok) {const error = Error(typeof data.detail === 'string' ? data.detail : 'Сервис отклонил привязку.'); error.status = response.status; throw error;}
     return data;
   }
@@ -42,7 +42,7 @@ export class Preconfigurator {
     this.setBusy = setBusy;
     const serviceOrigin = document.querySelector('meta[name="g5500-service"]').content;
     this.service = new ServiceLink(serviceOrigin);
-    for (const id of ['presetEnabled','presetMqttMode','presetDiscovery','presetIpMode','presetOpenWifi','presetMqttKeepPassword']) $(id).addEventListener('change', () => this.render());
+    for (const id of ['presetMqttMode','presetDiscovery','presetIpMode','presetOpenWifi','presetMqttKeepPassword']) $(id).addEventListener('change', () => this.render());
     $('presetForm').addEventListener('submit', (event) => {event.preventDefault(); this.apply();});
     $('presetCancel').addEventListener('click', () => {this.cancelled = true; this.message('Останавливаем настройку. Уже сохранённые параметры останутся в устройстве.');});
     $('presetMqttTls').addEventListener('change', () => {
@@ -57,19 +57,17 @@ export class Preconfigurator {
   }
 
   select(profile) {this.profile = profile; this.flashDraft = null; this.render();}
-  get enabled() {return $('presetEnabled').checked && !$('presetEnabled').disabled;}
+  get enabled() {return (this.profile?.build?.capabilities || this.profile?.planned_capabilities || {}).COMMAND_API_SUPPORT === true;}
   lock(installing) {this.installing = installing; this.render();}
   render() {
     if (!this.profile) return;
     const caps = this.profile.build?.capabilities || this.profile.planned_capabilities || {};
     const supported = caps.COMMAND_API_SUPPORT === true;
-    $('presetEnabled').disabled = !supported || this.busy || this.installing;
     $('presetUnavailable').hidden = supported;
     $('presetUnavailable').textContent = this.profile.recipe === 'esp32_spp'
       ? 'В компактной SPP нет USB API. Выполните первоначальную настройку в основной прошивке, затем установите SPP без стирания.'
       : 'Преднастройка по USB недоступна в этой сборке.';
-    $('presetForm').hidden = !$('presetEnabled').checked || !supported;
-    $('presetFields').disabled = Boolean(this.busy || this.installing);
+    $('presetFields').disabled = Boolean(this.busy || this.installing || !supported);
     $('presetApply').disabled = Boolean(this.busy || this.installing || !supported || !('serial' in navigator));
     $('presetCancel').hidden = !this.busy;
     $('presetMqttMode').disabled = !caps.MQTT_SUPPORT || this.busy || this.installing;
@@ -80,6 +78,7 @@ export class Preconfigurator {
     const manual = $('presetMqttMode').value === 'manual';
     $('presetMqttManual').hidden = !manual;
     $('presetServiceHelp').hidden = $('presetMqttMode').value !== 'service';
+    $('presetServiceTroubleshooting').hidden = $('presetMqttMode').value !== 'service';
     $('presetDiscoveryField').hidden = !manual || !$('presetDiscovery').checked;
     $('presetStatic').hidden = $('presetIpMode').value !== 'static';
     $('presetWifiPassword').disabled = $('presetOpenWifi').checked || this.busy || this.installing;
@@ -89,6 +88,7 @@ export class Preconfigurator {
   }
   message(text, error = false) {
     $('presetProgress').hidden = false; $('presetProgress').dataset.error = String(error); $('presetStatus').textContent = text;
+    if (error && text.startsWith('Нет связи с rotator.r3v.ru.')) $('presetServiceTroubleshooting').open = true;
   }
   log(text) {const item = document.createElement('li'); item.textContent = text; $('presetLog').append(item);}
   checkCancelled() {if (this.cancelled) throw Error('Настройка остановлена. Нажмите «Применить настройки», чтобы продолжить.');}
@@ -128,7 +128,11 @@ export class Preconfigurator {
   }
   prepare() {
     if (!this.enabled) {this.flashDraft = null; return true;}
-    try {this.flashDraft = this.collect(); return true;} catch (error) {this.message(error.message, true); return false;}
+    try {
+      const draft = this.collect();
+      this.flashDraft = draft.name || draft.ssid || draft.ipMode !== 'preserve' || draft.mqttMode !== 'preserve' ? draft : null;
+      return true;
+    } catch (error) {this.message(error.message, true); return false;}
   }
 
   observeDialog(dialog) {

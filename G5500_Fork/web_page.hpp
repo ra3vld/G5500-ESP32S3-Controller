@@ -208,6 +208,8 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 @media(max-width:600px){#settingsPanel .field-action,#settingsPanel .device-address .device-fields{grid-template-columns:minmax(0,1fr)}#settingsPanel .field-action>.btn,#settingsPanel .device-address .device-fields .btn{justify-self:start;margin-top:0;width:auto}#settingsPanel .device-address .field-action>.btn{grid-column:1;grid-row:3}#settingsPanel .device-address .field-action>.field-help{grid-row:4}#settingsPanel .setup-navigation .btn,#settingsPanel .form-actions>.btn{width:auto;max-width:100%}#settingsPanel .setup-navigation{gap:10px}#settingsPanel .row .ip-interface{width:100%}}
 
 .safety-bar{box-sizing:border-box;position:fixed;inset:0 0 auto;z-index:60;display:flex;align-items:center;gap:12px;padding:8px max(12px,calc((100vw - 960px)/2));background:#132532;border-bottom:2px solid #7e4248;min-height:64px}.safety-bar button{min-width:100px;min-height:44px}.safety-bar span{font-size:14px;overflow-wrap:anywhere}body{padding-top:68px;box-sizing:border-box}body.setup-view>.wrap{padding-bottom:220px}body.setup-view .page-header h1{font-size:18px;line-height:1.35}body.setup-view #setupWizard p{margin:8px 0}body.setup-view #setupFooter{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:calc(100% - 24px);max-width:960px;z-index:35;background:#132532;border:1px solid #355063;border-radius:12px 12px 0 0;padding:10px}#setupFooter .setup-navigation{gap:8px}#setupExit{margin-left:auto}#setupReconnect{min-height:44px}body.setup-view .action-feedback{bottom:190px}#setupFooter .btn{min-height:44px;padding:8px 12px}@media(max-width:600px){#setupFooter .setup-navigation{display:grid;grid-template-columns:1fr 1fr}#setupFooter .btn{width:100%;margin:0;font-size:13px}#setupExit{grid-column:1/-1}body.setup-view .action-feedback{bottom:200px}}
+
+#firmwareReleaseBox .form-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}#firmwareReleaseBox a{color:#9be6b4}
 </style></head><body>
 <div class="safety-bar" role="region" aria-label="Остановка движения"><button class="btn stop" type="button" id="globalStop" onclick="globalStop()">STOP</button><span id="globalDriveStatus" role="status">Проверяем состояние привода…</span></div><div class="wrap">
 <header class="page-header">
@@ -440,7 +442,8 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <div class="form-actions"><button id="mqttSave" type="submit" class="btn good" disabled>Сохранить MQTT</button></div><p id="mqttMessage" role="status" aria-live="polite">Откройте раздел, чтобы загрузить настройки MQTT.</p></form></section>
 <section class="settings-group" data-feature="wifi"><h3>Домашняя сеть Wi-Fi</h3><div class="row"><div class="field"><label for="ssid">Имя сети (SSID)</label><input autocomplete="off" aria-describedby="ssid-help" id="ssid"/><p class="field-help" id="ssid-help">Точное имя сети Wi-Fi, к которой подключится устройство после сохранения.</p></div><div class="field"><label for="pass">Пароль сети</label><input autocomplete="new-password" aria-describedby="pass-help" id="pass" type="password"/><p class="field-help" id="pass-help">Пароль выбранной сети Wi-Fi. Для открытой сети оставьте пустым. Сохранённый пароль не отображается в этом поле.</p></div></div>
 <div class="form-actions"><button class="btn good" id="wifiSaveButton" onclick="wifi()">Сохранить и подключиться</button><span class="hint">Полученный IP появится ниже. Точка доступа останется доступной до следующей перезагрузки.</span></div><div aria-live="polite" class="inline-message" id="wifiMessage" role="status"></div><a id="wifiClientLink" class="hint" hidden target="_blank" rel="noopener noreferrer"></a></section>
-<section class="settings-group" data-feature="wifi"><h3>Точка доступа устройства</h3><div class="field"><label for="appass">Пароль точки доступа</label><input autocomplete="new-password" aria-describedby="appass-help" id="appass" maxlength="63" minlength="8" placeholder="Пустое поле — открытая сеть" type="password"/><p class="field-help" id="appass-help">Пароль собственной точки доступа устройства: 8–63 символа. Пустое поле отключает защиту паролем. Изменение применяется после перезагрузки.</p></div><p class="hint">От 8 до 63 символов. Оставьте поле пустым, чтобы открыть сеть без пароля.</p><div class="form-actions"><button class="btn good" id="apSaveButton" onclick="saveAp()">Сохранить точку доступа</button><span class="hint">Устройство перезагрузится.</span></div></section></div></details></section><section class="card settings-section" id="otaSettings"><details class="settings-details" ontoggle="if(this.open)loadOta()"><summary><h2>Обновление прошивки<span class="section-caption">OTA через браузер или Arduino IDE</span></h2></summary><div class="settings-content">
+<section class="settings-group" data-feature="wifi"><h3>Точка доступа устройства</h3><div class="field"><label for="appass">Пароль точки доступа</label><input autocomplete="new-password" aria-describedby="appass-help" id="appass" maxlength="63" minlength="8" placeholder="Пустое поле — открытая сеть" type="password"/><p class="field-help" id="appass-help">Пароль собственной точки доступа устройства: 8–63 символа. Пустое поле отключает защиту паролем. Изменение применяется после перезагрузки.</p></div><p class="hint">От 8 до 63 символов. Оставьте поле пустым, чтобы открыть сеть без пароля.</p><div class="form-actions"><button class="btn good" id="apSaveButton" onclick="saveAp()">Сохранить точку доступа</button><span class="hint">Устройство перезагрузится.</span></div></section></div></details></section><section class="card settings-section" id="otaSettings"><details class="settings-details" ontoggle="if(this.open)loadOta()"><summary><h2>Обновление прошивки<span class="section-caption">Релизы GitHub, USB и OTA</span></h2></summary><div class="settings-content">
+<section class="settings-group" id="firmwareReleaseBox"><h3>Новые версии на GitHub</h3><p id="firmwareReleaseStatus" role="status" aria-live="polite">Проверка начнётся после получения версии устройства.</p><div class="form-actions"><button id="firmwareReleaseCheck" type="button" class="btn" onclick="firmwareReleases.check(true)">Проверить сейчас</button><a id="firmwareReleaseLink" href="https://github.com/ra3vld/G5500-ESP32S3-Controller/releases/latest" target="_blank" rel="noopener noreferrer">Открыть релиз ↗</a><a href="https://ra3vld.github.io/G5500-ESP32S3-Controller/" target="_blank" rel="noopener noreferrer">Открыть прошивальщик ↗</a></div><p class="field-help small">Проверка выполняется браузером при открытии страницы и раз в 6 часов. Для установки выберите ту же плату и конфигурацию; обновление запускается вручную.</p></section>
 <p id="otaCapacity" role="status">Откройте раздел, чтобы проверить доступность OTA.</p><div class="kv"><div>Flash: <b id="otaFlash">—</b></div><div>Текущая прошивка: <b id="otaImage">—</b></div><div>Раздел OTA: <b id="otaSlot">—</b></div></div>
 <p class="field-help">Выберите файл приложения .bin для той же платы и подключения. Настройки и калибровки сохраняются. Во время обновления движение будет остановлено; не отключайте питание.</p>
 <form id="otaForm" onsubmit="uploadOta(event)"><div class="field"><label for="otaFile">Файл прошивки</label><input id="otaFile" type="file" accept=".bin,application/octet-stream" onchange="validateOtaFile()" disabled/><p id="otaFileHelp" class="field-help">Нужен firmware.bin из PlatformIO или файл приложения из Arduino IDE.</p></div>
@@ -563,6 +566,7 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 </section>
 <footer class="page-footer">
 <span id="firmwareIdentity">G5500 Fork</span>
+<a id="firmwareUpdateBadge" class="btn good" href="#settings" onclick="firmwareReleases.open(event)" hidden></a>
 <div class="footer-links"><a href="https://github.com/ra3vld/G5500-ESP32S3-Controller" target="_blank" rel="noopener noreferrer">Репозиторий RA3VLD</a><a href="https://github.com/ua1cfm/G5500-ESP32S3-Controller" target="_blank" rel="noopener noreferrer">Оригинал UA1CFM</a></div>
 </footer></div>
 <div id="settingsFeedback" class="action-feedback" hidden><div role="status" aria-live="polite" aria-atomic="true"><strong id="settingsFeedbackTitle"></strong><span id="settingsFeedbackText"></span></div><button type="button" aria-label="Закрыть уведомление" onclick="dismissSettingsFeedback()">×</button></div>
@@ -794,6 +798,93 @@ function selectTab(name,updateHash=true){
  if(updateHash)(settings?document.querySelector('.wrap'):window).scrollTo({top:0,behavior:'instant'});
  if(name==='control')focusMovementButtons();
 }
+
+/* BEGIN RELEASE CHECK */
+// Public release metadata is fetched by the browser, never by the controller.
+window.firmwareReleases = (() => {
+  const repository = 'https://github.com/ra3vld/G5500-ESP32S3-Controller';
+  const api = 'https://api.github.com/repos/ra3vld/G5500-ESP32S3-Controller/releases/latest';
+  const interval = 6 * 60 * 60 * 1000;
+  let current = '', release = null, busy = false, attempted = false, checkedAt = 0;
+  const element = id => document.getElementById(id);
+  function version(text) {
+    const match = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(text || '');
+    if (!match) return null;
+    const parts = match.slice(1, 4).map(Number);
+    return parts.every(Number.isSafeInteger) ? {parts, prerelease:Boolean(match[4])} : null;
+  }
+  function newer(latest, installed) {
+    for (let i = 0; i < 3; i++) {
+      if (latest.parts[i] !== installed.parts[i]) return latest.parts[i] > installed.parts[i];
+    }
+    return installed.prerelease && !latest.prerelease;
+  }
+  function message(text) {
+    const target = element('firmwareReleaseStatus');
+    if (target) target.textContent = text;
+  }
+  function render() {
+    const installed = version(current), latest = release && version(release.tag);
+    const available = Boolean(installed && latest && newer(latest, installed));
+    const badge = element('firmwareUpdateBadge');
+    if (badge) {
+      badge.hidden = !available;
+      badge.textContent = available ? 'Доступна прошивка ' + release.tag : '';
+    }
+    const link = element('firmwareReleaseLink');
+    if (link) link.href = release ? release.url : repository + '/releases/latest';
+    if (release) {
+      if (!installed) message('Последний релиз: ' + release.tag + '. Текущая версия не определена.');
+      else if (available) message('Доступна новая прошивка ' + release.tag + '. Установлена ' + current + '.');
+      else message('Новой стабильной прошивки нет. Последний релиз: ' + release.tag + ', установлена ' + current + '.');
+    }
+    const button = element('firmwareReleaseCheck');
+    if (button) button.disabled = busy;
+  }
+  async function check(force = false) {
+    if (busy || (!force && attempted && Date.now() - checkedAt < interval)) return;
+    attempted = true; checkedAt = Date.now(); busy = true; render();
+    message('Проверяем последний релиз на GitHub…');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(api, {credentials:'omit', referrerPolicy:'no-referrer',
+        cache:force ? 'reload' : 'default', signal:controller.signal});
+      if (response.status === 403 || response.status === 429) throw Error('GitHub ограничил запросы. Повторите позже или откройте релизы по ссылке.');
+      if (response.status === 404) throw Error('Опубликованные релизы пока не найдены. Повторите проверку позже.');
+      if (!response.ok) throw Error('GitHub вернул ошибку ' + response.status + '. Повторите проверку.');
+      const data = await response.json();
+      if (data.draft || data.prerelease || !/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(data.tag_name || '') ||
+          data.html_url !== repository + '/releases/tag/' + data.tag_name) {
+        throw Error('GitHub вернул неподходящие сведения о релизе. Откройте список релизов по ссылке.');
+      }
+      release = {tag:data.tag_name, url:data.html_url}; render();
+    } catch (error) {
+      message(error.name === 'AbortError' ? 'GitHub не ответил за 8 секунд. Повторите проверку или откройте релизы по ссылке.' :
+        (error instanceof TypeError ? 'Не удалось связаться с GitHub. Проверьте интернет и блокировщики, затем повторите проверку.' : error.message));
+    } finally {
+      clearTimeout(timer); busy = false;
+      const button = element('firmwareReleaseCheck');
+      if (button) button.disabled = false;
+    }
+  }
+  function update(value) {
+    if (typeof value !== 'string' || !value || value === current) return;
+    current = value; render();
+    if (!attempted) check();
+  }
+  function open(event) {
+    const panel = element('otaSettings');
+    if (!panel) return;
+    const details = panel.querySelector('details');
+    if (details) details.open = true;
+    setTimeout(() => panel.scrollIntoView({block:'start', behavior:'smooth'}), 100);
+  }
+  setInterval(() => {if (current && !document.hidden) check();}, interval);
+  document.addEventListener('visibilitychange', () => {if (current && !document.hidden) check();});
+  return {update, check, open};
+})();
+/* END RELEASE CHECK */
 
 let otaState=null,otaBusy=false,otaCancelled=false,otaTimer;
 const otaBytes=n=>Number.isFinite(n)?n.toLocaleString('ru-RU')+' байт ('+(n/1048576).toFixed(2)+' МиБ)':'—';
@@ -1408,6 +1499,7 @@ function renderManualSpeeds(j){
  document.querySelector('.manual-drive').classList.toggle('has-speeds',!!visible);
 }
 function updateFork(j){
+ window.firmwareReleases.update(j.build?.version);
  const build=j.build;setText(document.getElementById('firmwareIdentity'),'G5500 Fork'+(build?.version?' '+build.version.split('+')[0]:'')+(build?.commit?' · коммит '+build.commit:'')+(build?.dirty?' · изменённые исходники':''));
  const programMode=document.getElementById('programModeHelp');if(programMode)programMode.textContent='Текущий режим: '+(j.controlMode==='manual'?'ручной':'автоматический')+'. Подтверждение отдельных протоколов действует в ручном режиме; кнопка «Рекомендуемые режимы» включает его.';
  const first=!window._forkState;window._forkState=j;

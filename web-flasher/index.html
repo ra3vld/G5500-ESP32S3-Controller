@@ -48,9 +48,8 @@
         </section>
         <section class="panel preset-panel" aria-labelledby="presetHeading">
           <div class="section-heading"><span class="step">03</span><div><h2 id="presetHeading">Предварительные настройки</h2><p>Заполнив форму сейчас, вы сможете передать параметры плате по USB сразу после прошивки.</p></div></div>
-          <label class="confirmation"><input id="presetEnabled" type="checkbox"><span>Настроить устройство после записи прошивки</span></label>
           <p id="presetUnavailable" class="small muted" hidden></p>
-          <form id="presetForm" autocomplete="off" hidden>
+          <form id="presetForm" autocomplete="off">
             <fieldset id="presetFields" class="preset-fields">
               <legend class="sr-only">Настройки устройства</legend>
               <label>Имя контроллера<input id="presetName" maxlength="31" pattern="[A-Za-z0-9 _-]{1,31}" placeholder="Оставить текущее имя"></label>
@@ -79,6 +78,7 @@
                 <label id="presetDiscoveryField" hidden>Префикс Discovery<input id="presetDiscoveryPrefix" value="homeassistant" maxlength="47"></label>
               </div>
               <p id="presetServiceHelp" class="small muted" hidden>После записи считываем ID платы. Вы подтвердите привязку в своём аккаунте rotator.r3v.ru, и MQTT-параметры будут переданы плате по USB. Для Home Assistant используйте свой брокер.</p>
+              <details id="presetServiceTroubleshooting" class="small" hidden><summary>Нет связи с rotator.r3v.ru?</summary><p>Если в консоли браузера указано <code>ERR_BLOCKED_BY_CLIENT</code>, запрос блокирует браузер или расширение. В блокировщике рекламы разрешите запросы к <strong>rotator.r3v.ru</strong> для страницы <strong>ra3vld.github.io</strong> или отключите фильтрацию для этой страницы. Затем снова нажмите «Подключиться по USB и применить настройки». Перепрошивать устройство не нужно.</p><p>В Яндекс Браузере проверьте значок блокировщика рекламы и панель защиты рядом с адресом. <a href="https://browser.yandex.ru/help/ru/troubleshooting/content" target="_blank" rel="noopener noreferrer">Справка Яндекса ↗</a></p></details>
               <p class="small muted">Привязку к <a href="https://rotator.r3v.ru" target="_blank" rel="noopener noreferrer">rotator.r3v.ru</a> можно выполнить позже вручную. Свой MQTT-брокер работает независимо от сервиса.</p>
               <p class="small muted">Wi-Fi и параметры своего MQTT-брокера передаются только плате по USB. Форма не сохраняет пароли между посещениями. Оборудование и калибровка проверяются отдельно в интерфейсе устройства.</p>
             </fieldset>

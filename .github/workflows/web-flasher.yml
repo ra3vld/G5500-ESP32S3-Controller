@@ -62,6 +62,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:web-flasher
       - run: npm run test:generic-displays
+      - run: npm run test:firmware-releases
       - id: matrix
         env:
           FULL_BUILD: ${{ startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.profile != 'esp32_spp') }}

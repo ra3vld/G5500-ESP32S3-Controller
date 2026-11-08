@@ -7,15 +7,104 @@ static constexpr char WEB_PAGE[] PROGMEM = R"HTML(
 <!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>G5500 — прямое управление</title>
 <style>
 :root{color-scheme:dark;font:16px system-ui;background:#101820;color:#e8eff4}*{box-sizing:border-box}body{max-width:760px;margin:24px auto;padding:0 16px}h1{font-size:25px;margin-bottom:6px}p{color:#aebdc8}section{background:#1b2935;border:1px solid #334755;border-radius:14px;padding:18px;margin:16px 0}.axes,.row{display:flex;gap:12px;flex-wrap:wrap}.axis{flex:1;min-width:135px}.value{font-size:36px;font-variant-numeric:tabular-nums}.small{font-size:14px;color:#aebdc8;overflow-wrap:anywhere}label{display:block;margin:12px 0 6px}input,select,button{font:inherit;border:1px solid #4c6679;border-radius:8px;padding:12px;background:#263b4b;color:inherit}input{width:100%;min-width:0}button{cursor:pointer;min-height:46px}button:disabled{opacity:.45;cursor:default}button[data-axis]{flex:1;touch-action:none;user-select:none}.stop{width:100%;background:#b7323b;border-color:#d04a53;font-size:24px;font-weight:700;margin:14px 0}.row>*{flex:1;min-width:0}#message{min-height:24px;color:#ffd08a;white-space:pre-wrap}a{color:#8ccfff}summary{cursor:pointer}form{margin:0}#connection{color:#8ccfff}button:focus-visible,input:focus-visible{outline:3px solid #79bbff}header .small{margin-top:8px}
-nav{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}nav a{padding:8px 0}</style>
+nav{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}nav a{padding:8px 0}
+#firmwareReleaseBox .form-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}#firmwareReleaseBox a{color:#9be6b4}
+</style>
 <header><h1>G5500 · прямое управление</h1><div id="connection" role="status">Подключение…</div><div class="small">Wi-Fi · Bluetooth SPP · PWM</div></header>
 <nav><a href="/">Управление</a><a href="/calibration">Калибровка</a><a href="/settings">Настройки</a><a href="/network">Сеть</a><a href="/hardware">Оборудование</a></nav><section><div class="axes"><div class="axis"><b>Азимут AZ</b><div class="value" id="az">—</div><div class="small" id="azout">PWM —</div></div><div class="axis"><b>Угол места EL</b><div class="value" id="el">—</div><div class="small" id="elout">PWM —</div></div></div>
 <button class="stop" id="stop">STOP</button><div class="row"><button data-axis="0" data-dir="-1" disabled>AZ −</button><button data-axis="0" data-dir="1" disabled>AZ +</button><button data-axis="1" data-dir="-1" disabled>EL −</button><button data-axis="1" data-dir="1" disabled>EL +</button></div><p class="small">Удерживайте кнопку для ручного движения.</p><div id="message" role="status"></div></section>
 <section><form id="target"><div class="row"><div><label for="taz">Цель AZ, °</label><input id="taz" name="az" type="number" step="0.1" required></div><div><label for="tel">Цель EL, °</label><input id="tel" name="el" type="number" step="0.1" required></div></div><div class="row" style="margin-top:14px"><button id="go" disabled>Задать цель</button><button type="button" id="execute" disabled>Выполнить</button></div></form><label for="mode">Режим</label><select id="mode"><option value="auto">Автоматический</option><option value="manual">Ручной</option><option value="auto_1h">Автоматический на час</option></select></section>
 <section><b>Рабочий выход PWM</b><div class="row"><form id="speedaz"><label for="saz">AZ, %</label><input id="saz" type="number" step="0.1" required><button style="margin-top:8px">Применить AZ</button></form><form id="speedel"><label for="sel">EL, %</label><input id="sel" type="number" step="0.1" required><button style="margin-top:8px">Применить EL</button></form></div></section>
-<section><div id="memory" class="small">RAM —</div><div id="radio" class="small">Bluetooth —</div><div id="fault" role="alert"></div><button id="resetFault">Сбросить ошибки движения</button><p><a href="/hardware">Оборудование и GPIO</a></p><p><a href="/network">Wi-Fi, точка доступа и IP-адреса</a> · <a href="/resetdiag">Причина сброса</a></p><div id="firmware" class="small"></div></section>
+<section><div id="memory" class="small">RAM —</div><div id="radio" class="small">Bluetooth —</div><div id="fault" role="alert"></div><button id="resetFault">Сбросить ошибки движения</button><p><a href="/hardware">Оборудование и GPIO</a></p><p><a href="/network">Wi-Fi, точка доступа и IP-адреса</a> · <a href="/resetdiag">Причина сброса</a></p><div id="firmware" class="small"></div></section><section class="settings-group" id="firmwareReleaseBox"><h3>Новые версии на GitHub</h3><p id="firmwareReleaseStatus" role="status" aria-live="polite">Проверка начнётся после получения версии устройства.</p><div class="form-actions"><button id="firmwareReleaseCheck" type="button" class="btn" onclick="firmwareReleases.check(true)">Проверить сейчас</button><a id="firmwareReleaseLink" href="https://github.com/ra3vld/G5500-ESP32S3-Controller/releases/latest" target="_blank" rel="noopener noreferrer">Открыть релиз ↗</a><a href="https://ra3vld.github.io/G5500-ESP32S3-Controller/" target="_blank" rel="noopener noreferrer">Открыть прошивальщик ↗</a></div><p class="field-help small">Проверка выполняется браузером при открытии страницы и раз в 6 часов. Для установки выберите ту же плату и конфигурацию; обновление запускается вручную.</p></section>
 <script>
-'use strict';const $=id=>document.getElementById(id);let state=null,last=0,polling=false,held=null,gesture=0,serial=0,renewing=false;
+'use strict';
+/* BEGIN RELEASE CHECK */
+// Public release metadata is fetched by the browser, never by the controller.
+window.firmwareReleases = (() => {
+  const repository = 'https://github.com/ra3vld/G5500-ESP32S3-Controller';
+  const api = 'https://api.github.com/repos/ra3vld/G5500-ESP32S3-Controller/releases/latest';
+  const interval = 6 * 60 * 60 * 1000;
+  let current = '', release = null, busy = false, attempted = false, checkedAt = 0;
+  const element = id => document.getElementById(id);
+  function version(text) {
+    const match = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(text || '');
+    if (!match) return null;
+    const parts = match.slice(1, 4).map(Number);
+    return parts.every(Number.isSafeInteger) ? {parts, prerelease:Boolean(match[4])} : null;
+  }
+  function newer(latest, installed) {
+    for (let i = 0; i < 3; i++) {
+      if (latest.parts[i] !== installed.parts[i]) return latest.parts[i] > installed.parts[i];
+    }
+    return installed.prerelease && !latest.prerelease;
+  }
+  function message(text) {
+    const target = element('firmwareReleaseStatus');
+    if (target) target.textContent = text;
+  }
+  function render() {
+    const installed = version(current), latest = release && version(release.tag);
+    const available = Boolean(installed && latest && newer(latest, installed));
+    const badge = element('firmwareUpdateBadge');
+    if (badge) {
+      badge.hidden = !available;
+      badge.textContent = available ? 'Доступна прошивка ' + release.tag : '';
+    }
+    const link = element('firmwareReleaseLink');
+    if (link) link.href = release ? release.url : repository + '/releases/latest';
+    if (release) {
+      if (!installed) message('Последний релиз: ' + release.tag + '. Текущая версия не определена.');
+      else if (available) message('Доступна новая прошивка ' + release.tag + '. Установлена ' + current + '.');
+      else message('Новой стабильной прошивки нет. Последний релиз: ' + release.tag + ', установлена ' + current + '.');
+    }
+    const button = element('firmwareReleaseCheck');
+    if (button) button.disabled = busy;
+  }
+  async function check(force = false) {
+    if (busy || (!force && attempted && Date.now() - checkedAt < interval)) return;
+    attempted = true; checkedAt = Date.now(); busy = true; render();
+    message('Проверяем последний релиз на GitHub…');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(api, {credentials:'omit', referrerPolicy:'no-referrer',
+        cache:force ? 'reload' : 'default', signal:controller.signal});
+      if (response.status === 403 || response.status === 429) throw Error('GitHub ограничил запросы. Повторите позже или откройте релизы по ссылке.');
+      if (response.status === 404) throw Error('Опубликованные релизы пока не найдены. Повторите проверку позже.');
+      if (!response.ok) throw Error('GitHub вернул ошибку ' + response.status + '. Повторите проверку.');
+      const data = await response.json();
+      if (data.draft || data.prerelease || !/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(data.tag_name || '') ||
+          data.html_url !== repository + '/releases/tag/' + data.tag_name) {
+        throw Error('GitHub вернул неподходящие сведения о релизе. Откройте список релизов по ссылке.');
+      }
+      release = {tag:data.tag_name, url:data.html_url}; render();
+    } catch (error) {
+      message(error.name === 'AbortError' ? 'GitHub не ответил за 8 секунд. Повторите проверку или откройте релизы по ссылке.' :
+        (error instanceof TypeError ? 'Не удалось связаться с GitHub. Проверьте интернет и блокировщики, затем повторите проверку.' : error.message));
+    } finally {
+      clearTimeout(timer); busy = false;
+      const button = element('firmwareReleaseCheck');
+      if (button) button.disabled = false;
+    }
+  }
+  function update(value) {
+    if (typeof value !== 'string' || !value || value === current) return;
+    current = value; render();
+    if (!attempted) check();
+  }
+  function open(event) {
+    const panel = element('otaSettings');
+    if (!panel) return;
+    const details = panel.querySelector('details');
+    if (details) details.open = true;
+    setTimeout(() => panel.scrollIntoView({block:'start', behavior:'smooth'}), 100);
+  }
+  setInterval(() => {if (current && !document.hidden) check();}, interval);
+  document.addEventListener('visibilitychange', () => {if (current && !document.hidden) check();});
+  return {update, check, open};
+})();
+/* END RELEASE CHECK */
+const $=id=>document.getElementById(id);let state=null,last=0,polling=false,held=null,gesture=0,serial=0,renewing=false;
 const random=()=>crypto.getRandomValues(new Uint32Array(1))[0]||1,client=random(),session=random();
 async function request(path,data,stop=false){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),stop?1800:2500);try{const r=await fetch(path,{method:data?'POST':'GET',body:data?new URLSearchParams(data):undefined,cache:'no-store',signal:controller.signal,keepalive:stop});const text=await r.text();if(!r.ok)throw Error(text||String(r.status));return text.startsWith('{')?JSON.parse(text):text;}finally{clearTimeout(timer)}}
 function message(text){$('message').textContent=text}
@@ -28,7 +117,7 @@ function stop(){release();request('/api/move',{d:'S'},true).then(()=>message('ST
 function begin(b){if(!ready()||held||renewing)return;held={axis:Number(b.dataset.axis),dir:Number(b.dataset.dir),id:++gesture};renew()}
 for(const b of document.querySelectorAll('[data-axis]')){b.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();b.setPointerCapture(e.pointerId);begin(b)};b.onpointerup=b.onpointercancel=b.onlostpointercapture=release;b.onkeydown=e=>{if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();begin(b)}};b.onkeyup=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();release()}};}
 $('resetFault').onclick=()=>{release();act('/api/motion/reset',{axis:'all'}).catch(()=>{})};$('stop').onclick=stop;window.addEventListener('blur',release);window.addEventListener('pagehide',release);document.addEventListener('visibilitychange',()=>{if(document.hidden)release()});setInterval(renew,250);
-function render(j){state=j;window._forkState=j;last=Date.now();$('connection').textContent='На связи · '+j.ip;for(let i=0;i<2;i++){const k=i?'el':'az',a=j.axes[i];if(i&&j.hasEl===false){$(k).parentElement.hidden=true;continue}$(k).parentElement.hidden=false;$(k).textContent=a.calibrated?a.current.toFixed(1)+'°':'Нет калибровки';$(k+'out').textContent='PWM '+a.output.toFixed(1)+'% · '+(a.direction>0?'+':a.direction<0?'−':'STOP');const t=$(i?'tel':'taz'),s=$(i?'sel':'saz');t.min=a.min;t.max=a.max;if(!t.value)t.value=a.current.toFixed(1);s.min=a.limit/20;s.max=a.limit;if(document.activeElement!==s&&!s.dataset.dirty)s.value=a.speed;}
+function render(j){window.firmwareReleases.update(j.version);state=j;window._forkState=j;last=Date.now();$('connection').textContent='На связи · '+j.ip;for(let i=0;i<2;i++){const k=i?'el':'az',a=j.axes[i];if(i&&j.hasEl===false){$(k).parentElement.hidden=true;continue}$(k).parentElement.hidden=false;$(k).textContent=a.calibrated?a.current.toFixed(1)+'°':'Нет калибровки';$(k+'out').textContent='PWM '+a.output.toFixed(1)+'% · '+(a.direction>0?'+':a.direction<0?'−':'STOP');const t=$(i?'tel':'taz'),s=$(i?'sel':'saz');t.min=a.min;t.max=a.max;if(!t.value)t.value=a.current.toFixed(1);s.min=a.limit/20;s.max=a.limit;if(document.activeElement!==s&&!s.dataset.dirty)s.value=a.speed;}
 const hasEl=j.hasEl!==false;$('tel').parentElement.hidden=!hasEl;$('tel').required=hasEl;$('speedel').hidden=!hasEl;for(const b of document.querySelectorAll('[data-axis="1"]'))b.hidden=!hasEl;$('firmware').textContent='Версия '+(j.version||'неизвестна')+' · '+(j.commit||'');if(document.activeElement!==$('mode'))$('mode').value=j.controlMode;for(const b of document.querySelectorAll('[data-axis]'))b.disabled=!ready();$('go').disabled=!ready()||j.axes.some((a,i)=>(!i||hasEl)&&!a.calibrated);$('execute').disabled=!ready()||!j.pendingValid;$('memory').textContent='RAM '+Math.round(j.heapFree/1024)+' КиБ · минимум '+Math.round(j.heapMinFree/1024)+' КиБ · ошибок '+j.allocFailures;$('radio').textContent='SPP '+(j.btConnected?'подключён':'ожидает подключения')+' · Wi-Fi '+j.rssi+' dBm';$('fault').textContent=j.fault||'';}
 async function poll(){if(polling||held||document.hidden)return;polling=true;try{render(await request('/api/status?view=minimal'))}catch(e){if(Date.now()-last>2500){$('connection').textContent='Нет связи';for(const b of document.querySelectorAll('[data-axis]'))b.disabled=true;$('go').disabled=$('execute').disabled=true;}}finally{polling=false}}
 $('target').onsubmit=e=>{e.preventDefault();if(ready()){const target={az:$('taz').value,rangeRevision:state.rangeRevision};if(state.hasEl!==false)target.el=$('tel').value;act('/api/target',target).catch(()=>{})}};$('execute').onclick=()=>act('/api/execute',{}).catch(()=>{});$('mode').onchange=()=>act('/api/mode',{mode:$('mode').value}).catch(()=>{});

@@ -7,6 +7,7 @@
     "build:web-flasher": "node tools/build_web_flasher.mjs",
     "test:web-flasher": "node tools/check_web_flasher.cjs",
     "test:preconfiguration": "node tools/check_preconfiguration.cjs",
+    "test:firmware-releases": "node tools/check_firmware_release_web.cjs",
     "test:generic-displays": "node tools/check_generic_display_web.cjs"
   },
   "engines": {

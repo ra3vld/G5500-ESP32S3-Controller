@@ -130,7 +130,7 @@ const server=http.createServer((req,res)=>{
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
   if(process.env.PROVISIONING_SERVICE_URL)context.on('request',r=>{if(r.url().startsWith(serviceBase+'/api/provisioning/public/')&&r.method()==='POST')requests.push({path:new URL(r.url()).pathname,data:r.postDataJSON(),cookie:r.headers().cookie});});
   await page.goto(base);await page.locator('#workspace').waitFor({state:'visible'});
-  await page.locator('#presetEnabled').check();await page.locator('#presetName').fill('RA3VLD_Test');
+  assert.equal(await page.locator('#presetEnabled').count(),0);assert(await page.locator('#presetForm').isVisible());await page.locator('#presetName').fill('RA3VLD_Test');
   await page.locator('#presetSsid').fill('Сеть дома');await page.locator('#presetWifiPassword').fill('fixture-wifi-password');
   await page.locator('#presetMqttMode').selectOption('manual');await page.locator('#presetMqttHost').fill('192.168.1.10');
   await page.locator('#presetMqttUser').fill('station');await page.locator('#presetMqttPassword').fill('fixture-mqtt-password');
@@ -165,6 +165,13 @@ const server=http.createServer((req,res)=>{
   await page.locator('#presetNewDevice').click();await page.evaluate(()=>usbFixture.id='aabbccddeeff');
   // Independent broker selection, followed by explicit account consent.
   await page.locator('#presetIpMode').selectOption('preserve');await page.locator('#presetMqttMode').selectOption('service');
+  await page.route(serviceBase+'/api/provisioning/public/sessions',route=>route.abort('blockedbyclient'),{times:1});
+  await page.locator('#presetApply').click();
+  await page.waitForFunction(()=>document.getElementById('presetStatus').textContent.startsWith('Нет связи с rotator.r3v.ru.'));
+  assert.equal(await page.locator('#presetServiceTroubleshooting').evaluate(node=>node.open),true);
+  assert.match(await page.locator('#presetServiceTroubleshooting').innerText(),/ERR_BLOCKED_BY_CLIENT/);
+  await page.waitForFunction(()=>!document.getElementById('presetApply').disabled);
+assert(await page.locator('#presetServiceTroubleshooting').isVisible());assert.match(await page.locator('#presetServiceTroubleshooting').innerText(),/Нет связи/);
   await page.locator('#presetApply').click();await page.locator('#presetConsent').waitFor({state:'visible'});
   const popupPromise=context.waitForEvent('page');await page.locator('#presetConsent').click();const popup=await popupPromise;
   if(process.env.PROVISIONING_SERVICE_URL){
@@ -187,7 +194,7 @@ const server=http.createServer((req,res)=>{
   await page.locator('#presetRefresh').click();await page.waitForFunction(()=>document.getElementById('presetLog').textContent.includes('свежую телеметрию'),{},{timeout:10000});
   for(const width of [1280,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.locator('.preset-panel').screenshot({path:path.join(output,`service-${width}.png`)});}
   // Unsupported profiles visibly keep their manual setup path.
-  await page.locator('#boardSelect').selectOption('esp32');await page.locator('input[value="esp32_spp"]').check();assert.equal(await page.locator('#presetEnabled').isDisabled(),true);assert.match(await page.locator('#presetUnavailable').innerText(),/основной прошивке/);
+  await page.locator('#boardSelect').selectOption('esp32');await page.locator('input[value="esp32_spp"]').check();assert(await page.locator('#presetForm').isVisible());assert.equal(await page.locator('#presetFields').evaluate(node=>node.disabled),true);assert(await page.locator('#presetName').isDisabled());assert.match(await page.locator('#presetUnavailable').innerText(),/основной прошивке/);
   // Run the actual patched vendor callback with its loader already disconnected.
   // Settings stay frozen, and the same granted port is handed off automatically.
   await page.locator('#boardSelect').selectOption('s3');await page.locator('#presetMqttMode').selectOption('preserve');await page.locator('#presetName').fill('Auto_Handoff');await page.locator('#confirmHardware').check();
@@ -205,6 +212,16 @@ const server=http.createServer((req,res)=>{
   assert.equal(await page.locator('#boardSelect').isDisabled(),true);
   await page.waitForFunction(()=>usbFixture.name==='Auto_Handoff'&&!document.getElementById('presetApply').disabled,{},{timeout:20000});
   assert.equal(await page.locator('ewt-install-dialog').count(),0);
+  // Leaving the always-visible form unchanged keeps ordinary flashing free of
+  // our automatic settings handoff and does not write any saved configuration.
+  const writesBefore=await page.evaluate(()=>usbFixture.writes.length);
+  await page.evaluate(()=>{document.getElementById('presetForm').reset();document.getElementById('presetMqttMode').dispatchEvent(new Event('change'));});
+  await page.locator('#confirmHardware').check();await page.locator('.install-button').click();
+  await page.locator('ewt-install-dialog').waitFor({state:'attached'});
+  const ordinary=await page.evaluate(()=>document.querySelector('ewt-install-dialog').dispatchEvent(new CustomEvent('g5500-flash-state',{detail:{state:'finished'},bubbles:true,composed:true,cancelable:true})));
+  assert.equal(ordinary,true,'An unchanged form must not take over the flasher USB port');
+  await page.waitForTimeout(650);
+  assert.equal(await page.evaluate(()=>usbFixture.writes.length),writesBefore);
   assert.deepEqual(errors,[]);
   console.log('PASS: manual MQTT/Discovery independent of service, UTF-8 Wi-Fi, identical POST retry, saved-state verification, storage failure/retry, static-IP reboot/confirm, wrong-device guard, account consent, MQTT TLS delivery, no secret storage, actual vendor callback/automatic USB handoff/frozen draft, desktop/mobile');
  }finally{await browser.close();await new Promise(r=>server.close(r));if(service.listening)await new Promise(r=>service.close(r));}

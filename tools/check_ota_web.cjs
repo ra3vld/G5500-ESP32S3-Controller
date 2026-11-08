@@ -8,6 +8,7 @@ const html=fs.readFileSync(path.join(root,'G5500_Fork/web_page.hpp'),'utf8').mat
 const output=spawnSync(path.join(root,'build/simulator'),[],{input:'step 0\n',encoding:'utf8',timeout:10000});
 assert.equal(output.status,0,output.stderr);
 const status=JSON.parse(output.stdout.trim()).state;
+status.build={...status.build,version:'1.1.0',commit:'fixture',dirty:false};
 const bytes=Buffer.alloc(5000);bytes[0]=0xe9;
 const initial=()=>({available:true,reason:'available',flashBytes:4194304,imageBytes:1500000,slotBytes:1966080,minimumFlashBytes:3145728,recommendedFlashBytes:4194304,chunkBytes:2048,chipId:0,token:'test-session',locked:false,writing:false,complete:false,receivedBytes:0,totalBytes:0,error:'',arduinoEnabled:false,hostname:'g5500-test',password:''});
 (async()=>{
@@ -40,7 +41,14 @@ const initial=()=>({available:true,reason:'available',flashBytes:4194304,imageBy
     }else if(u.pathname==='/api/rssi')body={items:[]};
     return route.fulfill({status:code,contentType:'application/json',body:JSON.stringify(body)});
    });
+   let releaseRequests=0;
+   await page.route('https://api.github.com/repos/ra3vld/G5500-ESP32S3-Controller/releases/latest',route=>{
+    releaseRequests++;
+    return route.fulfill({json:{tag_name:'v99.0.0',html_url:'https://github.com/ra3vld/G5500-ESP32S3-Controller/releases/tag/v99.0.0',draft:false,prerelease:false}});
+   });
    await page.goto('http://ota.test/#settings');
+   await page.waitForFunction(()=>document.getElementById('firmwareUpdateBadge').hidden===false);
+   assert.equal(releaseRequests,1);
    await page.locator('#otaSettings summary').click();
    await page.waitForFunction(()=>document.getElementById('otaCapacity').textContent.startsWith('OTA доступно'));
    assert(await page.locator('#otaUpload').isDisabled());

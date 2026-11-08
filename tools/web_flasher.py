@@ -93,7 +93,7 @@ def source_digest():
                    and 'build' not in p.relative_to(ROOT / 'G5500_Fork').parts)
     paths += [ROOT / name for name in ['platformio.ini',
               'tools/platformio_web_flasher.py', 'tools/web_flasher.py',
-              'tools/platformio_version.py', 'tools/project_version.py',
+              'tools/platformio_version.py', 'tools/project_version.py', 'tools/web_release.js',
               'tools/build_capabilities.py', 'tools/platformio_image_size.py',
               'tools/check_firmware_size.py', 'tools/platformio_lto.py',
               'tools/web_flasher_spp.py', 'tools/build_s2_sdk.py',

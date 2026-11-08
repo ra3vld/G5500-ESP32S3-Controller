@@ -17,6 +17,8 @@ ASSET_RE = r'(?:static|inline) constexpr char (\w+)\[\](?: PROGMEM)? = R"(\w+)\(
 OUTPUT = ROOT / 'G5500_Fork/web_assets.hpp'
 POLL_HELPER = ROOT / 'tools/web_poll.js'
 ACTIVITY_HELPER = ROOT / 'tools/web_activity.js'
+RELEASE_HELPER = ROOT / 'tools/web_release.js'
+RELEASE_BLOCK = r'/\* BEGIN RELEASE CHECK \*/.*?/\* END RELEASE CHECK \*/'
 POLL_BLOCK = r'/\* BEGIN BOUNDED POLLING \*/.*?/\* END BOUNDED POLLING \*/'
 ACTIVITY_BLOCK = r'/\* BEGIN STARTUP ACTIVITY \*/.*?/\* END STARTUP ACTIVITY \*/'
 CACHE = ROOT / 'tools/web_compiled.json'
@@ -131,10 +133,12 @@ def bundle(check=False):
 
     helper = '/* BEGIN BOUNDED POLLING */\n' + POLL_HELPER.read_text().rstrip() + '\n/* END BOUNDED POLLING */'
     activity = '/* BEGIN STARTUP ACTIVITY */\n' + ACTIVITY_HELPER.read_text().rstrip() + '\n/* END STARTUP ACTIVITY */'
+    releases = '/* BEGIN RELEASE CHECK */\n' + RELEASE_HELPER.read_text().rstrip() + '\n/* END RELEASE CHECK */'
     for filename in SOURCES:
         path = ROOT / 'G5500_Fork' / filename
         source = path.read_text()
         updated = re.sub(POLL_BLOCK, lambda _: helper, source, flags=re.S)
+        updated = re.sub(RELEASE_BLOCK, lambda _: releases, updated, flags=re.S)
         updated = re.sub(r'\n' + ACTIVITY_BLOCK, '', updated, flags=re.S)
         updated = updated.replace('/* END BOUNDED POLLING */', '/* END BOUNDED POLLING */\n' + activity)
         if updated != source:

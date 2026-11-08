@@ -1,5 +1,10 @@
 # G5500 Controller
 
+[![CI: прошивки](https://github.com/ra3vld/G5500-ESP32S3-Controller/actions/workflows/web-flasher.yml/badge.svg?branch=main)](https://github.com/ra3vld/G5500-ESP32S3-Controller/actions/workflows/web-flasher.yml)
+[![CD: веб-прошивальщик](https://github.com/ra3vld/G5500-ESP32S3-Controller/actions/workflows/web-flasher-site.yml/badge.svg?branch=main)](https://github.com/ra3vld/G5500-ESP32S3-Controller/actions/workflows/web-flasher-site.yml)
+
+[![ПРОШИТЬ УСТРОЙСТВО](docs/images/flash-device.svg)](https://ra3vld.github.io/G5500-ESP32S3-Controller/)
+
 Модульная прошивка для управления антенными поворотными устройствами Yaesu G-5500, G-800DXA, G-800SA и независимыми DC-приводами. Работает на ESP32, ESP32-S2, ESP32-S3 и ESP32-C3. Для полного набора функций рекомендуется **ESP32-S3 с PSRAM**; [платы и конфигурации](docs/setup/configuration.md#выбор-конфигурации).
 
 Для простой установки достаточно одной платы возле блока поворотки и браузера на компьютере или телефоне. При необходимости можно добавить дисплей, кнопки, джойстик или энкодер либо вынести органы управления на отдельный пульт **HUD**. Один HUD переключается между несколькими контроллерами; к одному контроллеру могут подключаться несколько пультов. Программы на компьютере подключаются к контроллеру или к HUD, который передаёт команды выбранной поворотке.
