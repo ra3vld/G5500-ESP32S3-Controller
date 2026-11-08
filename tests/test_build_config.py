@@ -24,7 +24,7 @@ class BuildConfigTests(unittest.TestCase):
                 shutil.copy2(path, self.source / path.name)
         shutil.copytree(ROOT / 'G5500_Fork/src', self.source / 'src')
         (self.root / 'tools').mkdir()
-        for name in ['build_platformio.py', 'prepare_sketch.py', 'generate_web_assets.py', 'project_version.py', 'build_capabilities.py', 'web_poll.js', 'web_activity.js', 'web_boot.js', 'web_boot.html', 'web_compile.cjs', 'web_compiled.json']:
+        for name in ['build_platformio.py', 'prepare_sketch.py', 'generate_web_assets.py', 'project_version.py', 'build_capabilities.py', 'web_poll.js', 'web_activity.js', 'web_boot.js', 'web_boot.html', 'web_release.js', 'web_compile.cjs', 'web_compiled.json']:
             shutil.copy2(ROOT / 'tools' / name, self.root / 'tools' / name)
         shutil.copy2(ROOT / 'platformio.ini', self.root / 'platformio.ini')
         shutil.copytree(ROOT / 'platformio', self.root / 'platformio')
