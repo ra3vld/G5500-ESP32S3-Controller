@@ -66,6 +66,7 @@ constexpr Entity entities[MqttBridge::EntityCount]={
 MqttBridge::MqttBridge(Runtime &runtime,uint64_t gateway,Callbacks callbacks)
     :runtime_(runtime),gateway_(gateway),callbacks_(callbacks) {
   std::snprintf(base_,sizeof base_,"g5500/%012llx",static_cast<unsigned long long>(gateway));
+  std::snprintf(birthTopic_,sizeof birthTopic_,"%s/status",runtime_.mqtt.discoveryPrefix);
   selection_.store(runtime_.hud.selectionEpoch);
 }
 void MqttBridge::connection(bool online) {
@@ -74,9 +75,9 @@ void MqttBridge::connection(bool online) {
 }
 bool MqttBridge::receive(std::string_view topic,std::string_view payload,bool retained,uint32_t at) {
   const auto reject=[&](){rejected_.fetch_add(1);return false;};
-  char birth[64];std::snprintf(birth,sizeof birth,"%s/status",runtime_.mqtt.discoveryPrefix);
-  // Config is immutable throughout this bridge's lifetime; Runtime/Hud are loop-owned.
-  if(topic==birth) {if(payload=="online")rediscover_.store(true);return true;}
+  // A retiring SDK callback may overlap an owner-side config replacement.
+  // Its subscription belongs to this adapter's immutable startup snapshot.
+  if(topic==birthTopic_) {if(payload=="online")rediscover_.store(true);return true;}
   if(retained || !connected_.load() || payload.empty() || payload.size()>32)return reject();
   const std::string_view base(base_);
   if(topic.size()<=base.size() || topic.substr(0,base.size())!=base || topic[base.size()]!='/')return reject();

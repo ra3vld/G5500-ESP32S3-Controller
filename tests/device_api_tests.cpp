@@ -397,6 +397,17 @@ static void networkRecoveryTests() {
 }
 int main(int argc,char **argv) {
   {
+    Fixture f;
+    const auto before=Preferences::database;
+    const auto small=f.call("GET","/api/status","view=bootstrap",false);
+    assert(small.status==200 && small.body.size()<512);
+    assert(small.body.find("\"deviceRole\":\"controller\"")!=std::string::npos);
+    assert(small.body.find("\"hudSelectionEpoch\":")!=std::string::npos);
+    assert(small.body.find("\"presets\":")==std::string::npos);
+    assert(small.body.find("\"build\":")==std::string::npos);
+    assert(Preferences::database==before && !f.restart.pending());
+  }
+  {
     Fixture f;useLocalController(f);
     assert(f.network.wifiMaintenanceAllowed());
     auto &c=f.runtime.controller;
@@ -1311,6 +1322,11 @@ int main(int argc,char **argv) {
   assert(transport.body.find("\"unsent\":")!=std::string::npos);
   const auto queues=f.call("GET","/api/diagnostics","view=queues");
   assert(queues.body.size()<300&&queues.body.find("\"closingQueued\":")!=std::string::npos&&queues.body.find("\"mqttMss\":")!=std::string::npos);
+  const auto scheduling=f.call("GET","/api/diagnostics","view=scheduling");
+  assert(scheduling.status==200 && scheduling.body.size()<=COMMAND_PAGE_MAX);
+  assert(scheduling.body.find("\"httpWriteRetries\":")!=std::string::npos);
+  assert(scheduling.body.find("\"httpPriorityRequests\":")!=std::string::npos);
+  assert(scheduling.body.find("\"activeStageMaxUs\":")!=std::string::npos);
   AllocationFailure previous;previous.size=4096;previous.caps=3;previous.freeBytes=22000;previous.largestBlock=4000;
   previous.function="malloc";previous.pc[0]=0x12345678;allocationRecordText(previous.task,sizeof previous.task,"tcpip_task");
   uint8_t previousElf[32]{};previousElf[0]=0xab;
@@ -1325,6 +1341,8 @@ int main(int argc,char **argv) {
     assert(one.status==200 && one.body.size()<=COMMAND_PAGE_MAX);
     assert(one.body.find(std::string("\"axis\":\"")+axis+'"')!=std::string::npos);
     assert(one.body.find("\"timing\":{")!=std::string::npos);
+    assert(one.body.find("\"missedDeadlines\":")!=std::string::npos);
+    assert(one.body.find("\"deadlineLateness\":[")!=std::string::npos);
   }
   assert(f.call("GET","/api/diagnostics","axis=bad").status==400);
   assert(f.call("POST","/api/wifi","ssid=station&pass=12345678").status==200 && !f.restart.pending());

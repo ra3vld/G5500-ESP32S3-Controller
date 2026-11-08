@@ -37,7 +37,7 @@ bool Diagnostics::writeHistoryJson(JsonWriter &out,RssiPeriod) {out << "{\"sampl
 }
 struct Actions : DeviceActions {
   Runtime &r;Calibration &cal;Storage &storage;WifiCredentials credentials;
-  bool failCal=false;unsigned rangeCalls=0,pointCalls=0,positionReads=0;
+  bool failCal=false;unsigned rangeCalls=0,pointCalls=0,positionReads=0,settingsSaves=0;
   Actions(Runtime &runtime,Calibration &c,Storage &s):r(runtime),cal(c),storage(s) {}
   void updatePosition() override {++positionReads;r.currentAz=r.controller.axes[0].current;r.currentEl=r.controller.axes[1].current;}
   bool saveCal() override {return !failCal && storage.saveCal(r,cal);}
@@ -52,7 +52,11 @@ struct Actions : DeviceActions {
   void loadMotionSettings() override {storage.loadMotionSettings(r);}
   void loadProfilePresets() override {storage.loadProfilePresets(r);}
   void saveProfilePresets() override {storage.saveProfilePresets(r);}
-  void saveForkSettings() override {if(!storage.saveForkSettings(r))r.controller.fault="motion_storage_failed";}
+  void saveForkSettings() override {
+    ++settingsSaves;
+    if(!storage.saveForkSettings(r))r.controller.fault="motion_storage_failed";
+    else if(r.controller.fault=="motion_storage_failed")r.controller.fault.clear();
+  }
   void setupWeb() override {}
   void invalidateDisplay() override {}
 };

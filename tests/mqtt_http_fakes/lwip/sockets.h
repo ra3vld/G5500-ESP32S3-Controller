@@ -2,13 +2,17 @@
 #include "WebServer.h"
 #include <sys/socket.h>
 #include <cerrno>
-inline int mqttHttpRecv(int fd,void *out,size_t size,int){
+inline int mqttHttpRecv(int fd,void *out,size_t size,int flags){
+  auto &testSocket=socketFor(fd);
   if(fd<0||testSocket.readError){errno=EBADF;return -1;}
   const auto count=std::min({size,testSocket.maxRead,testSocket.input.size()-testSocket.consumed});
   if(!count){if(testSocket.peerClosed)return 0;errno=EAGAIN;return -1;}
-  std::memcpy(out,testSocket.input.data()+testSocket.consumed,count);testSocket.consumed+=count;return int(count);
+  std::memcpy(out,testSocket.input.data()+testSocket.consumed,count);
+  if(!(flags&MSG_PEEK))testSocket.consumed+=count;
+  return int(count);
 }
 inline int mqttHttpSend(int fd,const void *data,size_t size,int){
+  auto &testSocket=socketFor(fd);
   if(fd<0)return -1;
   if(testSocket.blockWrites||!testSocket.sendQuota){errno=EAGAIN;return -1;}
   size=std::min(size,testSocket.sendQuota);testSocket.sendQuota-=size;

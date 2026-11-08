@@ -1,6 +1,9 @@
 #pragma once
 #include <cassert>
 #include <string>
+#include <atomic>
+#include <thread>
+#include <chrono>
 #include "esp_transport.h"
 using esp_event_base_t=void *;
 inline constexpr int MQTT_EVENT_ANY=-1,MQTT_EVENT_BEFORE_CONNECT=1,MQTT_EVENT_CONNECTED=2,
@@ -38,6 +41,8 @@ inline FakeMqttClient *fakeMqttClient=nullptr;
 inline unsigned fakeMqttInit=0,fakeMqttDestroy=0,fakeMqttStop=0;
 inline unsigned fakeMqttOffline=0;
 inline bool fakeMqttInitFailure=false,fakeMqttStartFailure=false;
+inline std::atomic<bool> fakeMqttHoldStop{false},fakeMqttStopEntered{false};
+inline std::atomic<bool> fakeMqttHoldPublish{false},fakeMqttPublishEntered{false};
 inline std::string fakeMqttScheme;
 inline esp_mqtt_client_handle_t esp_mqtt_client_init(const esp_mqtt_client_config_t *settings){
   ++fakeMqttInit;if(fakeMqttInitFailure)return nullptr;
@@ -49,12 +54,16 @@ inline int esp_mqtt_client_register_event(FakeMqttClient *client,int,void (*even
 inline void fakeMqttEvent(int id,FakeMqttEvent event={}){assert(fakeMqttClient);fakeMqttClient->event(fakeMqttClient->context,nullptr,id,&event);}
 inline int esp_mqtt_client_start(FakeMqttClient *){if(fakeMqttStartFailure)return -1;fakeMqttEvent(MQTT_EVENT_BEFORE_CONNECT);return 0;}
 inline int esp_mqtt_client_stop(FakeMqttClient *client){
+ fakeMqttStopEntered.store(true);
+ while(fakeMqttHoldStop.load())std::this_thread::sleep_for(std::chrono::milliseconds(1));
  ++fakeMqttStop;assert(client->originalHost==client->settings.broker.address.hostname);return 0;
 }
 inline int esp_mqtt_client_destroy(FakeMqttClient *client){++fakeMqttDestroy;delete client;fakeMqttClient=nullptr;return 0;}
 inline esp_transport_handle_t esp_mqtt_client_get_transport(FakeMqttClient *,char *scheme){fakeMqttScheme=scheme;return nullptr;}
 inline int esp_mqtt_client_get_outbox_size(FakeMqttClient *){return 0;}
 inline int esp_mqtt_client_publish(FakeMqttClient *,const char *,const char *data,int size,int qos,bool retain){
+ fakeMqttPublishEntered=true;
+ while(fakeMqttHoldPublish.load())std::this_thread::sleep_for(std::chrono::milliseconds(1));
  if(size==7&&std::string(data,size)=="offline"){assert(qos==0&&retain);++fakeMqttOffline;}return 0;
 }
 inline int esp_mqtt_client_enqueue(FakeMqttClient *,const char *,const char *,int,int,bool,bool){return 0;}

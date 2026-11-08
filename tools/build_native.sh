@@ -30,6 +30,8 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/socket_writ
 ./build/socket_write_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/device_fakes -I G5500_Fork tests/memory_pressure_tests.cpp -o build/memory_pressure_tests
 ./build/memory_pressure_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DARDUINO_ARCH_ESP32 -DBOARD_PROFILE=4 -I tests/tcp_fakes -I tests/device_fakes -I tests/mqtt_fakes -I tests/fakes -I G5500_Fork tests/network_snapshot_tests.cpp -o build/network_snapshot_tests
+./build/network_snapshot_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/tcp_fakes -I G5500_Fork tests/tcp_peer_tests.cpp -o build/tcp_peer_tests
 ./build/tcp_peer_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DLWIP_TCPIP_CORE_LOCKING=0 -I tests/tcp_fakes -I G5500_Fork tests/tcp_peer_tests.cpp -o build/tcp_peer_no_core_lock_tests
@@ -306,6 +308,8 @@ done
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/mqtt_tests.cpp -o build/mqtt_tests
 ./build/mqtt_tests
 MQTT_ADAPTER_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp G5500_Fork/mqtt_bridge.cpp G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp"
+${CXX:-g++} -std=c++17 -DG5500_MQTT_CRYPTO_BUDGET=1 -Wall -Wextra -Werror -O2 -I tests/crypto_fakes -I G5500_Fork tests/mqtt_crypto_budget_tests.cpp -o build/mqtt_crypto_budget_tests
+./build/mqtt_crypto_budget_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -DHOME_ASSISTANT_DISCOVERY_SUPPORT=0 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -Wall -Wextra -Werror -O2 -pthread -I tests/mqtt_fakes -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $MQTT_ADAPTER_SOURCES tests/mqtt_service_tests.cpp -o build/mqtt_service_tests
 ./build/mqtt_service_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -DMQTT_TLS_SUPPORT=0 -DHOME_ASSISTANT_DISCOVERY_SUPPORT=0 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -Wall -Wextra -Werror -O2 -pthread -I tests/mqtt_fakes -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $MQTT_ADAPTER_SOURCES tests/mqtt_service_tests.cpp -o build/mqtt_service_no_tls_tests

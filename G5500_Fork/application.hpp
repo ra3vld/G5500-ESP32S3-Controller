@@ -16,6 +16,7 @@ namespace forkrot {
 class Application : public DeviceActions {
 public:
   void updatePosition() override;
+  void serviceControl() override;
   void setCalibrationMode(CalibrationMode m) override;
   void setGsAzMode(uint8_t m) override;
   void captureGs232Cal(const String &cmd) override;

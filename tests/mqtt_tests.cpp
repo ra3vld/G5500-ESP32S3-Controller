@@ -1,6 +1,11 @@
 #include "mqtt_fixture.hpp"
 int main(int argc,char **argv){
   {
+    Harness h;std::strcpy(h.runtime.mqtt.discoveryPrefix,"replacement");
+    assert(h.bridge.receive("homeassistant/status","online",true,0));
+    assert(!h.bridge.receive("replacement/status","online",true,0));
+  }
+  {
     Harness h;h.run();h.network=false;h.bridge.service(5000);
     const auto attempts=h.publishAttempts;
     for(unsigned at=5001;at<5020;++at)h.bridge.service(at);

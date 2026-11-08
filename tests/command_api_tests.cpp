@@ -7,10 +7,17 @@
 #include <new>
 using namespace forkrot;
 static bool forbidAllocation=false;
+static unsigned admissions=0;
+static bool admit=true;
+static bool admission(size_t n) {assert(n==COMMAND_REPLY_MAX+1);++admissions;return admit;}
 void *operator new(size_t n) {if(forbidAllocation)std::abort();if(auto *p=std::malloc(n?n:1))return p;throw std::bad_alloc();}
 void *operator new[](size_t n) {return ::operator new(n);}
+void *operator new(size_t n,const std::nothrow_t &) noexcept {if(forbidAllocation)std::abort();return std::malloc(n?n:1);}
+void *operator new[](size_t n,const std::nothrow_t &tag) noexcept {return ::operator new(n,tag);}
 void operator delete(void *p) noexcept {std::free(p);}
 void operator delete[](void *p) noexcept {std::free(p);}
+void operator delete(void *p,const std::nothrow_t &) noexcept {std::free(p);}
+void operator delete[](void *p,const std::nothrow_t &) noexcept {std::free(p);}
 void operator delete(void *p,size_t) noexcept {std::free(p);}
 void operator delete[](void *p,size_t) noexcept {std::free(p);}
 static uint32_t field(const std::string &s,const char *key) {
@@ -104,5 +111,36 @@ int main() {
   assert(request(4,selectedRequest)==selectedReply && model.writes==afterSelected);
   assert(field(request(4,selectedPrefix+"&cid=3&selection=10"),"status")==409 && model.writes==afterSelected);
   assert(field(request(4,selectedPrefix+"&cid=4&selection=11"),"status")==200 && model.writes==afterSelected+1);
+  // No reply buffers until HELLO; refuse a new session before allocating or
+  // evicting anything. A denied client cannot execute a command. Existing
+  // sessions retain their exact replay cache under memory pressure.
+  server.begin(0x1234,400,dispatch,&model,nullptr,admission);
+  assert(!admissions);
+  admit=false;
+  const std::string newHello="@v=1&cid=1&method=GET&path=/api/hello&client=7";
+  forbidAllocation=true;
+  server.process(1,newHello,++now,buffer,sizeof buffer);
+  forbidAllocation=false;
+  assert(field(buffer,"status")==503 && admissions==1);
+  std::array<std::string,4> writes,replies;
+  for(unsigned i=0;i<4;++i) {
+    admit=true;
+    const auto id=field(request(i+1,newHello),"sid");
+    writes[i]="@v=1&boot=0000000000001234&sid="+std::to_string(id)+"&cid=2&method=POST&path=/api/settings";
+    replies[i]=request(i+1,writes[i]);
+    assert(field(replies[i],"status")==200);
+  }
+  assert(admissions==5);
+  admit=false;
+  const auto allWrites=model.writes;
+  for(unsigned i=0;i<4;++i) {
+    forbidAllocation=true;
+    server.process(i+1,writes[i],++now,buffer,sizeof buffer);
+    forbidAllocation=false;
+    assert(buffer==replies[i] && model.writes==allWrites);
+  }
+  // A fifth HELLO reuses bounded storage; the evicted SID stays invalid.
+  assert(field(request(5,newHello),"status")==200 && admissions==5);
+  assert(field(request(1,writes[0]),"status")==409 && model.writes==allWrites);
   std::cout << "PASS: bounded command parser, UTF-8, stream limits, endpoint/boot/session guards, loss/replay, pagination and stale writes\n";
 }

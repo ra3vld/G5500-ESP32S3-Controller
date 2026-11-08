@@ -27,7 +27,10 @@ bool Network::beginCommandApi() {
           JsonWriter &out,int &status,const char *&type) {
         auto &self=*static_cast<Network *>(context);
         self.actions_.deviceRequest(method,path,form,out,status,type,true);
-      },this,&runtime_.hud.selectionEpoch);
+      },this,&runtime_.hud.selectionEpoch,[](size_t bytes) {
+        return heapFreeBytes()>=bytes+MemoryGuard::CriticalFree &&
+            heapMaxBlockBytes()>=bytes+MemoryGuard::CriticalBlock;
+      });
   return true;
 }
 size_t Network::runCommandApi(uint64_t peer,std::string_view input,char *reply,size_t capacity) {
@@ -85,6 +88,13 @@ bool Network::processCommandApi(std::string_view input,uint8_t port) {
   commandReplyPort_=port;commandReplySession_=tcpSession_;commandReplySent_=0;
   commandReplySize_=size?prefix+size+2:0;commandReplyAt_=millis();
   if(size) {commandReply_[prefix+size]='\r';commandReply_[prefix+size+1]='\n';}
+  if(port==3) {
+    // Share the same bounded TCP stream as legacy logger replies. Partial
+    // lines cannot be interleaved with a newer command's result.
+    if(commandReplySize_ && !tcpReply_.push({commandReply_,commandReplySize_},millis()))closeRotctld();
+    commandReplySize_=0;
+    hardware_.applyOutputs();serviceTcpReply();return true;
+  }
   hardware_.applyOutputs();serviceCommandReplies();return true;
 }
 void Network::serviceCommandReplies() {

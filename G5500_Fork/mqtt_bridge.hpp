@@ -54,7 +54,7 @@ private:
   Callbacks callbacks_;
   std::unique_ptr<Node> nodes_;
   Node *stateCursor_=nullptr,*discoveryCursor_=nullptr;
-  char base_[32]{},topic_[192]{},json_[1024]{},oldPrefix_[48]{};
+  char base_[32]{},birthTopic_[64]{},topic_[192]{},json_[1024]{},oldPrefix_[48]{};
   HudState local_;
   std::atomic_flag lock_=ATOMIC_FLAG_INIT;
   std::array<Request,4> queue_{};

@@ -36,11 +36,25 @@ struct RuntimeMetrics {
   std::atomic<uint32_t> allocationFailures{0}, largestFailedAllocation{0};
   bool hookReady = false;
   uint32_t loopMaxUs = 0, loopsOver20ms = 0; // main-loop access only
+  uint32_t loopStartedUs=0,loopGapMaxUs=0,activeLoopGapMaxUs=0;
+  bool loopStarted=false;
+  void beginLoop(uint32_t now,bool active) {
+    if(loopStarted) {
+      const uint32_t gap=now-loopStartedUs;
+      if(gap>loopGapMaxUs)loopGapMaxUs=gap;
+      if(active && gap>activeLoopGapMaxUs)activeLoopGapMaxUs=gap;
+    }
+    loopStarted=true;loopStartedUs=now;
+  }
   const char *slowStage = "none";
   uint32_t slowStageUs = 0;
-  void recordStage(const char *name,uint32_t us) {
+  const char *activeSlowStage = "none";
+  uint32_t activeStageMaxUs = 0;
+  void recordStage(const char *name,uint32_t us,bool controlActive=false) {
     if(us>slowStageUs){slowStage=name;slowStageUs=us;}
+    if(controlActive && us>activeStageMaxUs){activeSlowStage=name;activeStageMaxUs=us;}
   }
+  uint32_t hudReceiveMaxUs=0,hudSendMaxUs=0,hudServiceMaxUs=0; // active control only
   AllocationFailure failures[2]; // first <1024B and first >=1024B failure
   AllocationRecord previousFailures[2]{};
   AllocationRecord *persistentFailures=nullptr;

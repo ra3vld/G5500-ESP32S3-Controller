@@ -26,11 +26,15 @@ int main() {
   // Same full physical window at every rate, including clock rollover.
   for(unsigned hz:{50u,100u,200u})for(uint32_t epoch:{0u,0xffffff00u}) {
     Controller c;auto config=c.hardware;config.simulation=SimulationMechanics;c.configureHardware(config);
+    assert(c.controlHeadroomMs(epoch)==UINT32_MAX && c.backgroundReady(epoch));
     c.feedback(100,90,true,true);assert(c.setControlFrequency(hz,epoch)==Result::Ok);
     assert(c.jog(0,1,false,epoch)==Result::Ok);
     for(unsigned t=0;t<=1000;++t) {
       assert(c.controlDue(epoch+t)==(t%(1000/hz)==0));
       c.tick(epoch+t);assert(!c.controlDue(epoch+t));c.tick(epoch+t);
+      const unsigned headroom=1000/hz-t%(1000/hz);
+      assert(c.controlHeadroomMs(epoch+t)==headroom);
+      assert(c.backgroundReady(epoch+t)==(hz==50 || headroom>=1000/hz-2));
     }
     const auto &feedback=c.motionFeedback(0);
     assert(feedback.count==std::min(hz+1,unsigned(feedback.samples.size())));
@@ -40,8 +44,53 @@ int main() {
     assert(oldest>=c.motionSettings[0].velocityWindowMs);
     c.stopNow(-1,epoch+1000);c.tick(epoch+1001);
     assert(!c.controlDue(epoch+1001));
+    assert(c.controlHeadroomMs(epoch+1001)==UINT32_MAX && c.backgroundReady(epoch+1001));
     assert(!c.axes[0].direction && !c.axes[0].speedOutputPercent);
     assert(c.axes[0].motionError==MotionError::None);
+  }
+  {
+    Controller c;c.hardware.drive=DRIVE_BTS7960;assert(c.setControlFrequency(100,0)==Result::Ok);
+    c.axes[0].holdArmed=true;
+    assert(c.controlHeadroomMs(0)==0 && !c.backgroundReady(0));
+  }
+  // Even an axis waiting forever for its first PID step cannot block a
+  // background consumer forever. HTTP and logger have independent budgets.
+  for(uint32_t epoch:{0u,0xfffffffcu}) {
+    Controller c;auto config=c.hardware;config.simulation=SimulationMechanics;c.configureHardware(config);
+    assert(c.setControlFrequency(100,epoch)==Result::Ok);c.axes[0].holdArmed=true;
+    uint32_t http=epoch,tcp=epoch;
+    for(unsigned t=1;t<=30;++t) {
+      assert(!c.backgroundReady(epoch+t));
+      const bool due=t%10==0;
+      assert(c.serviceBackground(epoch+t,http)==due);
+      assert(c.serviceBackground(epoch+t,tcp)==due);
+    }
+  }
+  // Starting/restarting the second axis off the first axis's phase must not
+  // starve HTTP/TCP forever while both PID schedules keep running.
+  for(unsigned hz:{50u,100u,200u})for(uint32_t epoch:{0u,0xfffffff0u}) {
+    const unsigned period=1000/hz;
+    for(unsigned offset=1;offset<period;++offset) {
+      Controller c;auto config=c.hardware;config.simulation=SimulationMechanics;c.configureHardware(config);
+      c.feedback(100,90,true,true);assert(c.setControlFrequency(hz,epoch)==Result::Ok);
+      assert(c.jog(0,1,false,epoch)==Result::Ok);c.tick(epoch);
+      for(unsigned t=1;t<=offset;++t)c.tick(epoch+t);
+      assert(c.jog(1,1,false,epoch+offset)==Result::Ok);c.tick(epoch+offset);
+      unsigned lastBackground=offset;
+      for(unsigned t=offset+1;t<200;++t) {
+        if(t==63){c.stopNow(1,epoch+t);assert(c.jog(1,-1,false,epoch+t)==Result::Ok);}
+        c.tick(epoch+t);
+        if(c.backgroundReady(epoch+t))lastBackground=t;
+        assert(t-lastBackground<=period);
+      }
+      assert(!c.motionTiming(0).missedDeadlines && !c.motionTiming(1).missedDeadlines);
+    }
+  }
+  {
+    Controller relay;relay.hardware.simulation=false;
+    relay.hardware.drive=DRIVE_YAESU;assert(relay.setControlFrequency(100,0)==Result::Ok);
+    relay.feedback(90,90,true,true);assert(relay.jog(0,1,false,0)==Result::Ok);relay.tick(0);
+    assert(relay.backgroundReady(0)); // relay axes have no PID runtime deadline
   }
   for(unsigned window:{40u,80u,200u,600u}) {
     MotionFeedback f;
@@ -108,7 +157,10 @@ int main() {
     assert(c.motionTiming(axis).steps==1+1000/period);
     assert(c.motionTiming(axis).maxIntervalMs==period);
     assert(!c.motionTiming(axis).lateSteps);
+    assert(!c.motionTiming(axis).missedDeadlines);
     c.tick(1000+3*period);assert(c.motionTiming(axis).lateSteps==1);
+    assert(c.motionTiming(axis).missedDeadlines==2);
+    assert(c.motionTiming(axis).deadlineMaxLateMs==2*period);
     // A fresh control tick must never make stale feedback fresh.
     c.tick(1600);assert(c.axes[axis].motionError==MotionError::FeedbackStale);
     assert(!c.axes[axis].direction && !c.axes[axis].speedOutputPercent);

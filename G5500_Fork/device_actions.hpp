@@ -9,6 +9,8 @@ class DeviceActions {
 public:
   virtual ~DeviceActions() = default;
   virtual void updatePosition() = 0;
+  // Cooperative PID checkpoint on the existing owner, without input dispatch.
+  virtual void serviceControl() {}
   virtual void setCalibrationMode(CalibrationMode mode) = 0;
   virtual void setGsAzMode(uint8_t mode) = 0;
   virtual void captureGs232Cal(const String &command) = 0;

@@ -54,8 +54,10 @@ public:
     web_.setLowMemoryPaths(lowMemoryPaths, sizeof lowMemoryPaths / sizeof *lowMemoryPaths);
   }
   void service() {
-    if(io_.active())io_.service();
-    else web_.handleClient();
+    if(runtime_.controller.serviceBackground(millis(),ownerServicedAt_)) {
+      if(io_.active())io_.service();
+      else web_.handleClient();
+    }
     const auto diagnostics=httpDiagnostics();
     if (diagnostics.writeFailures && !reportedWriteFailure_) {
       reportedWriteFailure_=true;
@@ -68,6 +70,7 @@ public:
   void abortForRecovery() { ota_.cancel(); }
   void setupWeb();
   void startIoTask() {io_.begin(web_);}
+  void serviceOwner() {if(runtime_.controller.serviceBackground(millis(),ownerServicedAt_))io_.service();}
   void wait(unsigned ms) {io_.wait(ms);}
   void writeDiagnostics(JsonWriter &j) { j << "\"livePort\":" << (live_.started()?81:0); live_.writeDiagnostics(j); camera_.writeStatus(j);io_.writeDiagnostics(j); }
   void serviceLiveCommands() { live_.commands(millis()); }
@@ -75,6 +78,8 @@ public:
   void relieveMemory(uint32_t free, uint32_t largest) { live_.relieveMemory(free,largest); }
 
 private:
+  bool handlePriorityRequest(std::string_view request,char *reply,size_t capacity,size_t &size,int &status,bool &stopsAll);
+  bool handleStaticRequest(std::string_view request);
   bool handleMqttRequest(std::string_view request);
   bool handleHardwareRequest(std::string_view request);
   bool handleOtaRequest(std::string_view request);
@@ -83,7 +88,7 @@ private:
     if (!j.good()) { web_.send(503, "application/json", "{\"error\":\"response_too_large\"}"); return; }
     web_.sendBuffer(200, "application/json", j.data(), j.size());
   }
-  void serveApi(std::string_view method, std::string_view path, FormView arguments, bool fixed = false);
+  void serveApi(std::string_view method, std::string_view path, FormView arguments);
   Runtime &runtime_;
   DeviceActions &actions_;
   Calibration &calibration_;
@@ -105,7 +110,7 @@ private:
   RestartDelay &restart_;
   Ota &ota_;
   char statusBuffer_[STATUS_JSON_CAPACITY];
-  uint32_t controlServicedAt_=0;
+  uint32_t controlServicedAt_=0,ownerServicedAt_=0;
   bool controlServiced_=false;
 };
 } // namespace forkrot
@@ -117,6 +122,7 @@ public:
   template<class... Args> explicit WebInterface(Args &...) {}
   void setupWeb() {}
   void startIoTask() {}
+  void serviceOwner() {}
   void wait(unsigned ms) {delay(ms);}
   void service() {}
   void serviceLiveCommands() {}

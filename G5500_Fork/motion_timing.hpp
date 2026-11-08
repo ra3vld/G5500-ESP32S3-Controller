@@ -1,6 +1,7 @@
 // G5500 Fork; GPL-3.0.
 #pragma once
 #include <cstdint>
+#include <algorithm>
 // Build-time default; the operator can select 50/100/200 Hz at runtime.
 #ifndef MOTION_CONTROL_PERIOD_MS
 #define MOTION_CONTROL_PERIOD_MS 20
@@ -16,6 +17,13 @@ struct MotionTiming {
   uint32_t steps = 0, maxIntervalMs = 0, lateSteps = 0;
   uint32_t computeMaxUs = 0;
   uint64_t computeTotalUs = 0;
+  uint32_t missedDeadlines=0,deadlineMaxLateMs=0;
+  uint32_t deadlineLateness[6]{}; // <=0, <=1, <=2, <=5, <=10, >10 ms
+  void recordDeadline(uint32_t late,unsigned period) {
+    missedDeadlines+=late/period;
+    deadlineMaxLateMs=std::max(deadlineMaxLateMs,late);
+    ++deadlineLateness[late==0?0:late<=1?1:late<=2?2:late<=5?3:late<=10?4:5];
+  }
   void recordCompute(uint32_t us) {
     if(us>computeMaxUs)computeMaxUs=us;
     computeTotalUs+=us;

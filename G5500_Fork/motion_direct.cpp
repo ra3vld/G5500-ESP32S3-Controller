@@ -265,7 +265,7 @@ Result Controller::setControlFrequency(unsigned hz, uint32_t now) {
   if(autoTune.active())return Result::Busy;
   if(controlPeriodMs_==1000/hz)return Result::Ok;
   stopNow(-1,now);
-  controlPeriodMs_=1000/hz;
+  controlPeriodMs_=1000/hz;controlClockStarted_=false;
   for(unsigned i=0;i<2;++i) {
     auto &r=motion_[i];
     const auto at=r.feedback.at;const bool timed=r.feedback.timed, valid=r.feedback.valid;
@@ -292,8 +292,9 @@ void Controller::tickMotion(unsigned i,uint32_t now) {
   }
   const unsigned period=controlPeriodMs();
   if(r.started && int32_t(now-r.nextAt)<0)return;
+  if(r.started)r.timing.recordDeadline(uint32_t(now-r.nextAt),period);
   r.timing.record(r.started?uint32_t(now-r.at):0,period);
-  r.nextAt=now+period;r.at=now;r.started=true;
+  r.nextAt=controlNextAt_;r.at=now;r.started=true;
   const int previous=a.direction;
   output(i,a.wanted,now); // Includes the existing 300ms reverse interlock.
   if(!a.direction) {a.speedOutputPercent=0;r.progressDirection=0;a.motionPhase=MotionPhase::Idle;return;}

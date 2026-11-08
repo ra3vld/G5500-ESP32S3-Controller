@@ -19,6 +19,8 @@ class MqttService {
   const char *error_="disabled";
   uint32_t retryAt_=0;
   bool retryPending_=false;
+  uint32_t stopMaxUs_=0;
+  void reap();
   int tlsError_=0, tlsVerifyFlags_=0, brokerError_=0;
 public:
   MqttService(Runtime &,DeviceActions &,Hardware &);

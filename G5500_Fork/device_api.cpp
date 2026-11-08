@@ -734,6 +734,17 @@ void DeviceApi::executeStatus(std::string_view method, std::string_view path, Fo
     status=code; type="application/json";
     output << "{\"ok\":" << (code==200?"true":"false") << ",\"error\":" << jsonQuoted(reason) << '}';
   };
+  if(path=="/api/status" && method=="GET" && web_.value("view")=="bootstrap") {
+    const auto &c=runtime_.controller;
+    output << "{\"deviceRole\":" << jsonQuoted(runtime_.configuredAsHud()?"hud":"controller")
+      << ",\"rotorName\":" << jsonQuoted(runtime_.protocol.rotorName)
+      << ",\"az\":" << c.axes[0].current << ",\"el\":" << c.axes[1].current
+      << ",\"moving\":" << (c.moving()?"true":"false") << ",\"fault\":" << jsonQuoted(c.fault)
+      << ",\"hudOnline\":" << (runtime_.hud.isHud() && c.available()?"true":"false")
+      << ",\"hudSelectionEpoch\":" << runtime_.hud.selectionEpoch
+      << ",\"axes\":[{\"calibrated\":" << (c.axes[0].calibrated?"true":"false")
+      << "},{\"calibrated\":" << (c.axes[1].calibrated?"true":"false") << "}]}";return;
+  }
 #if ESP32_SPP_PROFILE
   if(path=="/api/status" && method=="GET" && web_.value("view")=="minimal") {
     auto &c=runtime_.controller;const auto radio=networkStatusSnapshot();
@@ -831,6 +842,7 @@ void DeviceApi::executeStatus(std::string_view method, std::string_view path, Fo
     network_.bluetoothMac(btMac);
     auto &j=output;
     j << '{'; actions_.writeWebDiagnostics(j);
+    actions_.serviceControl();
     j << ",\"az\":" << runtime_.currentAz << ",\"el\":" << runtime_.currentEl
       << ",\"targetAz\":" << runtime_.targetAz << ",\"targetEl\":" << runtime_.targetEl
       << ",\"targetValid\":" << (runtime_.targetValid ? "true" : "false") << ",\"targetAgeMs\":" << targetAge
@@ -854,13 +866,15 @@ void DeviceApi::executeStatus(std::string_view method, std::string_view path, Fo
       << ",\"elSensor\":" << jsonQuoted(sensorName(runtime_.controller.hardware.sensorType(1)))
       << ",\"az2p0\":" << az2z << ",\"az2pf\":" << az2f
       << ",\"el2p0\":" << (calibration_.activeElOSet() ? calibration_.activeEl2Zero() : -1)
-      << ",\"el2pf\":" << (calibration_.activeElFSet() ? calibration_.activeEl2Full() : -1)
-      << ",\"motion\":" << jsonQuoted(hardware_.motion().c_str()) << ",\"azp0\":" << azTbl[0]
+      << ",\"el2pf\":" << (calibration_.activeElFSet() ? calibration_.activeEl2Full() : -1);
+    actions_.serviceControl();
+    j << ",\"motion\":" << jsonQuoted(hardware_.motion().c_str()) << ",\"azp0\":" << azTbl[0]
       << ",\"azp90\":" << azTbl[1] << ",\"azp180\":" << azTbl[2] << ",\"azp270\":" << azTbl[3]
       << ",\"azp360\":" << azTbl[4] << ",\"azp450\":" << az450v << ",\"elp0\":" << calibrationState.elCalMv[0]
       << ",\"elp45\":" << calibrationState.elCalMv[1] << ",\"elp90\":" << calibrationState.elCalMv[2]
-      << ",\"elp135\":" << calibrationState.elCalMv[3] << ",\"elp180\":" << calibrationState.elCalMv[4]
-      << ",\"ip\":" << jsonQuoted(ip.c_str()) << ",\"apIp\":" << jsonQuoted(apIp.c_str())
+      << ",\"elp135\":" << calibrationState.elCalMv[3] << ",\"elp180\":" << calibrationState.elCalMv[4];
+    actions_.serviceControl();
+    j << ",\"ip\":" << jsonQuoted(ip.c_str()) << ",\"apIp\":" << jsonQuoted(apIp.c_str())
       << ",\"staIp\":" << jsonQuoted(staIp.c_str()) << ",\"wifiMode\":" << jsonQuoted(mode)
       << ",\"ethernetSupported\":" << (ETHERNET_SUPPORTED?"true":"false")
       << ",\"ethStarted\":" << (network_.ethernetStarted()?"true":"false")
@@ -873,8 +887,9 @@ void DeviceApi::executeStatus(std::string_view method, std::string_view path, Fo
       << ",\"rssi\":" << rssiJson.c_str() << ",\"signal\":" << jsonQuoted(signal.c_str())
       << ",\"btConnected\":" << (network_.bluetoothConnected() ? "true" : "false")
       << ",\"btLinkConnected\":" << (network_.bluetoothLinkConnected() ? "true" : "false")
-      << ",\"btMac\":" << jsonQuoted(btMac)
-      << ",\"resetReason\":" << jsonQuoted(diagnostics_.bootReasonText().c_str())
+      << ",\"btMac\":" << jsonQuoted(btMac);
+    actions_.serviceControl();
+    j << ",\"resetReason\":" << jsonQuoted(diagnostics_.bootReasonText().c_str())
       << ",\"uptimeSeconds\":" << uint32_t(esp_timer_get_time() / 1000000)
       << ",\"heapFree\":" << heapFreeBytes() << ",\"heapMinFree\":" << heapMinBytes()
       << ",\"heapMaxBlock\":" << heapMaxBlockBytes()
@@ -890,6 +905,7 @@ void DeviceApi::executeStatus(std::string_view method, std::string_view path, Fo
       << ",\"maxFailedAllocation\":" << runtimeMetrics.largestFailedAllocation.load()
       << ",\"loopMaxUs\":" << runtimeMetrics.loopMaxUs << ",\"loopsOver20ms\":" << runtimeMetrics.loopsOver20ms
       << ",\"slowStage\":" << jsonQuoted(runtimeMetrics.slowStage) << ",\"slowStageUs\":" << runtimeMetrics.slowStageUs;
+    actions_.serviceControl();
     const uint32_t feedbackNow = millis();
     j << ",\"localFeedback\":[";
     for (unsigned i=0; i<2; ++i) {
@@ -904,6 +920,7 @@ void DeviceApi::executeStatus(std::string_view method, std::string_view path, Fo
     runtime_.hud.writeStatus(j);
     writeHardwareTrial(j,runtime_);
     writeMqttStatus(j);
+    actions_.serviceControl();
     if (!writeStateJson(j, runtime_.controller, runtime_.protocol, runtime_.loggerSettings, millis(), true)) {
       web_.send(503, "application/json", "{\"error\":\"status_too_large\"}");
       return;
@@ -922,13 +939,36 @@ void DeviceApi::executeDiagnostics(std::string_view method, std::string_view pat
     output << "{\"ok\":" << (code==200?"true":"false") << ",\"error\":" << jsonQuoted(reason) << '}';
   };
   if(path=="/api/diagnostics" && method=="GET") {
+    if(web_.value("view")=="scheduling") {
+      const auto &h=network_.httpDiagnostics();
+      output << "{\"uptimeMs\":" << millis() << ",\"httpWriteRetries\":" << h.writeRetries
+        << ",\"httpPrefixMaxMs\":" << h.prefixMaxMs
+        << ",\"httpPriorityRequests\":" << h.priorityRequests
+        << ",\"httpMemoryWaitMs\":" << h.memoryWaitMs
+        << ",\"httpMemoryWaitMaxMs\":" << h.memoryWaitMaxMs
+        << ",\"httpMemoryWaitFreeMin\":" << h.memoryWaitFreeMin
+        << ",\"httpMemoryWaitBlockMin\":" << h.memoryWaitBlockMin
+        << ",\"httpMemoryRejects\":" << h.memoryRejects
+        << ",\"httpStopOwnerCount\":" << h.stopOwnerCount
+        << ",\"httpStopOwnerMaxUs\":" << h.stopOwnerMaxUs
+        << ",\"tcpReplyRetries\":" << network_.tcpReplyRetries()
+        << ",\"tcpReplyMaxMs\":" << network_.tcpReplyMaxMs()
+        << ",\"hudReceiveMaxUs\":" << runtimeMetrics.hudReceiveMaxUs
+        << ",\"hudSendMaxUs\":" << runtimeMetrics.hudSendMaxUs
+        << ",\"hudServiceMaxUs\":" << runtimeMetrics.hudServiceMaxUs
+        << ",\"loopGapMaxUs\":" << runtimeMetrics.loopGapMaxUs
+        << ",\"activeLoopGapMaxUs\":" << runtimeMetrics.activeLoopGapMaxUs
+        << ",\"activeStageMaxUs\":" << runtimeMetrics.activeStageMaxUs
+        << ",\"activeSlowStage\":" << jsonQuoted(runtimeMetrics.activeSlowStage) << '}';return;
+    }
     if(web_.value("view")=="queues") {
 #if MQTT_SUPPORT
-      const auto t=tcpMemory(runtime_.mqtt.port);
+      const auto t=networkTcpSnapshot(runtime_.mqtt.port);
 #else
-      const auto t=tcpMemory();
+      const auto t=networkTcpSnapshot();
 #endif
       output << "{\"uptimeMs\":" << millis() << ",\"heapFree\":" << heapFreeBytes()
+        << ",\"tcpSnapshotAgeMs\":" << networkSnapshotAgeMs()
         << ",\"tcpAvailable\":" << (t.available?"true":"false")
         << ",\"active\":" << t.active << ",\"closing\":" << t.closing
         << ",\"queued\":" << t.queued << ",\"closingQueued\":" << t.closingQueued
@@ -938,7 +978,7 @@ void DeviceApi::executeDiagnostics(std::string_view method, std::string_view pat
     if(web_.value("view")=="transport") {
       // Fits one command-API page: a live counter document cannot be safely
       // reconstructed by reserializing a different revision for every page.
-      const auto &h=network_.httpDiagnostics();const auto t=tcpMemory();
+      const auto &h=network_.httpDiagnostics();const auto t=networkTcpSnapshot();
       output << "{\"uptimeMs\":" << millis() << ",\"heapFree\":" << heapFreeBytes()
         << ",\"heapMin\":" << heapMinBytes() << ",\"heapMaxBlock\":" << heapMaxBlockBytes()
         << ",\"allocFailures\":" << runtimeMetrics.allocationFailures.load()
@@ -947,6 +987,7 @@ void DeviceApi::executeDiagnostics(std::string_view method, std::string_view pat
         << ",\"httpErrno\":" << h.writeErrno << ",\"httpWritten\":" << h.writeBytes << ",\"httpSize\":" << h.writeSize
         << ",\"htmlFailures\":" << h.htmlFailures << ",\"htmlCause\":" << jsonQuoted(h.htmlCause)
         << ",\"htmlErrno\":" << h.htmlErrno << ",\"htmlWritten\":" << h.htmlBytes << ",\"htmlSize\":" << h.htmlSize
+        << ",\"tcpSnapshotAgeMs\":" << networkSnapshotAgeMs()
         << ",\"tcpAvailable\":" << (t.available?"true":"false")
         << ",\"httpPeers\":" << t.httpPeers << ",\"unsent\":" << t.httpUnsent << ",\"unacked\":" << t.httpUnacked
         << ",\"sendBuffer\":" << t.httpBuffer << ",\"window\":" << t.httpWindow << ",\"cwnd\":" << t.httpCwnd
@@ -973,6 +1014,10 @@ void DeviceApi::executeDiagnostics(std::string_view method, std::string_view pat
       const auto &f=runtime_.controller.motionFeedback(i);
       output << "{\"steps\":" << t.steps << ",\"maxIntervalMs\":" << t.maxIntervalMs
         << ",\"lateSteps\":" << t.lateSteps << ",\"computeMaxUs\":" << t.computeMaxUs
+        << ",\"missedDeadlines\":" << t.missedDeadlines << ",\"deadlineMaxLateMs\":" << t.deadlineMaxLateMs
+        << ",\"deadlineLateness\":[";
+      for(unsigned n=0;n<6;++n){if(n)output<<',';output<<t.deadlineLateness[n];}
+      output << ']'
         << ",\"computeTotalUs\":" << t.computeTotalUs << ",\"sampleCount\":" << hardware_.sampleCount(i)
         << ",\"sampleMaxIntervalMs\":" << hardware_.sampleMaxIntervalMs(i)
         << ",\"feedbackRejected\":" << f.rejectedTotal << ",\"feedbackInvalid\":" << f.invalidEvents
@@ -1824,6 +1869,8 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
   }
   if(method=="POST" && (path=="/api/mode" || path=="/api/execute" || path=="/api/preset" || path=="/api/preset/run" || path=="/api/settings" || path=="/api/motion/reset" || path=="/api/motion/autotune" || path=="/api/speed")) {
       auto oldModel = runtime_.controller.model;
+      const auto oldMode=runtime_.controller.mode;
+      const bool retryModeSave=runtime_.controller.fault=="motion_storage_failed";
       auto oldSettings = runtime_.loggerSettings;
       const bool oldSpeedEnabled=runtime_.controller.speedEnabled;
       actions_.updatePosition();
@@ -1848,7 +1895,10 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
           // profile. Combined model + PID changes are rejected by the API.
           if(path == "/api/settings") response = callApi(path,arguments);
         }
-        if (path == "/api/mode" || path == "/api/settings" || (path=="/api/motion/autotune" && web_.arg("action")=="apply")) {
+        // A repeated mode button still executes pending control semantics, but
+        // need not enter NVS when the persisted mode did not change. Retrying
+        // a previous failed save must still attempt and verify persistence.
+        if ((path == "/api/mode" && (oldMode!=runtime_.controller.mode || retryModeSave)) || path == "/api/settings" || (path=="/api/motion/autotune" && web_.arg("action")=="apply")) {
           actions_.saveForkSettings();
           if(runtime_.controller.fault=="motion_storage_failed") {
             if(path=="/api/motion/autotune") {runtime_.controller.autoTune.phase=AutoTunePhase::Failed;runtime_.controller.autoTune.reason="motion_storage_failed";}

@@ -29,6 +29,7 @@
 - [ESP32-C3 без дисплея](boards/esp32-c3.md).
 - [WT32-ETH01 с Ethernet](boards/wt32-eth01.md).
 - [Waveshare ESP32-S3-ETH: камера и два BTS7960](boards/waveshare-esp32-s3-eth.md).
+- [Waveshare на мачте: камера, магнитные датчики и линии связи](boards/waveshare-esp32-s3-eth-mast.md).
 - [CrowPanel: экран и жесты](boards/crowpanel-21.md), [переделка CrowPanel для локального AZ](boards/crowpanel-az.md).
 - [ESP32-2424S012C-Y(B): круглый сенсорный HUD на ESP32-C3](boards/esp32-2424s012c.md).
 - [Waveshare 1.85″: внешний круглый экран ST77916/QSPI на ESP32 и ESP32-S3](boards/waveshare-1.85-qspi.md).

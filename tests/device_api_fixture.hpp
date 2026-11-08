@@ -23,11 +23,25 @@ void Network::connectWifi(const String &ssid,const String &password) {
   credentials_.wifiSsid=ssid;credentials_.wifiPass=password;
   wifiSetupAp_=true;wifiConnectPending_=true;wifiConnectRequestedMs_=millis();
 }
-void Diagnostics::dbgPrintln(const String &line) {diagLog_.append({line.c_str(),line.length()},true);}
-void Diagnostics::diagClear() {diagLog_.clear();}
+void Diagnostics::dbgPrintln(const String &line) {
+#if LOG_HISTORY_SUPPORT
+  diagLog_.append({line.c_str(),line.length()},true);
+#else
+  (void)line;
+#endif
+}
+void Diagnostics::diagClear() {
+#if LOG_HISTORY_SUPPORT
+  diagLog_.clear();
+#endif
+}
 void Diagnostics::writeLog(JsonWriter &out) const {
+#if LOG_HISTORY_SUPPORT
   struct Sink { JsonWriter &writer; void operator+=(char c) {writer << c;} } sink{out};
   diagLog_.copyTo(sink);
+#else
+  (void)out;
+#endif
 }
 bool Diagnostics::writeHistoryJson(JsonWriter &out,RssiPeriod) {out << "{\"samples\":[]}";return true;}
 }

@@ -937,13 +937,20 @@ void Controller::tickCoast(uint32_t now) {
   }
 }
 bool Controller::controlDue(uint32_t now) const {
-  if(remote)return false;
+  return controlHeadroomMs(now)==0;
+}
+uint32_t Controller::controlHeadroomMs(uint32_t now) const {
+  uint32_t remaining=UINT32_MAX;
+  if(remote)return remaining;
   for(unsigned i=0;i<(model==Model::G5500?2u:1u);++i) {
+    if(!variableSpeed(i))continue; // relay outputs have no PID deadline
     const auto &axis=axes[i];const auto &motion=motion_[i];
-    if((axis.wanted || axis.direction || axis.tracking || axis.holdArmed) &&
-        (!motion.started || int32_t(now-motion.nextAt)>=0))return true;
+    if(axis.wanted || axis.direction || axis.tracking || axis.holdArmed) {
+      if(!motion.started || int32_t(now-motion.nextAt)>=0)return 0;
+      remaining=std::min(remaining,uint32_t(motion.nextAt-now));
+    }
   }
-  return false;
+  return remaining;
 }
 unsigned Controller::loopDelayMs(uint32_t now) const {
   if(controlPeriodMs_>=20)return 5;
@@ -957,6 +964,16 @@ void Controller::tick(uint32_t now) {
   if (configurationLocked) { if (!remote) stopNow(-1, now); return; }
   if (remote)
     return;
+  // All axes share one nominal grid even when started at different times.
+  // Advance once per owner tick; axis diagnostics still count missed steps.
+  const unsigned period=controlPeriodMs();
+  if(!controlClockStarted_) {
+    controlNextAt_=now+period;controlClockStarted_=true;
+  } else if(int32_t(now-controlNextAt_)>=0) {
+    controlNextAt_+=(uint32_t(now-controlNextAt_)/period+1)*period;
+  } else if(uint32_t(controlNextAt_-now)>period) {
+    controlNextAt_=now+period;
+  }
   for (auto &s : manualSessions_) {
     if (s.used && !s.closed && uint32_t(now - s.renewed) >= 1000) {
       closeManual(s, now);

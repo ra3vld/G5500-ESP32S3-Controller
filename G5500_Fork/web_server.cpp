@@ -7,6 +7,23 @@
 #include "web_assets.hpp"
 #include "web_encoding.hpp"
 namespace forkrot {
+bool WebInterface::handleStaticRequest(std::string_view request) {
+  if(request.substr(0,8)!="GET /ui/")return false;
+  const auto end=request.find(' ',4);
+  if(end==request.npos)return false;
+  const auto path=request.substr(4,end-4);
+  for(const auto &asset:WEB_STATIC_ASSETS)if(path==asset.path) {
+    const bool gzip=requestAcceptsGzip(request);
+    if(!gzip && !asset.raw) {
+      static constexpr char error[]="{\"error\":\"gzip_required\"}";
+      web_.sendFixed(406,"application/json",error,sizeof error-1);return true;
+    }
+    web_.sendFixed(200,asset.type,gzip?reinterpret_cast<const char *>(asset.gzip):asset.raw,
+                   gzip?asset.gzipSize:asset.rawSize,false,gzip,true);return true;
+  }
+  static constexpr char error[]="{\"error\":\"not_found\"}";
+  web_.sendFixed(404,"application/json",error,sizeof error-1);return true;
+}
 void WebInterface::sendHtml(const char *raw, size_t rawSize, const unsigned char *gzip, size_t gzipSize) {
   const String encoding = web_.header("Accept-Encoding");
   web_.sendHeader("Vary", "Accept-Encoding");
@@ -27,7 +44,7 @@ void WebInterface::sendHtml(const char *raw, size_t rawSize, const unsigned char
   }
 #endif
 }
-void WebInterface::serveApi(std::string_view method,std::string_view path,FormView arguments,bool fixed) {
+void WebInterface::serveApi(std::string_view method,std::string_view path,FormView arguments) {
   JsonWriter j(statusBuffer_,sizeof statusBuffer_);
   int status=200;const char *type="application/json";
   actions_.deviceRequest(method,path,arguments,j,status,type);
@@ -35,27 +52,32 @@ void WebInterface::serveApi(std::string_view method,std::string_view path,FormVi
     static constexpr char error[]="{\"error\":\"response_too_large\"}";
     web_.sendFixed(503,"application/json",error,sizeof error-1);return;
   }
-  if(fixed)web_.sendFixed(status,type,j.data(),j.size(),true);
-  else web_.sendBuffer(status,type,j.data(),j.size());
+  // During commissioning, the next browser request may be a non-repeatable
+  // setup POST. An idle status socket can yield to another client just as the
+  // browser reuses it. Announce close up front instead of exposing that race.
+  web_.sendFixed(status,type,j.data(),j.size(),!runtime_.setup.required);
 }
 void WebInterface::setupWeb() {
+  web_.setPriorityHandler([](void *context,std::string_view request,char *reply,size_t capacity,size_t &size,int &status,bool &stopsAll) {
+    return static_cast<WebInterface *>(context)->handlePriorityRequest(request,reply,capacity,size,status,stopsAll);
+  },this);
   web_.setRequestHandler([](void *context,std::string_view request) {
     auto &self=*static_cast<WebInterface *>(context);
     // The frequent polling request needs no decoded arguments or String
     // headers. Use literals: the response overwrites the raw request buffer.
     if(!self.runtime_.recovery && request.substr(0,16)=="GET /api/status ") {
-      self.serveApi("GET","/api/status",{},true);return true;
+      self.serveApi("GET","/api/status",{});return true;
     }
-    return self.handleMqttRequest(request) || self.handleHardwareRequest(request) ||
+    return self.handleStaticRequest(request) || self.handleMqttRequest(request) || self.handleHardwareRequest(request) ||
         (!self.runtime_.recovery && self.handleOtaRequest(request));
   },this);
   if(runtime_.recovery) {web_.begin();return;}
   static const char *headers[]={"Accept-Encoding"};web_.collectHeaders(headers,1);
-  web_.on("/",HTTP_GET,[this] {web_.sendHeader("Cache-Control","no-store");sendHtml(WEB_PLAIN_HTML_SUPPORT?WEB_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof WEB_PAGE-1:0,WEB_PAGE_GZIP,sizeof WEB_PAGE_GZIP);});
-  web_.on("/setup",HTTP_GET,[this] {web_.sendHeader("Cache-Control","no-store");sendHtml(WEB_PLAIN_HTML_SUPPORT?WEB_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof WEB_PAGE-1:0,WEB_PAGE_GZIP,sizeof WEB_PAGE_GZIP);});
-  web_.on("/diaglog",HTTP_GET,[this] {sendHtml(WEB_PLAIN_HTML_SUPPORT?DIAG_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof DIAG_PAGE-1:0,DIAG_PAGE_GZIP,sizeof DIAG_PAGE_GZIP);});
-  web_.on("/resetdiag",HTTP_GET,[this] {sendHtml(WEB_PLAIN_HTML_SUPPORT?RESET_DIAG_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof RESET_DIAG_PAGE-1:0,RESET_DIAG_PAGE_GZIP,sizeof RESET_DIAG_PAGE_GZIP);});
-  web_.on("/adc",HTTP_GET,[this] {sendHtml(WEB_PLAIN_HTML_SUPPORT?ADC_TEST_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ADC_TEST_PAGE-1:0,ADC_TEST_PAGE_GZIP,sizeof ADC_TEST_PAGE_GZIP);});
+  web_.on("/",HTTP_GET,[this] {web_.sendHeader("Cache-Control","no-store");sendHtml(WEB_PLAIN_HTML_SUPPORT?WEB_PAGE_HTTP:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof WEB_PAGE_HTTP-1:0,WEB_PAGE_GZIP,sizeof WEB_PAGE_GZIP);});
+  web_.on("/setup",HTTP_GET,[this] {web_.sendHeader("Cache-Control","no-store");sendHtml(WEB_PLAIN_HTML_SUPPORT?WEB_PAGE_HTTP:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof WEB_PAGE_HTTP-1:0,WEB_PAGE_GZIP,sizeof WEB_PAGE_GZIP);});
+  web_.on("/diaglog",HTTP_GET,[this] {sendHtml(WEB_PLAIN_HTML_SUPPORT?DIAG_PAGE_HTTP:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof DIAG_PAGE_HTTP-1:0,DIAG_PAGE_GZIP,sizeof DIAG_PAGE_GZIP);});
+  web_.on("/resetdiag",HTTP_GET,[this] {sendHtml(WEB_PLAIN_HTML_SUPPORT?RESET_DIAG_PAGE_HTTP:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof RESET_DIAG_PAGE_HTTP-1:0,RESET_DIAG_PAGE_GZIP,sizeof RESET_DIAG_PAGE_GZIP);});
+  web_.on("/adc",HTTP_GET,[this] {sendHtml(WEB_PLAIN_HTML_SUPPORT?ADC_TEST_PAGE_HTTP:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ADC_TEST_PAGE_HTTP-1:0,ADC_TEST_PAGE_GZIP,sizeof ADC_TEST_PAGE_GZIP);});
   static const char *const apiPaths[] = {
     "/api/setup",
     "/api/motion/coast",
@@ -106,9 +128,9 @@ void WebInterface::setupWeb() {
     const String uri=web_.uri();
     if(web_.method()==HTTP_GET && (uri=="/settings" || uri=="/calibration" || uri=="/network")) {
       web_.sendHeader("Cache-Control","no-store");
-      if(uri=="/settings")sendHtml(WEB_PLAIN_HTML_SUPPORT?ESSENTIAL_SETTINGS_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ESSENTIAL_SETTINGS_PAGE-1:0,ESSENTIAL_SETTINGS_PAGE_GZIP,sizeof ESSENTIAL_SETTINGS_PAGE_GZIP);
-      else if(uri=="/network")sendHtml(WEB_PLAIN_HTML_SUPPORT?ESSENTIAL_NETWORK_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ESSENTIAL_NETWORK_PAGE-1:0,ESSENTIAL_NETWORK_PAGE_GZIP,sizeof ESSENTIAL_NETWORK_PAGE_GZIP);
-      else sendHtml(WEB_PLAIN_HTML_SUPPORT?ESSENTIAL_CALIBRATION_PAGE:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ESSENTIAL_CALIBRATION_PAGE-1:0,ESSENTIAL_CALIBRATION_PAGE_GZIP,sizeof ESSENTIAL_CALIBRATION_PAGE_GZIP);
+      if(uri=="/settings")sendHtml(WEB_PLAIN_HTML_SUPPORT?ESSENTIAL_SETTINGS_PAGE_HTTP:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ESSENTIAL_SETTINGS_PAGE_HTTP-1:0,ESSENTIAL_SETTINGS_PAGE_GZIP,sizeof ESSENTIAL_SETTINGS_PAGE_GZIP);
+      else if(uri=="/network")sendHtml(WEB_PLAIN_HTML_SUPPORT?ESSENTIAL_NETWORK_PAGE_HTTP:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ESSENTIAL_NETWORK_PAGE_HTTP-1:0,ESSENTIAL_NETWORK_PAGE_GZIP,sizeof ESSENTIAL_NETWORK_PAGE_GZIP);
+      else sendHtml(WEB_PLAIN_HTML_SUPPORT?ESSENTIAL_CALIBRATION_PAGE_HTTP:nullptr,WEB_PLAIN_HTML_SUPPORT?sizeof ESSENTIAL_CALIBRATION_PAGE_HTTP-1:0,ESSENTIAL_CALIBRATION_PAGE_GZIP,sizeof ESSENTIAL_CALIBRATION_PAGE_GZIP);
       return;
     }
     const char *path=nullptr;

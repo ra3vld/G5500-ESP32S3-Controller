@@ -79,27 +79,49 @@ function settingsFeedback(message,state='error'){
 /* BEGIN BOUNDED POLLING */
 // Embedded by generate_web_assets.py. Control/STOP requests bypass this pool.
 const background=(()=>{
- const entries=new Map();let active=0,limited=false;
+ try{if(window.frameElement&&window.parent.__g5500Background){
+  const shared=window.parent.__g5500Background.scope('frame:'+(window.frameElement.id||location.pathname)+':',()=>!document.hidden&&!!window.frameElement?.getClientRects().length);
+  window.addEventListener('pagehide',shared.close);return shared;
+ }}catch(_){}
+ const entries=new Map();let active=0,limited=false,paused=false;
  const visible=()=>!document.hidden&&(!window.frameElement||!!window.frameElement.getClientRects().length);
  const entry=key=>{if(!entries.has(key))entries.set(key,{next:0,failures:0,pending:null,controller:null,shown:()=>true});return entries.get(key);};
  const deferred=()=>Object.assign(new Error('Обновление отложено'),{name:'PollingDeferred'});
- const allowed=e=>visible()&&e.shown()&&navigator.onLine!==false;
+ const allowed=e=>!paused&&visible()&&e.shown()&&navigator.onLine!==false;
  async function read(key,url,kind='json',shown=()=>true,controller=null){
   const e=entry(key);e.shown=shown;
   if(e.pending)return e.pending;
-  if(!allowed(e)||Date.now()<e.next||active>=2)throw deferred();
+  if(!allowed(e)||Date.now()<e.next||active>=(window.setupCommissioning?1:2))throw deferred();
   const abort=controller||new AbortController();e.controller=abort;++active;
   const timer=setTimeout(()=>abort.abort(),5000);
   e.pending=Promise.resolve().then(async()=>{
    try{
-    const response=await fetch(url,{cache:'no-store',signal:abort.signal});
-    const data=await response[kind==='reply'?'text':kind]();
+    const receive=async()=>{
+     if(!allowed(e))throw deferred();
+     const response=await fetch(url,{cache:'no-store',signal:abort.signal});
+     const data=await response[kind==='reply'?'text':kind]();return {response,data};
+    };
+    let result;
+    try{result=await receive();}catch(error){
+     // A server can retire an idle HTTP connection just as the browser
+     // reuses it. Only these read-only requests get one retry; the original
+     // five-second deadline also covers the pause and the second attempt.
+     if(!(error instanceof TypeError)||abort.signal.aborted||navigator.onLine===false)throw error;
+     await new Promise((resolve,reject)=>{
+      const cancel=()=>{clearTimeout(retry);reject(new DOMException('aborted','AbortError'));};
+      const retry=setTimeout(()=>{abort.signal.removeEventListener('abort',cancel);resolve();},100);
+      if(abort.signal.aborted)cancel();else abort.signal.addEventListener('abort',cancel,{once:true});
+     });
+     result=await receive();
+    }
+    const {response,data}=result;
     if(!response.ok&&kind!=='reply')throw Error('HTTP '+response.status);
     if(data&&typeof data==='object'&&typeof data.networkMemoryLimited==='boolean')limited=data.networkMemoryLimited;
     if(response.ok){e.failures=0;e.next=Date.now()+(limited?500:0);}
     else e.next=Date.now()+[1000,2000,4000,8000,15000][Math.min(e.failures++,4)];
     return kind==='reply'?{ok:response.ok,status:response.status,text:async()=>data,json:async()=>JSON.parse(data)}:data;
    }catch(error){
+    if(abort.signal.reason?.name==='PollingDeferred')throw abort.signal.reason;if(paused&&abort.signal.aborted)throw deferred();
     if(allowed(e)){const delay=[1000,2000,4000,8000,15000][Math.min(e.failures++,4)];e.next=Date.now()+Math.round(delay*(0.9+Math.random()*0.2));}
     throw error;
    }finally{clearTimeout(timer);--active;e.pending=null;e.controller=null;}
@@ -107,24 +129,34 @@ const background=(()=>{
   return e.pending;
  }
  function poll(key,load,interval,shown=()=>true){
-  const e=entry(key);e.shown=shown;let pending=null,timer=null;
+  const e=entry(key);e.stop?.();e.shown=shown;let pending=null,timer=null,stopped=false;
   const run=()=>{
+   if(stopped)return Promise.resolve();
    if(pending)return pending;clearTimeout(timer);
    pending=Promise.resolve().then(()=>{if(allowed(e))return load();}).catch(()=>{}).finally(()=>{
-    pending=null;timer=setTimeout(run,Math.max(interval,limited?500:0,e.next-Date.now()));
+    pending=null;if(!stopped)timer=setTimeout(run,Math.max(interval,limited?500:0,e.next-Date.now()));
    });return pending;
   };
-  e.run=run;run();return run;
+  e.stop=()=>{stopped=true;clearTimeout(timer);e.run=null;};e.run=run;run();return run;
  }
  function visibility(){
-  for(const e of entries.values())if(!allowed(e))e.controller?.abort();else if(e.run)e.run();
+  for(const e of entries.values())if(!allowed(e))e.controller?.abort(deferred());else if(e.run)e.run();
  }
  document.addEventListener('visibilitychange',visibility);
- document.addEventListener('toggle',()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort();},true);
- document.addEventListener('click',()=>queueMicrotask(()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort();}),true);
+ document.addEventListener('toggle',()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort(deferred());},true);
+ document.addEventListener('click',()=>queueMicrotask(()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort(deferred());}),true);
  window.addEventListener('offline',visibility);window.addEventListener('online',visibility);
- return {read,poll,visible,cancel:key=>entry(key).controller?.abort(),limited:()=>limited,setLimited:value=>{limited=!!value;}};
+ const api={read,poll,visible,refreshVisibility:visibility,cancel:key=>entry(key).controller?.abort(deferred()),limited:()=>limited,setLimited:value=>{limited=!!value;},pause:value=>{if(paused===!!value)return;paused=!!value;visibility();}};
+ api.scope=(prefix,shown)=>({...api,
+  visible:()=>visible()&&shown(),
+  read:(key,url,kind='json',local=()=>true,controller=null)=>read(prefix+key,url,kind,()=>shown()&&local(),controller),
+  poll:(key,load,interval,local=()=>true)=>poll(prefix+key,load,interval,()=>shown()&&local()),
+  cancel:key=>api.cancel(prefix+key),
+  close:()=>{for(const [key,e] of entries)if(key.startsWith(prefix)){e.stop?.();e.controller?.abort(deferred());entries.delete(key);}}
+ });
+ return api;
 })();
+window.__g5500Background=background;
 /* END BOUNDED POLLING */
 /* BEGIN STARTUP ACTIVITY */
 // Report actual input, including navigation and edits that do not send commands.
@@ -144,7 +176,8 @@ const background=(()=>{
   document.addEventListener(type,activity,{capture:true,passive:true});
 })();
 /* END STARTUP ACTIVITY */
-let state,metadata,formStamp,savedStamp,dirty=false,busy=false,probe=false,pinError,draftRevision=0,mbRevision=0;
+let state,metadata,formStamp,savedStamp,dirty=false,busy=false,probe=false,pinError,draftRevision=0,mbRevision=0,hardwareForeground=false;
+let loadingFields=[...document.querySelectorAll('fieldset')];for(const field of loadingFields)field.disabled=true;
 function hardwareEdited(){dirty=true;++draftRevision;}
 let rebootsLoaded=false,pendingHardwareSave;
 const form=document.getElementById('hardware'),msg=document.getElementById('message');
@@ -171,7 +204,7 @@ const errors={invalid_uart_settings:'Проверьте скорость, чёт
 const fieldLabel=field=>labels[field.replace(/^pin\./,'')]||field;
 const ownerLabel=owner=>owners[owner]||fieldLabel(owner);
 function errorText(e){return (e.field?fieldLabel(e.field)+': ':'')+(errors[e.error]||e.error||'Запрос отклонён')+(e.gpio>=0?' GPIO'+e.gpio+'.':'')+(e.owner?' Занят: '+ownerLabel(e.owner)+'.':'');}
-async function request(path,body,textReply=false){if(!body)return background.read(path,path);const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);try{const r=await fetch(path,{cache:'no-store',signal:controller.signal,...(body?{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)}:{})});if(textReply){const text=await r.text();if(!r.ok)throw Error(text);return {ok:true};}const j=await r.json();if(!r.ok)throw Error(errorText(j));return j;}finally{clearTimeout(timer);}}
+async function request(path,body,textReply=false){if(!body&&!hardwareForeground)return background.read(path,path,'json',path==='/api/hardware/modbus'?modbusDataVisible:()=>true);const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);try{const r=await fetch(path,{cache:'no-store',signal:controller.signal,...(body?{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)}:{})});if(textReply){const text=await r.text();if(!r.ok)throw Error(text);return {ok:true};}const j=await r.json();if(!r.ok)throw Error(errorText(j));return j;}finally{clearTimeout(timer);}}
 const credentials=()=>({token:state.token,generation:state.generation});
 let recoveryGuided=false,recoveryNetworkLoaded=false,recoveryNetworkBusy=false,recoveryNetworkLoading=null;
 const recoveryNetwork=document.getElementById('recovery-network');
@@ -338,7 +371,7 @@ form.addEventListener('input',hardwareInput);
 hardwareNetwork.addEventListener('input',e=>{if(e.target.form===form&&!form.contains(e.target))hardwareInput(e);});
 function singlePoll(load){let pending=null;return ()=>pending||(pending=load().finally(()=>{pending=null;}));}
 let pollError='';
-const refresh=singlePoll(async()=>{if(busy||document.hidden||(window.frameElement&&!window.frameElement.getClientRects().length))return;try{const next=await request('/api/hardware?view=form');if(state&&(state.token!==next.token||state.generation!==next.generation))probe=false;state=next;if(savedStamp&&(state.token!==savedStamp.token||state.generation!==savedStamp.generation)){formStamp=credentials();savedStamp=null;}failureSummary();if(!metadata){metadata=await request('/api/hardware/pins');buildPins();}document.getElementById('state').textContent=state.recovery?'Режим восстановления. Привод и Bluetooth отключены. '+(reasons[state.reason]||''):state.trial?'Конфигурация изменена. Действие на экране, в веб-интерфейсе или начало поворота к цели подтвердит запуск. Без подтверждения настройки откатятся. До отката: '+Math.ceil(state.remainingMs/1000)+' с.':'Работают подтверждённые настройки.';document.getElementById('effective').textContent='Свободная внутренняя память: '+state.heapFree+' байт; крупнейший блок: '+state.heapMaxBlock+' байт. Bluetooth: '+state.backend+'.';updateHardwareSections();if(!dirty){formStamp=credentials();for(const name of names)form.elements[name].value=state.configured[name]??({azSensorAddress:6,elSensorAddress:6,localAzMin:0,localElMin:0,localAzCenter:2048,localElCenter:2048,localAzMax:4095,localElMax:4095,localDeadzone:200,localHysteresis:50}[name]??0);for(const d of metadata.roles){const el=form.elements['pin.'+d.name];if(el)setPinValue(el,state.configured.pins[d.name]);}}form.elements.bluetoothMode.options[2].disabled=!state.sppSupported;form.elements.forceApSta.disabled=false;form.elements.driveMode.options[1].disabled=state.separateDrive===false;form.elements.driveMode.options[2].disabled=state.btsDrive===false;form.elements.driveMode.options[3].disabled=state.separateDrive===false;form.elements.bluetoothEnabled.disabled=!!state.crowpanelLocalDrive;if(state.crowpanelLocalDrive)form.elements.bluetoothEnabled.value="0";applySetupDrive();syncDriveMode();updateHardwareSections();updatePins();if(!document.getElementById('reboot-history').hidden&&!rebootsLoaded)refreshReboots();if(state.trial&&state.ready&&!probe){await request('/api/hardware/probe',credentials());probe=true;}buttons();if(msg.textContent===pollError)msg.textContent='';pollError='';}catch(e){pollError=msg.textContent='Не удалось получить состояние: '+e.message;probe=false;document.getElementById('confirm').disabled=true;}});
+const refresh=singlePoll(async()=>{if(busy||document.hidden||(window.frameElement&&!window.frameElement.getClientRects().length))return;try{const next=await request('/api/hardware?view=form');if(state&&(state.token!==next.token||state.generation!==next.generation))probe=false;state=next;if(savedStamp&&(state.token!==savedStamp.token||state.generation!==savedStamp.generation)){formStamp=credentials();savedStamp=null;}failureSummary();if(!metadata){metadata=await request('/api/hardware/pins');buildPins();}if(!mbLoaded)await refreshModbus();document.getElementById('state').textContent=state.recovery?'Режим восстановления. Привод и Bluetooth отключены. '+(reasons[state.reason]||''):state.trial?'Конфигурация изменена. Действие на экране, в веб-интерфейсе или начало поворота к цели подтвердит запуск. Без подтверждения настройки откатятся. До отката: '+Math.ceil(state.remainingMs/1000)+' с.':'Работают подтверждённые настройки.';document.getElementById('effective').textContent='Свободная внутренняя память: '+state.heapFree+' байт; крупнейший блок: '+state.heapMaxBlock+' байт. Bluetooth: '+state.backend+'.';updateHardwareSections();if(!dirty){formStamp=credentials();for(const name of names)form.elements[name].value=state.configured[name]??({azSensorAddress:6,elSensorAddress:6,localAzMin:0,localElMin:0,localAzCenter:2048,localElCenter:2048,localAzMax:4095,localElMax:4095,localDeadzone:200,localHysteresis:50}[name]??0);for(const d of metadata.roles){const el=form.elements['pin.'+d.name];if(el)setPinValue(el,state.configured.pins[d.name]);}}form.elements.bluetoothMode.options[2].disabled=!state.sppSupported;form.elements.forceApSta.disabled=false;form.elements.driveMode.options[1].disabled=state.separateDrive===false;form.elements.driveMode.options[2].disabled=state.btsDrive===false;form.elements.driveMode.options[3].disabled=state.separateDrive===false;form.elements.bluetoothEnabled.disabled=!!state.crowpanelLocalDrive;if(state.crowpanelLocalDrive)form.elements.bluetoothEnabled.value="0";applySetupDrive();syncDriveMode();updateHardwareSections();updatePins();if(loadingFields){for(const field of loadingFields)field.disabled=false;loadingFields=null;}if(!document.getElementById('reboot-history').hidden&&!rebootsLoaded)refreshReboots();if(state.trial&&state.ready&&!probe){await request('/api/hardware/probe',credentials());probe=true;}buttons();if(msg.textContent===pollError)msg.textContent='';pollError='';}catch(e){if(e.name==='PollingDeferred')return;pollError=msg.textContent='Не удалось получить состояние: '+e.message;probe=false;document.getElementById('confirm').disabled=true;}});
 const refreshReboots=singlePoll(async()=>{
  rebootsLoaded=true;const status=document.getElementById('reboot-message'),button=document.getElementById('load-reboots');button.disabled=true;status.textContent='Загрузка журнала…';
  try{
@@ -381,11 +414,12 @@ document.getElementById('joystick-finish').onclick=async()=>{if(!capture?.center
 document.getElementById('joystick-cancel').onclick=async()=>{await cancelCapture();calibrationStatus.textContent='Измерения отменены.';};
 document.getElementById('reset-pins').onclick=()=>{for(const d of metadata.roles){const el=form.elements['pin.'+d.name];if(el)setPinValue(el,d.default);}form.elements.buttonGpio.value=metadata.buttonDefault;hardwareEdited();updatePins();};
 document.getElementById('confirm').onclick=()=>apply('/api/hardware/confirm',{});document.getElementById('rollback').onclick=()=>apply('/api/hardware/rollback',{});document.getElementById('recover').onclick=()=>apply('/api/hardware/recovery',{});background.poll('/api/hardware?view=form',refresh,2000);
-const mbForm=document.getElementById('modbus'),mbNames=['pc','bus','address','node','first','count','uart0Baud','uart0Parity','uart0StopBits','uart1Baud','uart1Parity','uart1StopBits'];let mbDirty=false;
+const mbForm=document.getElementById('modbus'),mbNames=['pc','bus','address','node','first','count','uart0Baud','uart0Parity','uart0StopBits','uart1Baud','uart1Parity','uart1StopBits'];let mbDirty=false,mbLoaded=false;
 mbForm.addEventListener('input',()=>{mbDirty=true;++mbRevision;buttons();});
-const refreshModbus=singlePoll(async()=>{if(document.hidden||(window.frameElement&&!window.frameElement.getClientRects().length))return;try{const c=await request('/api/hardware/modbus');if(!mbDirty)for(const n of mbNames)mbForm.elements[n].value=c[n]??({address:1,node:201,first:201,count:1,uart0Baud:9600,uart0StopBits:1,uart1Baud:115200,uart1StopBits:1}[n]??0);document.getElementById('modbus-status').textContent=(c.fault?'Ошибка: параметры кольца не совпадают. ':'')+'Владелец линии: '+(c.owner||'ожидание')+'. Принято: '+(c.received||0)+', отклонено: '+(c.rejected||0)+', таймаутов: '+(c.timeouts||0)+'.';}catch(e){document.getElementById('modbus-status').textContent=e.message;}});
+function modbusDataVisible(){return !mbLoaded||!!mbForm.getClientRects().length&&(!mbForm.closest('details')||mbForm.closest('details').open);}
+const refreshModbus=singlePoll(async()=>{if(!modbusDataVisible()&&!hardwareForeground||document.hidden||(window.frameElement&&!window.frameElement.getClientRects().length))return;try{const c=await request('/api/hardware/modbus');mbLoaded=true;if(!mbDirty)for(const n of mbNames)mbForm.elements[n].value=c[n]??({address:1,node:201,first:201,count:1,uart0Baud:9600,uart0StopBits:1,uart1Baud:115200,uart1StopBits:1}[n]??0);document.getElementById('modbus-status').textContent=(c.fault?'Ошибка: параметры кольца не совпадают. ':'')+'Владелец линии: '+(c.owner||'ожидание')+'. Принято: '+(c.received||0)+', отклонено: '+(c.rejected||0)+', таймаутов: '+(c.timeouts||0)+'.';}catch(e){document.getElementById('modbus-status').textContent=e.message;}});
 mbForm.addEventListener('submit',e=>{e.preventDefault();const c={};for(const n of mbNames)c[n]=Number(mbForm.elements[n].value);if(c.address>=c.first&&c.address<c.first+c.count||c.node<c.first||c.node>=c.first+c.count||c.first+c.count>248){msg.textContent='Адрес контроллера должен быть вне диапазона ведущих, а адрес HUD — внутри него.';settingsFeedback(msg.textContent);return;}apply('/api/hardware/modbus',c);});
-background.poll('/api/hardware/modbus',refreshModbus,2000);
+background.poll('/api/hardware/modbus',refreshModbus,2000,modbusDataVisible);
 let hardwareStage=null,setupDrive=null;
 function applySetupDrive(){if(!setupDrive||!state||!metadata||state.role==='hud')return;const changed=Number(form.elements.driveInterface.value)!==setupDrive.driveInterface||Number(form.elements.simulation.value)!==setupDrive.simulation;if(changed){form.elements.driveInterface.value=String(setupDrive.driveInterface);form.elements.simulation.value=String(setupDrive.simulation);if(setupDrive.driveInterface!==2)form.elements.pwmInverted.value='0';hardwareEdited();}syncDriveMode();}
 function updateHardwareSections(){
@@ -410,7 +444,7 @@ function updateHardwareSections(){
 if(new URLSearchParams(location.search).has('setup')){
  document.body.classList.add('embedded');
  function validateSetupHardware(){
-  if(!state||!metadata||busy)throw new Error('Дождитесь загрузки оборудования.');
+  if(!state||!metadata||!mbLoaded||busy)throw new Error('Дождитесь загрузки оборудования.');
   if(capture||calibrationPending)throw new Error('Завершите или отмените измерения джойстика.');
   updatePins();if(pinError)throw new Error(errorText(pinError));
   for(const f of [form,mbForm])for(const el of f.elements)if(!el.disabled&&el.getClientRects().length&&el.reportValidity&&!el.reportValidity())throw new Error('Проверьте выделенное поле оборудования.');
@@ -425,6 +459,7 @@ if(new URLSearchParams(location.search).has('setup')){
    if(changed)window.scrollTo(0,0);return;
   }
   if(event.data?.type!=='hardwareAction')return;
+  hardwareForeground=true;
   try{
    const action=event.data.action;
    if(action==='reset'){if(capture)await cancelCapture();dirty=mbDirty=false;await refresh();await refreshModbus();}
@@ -442,12 +477,12 @@ if(new URLSearchParams(location.search).has('setup')){
    }
    reportState();
    parent.postMessage({type:'hardwareResult',id:event.data.id},location.origin);
-  }catch(e){msg.textContent=e.message;parent.postMessage({type:'hardwareResult',id:event.data.id,error:e.message},location.origin);}
+  }catch(e){msg.textContent=e.message;parent.postMessage({type:'hardwareResult',id:event.data.id,error:e.message},location.origin);}finally{hardwareForeground=false;}
  });
  parent.postMessage({type:'hardwareReady'},location.origin);
  const report=()=>parent.postMessage({type:'hardwareHeight',height:Math.ceil(document.querySelector('main').getBoundingClientRect().height+24)},location.origin);
  new ResizeObserver(report).observe(document.querySelector('main'));
- const reportState=()=>parent.postMessage({type:'hardwareState',dirty:dirty||mbDirty||!!capture||calibrationPending||busy,error:pinError?errorText(pinError):pollError||(!state||!metadata?'Дождитесь загрузки оборудования.':state.trial&&(!state.ready||!probe)?'Дождитесь проверки памяти и пробного запуска оборудования.':''),canApply:!!state&&!!metadata&&!busy&&!capture&&!calibrationPending&&!pinError&&(!state.trial||state.ready&&probe)},location.origin);
+ const reportState=()=>parent.postMessage({type:'hardwareState',dirty:dirty||mbDirty||!!capture||calibrationPending||busy,error:pinError?errorText(pinError):pollError||(!state||!metadata||!mbLoaded?'Дождитесь загрузки оборудования.':state.trial&&(!state.ready||!probe)?'Дождитесь проверки памяти и пробного запуска оборудования.':''),canApply:!!state&&!!metadata&&mbLoaded&&!busy&&!capture&&!calibrationPending&&!pinError&&(!state.trial||state.ready&&probe)},location.origin);
  document.addEventListener('input',reportState);setInterval(reportState,500);report();reportState();
 }
 const displayForm=document.getElementById('display-orientation'),displayMessage=document.getElementById('display-message');
@@ -463,7 +498,9 @@ displayForm.oninput=()=>{displayDirty=true;displayMessage.textContent='Изме�
 document.getElementById('display-defaults').onclick=()=>{for(const name of displayPoseNames)displayForm.elements[name].value='0';for(const [i,name] of displayFieldNames.entries())displayForm.elements[name].checked=Boolean((displayState.defaultFields??63)&(1<<i));displayDirty=true;displayMessage.textContent='Выбраны значения по умолчанию. Нажмите «Сохранить и перезапустить».';displayButtons();};
 document.getElementById('display-reload').onclick=()=>loadDisplaySettings();
 displayForm.onsubmit=async event=>{event.preventDefault();if(displayBusy||!displayState?.supported||!displayDirty)return;const values={token:displayState.token,revision:displayState.revision};for(const name of displayPoseNames)values[name]=Number(displayForm.elements[name].value);for(const name of displayFieldNames)values[name]=Number(displayForm.elements[name].checked);displayBusy=true;displayButtons();displayMessage.textContent='Сохраняем настройки экрана…';settingsFeedback(displayMessage.textContent,'pending');try{await request('/api/hardware/display',values);displayState.restartRequired=true;displayDirty=false;displayMessage.textContent='Сохранено. Устройство перезапускается. После запуска нажмите «Обновить настройки».';settingsFeedback(displayMessage.textContent,'success');}catch(e){displayMessage.textContent=e.name==='AbortError'?'Не получен ответ на сохранение. После подключения обновите настройки и проверьте значения.':displayError(e);settingsFeedback(displayMessage.textContent);}finally{displayBusy=false;displayButtons();}};
-loadDisplaySettings();
+displayButtons();
+function displayDataVisible(){return !!state&&!document.hidden&&!!displayForm.getClientRects().length&&(!window.frameElement||!!window.frameElement.getClientRects().length);}
+background.poll('/api/hardware/display',()=>{if(!displayState&&displayDataVisible())return loadDisplaySettings();},2000,displayDataVisible);
 
 </script></html>)HWHTML";
 } // namespace forkrot

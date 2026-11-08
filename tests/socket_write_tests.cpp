@@ -1,11 +1,36 @@
 #include "bounded_socket_write.hpp"
 #include "live_frame.hpp"
+#include "tcp_reply.hpp"
 #include <cassert>
 #include <iostream>
 #include <string>
 #include <type_traits>
 using forkrot::boundedSocketWrite;
 int main() {
+  {
+    forkrot::TcpReply<256> queue;
+    uint32_t now=UINT32_MAX-300;std::string wire;
+    const std::string first(180,'a'),second(100,'b');
+    assert(queue.push(first,now));assert(!queue.push(second,now));
+    assert(queue.service(now,[](const char *,size_t){return -2;}));
+    now+=500;
+    auto send=[&](const char *data,size_t count){count=std::min(count,size_t(7));wire.append(data,count);return int(count);};
+    while(queue.size()>150)assert(queue.service(now++,send));
+    assert(queue.push(second,now));
+    while(!queue.empty())assert(queue.service(now++,send));
+    assert(wire==first+second && queue.retries==1 && queue.maxPendingMs>=500);
+    assert(queue.push("old-session",now));queue.clear();
+    assert(queue.push("fresh",now));wire.clear();
+    while(!queue.empty())assert(queue.service(now++,send));
+    assert(wire=="fresh");
+    assert(queue.push("timeout",now));
+    assert(!queue.service(now+5000,send) && queue.timeouts==1);
+    queue.clear();assert(queue.push("fatal",now));
+    assert(!queue.service(now,[](const char *,size_t){return -1;}));
+    // Continuous progress must not close a persistent logger after five seconds.
+    queue.clear();assert(queue.push(first,now));
+    for(unsigned i=0;i<12;++i){now+=600;assert(queue.service(now,send));}
+  }
   const std::string input="a WebSocket header and payload must never be repeated";
   for(const int retry : {EAGAIN,EINTR,ENOBUFS,ENOMEM}) {
     uint32_t clock=UINT32_MAX-10;unsigned calls=0;std::string wire;

@@ -12,7 +12,7 @@ inline esp_err_t initCompactWifi() {
   cfg.dynamic_rx_buf_num = 4;
   cfg.tx_buf_type = 1;
   cfg.static_tx_buf_num = 0;
-  cfg.dynamic_tx_buf_num = (ESP32_SPP_PROFILE && FORK_CLASSIC_ESP32) ? 4 : 2;
+  cfg.dynamic_tx_buf_num = FORK_CLASSIC_ESP32 ? 4 : 2;
   cfg.cache_tx_buf_num = 2;
   cfg.rx_mgmt_buf_num = 2;
   cfg.mgmt_sbuf_num = 8;

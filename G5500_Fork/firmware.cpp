@@ -296,15 +296,31 @@ void Application::controllerSetup() {
   if(!runtime_.recovery)web_server_.startIoTask();
   network_.captureSetupHeap();
 }
+void Application::serviceControl() {
+  if(runtime_.recovery || ota_.locked() || runtime_.hud.isHud())return;
+  if(runtime_.controller.controlPeriodMs()<20 && runtime_.controller.controlDue(millis())) {
+    updatePosition();hardware_.controlRotator();
+  }
+}
 void Application::controllerLoop() {
   const uint32_t startedUs = micros();
+  runtimeMetrics.beginLoop(startedUs,runtime_.controller.controlActive());
   uint32_t stageStartedUs=startedUs;
   const auto checkpoint=[&](const char *name) {
-    const uint32_t nowUs=micros();runtimeMetrics.recordStage(name,nowUs-stageStartedUs);stageStartedUs=nowUs;
+    const uint32_t nowUs=micros();
+    runtimeMetrics.recordStage(name,nowUs-stageStartedUs,runtime_.controller.controlActive());
+    // A collection of individually bounded services can still span a 10 ms
+    // deadline. Run only the due control step between services, on its owner.
+    // No replay of missed steps, network dispatch or extra Controller owner.
+    serviceControl();
+    stageStartedUs=micros();
   };
   ota_.service();
+  checkpoint("ota");
   network_.serviceCommandReplies();
+  checkpoint("commandReplies");
   device_api_.serviceNetworkTrial(millis());
+  checkpoint("networkTrial");
   if(restart_.consume(millis()) || ota_.readyToRestart()) {
     if (!storage_.serviceRuntimeSpeeds(runtime_,millis(),true))
       diagnostics_.dbgPrintln("[Speed NVS] save before restart failed");
@@ -317,7 +333,9 @@ void Application::controllerLoop() {
     web_server_.service();delay(5);return;
   }
   device_api_.serviceSetup(millis());
+  checkpoint("setup");
   serviceConfigurationSafety();
+  checkpoint("safety");
   // Once an update starts, keep outputs stopped even after an upload error.
   // Only reboot can resume input processing, so buffered commands cannot replay.
   if (ota_.locked()) {
@@ -333,7 +351,9 @@ void Application::controllerLoop() {
   }
   // Refresh held input after rendering before HUD checks its local input lease.
   display_.serviceTouch();
+  checkpoint("touch");
   network_.serviceHud();
+  checkpoint("hud");
   updatePosition();
   runtime_.controller.tick(millis()); // expire the hour before accepting any external command
   hardware_.serviceLocalInputs();
@@ -346,20 +366,30 @@ void Application::controllerLoop() {
   network_.serviceLoggerUdp();
   checkpoint("loggerUdp");
   network_.handlePstRotatorSerial(); // UART0 USB / PSTROTATOR / GS-232
+  checkpoint("serial");
   network_.handleBluetoothSerial(); // selected Bluetooth transport / GS-232B
-  network_.handleRotctldTcp();       // Wi-Fi TCP 4533 / Look4Sat / Hamlib rotctld
+  checkpoint("bluetooth");
+  // Start potentially long socket/HTTP dispatch just after the control step,
+  // rather than spending the remaining fraction of a 10/5 ms period on it.
+  network_.handleRotctldTcp();
   checkpoint("serialTcp");
   web_server_.serviceLiveCommands();
   checkpoint("liveCommands");
   if (runtime_.controller.controlPeriodMs() < 20) updatePosition();
   hardware_.controlRotator();
   checkpoint("control");
+  web_server_.serviceOwner();
+  checkpoint("httpOwner");
+  if(ota_.locked())return;
   mqtt_.service();
   checkpoint("mqtt");
   display_.serviceTouch();
   network_.serviceHud();
   if (runtime_.controller.controlPeriodMs() < 20) updatePosition();
   hardware_.controlRotator();
+  web_server_.serviceOwner();
+  checkpoint("httpOwner");
+  if(ota_.locked())return;
   web_server_.publishLive();
   checkpoint("livePublish");
   network_.serviceCommandReplies();
@@ -397,7 +427,8 @@ void Application::controllerLoop() {
   hardware_.updateRgb();
   checkpoint("rgb");
   runtimeMetrics.recordLoop(uint32_t(micros() - startedUs));
-  web_server_.wait(runtime_.controller.loopDelayMs(millis()));
+  const unsigned waitMs=runtime_.controller.loopDelayMs(millis());
+  web_server_.wait(waitMs);
 }
 } // namespace forkrot
 namespace {

@@ -36,6 +36,8 @@ state.mqtt={supported:true,enabled:false,storageOk:true,connected:false,error:'d
   assert.equal(await page.locator('#networkDeviceId').textContent(),state.deviceId);
   assert.equal(await page.locator('#mqttDeviceId').inputValue(),state.deviceId);
   assert.equal(await page.locator('#mqttDeviceId').getAttribute('readonly'),'');
+  state.mqtt.stopping=true;state.mqtt.error='stopping';await checkStatus('Отключение…');
+  delete state.mqtt.stopping;
   state.mqtt.enabled=true;state.mqtt.error='connecting';await checkStatus('Подключение…','offline');
   state.mqtt.connected=true;state.mqtt.error='';await checkStatus('Подключён','online');
   // Both blocks update without reading configuration or disturbing drafts.
