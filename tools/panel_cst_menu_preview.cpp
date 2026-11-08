@@ -1,6 +1,7 @@
 // Run the ESP32-2424S012C input path with real LVGL and CST register samples.
 #include "device_api_fixture.hpp"
 #include "display.hpp"
+#include "panel_metrics.hpp"
 #include <Wire.h>
 namespace forkrot {
 PanelApResult Network::panelApAllowed(bool) const {return PanelApResult::Idle;}
@@ -12,7 +13,7 @@ void Network::formatAddresses(char *text,size_t capacity,const char *,bool,bool)
 }
 template<class Tag,auto Member> struct CstAccess {friend auto member(Tag){return Member;}};
 #define ACCESS(name) struct name##Tag {friend auto member(name##Tag);};template struct CstAccess<name##Tag,&Display::name>;
-ACCESS(display_) ACCESS(menuOpen_) ACCESS(presentedLayout_) ACCESS(commandContext) ACCESS(ui_)
+ACCESS(display_) ACCESS(menuOpen_) ACCESS(presentedLayout_) ACCESS(commandContext) ACCESS(ui_) ACCESS(touchNotice_) ACCESS(touchButtons_)
 #undef ACCESS
 int main() {
   Fixture f;
@@ -26,10 +27,10 @@ int main() {
   f.runtime.hud.now=millis();assert(f.runtime.hud.select(12));
   Display display(f.runtime,f.actions,f.calibration,f.hardware,f.diagnostics,f.network,f.storage);
   display.initLocalDisplay();display.startAfterCalibrationLoad();
-  auto tick=[&](bool down,unsigned x,unsigned y,unsigned elapsed=10) {
+  auto tick=[&](bool down,unsigned x,unsigned y,unsigned elapsed=10,int contactEvent=-1) {
     fakeHardware.now+=elapsed;
     f.runtime.hud.now=peer->receivedAt=millis();
-    Wire.registers[2]=down?1:0;Wire.registers[3]=down?0x80:0x40;
+    Wire.registers[2]=down?1:0;Wire.registers[3]=uint8_t((contactEvent<0?(down?2:1):contactEvent)<<6);
     Wire.registers[4]=x;Wire.registers[5]=0;Wire.registers[6]=y;
     display.serviceTouch();display.updateLocalDisplay();
   };
@@ -97,6 +98,54 @@ int main() {
   tick(true,120,38);assert(f.runtime.hud.config.selected==12);
   tick(false,0,0);assert(f.runtime.hud.selectionEpoch==epoch+2);
   Runtime restored;f.storage.loadHud(restored,false);assert(restored.hud.config.selected==12);
+  // A failed capability query on a current peer is not proof of old firmware.
+  const auto swipe=[&]() {
+    for(unsigned i=0;i<10;++i)tick(false,0,0);
+    const auto current=(display.*member(presentedLayout_Tag{})).current;
+    assert(current.width);
+    const unsigned x=current.x+current.width/2,y=current.y+current.height/2;
+    tick(true,x,y);tick(true,std::min(239u,x+50),y);
+    tick(false,0,0);
+  };
+  peer->wireVersion=5;peer->manual=false;swipe();
+  assert(!std::strcmp(display.*member(touchNotice_Tag{}),"Ручное управление недоступно"));
+  peer->wireVersion=4;peer->manual=true;swipe();
+  assert(!std::strcmp(display.*member(touchNotice_Tag{}),"Обновите прошивку контроллера"));
+  peer->wireVersion=5;
+  // Real C3 trace: a zero-contact/event-0 frame followed by a held contact
+  // 13--22 ms later must not close/re-anchor an ongoing manual swipe.
+  for(unsigned i=0;i<10;++i)tick(false,0,0);
+  const auto manual=(display.*member(presentedLayout_Tag{})).current;
+  const unsigned mx=manual.x+manual.width/2,my=manual.y+manual.height/2;
+  tick(true,mx,my);tick(true,std::min(239u,mx+40),my);
+  const auto gesture=panelMetrics.traceGesture;
+  assert((display.*member(touchButtons_Tag{})).manualActive());
+  tick(false,0,0,10,0);
+  assert((display.*member(touchButtons_Tag{})).manualActive());
+  tick(true,std::min(239u,mx+42),my,22);
+  assert(panelMetrics.traceGesture==gesture);
+  tick(false,0,0,10,0);tick(true,std::min(239u,mx+43),my,13);
+  assert(panelMetrics.traceGesture==gesture);
+  // Explicit UP still releases on that sample; the next press is a new gesture.
+  tick(false,0,0);
+  assert(!(display.*member(touchButtons_Tag{})).contactDown());
+  tick(true,mx,my);assert(panelMetrics.traceGesture!=gesture);
+  tick(false,0,0);
+  // Repeated idle samples cannot renew the contact indefinitely.
+  tick(true,mx,my);tick(true,std::min(239u,mx+40),my);
+  tick(false,0,0,10,0);tick(false,0,0,10,0);tick(false,0,0,10,0);
+  assert((display.*member(touchButtons_Tag{})).manualActive());
+  tick(false,0,0,10,0);
+  assert(!(display.*member(touchButtons_Tag{})).contactDown());
+  // I2C failure and peer scope changes cancel immediately even during the grace.
+  tick(true,mx,my);tick(true,std::min(239u,mx+40),my);
+  Wire.failed=true;tick(false,0,0,10,0);Wire.failed=false;
+  assert(!(display.*member(touchButtons_Tag{})).manualActive());
+  tick(false,0,0);
+  tick(true,mx,my);tick(true,std::min(239u,mx+40),my);
+  ++f.runtime.hud.selectionEpoch;tick(false,0,0,10,0);
+  assert(!(display.*member(touchButtons_Tag{})).manualActive());
+  tick(false,0,0);
   const auto findCaption=[&](auto &&self,lv_obj_t *object)->lv_obj_t * {
     if(lv_obj_check_type(object,&lv_label_class)&&!std::strcmp(lv_label_get_text(object),"Цель"))return object;
     for(uint32_t i=0;i<lv_obj_get_child_count(object);++i)

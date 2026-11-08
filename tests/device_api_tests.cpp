@@ -1,4 +1,5 @@
 #include "device_service_fixture.hpp"
+#include "panel_metrics.hpp"
 #include <nvs.h>
 static void hardwareStorageApiTests() {
   for(bool wire:{false,true}) {
@@ -1419,5 +1420,17 @@ int main(int argc,char **argv) {
   assert(!f.restart.pending());
   // The hardware test/confirmation path never arms motion until reboot.
   assert(r.controller.driveFault && !r.controller.moving());
+  const auto hudDiagnostics=f.call("GET","/api/diagnostics","view=hud");
+  assert(hudDiagnostics.status==200 && hudDiagnostics.body.find("\"manualLeaseExpirations\":")!=std::string::npos);
+  assert(hudDiagnostics.body.find("\"wireVersion\":")!=std::string::npos);
+  // A changing live document must fit a single UART page, without pagination.
+  r.hud.sent=r.hud.sendErrors=r.hud.manualSendFailures=r.hud.manualLeaseExpirations=UINT32_MAX;
+  r.hud.manualAckAt=UINT32_MAX;
+  assert(f.call("GET","/api/diagnostics","view=hud",true).body.size()<=COMMAND_PAGE_MAX);
+  for(unsigned i=0;i<12;++i)
+    panelMetrics.traceTouch({UINT32_MAX-i,UINT32_MAX-i,65535,65535,uint8_t(i%2?31:30),3,255,-100,100});
+  const auto touchDiagnostics=f.call("GET","/api/diagnostics","view=touch",true);
+  assert(touchDiagnostics.status==200 && touchDiagnostics.body.size()<=COMMAND_PAGE_MAX);
+  assert(touchDiagnostics.body.find("\"events\":[[")!=std::string::npos);
   std::cout << "PASS: shared device API: HTTP/wire status, motion, settings/NVS, calibration routing, recovery without Wi-Fi, hardware probe/confirm, OTA and HUD\n";
 }

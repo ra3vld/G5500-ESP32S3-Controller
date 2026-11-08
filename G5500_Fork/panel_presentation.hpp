@@ -8,13 +8,20 @@ namespace forkrot::panel {
 class Presentation {
   struct Angle {
     bool valid=false;
-    uint32_t at=0;
+    uint32_t at=0,stoppedAt=0;
+    bool stationary=false;
     float filtered=0, position=0, degrees=0;
     void update(float raw,bool feedback,bool moving,uint32_t now) {
-      if(!feedback || !std::isfinite(raw)) { valid=false;position=degrees=raw;return; }
+      if(!feedback || !std::isfinite(raw)) { valid=stationary=false;position=degrees=raw;return; }
       if(!valid || moving) {
         filtered=position=raw;degrees=std::round(raw);
+        stationary=!moving;stoppedAt=now;
       } else {
+        if(!stationary) {stationary=true;stoppedAt=now;}
+        // Show the final coast/settling samples without lag for five seconds.
+        if(uint32_t(now-stoppedAt)<5000) {
+          filtered=position=raw;degrees=std::round(raw);at=now;return;
+        }
         // A two-second time constant, independent of display refresh rate.
         filtered+=(raw-filtered)*(-std::expm1(-float(uint32_t(now-at))/2000.f));
         if(std::abs(filtered-position)>=.1f)position=filtered;

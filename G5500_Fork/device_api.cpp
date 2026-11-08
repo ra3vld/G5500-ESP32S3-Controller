@@ -939,6 +939,41 @@ void DeviceApi::executeDiagnostics(std::string_view method, std::string_view pat
     output << "{\"ok\":" << (code==200?"true":"false") << ",\"error\":" << jsonQuoted(reason) << '}';
   };
   if(path=="/api/diagnostics" && method=="GET") {
+    if(web_.value("view")=="touch") {
+      output << "{\"reads\":" << panelMetrics.touchReads << ",\"errors\":" << panelMetrics.touchErrors
+        << ",\"written\":" << panelMetrics.touchEventsWritten << ",\"events\":[";
+      const auto total=panelMetrics.touchEventsWritten;
+      const unsigned count=std::min<uint32_t>(total,panelMetrics.touchEvents.size());
+      for(unsigned i=0;i<count;++i) {
+        const auto &e=panelMetrics.touchEvents[(total-count+i)%panelMetrics.touchEvents.size()];
+        if(i)output << ',';
+        output << '[' << e.at << ',' << e.gesture << ',' << e.x << ',' << e.y << ',' << unsigned(e.flags)
+          << ',' << unsigned(e.mask) << ',' << int(e.az) << ',' << int(e.el) << ',' << unsigned(e.contact) << ']';
+      }
+      output << "]}";return;
+    }
+    if(web_.value("view")=="hud") {
+      output << "{\"uptimeMs\":" << millis();
+#if HUD_SUPPORT
+      const auto *peer=runtime_.hud.active();
+      output << ",\"hudOnline\":" << (runtime_.hud.available()?"true":"false")
+        << ",\"hudAgeMs\":" << runtime_.hud.freshnessAge()
+        << ",\"hudSent\":" << runtime_.hud.sent
+        << ",\"hudSendErrors\":" << runtime_.hud.sendErrors
+        << ",\"hudSendErrno\":" << runtime_.hud.sendErrno
+        << ",\"wireVersion\":" << unsigned(peer?peer->wireVersion:0)
+        << ",\"manualCapability\":" << (peer && peer->manual?"true":"false")
+        << ",\"manualAvailable\":" << (runtime_.hud.manualAvailable()?"true":"false")
+        << ",\"manualSendFailures\":" << runtime_.hud.manualSendFailures
+        << ",\"manualLeaseExpirations\":" << runtime_.hud.manualLeaseExpirations
+        << ",\"manualAckResult\":" << int(runtime_.hud.manualAckResult)
+        << ",\"manualAckAt\":" << runtime_.hud.manualAckAt;
+#endif
+      output << ",\"touchGapMaxMs\":" << panelMetrics.touchGapMaxMs
+        << ",\"manualResult\":" << unsigned(panelMetrics.manualResult)
+        << ",\"manualUnavailable\":" << panelMetrics.manualUnavailable
+        << ",\"manualCancelled\":" << panelMetrics.manualCancelled << '}';return;
+    }
     if(web_.value("view")=="scheduling") {
       const auto &h=network_.httpDiagnostics();
       output << "{\"uptimeMs\":" << millis() << ",\"httpWriteRetries\":" << h.writeRetries

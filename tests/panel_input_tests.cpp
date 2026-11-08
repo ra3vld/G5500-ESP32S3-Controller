@@ -236,5 +236,39 @@ int main() {
   assert(t.healthy && !t.down);
   data[0]=1;data[1]=0x40;data[2]=10;data[3]=0;data[4]=20;
   t=decodeCstTouch(data,240,240,47);assert(t.healthy && !t.down);
+  {
+    // Replay the observed zero-contact holes without extending an idle deadline.
+    CstContactFilter filter;
+    const auto contact=[](uint32_t at,bool down,uint8_t code,bool healthy=true) {
+      return TouchSample{healthy,down,99,128,at,code};
+    };
+    filter.sample(contact(100,true,0x21),true);
+    auto s=filter.sample(contact(110,false,0),true);assert(s.down && s.sampledAt==110 && s.x==99);
+    assert(filter.sample(contact(132,true,0x21),true).down);
+    assert(filter.sample(contact(142,false,0),true).down);
+    assert(filter.sample(contact(155,true,0x21),true).down);
+    assert(filter.sample(contact(194,false,0),true).down);
+    assert(!filter.sample(contact(195,false,0),true).down); // 40 ms since real contact.
+    assert(!filter.sample(contact(196,false,0),true).down);
+    // A read failure or explicit UP must release immediately, even at +1 ms.
+    for(uint8_t up:{uint8_t(0x10),uint8_t(0x11)}) {
+      filter.sample(contact(200,true,0x21),true);
+      assert(!filter.sample(contact(201,false,up),true).down);
+      assert(!filter.sample(contact(202,false,0),true).down);
+    }
+    filter.sample(contact(300,true,0x21),true);
+    s=filter.sample(contact(301,false,0,false),true);assert(!s.down && !s.healthy);
+    assert(!filter.sample(contact(302,false,0),true).down);
+    // Buttons, tap confirmation and cancelled gestures do not inherit the grace.
+    filter.sample(contact(400,true,0x21),true);
+    assert(!filter.sample(contact(401,false,0),false).down);
+    assert(!filter.sample(contact(402,false,0),true).down);
+    // A long input pause cannot resurrect old contact; unsigned clock wrap works.
+    filter.sample(contact(500,true,0x21),true);
+    assert(!filter.sample(contact(600,false,0),true).down);
+    filter.sample(contact(UINT32_MAX-20,true,0x21),true);
+    assert(filter.sample(contact(10,false,0),true).down);
+    assert(!filter.sample(contact(19,false,0),true).down);
+  }
   std::puts("PASS: shared panel startup, stale confirmation, STOP, release/recovery, context and CST coordinates");
 }

@@ -82,7 +82,7 @@ struct HudPeer {
   uint32_t freshnessMs = 0;
   bool live = false;
   bool manual = false;
-  uint32_t capabilitySerial = 0, capabilityAt = 0;
+  uint32_t capabilitySerial = 0, capabilityAt = 0, upgradeAt = 0;
   bool received = false, saved = false;
   std::unique_ptr<HudPeer> next;
   bool simulated() const { return id == HUD_SIMULATION_ID; }
@@ -128,6 +128,8 @@ public:
            sendErrors = 0;
   int sendErrno = 0;
   uint32_t commandAttempts = 0, commandSendFailures = 0;
+  uint32_t manualSendFailures=0,manualLeaseExpirations=0,manualAckAt=0,manualAckSerial=0;
+  Result manualAckResult=Result::Ok;
   bool settingsDirty = false, presetsDirty = false, selectionDirty = false, catalogError = false;
   void begin(uint64_t node, uint64_t session);
   void setTransport(HudTransport *transport) { transport_ = transport; }

@@ -60,10 +60,13 @@ class Display {
   bool hudTouchDown_=false,speedScreen_=false,speedKnobDown_=false;
   int speedRequested_[2]{-1,-1};
   panel::TouchGesture touchButtons_;
+#if DISPLAY_KIND == DISPLAY_GC9A01
+  CstContactFilter cstContact_;
+#endif
   uint32_t touchSerial_=0,touchSelection_=0,touchNoticeAt_=0;
   uint32_t inputRangeRevision_=0;
   Model inputModel_=Model::G5500;
-  bool touchNotice_=false;
+  const char *touchNotice_=nullptr;
   PanelUi ui_;
   panel::TouchLayout presentedLayout_{};
   PanelCommandContext requestedCommand_{}, presentedCommand_{};
