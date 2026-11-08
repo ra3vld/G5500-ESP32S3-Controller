@@ -29,6 +29,14 @@ Ethernet имеет приоритет маршрута перед Wi-Fi STA. П
 
 ## Начальная распиновка
 
+Схемы подключения повороток: [G-5500](../hardware/g5500/g5500-esp32s3-tft-schematic.png), [G-800DXA](../hardware/g800dxa/g800dxa-connection.png), [датчик G-800SA](../hardware/g800sa/g800sa-tap-points-wiring.png), [BTS7960 / IBT-2](../hardware/bts7960/independent-pwm-bts7960.png). [Все схемы](../hardware/schematics.md).
+
+Номера GPIO на схемах ESP32-S3 переносите по назначению сигналов, используя распиновку своей платы и раздел **Оборудование**.
+
+Пример подключения двух BTS7960. Замените GPIO на рисунке значениями из таблицы WT32-ETH01 ниже: направления AZ — 32/33, EL — 14/15, ENABLE — 4/2, датчики — 36/35.
+
+[![Подключение двух BTS7960 / IBT-2 к ESP32](../hardware/bts7960/independent-pwm-bts7960.png)](../hardware/bts7960/independent-pwm-bts7960.png)
+
 | Назначение | GPIO |
 |---|---|
 | Датчики положения AZ / EL | 36 / 35, только вход, ADC1 |

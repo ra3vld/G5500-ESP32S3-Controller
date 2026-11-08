@@ -37,6 +37,7 @@
 
 ## Подключение приводов и схемы
 
+- [Все схемы подключения: PNG, SVG и PDF](hardware/schematics.md).
 - [Выбор силового интерфейса](hardware/index.md).
 - [G-5500](hardware/g5500/index.md), [G-800DXA](hardware/g800dxa/index.md), [G-800SA и переделка скорости](hardware/g800sa/index.md).
 - [BTS7960 / IBT-2](hardware/bts7960/index.md), [отдельные направления и PWM](hardware/separate-pwm.md).

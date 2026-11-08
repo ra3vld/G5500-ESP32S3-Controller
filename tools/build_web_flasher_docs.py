@@ -8,10 +8,11 @@ import json
 from pathlib import Path
 import re
 import shutil
+import tempfile
 import zipfile
 from urllib.parse import unquote, urlsplit, urlunsplit
 import markdown
-from project_version import generate
+from project_version import generate, resolve
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,7 +34,9 @@ class Links(HTMLParser):
                 self.targets.append(values[key])
 
 
-def build(output, website_only=False):
+def build(output, website_only=False, external=False):
+    if external:
+        return build_external(output, website_only)
     output = Path(output).resolve()
     docs = output / 'documentation'
     docs.mkdir(exist_ok=True)
@@ -102,7 +105,28 @@ def build(output, website_only=False):
     print('Documentation: ' + str(len(rendered)) + ' pages; all local files and anchors resolve')
 
 
-def bundle_sources(output, catalog):
+def build_external(output, website_only=False):
+    output = Path(output).resolve()
+    identity = resolve(ROOT)
+    base = 'https://github.com/ra3vld/G5500-ESP32S3-Controller/blob/' + identity['commit'] + '/'
+    # Render once in a temporary directory to check every local link and anchor.
+    # Only the validation result and pinned GitHub base are shipped to the site.
+    with tempfile.TemporaryDirectory(prefix='g5500-doc-links-') as temporary:
+        preview = Path(temporary)
+        for name in ('catalog.json', 'index.html', 'style.css'):
+            shutil.copyfile(output / name, preview / name)
+        build(preview, website_only=True)
+        report = json.loads((preview / 'documentation-check.json').read_text())
+    report.update(external_base=base, source_identity=identity)
+    if not website_only:
+        catalog = json.loads((output / 'catalog.json').read_text())
+        bundle_sources(output, catalog, documentation_base=base)
+    shutil.rmtree(output / 'documentation', ignore_errors=True)
+    (output / 'documentation-check.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
+    print('Documentation links: pinned GitHub revision ' + identity['commit'] + '; no embedded pages')
+
+
+def bundle_sources(output, catalog, documentation_base='./documentation/'):
     # Firmware releases bind their source archive and docs to the build. A UI
     # overlay updates the user guide but keeps that released archive/catalog.
     if generate(ROOT) != catalog['identity']:
@@ -121,7 +145,7 @@ def bundle_sources(output, catalog):
             z.write(path, path.relative_to(ROOT).as_posix())
     catalog['source_archive'] = './source-code.zip'
     catalog['source_archive_sha256'] = hashlib.sha256(archive.read_bytes()).hexdigest()
-    catalog['documentation_base'] = './documentation/'
+    catalog['documentation_base'] = documentation_base
     (output / 'catalog.json').write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + '\n')
 
 
@@ -138,5 +162,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True)
     parser.add_argument('--website-only', action='store_true', help='Update documentation while preserving released firmware source archive and catalog')
+    parser.add_argument('--external', action='store_true', help='Validate documentation and link to its GitHub revision without embedding pages')
     args=parser.parse_args()
-    build(args.output, website_only=args.website_only)
+    build(args.output, website_only=args.website_only, external=args.external)

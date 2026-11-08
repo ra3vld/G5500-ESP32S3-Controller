@@ -164,6 +164,14 @@ function readyCatalog() {
     await page.waitForFunction(() => !document.querySelector('.install-button').disabled);
     assert.match(await page.locator('esp-web-install-button').getAttribute('manifest'), /\/controller\/firmware\/ui-test-fixture\/esp32s3_n16r8_headless\/manifest.json$/);
     assert.match(await page.locator('#flashDetail').innerText(), /свободно/);
+    assert.deepEqual(await page.locator('.section-heading .step').allTextContents(), ['01','02','03','04','05']);
+    for (const width of [1280,390]) {
+      await page.setViewportSize({width,height:1000});
+      const tops = await page.locator('.section-heading').evaluateAll(items => items.map(el => el.getBoundingClientRect().top));
+      assert(tops.every((top,i) => i===0 || top > tops[i-1]), 'Steps must follow device/config/flash/setup/connections visually');
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    }
+    assert.match(await page.locator('#allSchematics').getAttribute('href'), /github\.com.*\/docs\/hardware\/schematics\.md$/);
     const boards = [...new Set(fixture.profiles.map((p) => p.board))];
     for (const board of boards) {
       await page.locator('#boardSelect').selectOption(board);
@@ -176,7 +184,7 @@ function readyCatalog() {
         assert.match(await page.locator('#selectedName').innerText(), new RegExp(profile.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
         assert.equal(await page.locator('#confirmHardware').isChecked(), false);
         assert.equal(await page.locator('.install-button').isDisabled(), true);
-        assert.match(await page.locator('#documentation').getAttribute('href'), new RegExp((fixture.documentation_base ? profile.docs.replace(/\.md$/, '.html') : profile.docs) + '$'));
+        assert.match(await page.locator('#documentation').getAttribute('href'), new RegExp(profile.docs + '$'));
         assert.match(await page.locator('#download').getAttribute('href'), new RegExp(profile.id + '/usb-firmware.zip$'));
         assert.equal(new URL(page.url()).hash, '#profile=' + profile.id);
         if (['esp32_4mb','esp32c3_4mb'].includes(profile.id)) {
@@ -270,12 +278,12 @@ function readyCatalog() {
     const dialogName = fs.readdirSync(path.join(directory, 'vendor')).find((n) => /^install-dialog-.*\.js$/.test(n));
     assert.match(fs.readFileSync(path.join(directory, 'vendor', dialogName), 'utf8'), /this\._installState=e;if\(!this\.dispatchEvent\(new CustomEvent\("g5500-flash-state",\{detail:e,bubbles:true,composed:true,cancelable:true\}\)\)\)\{this\._handleClose\(\);return\}/);
     for (const [board, profile, expected] of [
-      ['guition','esp32_2424s012c','esp32-2424s012c.html#местный-релейный-привод'],
-      ['crowpanel','crowpanel_21','crowpanel-21.html#подключения'],
-      ['crowpanel','crowpanel_21_az','crowpanel-az.html#вход-положения-вместо-подсветки'],
-      ['s3','esp32s3_n16r8_gc9a01','generic-displays.html#подключение-и-первая-настройка'],
-      ['esp32','esp32_spp','classic-esp32.html#подключение'],
-      ['s3','esp32s3_n16r8_headless','g5500/index.html'],
+      ['guition','esp32_2424s012c','esp32-2424s012c.md#местный-релейный-привод'],
+      ['crowpanel','crowpanel_21','crowpanel-21.md#подключения'],
+      ['crowpanel','crowpanel_21_az','crowpanel-az.md#вход-положения-вместо-подсветки'],
+      ['s3','esp32s3_n16r8_gc9a01','generic-displays.md#подключение-и-первая-настройка'],
+      ['esp32','esp32_spp','classic-esp32.md#подключение'],
+      ['s3','esp32s3_n16r8_headless','g5500/index.md'],
     ]) {
       await page.locator('#boardSelect').selectOption(board);
       await page.locator('input[value="' + profile + '"]').check();
@@ -292,9 +300,15 @@ function readyCatalog() {
       assert.equal(await page.locator('#postInstall').isVisible(), true);
       const url = await page.locator('#postInstallConnections').getAttribute('href');
       assert.ok(decodeURI(url).endsWith(expected), url);
-      const doc = await page.request.get(url);
-      assert.equal(doc.status(), 200);
-      if (expected.includes('#')) assert.ok((await doc.text()).includes('id="' + expected.split('#')[1] + '"'));
+      const target = new URL(url);
+      assert.equal(target.hostname, 'github.com');
+      assert.match(target.pathname, /^\/ra3vld\/G5500-ESP32S3-Controller\/blob\/[0-9a-f]{7,40}\//);
+      const relative = target.pathname.split('/').slice(5).join('/');
+      const markdown = fs.readFileSync(path.join(root, relative), 'utf8');
+      if (expected.includes('#')) {
+        const anchors = [...markdown.matchAll(/^#{1,6} (.+)$/gm)].map(m => m[1].toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').replace(/ /g, '-'));
+        assert.ok(anchors.includes(expected.split('#')[1]), expected);
+      }
       await page.evaluate(() => document.querySelector('ewt-install-dialog').remove());
       await page.waitForFunction(() => !document.getElementById('boardSelect').disabled);
       if (board === 'guition') {

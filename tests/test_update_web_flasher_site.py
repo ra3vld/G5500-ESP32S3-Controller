@@ -80,6 +80,38 @@ class SiteUpdateTests(unittest.TestCase):
             self.assertEqual(package.read('docs/web-flasher.md'), b'# USB setup\n')
             self.assertNotIn('tools/local-notes/private.txt', package.namelist())
 
+    def test_external_docs_are_validated_and_pinned_without_embedding(self):
+        import build_web_flasher_docs as docs
+        source = self.root / 'source'
+        (source / 'docs').mkdir(parents=True)
+        (source / 'hardware').mkdir()
+        (source / 'README.md').write_text('# Controller\n[Board](docs/board.md)\n')
+        (source / 'docs/board.md').write_text('# Board\n## Connection\n[All diagrams](diagrams.md)\n')
+        (source / 'docs/diagrams.md').write_text('# All diagrams\n')
+        site = self.root / 'site'
+        site.mkdir()
+        for name in ('index.html', 'style.css'):
+            (site / name).write_text('fixture')
+        catalog = json.dumps(dict(profiles=[dict(id='fixture', docs='docs/board.md')]))
+        (site / 'catalog.json').write_text(catalog)
+        (site / 'source-code.zip').write_bytes(b'released sources')
+        (site / 'documentation').mkdir()
+        (site / 'documentation/old.html').write_text('old embedded page')
+        identity = dict(version='1.2.3', commit='abcdef0', dirty=False)
+        with patch.object(docs, 'ROOT', source), patch.object(docs, 'resolve', return_value=identity):
+            docs.build(site, website_only=True, external=True)
+        self.assertFalse((site / 'documentation').exists())
+        self.assertEqual((site / 'catalog.json').read_text(), catalog)
+        self.assertEqual((site / 'source-code.zip').read_bytes(), b'released sources')
+        record = json.loads((site / 'documentation-check.json').read_text())
+        self.assertEqual(record['source_identity'], identity)
+        self.assertEqual(record['external_base'], 'https://github.com/ra3vld/G5500-ESP32S3-Controller/blob/abcdef0/')
+        self.assertEqual(record['broken_links'], [])
+        (source / 'docs/diagrams.md').unlink()
+        with patch.object(docs, 'ROOT', source), patch.object(docs, 'resolve', return_value=identity):
+            with self.assertRaisesRegex(ValueError, 'links are invalid'):
+                docs.build(site, website_only=True, external=True)
+
     def test_extract_and_existing_output(self):
         archive = self.root / 'site.zip'
         with zipfile.ZipFile(archive, 'w') as package:

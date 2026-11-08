@@ -21,7 +21,7 @@ export class ServiceLink {
       response = await fetch(this.origin + '/api/provisioning/' + path, {method:'POST', credentials:'omit', cache:'no-store',
         headers:{'Content-Type':'application/json'}, body:JSON.stringify(body), signal:AbortSignal.timeout(15000)});
       data = await response.json();
-    } catch {throw Error('Нет связи с rotator.r3v.ru. Проверьте интернет и блокировщики запросов, затем повторите — текущая привязка сохранена в этой вкладке.');}
+    } catch {throw Error('Нет связи с rotator.r3v.ru. Проверьте интернет и блокировщики рекламы, затем повторите — текущая привязка сохранена в этой вкладке.');}
     if (!response.ok) {const error = Error(typeof data.detail === 'string' ? data.detail : 'Сервис отклонил привязку.'); error.status = response.status; throw error;}
     return data;
   }

@@ -26,15 +26,14 @@
     <div id="globalStatus" class="notice" role="status" hidden></div>
     <noscript><p class="notice error">Для выбора и установки прошивки включите JavaScript.</p></noscript>
     <div class="workspace" id="workspace" hidden>
-      <div class="configuration">
-        <section class="panel board-panel" aria-labelledby="boardHeading">
+        <section id="boardPanel" class="panel board-panel" aria-labelledby="boardHeading">
           <div class="section-heading"><span class="step">01</span><div><h2 id="boardHeading">Выберите плату</h2><p>Модель и объём памяти должны совпадать с вашим устройством.</p></div></div>
           <label class="sr-only" for="boardSelect">Плата</label>
           <select id="boardSelect"></select>
           <div id="boardSpecs" class="spec-pills"></div>
           <figure class="board-preview"><a id="photoSource" target="_blank" rel="noopener noreferrer"><img id="boardPhoto" width="440" height="210" alt=""></a><figcaption id="photoCaption"></figcaption></figure>
         </section>
-        <section class="panel" aria-labelledby="profileHeading">
+        <section id="profilePanel" class="panel" aria-labelledby="profileHeading">
           <div class="section-heading"><span class="step">02</span><div><h2 id="profileHeading">Готовая конфигурация</h2><p id="profileHint">Выберите готовую прошивку.</p></div></div>
           <fieldset id="profileChoices"><legend class="sr-only">Конфигурация прошивки</legend></fieldset>
           <fieldset id="serviceChoices" class="service-choices"><legend>Дополнительные сервисы</legend></fieldset>
@@ -46,8 +45,37 @@
           <div id="profileNotes" class="profile-notes"></div>
           <a id="documentation" class="text-link" target="_blank" rel="noopener noreferrer">Подключение и настройка <span aria-hidden="true">↗</span></a>
         </section>
-        <section class="panel preset-panel" aria-labelledby="presetHeading">
-          <div class="section-heading"><span class="step">03</span><div><h2 id="presetHeading">Предварительные настройки</h2><p>Заполнив форму сейчас, вы сможете передать параметры плате по USB сразу после прошивки.</p></div></div>
+      <div class="installation" id="installPanel">
+        <section class="panel install-panel" aria-labelledby="installHeading">
+          <div class="section-heading"><span class="step">03</span><div><h2 id="installHeading">Установите прошивку</h2><p id="selectedName"></p></div></div>
+          <div id="buildStatus" class="build-status"></div>
+          <div id="memory" class="memory" hidden>
+            <div class="memory-heading"><span>Раздел приложения</span><strong id="flashPercent" class="mono"></strong></div>
+            <progress id="flashProgress" aria-label="Заполнение раздела приложения" max="100"></progress>
+            <p id="flashDetail" class="muted small mono"></p>
+            <dl class="memory-stats"><div><dt>Статическая DRAM</dt><dd id="dram"></dd></div><div><dt>IRAM: код и данные</dt><dd id="iram"></dd></div></dl>
+          </div>
+          <p class="runtime-note">Свободная RAM и отзывчивость зависят от работающих сервисов и числа клиентов. Размер файла не определяет быстродействие.</p>
+          <ol class="instructions"><li id="connectInstruction">Подключите плату USB-кабелем с передачей данных.</li><li>Закройте монитор порта и программы, использующие устройство.</li><li>Нажмите кнопку и выберите USB-порт платы.</li></ol>
+          <label class="confirmation"><input type="checkbox" id="confirmHardware"><span>Проверил модель платы, Flash, PSRAM и подключённый дисплей.</span></label>
+          <div id="installerMount"></div>
+          <div id="postInstall" class="post-install" role="status" hidden>
+            <span class="post-install-mark" aria-hidden="true">✓</span>
+            <strong>Запись прошивки завершена.</strong>
+            <p id="postInstallProfile"></p>
+            <a id="postInstallConnections" class="text-link" target="_blank" rel="noopener noreferrer">Открыть схему подключения периферии к плате ↗</a>
+            <p class="small muted">Сохранённые настройки GPIO могут отличаться. Проверьте их в разделе «Оборудование».</p>
+          </div>
+          <p id="installHint" class="small muted" role="status"></p>
+          <a id="download" class="download-link" hidden download>Скачать USB-комплект <span aria-hidden="true">↓</span></a>
+          <p class="erase-advice">Если после прошивки появились проблемы, повторите установку с <strong>Erase device</strong> — полным стиранием Flash. Настройки Wi-Fi, оборудования и калибровки удалятся.</p>
+          <p id="sppEraseAdvice" class="erase-advice" hidden>Для SPP после полного стирания сначала установите основную прошивку и выполните первичную настройку. Затем установите SPP без стирания.</p>
+          <details class="settings-note"><summary>Что будет с настройками?</summary><p>Установщик предложит полное стирание. Оставьте <strong>Erase device</strong> выключенным, чтобы сохранить NVS с настройками и калибровками.</p><p>USB-установка записывает разметку выбранной сборки и приложение. При смене платы или оборудования проверьте настройки и калибровку после запуска.</p></details>
+        </section>
+        <div class="help-note"><span aria-hidden="true">↳</span><p id="bootHelpDefault">Плата не подключается? Зажмите <strong>BOOT</strong>, нажмите и отпустите <strong>RESET / EN</strong>, затем отпустите BOOT и повторите подключение.</p><p id="bootHelpWT32" hidden>Для WT32-ETH01 замкните <strong>IO0 на GND</strong> и перезапустите плату через <strong>EN</strong>. После записи снимите перемычку IO0–GND и снова перезапустите плату: IO0 нужен Ethernet.</p></div>
+      </div>
+        <section id="presetPanel" class="panel preset-panel" aria-labelledby="presetHeading">
+          <div class="section-heading"><span class="step">04</span><div><h2 id="presetHeading">Настройка устройства</h2><p>После прошивки передайте имя, сеть и MQTT-параметры плате по USB. Можно также настроить уже прошитое устройство.</p></div></div>
           <p id="presetUnavailable" class="small muted" hidden></p>
           <form id="presetForm" autocomplete="off">
             <fieldset id="presetFields" class="preset-fields">
@@ -94,36 +122,12 @@
             <button id="presetNewDevice" type="button" hidden>Настроить другую плату</button>
           </div>
         </section>
-      </div>
-      <aside class="installation">
-        <section class="panel install-panel" aria-labelledby="installHeading">
-          <div class="section-heading"><span class="step">04</span><div><h2 id="installHeading">Установите прошивку</h2><p id="selectedName"></p></div></div>
-          <div id="buildStatus" class="build-status"></div>
-          <div id="memory" class="memory" hidden>
-            <div class="memory-heading"><span>Раздел приложения</span><strong id="flashPercent" class="mono"></strong></div>
-            <progress id="flashProgress" aria-label="Заполнение раздела приложения" max="100"></progress>
-            <p id="flashDetail" class="muted small mono"></p>
-            <dl class="memory-stats"><div><dt>Статическая DRAM</dt><dd id="dram"></dd></div><div><dt>IRAM: код и данные</dt><dd id="iram"></dd></div></dl>
-          </div>
-          <p class="runtime-note">Свободная RAM и отзывчивость зависят от работающих сервисов и числа клиентов. Размер файла не определяет быстродействие.</p>
-          <ol class="instructions"><li id="connectInstruction">Подключите плату USB-кабелем с передачей данных.</li><li>Закройте монитор порта и программы, использующие устройство.</li><li>Нажмите кнопку и выберите USB-порт платы.</li></ol>
-          <label class="confirmation"><input type="checkbox" id="confirmHardware"><span>Проверил модель платы, Flash, PSRAM и подключённый дисплей.</span></label>
-          <div id="installerMount"></div>
-          <div id="postInstall" class="post-install" role="status" hidden>
-            <span class="post-install-mark" aria-hidden="true">✓</span>
-            <strong>Запись прошивки завершена.</strong>
-            <p id="postInstallProfile"></p>
-            <a id="postInstallConnections" class="text-link" target="_blank" rel="noopener noreferrer">Открыть схему подключения периферии к плате ↗</a>
-            <p class="small muted">Сохранённые настройки GPIO могут отличаться. Проверьте их в разделе «Оборудование».</p>
-          </div>
-          <p id="installHint" class="small muted" role="status"></p>
-          <a id="download" class="download-link" hidden download>Скачать USB-комплект <span aria-hidden="true">↓</span></a>
-          <p class="erase-advice">Если после прошивки появились проблемы, повторите установку с <strong>Erase device</strong> — полным стиранием Flash. Настройки Wi-Fi, оборудования и калибровки удалятся.</p>
-          <p id="sppEraseAdvice" class="erase-advice" hidden>Для SPP после полного стирания сначала установите основную прошивку и выполните первичную настройку. Затем установите SPP без стирания.</p>
-          <details class="settings-note"><summary>Что будет с настройками?</summary><p>Установщик предложит полное стирание. Оставьте <strong>Erase device</strong> выключенным, чтобы сохранить NVS с настройками и калибровками.</p><p>USB-установка записывает разметку выбранной сборки и приложение. При смене платы или оборудования проверьте настройки и калибровку после запуска.</p></details>
+        <section id="connectionsPanel" class="panel connections-panel" aria-labelledby="connectionsHeading">
+          <div class="section-heading"><span class="step">05</span><div><h2 id="connectionsHeading">Подключения</h2><p>Откройте распиновку выбранной платы и схему своего привода.</p></div></div>
+          <p><a id="boardConnections" class="text-link" target="_blank" rel="noopener noreferrer">Открыть схему подключения периферии к плате ↗</a></p>
+          <p><a id="allSchematics" class="text-link" target="_blank" rel="noopener noreferrer">Все схемы ↗</a></p>
+          <p class="small muted">Документация и изображения открываются на GitHub. Сохранённые GPIO проверьте в разделе «Оборудование» устройства.</p>
         </section>
-        <div class="help-note"><span aria-hidden="true">↳</span><p id="bootHelpDefault">Плата не подключается? Зажмите <strong>BOOT</strong>, нажмите и отпустите <strong>RESET / EN</strong>, затем отпустите BOOT и повторите подключение.</p><p id="bootHelpWT32" hidden>Для WT32-ETH01 замкните <strong>IO0 на GND</strong> и перезапустите плату через <strong>EN</strong>. После записи снимите перемычку IO0–GND и снова перезапустите плату: IO0 нужен Ethernet.</p></div>
-      </aside>
     </div>
   </main>
   <footer class="wrap footer"><span>GPL-3.0 · <a href="./THIRD_PARTY_LICENSES.txt">Лицензии библиотек</a> · <a href="https://esphome.github.io/esp-web-tools/" target="_blank" rel="noopener noreferrer">ESP Web Tools</a></span></footer>

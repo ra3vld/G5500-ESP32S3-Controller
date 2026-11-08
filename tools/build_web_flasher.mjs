@@ -10,7 +10,7 @@ const at = args.indexOf('--output');
 const output = at === -1 ? path.join(root, 'dist/web-flasher') : path.resolve(args[at + 1]);
 const result = spawnSync(process.env.PYTHON || 'python3', ['tools/web_flasher.py', 'assemble', ...args], {cwd: root, stdio: 'inherit'});
 if (result.status !== 0) process.exit(result.status || 1);
-const docs = spawnSync(process.env.PYTHON || 'python3', ['tools/build_web_flasher_docs.py', '--output', output], {cwd:root, stdio:'inherit'});
+const docs = spawnSync(process.env.PYTHON || 'python3', ['tools/build_web_flasher_docs.py', '--output', output, '--external'], {cwd:root, stdio:'inherit'});
 if (docs.status !== 0) process.exit(docs.status || 1);
 // Use the publisher's complete browser distribution, including chip loaders
 // and serial stubs. No CDN or npm resolution is needed in the user's browser.

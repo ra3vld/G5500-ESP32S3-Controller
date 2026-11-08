@@ -126,6 +126,12 @@ pio run -e crowpanel_21
 
 ## Подключения
 
+Для местного привода используйте [переделку CrowPanel для AZ](crowpanel-az.md#yaesu-g-800dxa), [схему G-800DXA](../hardware/g800dxa/g800dxa-connection.png) и [схему BTS7960](../hardware/bts7960/independent-pwm-bts7960.png). GPIO и согласование берите из инструкции переделки; штатный профиль работает как HUD. [Все схемы](../hardware/schematics.md).
+
+Пример согласующих цепей для переделанного CrowPanel с местной осью AZ. Вместо GPIO DevKit на рисунке используйте [подключение CrowPanel](crowpanel-az.md#yaesu-g-800dxa), включая буферы TX/RX и инвертор BOOT. В роли HUD привод подключается к отдельному контроллеру.
+
+[![Согласующие цепи подключения Yaesu G-800DXA](../hardware/g800dxa/g800dxa-connection.png)](../hardware/g800dxa/g800dxa-connection.png)
+
 | Назначение | GPIO / адрес |
 |---|---|
 | I²C SDA / SCL | 38 / 39 |

@@ -34,13 +34,36 @@ def matching_elf(profile, artifacts):
     return elf
 
 
-def zip_directory(directory, target):
+def zip_directory(directory, target, exclude=()):
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(directory.rglob('*')):
+            if path.relative_to(directory).parts[0] in exclude:
+                continue
             if path.is_symlink():
                 raise ValueError('Symlink in release: ' + str(path))
             if path.is_file():
                 archive.write(path, path.relative_to(directory).as_posix())
+
+
+def write_archives(site, artifacts, output, catalog):
+    """Keep the interface, each USB firmware and diagnostic ELF files separate."""
+    site, artifacts, output = Path(site), Path(artifacts), Path(output)
+    if output.exists() and any(output.iterdir()):
+        raise ValueError('Release output directory must be empty')
+    elfs = {p['id']: matching_elf(p, artifacts) for p in catalog['profiles']}
+    output.mkdir(parents=True, exist_ok=True)
+    archives = dict(website='web-flasher-site.zip', source='source-code.zip',
+                    elf='diagnostic-elf.zip', firmware={})
+    zip_directory(site, output / archives['website'], exclude={'firmware', 'documentation', 'source-code.zip'})
+    for profile in catalog['profiles']:
+        name = 'firmware-' + profile['id'] + '.zip'
+        shutil.copyfile(site / profile['artifact_base'] / 'usb-firmware.zip', output / name)
+        archives['firmware'][profile['id']] = name
+    with zipfile.ZipFile(output / archives['elf'], 'w', zipfile.ZIP_DEFLATED) as archive:
+        for ident, elf in elfs.items():
+            archive.write(elf, ident + '/firmware.elf')
+    shutil.copyfile(site / 'source-code.zip', output / archives['source'])
+    return archives
 
 
 def package(tag, site=ROOT / 'dist/web-flasher', artifacts=ROOT / 'artifacts/web-flasher',
@@ -49,18 +72,8 @@ def package(tag, site=ROOT / 'dist/web-flasher', artifacts=ROOT / 'artifacts/web
     site, artifacts, output = Path(site), Path(artifacts), Path(output)
     audit = verify(site)
     catalog = json.loads((site / 'catalog.json').read_text())
-    elfs = {profile['id']: matching_elf(profile, artifacts) for profile in catalog['profiles']}
-    output.mkdir(parents=True, exist_ok=True)
-    zip_directory(site, output / 'web-flasher-site.zip')
-    with zipfile.ZipFile(output / 'firmware-with-elf.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
-        for profile in catalog['profiles']:
-            directory = site / profile['artifact_base']
-            for path in sorted(directory.iterdir()):
-                if path.is_file() and not path.is_symlink():
-                    archive.write(path, profile['id'] + '/' + path.name)
-            archive.write(elfs[profile['id']], profile['id'] + '/firmware.elf')
-    shutil.copyfile(site / 'source-code.zip', output / 'source-code.zip')
-    release.update(source_sha256=audit['source_sha256'], profiles=[
+    archives = write_archives(site, artifacts, output, catalog)
+    release.update(schema=2, archives=archives, source_sha256=audit['source_sha256'], profiles=[
         dict(id=p['id'], chip_family=p['chip_family'], services=p['services'],
              app_bytes=p['build']['app_bytes'], app_limit_bytes=p['build']['app_limit_bytes'],
              elf_sha256=p['build']['elf_sha256'], files=p['build']['files'])
@@ -74,19 +87,26 @@ def package(tag, site=ROOT / 'dist/web-flasher', artifacts=ROOT / 'artifacts/web
         'фотографии плат, размеры прошивки и прошивка из браузера.\n'
         '- После установки доступны инструкции и схема подключений выбранной платы.\n'
         '- ESP32: полная версия без SPP и компактная версия с SPP.\n'
-        '- firmware-with-elf.zip: BIN, загрузчики, USB ZIP, контрольные суммы '
-        'и точный ELF для каждого варианта.\n'
-        '- web-flasher-site.zip: полный сайт; source-code.zip: исходники '
-        'с сохранённой идентичностью сборки.\n\n'
+        '- firmware-<профиль>.zip: отдельный USB-комплект выбранной прошивки, '
+        'загрузчик, разметка, manifest.json и SHA256SUMS.\n'
+        '- web-flasher-site.zip: интерфейс без BIN/ELF и встроенной документации; '
+        'документация открывается на GitHub.\n'
+        '- diagnostic-elf.zip: точные ELF всех вариантов для диагностики.\n'
+        '- source-code.zip: исходники с сохранённой идентичностью сборки.\n\n'
         'Если после прошивки возникают проблемы, повторите установку с полным '
         'стиранием памяти. Это удалит сохранённые настройки.\n\n'
         f'Исходники: `{release["commit"]}`. Все образы собраны из этого тега.\n'
     )
+    notes += '\n| Плата | Конфигурация | USB-комплект |\n|---|---|---|\n'
+    for profile in catalog['profiles']:
+        name = archives['firmware'][profile['id']]
+        services = 'MQTT + RS-485' if profile['services']['mqtt'] and profile['services']['rs485'] else 'без MQTT / RS-485' if not profile['services']['mqtt'] and not profile['services']['rs485'] else ', '.join(k.upper() for k, v in profile['services'].items() if v)
+        notes += f'| {profile["board_label"]} | {profile["title"]} · {services} | [{name}](https://github.com/ra3vld/G5500-ESP32S3-Controller/releases/download/{tag}/{name}) |\n'
     (output / 'RELEASE_NOTES.md').write_text(notes)
-    names = ['firmware-with-elf.zip', 'web-flasher-site.zip', 'source-code.zip',
-             'release-manifest.json', 'RELEASE_NOTES.md']
+    names = [archives['website'], archives['source'], archives['elf'],
+             *archives['firmware'].values(), 'release-manifest.json', 'RELEASE_NOTES.md']
     (output / 'SHA256SUMS').write_text(''.join(sha256(output / name) + '  ' + name + '\n' for name in names))
-    print(f'Release {tag}: {len(elfs)} verified firmware/ELF pairs, archives and SHA256SUMS')
+    print(f'Release {tag}: {len(archives["firmware"])} separate USB archives, interface, matching ELF and SHA256SUMS')
 
 
 if __name__ == '__main__':

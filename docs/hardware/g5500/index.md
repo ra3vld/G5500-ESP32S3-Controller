@@ -4,6 +4,10 @@
 
 Подключайте ESP32 к **EXTERNAL CONTROL штатного блока**, сохраняя штатные кабели двигателей. Используйте [схему проекта: PDF](g5500-esp32s3-tft-schematic.pdf), [SVG](g5500-esp32s3-tft-schematic.svg), [PNG](g5500-esp32s3-tft-schematic.png). Схема основана на проекте UA1CFM и показывает GPIO ESP32-S3; для других плат переносите соединения по [назначениям сигналов](../../setup/configuration.md).
 
+[Все схемы](../schematics.md).
+
+[![ESP32-S3, дисплей ILI9341 и штатный блок Yaesu G-5500](g5500-esp32s3-tft-schematic.png)](g5500-esp32s3-tft-schematic.png)
+
 ## Разъём и сигналы
 
 Штатный разъём — DIN 8. Номера и направления сверяйте с разделом External Control на печатной странице 5 [руководства Yaesu](https://www.yaesu.com/Files/4CB6273C-1018-01AF-FA4D504B591F641A/G-5500_IM_ENG_E12901004.pdf). Вид со стороны пайки отличается от вида на сопрягаемую часть.

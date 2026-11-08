@@ -11,6 +11,7 @@ const labels = [
   ['CAMERA_ENABLED', 'Камера'], ['OTA_EFFECTIVE', 'Обновление OTA'],
 ];
 const serviceLabels = {mqtt:'MQTT / Home Assistant', ethernet:'Ethernet', rs485:'RS-485 / Modbus RTU'};
+let documentationBase;
 let catalog, selected, libraryReady = false, libraryError = false, locked = false;
 let installer, installButton, presets, serialBusy = false;
 const kib = (bytes) => (bytes / 1024).toLocaleString('ru-RU', {maximumFractionDigits: 1}) + ' КиБ';
@@ -149,10 +150,9 @@ function chooseProfile(id, updateURL = true) {
     ? 'Состав получен из собранной прошивки. Поддерживаемые сервисы включаются в настройках устройства.'
     : caps ? 'Состав по конфигурации профиля. Бинарник ещё не опубликован; размеры и расход памяти пока неизвестны.'
     : 'Состав профиля недоступен. Размеры и расход памяти появятся после сборки.';
-  const revision = selected.build?.identity.commit || 'main';
-  $('documentation').href = catalog.documentation_base
-    ? new URL(catalog.documentation_base + selected.docs.replace(/\.md$/, '.html'), location.href).href
-    : `https://github.com/ra3vld/G5500-ESP32S3-Controller/blob/${revision}/${selected.docs}`;
+  $('documentation').href = documentationURL(selected.docs);
+  $('boardConnections').href = connectionsURL(selected);
+  $('allSchematics').href = documentationURL('docs/hardware/schematics.md');
   $('memory').hidden = !selected.build;
   $('download').hidden = !selected.build;
   const status = $('buildStatus');
@@ -178,6 +178,11 @@ function chooseProfile(id, updateURL = true) {
   if (restoreRadioFocus) $('profileChoices').querySelector('input:checked')?.focus({preventScroll:true});
 }
 
+function documentationURL(path) {
+  const revision = catalog.identity.commit || 'main';
+  return (documentationBase || `https://github.com/ra3vld/G5500-ESP32S3-Controller/blob/${revision}/`) + path;
+}
+
 function connectionsURL(profile) {
   const docs = profile.docs === 'docs/build.md' || profile.recipe === 'esp32_spp'
     ? ({esp32:'docs/boards/classic-esp32.md', s3:'docs/hardware/g5500/index.md',
@@ -196,9 +201,7 @@ function connectionsURL(profile) {
     'docs/boards/classic-esp32.md':'подключение',
     'docs/setup/configuration.md':'совместимость-начальных-значений',
   };
-  const base = catalog.documentation_base
-    ? new URL(catalog.documentation_base + docs.replace(/\.md$/, '.html'), location.href).href
-    : `https://github.com/ra3vld/G5500-ESP32S3-Controller/blob/${profile.build.identity.commit}/${docs}`;
+  const base = documentationURL(docs);
   return base + (anchors[docs] ? '#' + anchors[docs] : '');
 }
 
@@ -218,6 +221,12 @@ async function main() {
     if (!response.ok) throw new Error('HTTP ' + response.status);
     catalog = await response.json();
     if (catalog.schema !== 1 || !catalog.profiles?.length || !catalog.identity) throw new Error('Некорректный каталог');
+    try {
+      const docs = await fetch('./documentation-check.json', {cache:'no-cache'}).then(r => r.ok ? r.json() : null);
+      const base = docs?.external_base || catalog.documentation_base;
+      if (/^https:\/\/github\.com\/ra3vld\/G5500-ESP32S3-Controller\/blob\/[0-9a-f]{7,40}\/$/.test(base || '')) documentationBase = base;
+    } catch { /* The installer remains usable when documentation metadata is unavailable. */ }
+
     $('catalogVersion').textContent = catalog.identity.version;
     $('catalogCommit').textContent = catalog.identity.commit + (catalog.identity.dirty ? ' · локальная сборка' : '');
     document.querySelector('.source-link').href = catalog.source_archive

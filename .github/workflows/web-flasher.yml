@@ -5,6 +5,8 @@ on:
     branches: [main]
     tags: ['v*']
     paths-ignore:
+      - 'docs/**'
+      - 'README.md'
       - 'web-flasher/index.html'
       - 'web-flasher/app.js'
       - 'web-flasher/provisioning.js'
@@ -56,7 +58,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: python3 -m unittest discover -s tests -p test_web_flasher.py
       - run: python3 -m unittest discover -s tests -p test_build_config.py
-      - run: python3 -m unittest discover -s tests -p test_package_web_release.py
+      - run: python3 -m unittest discover -s tests -p 'test_*web_release.py'
       - run: python3 -m pip install Markdown==3.5.2
       - run: npm run build:web-flasher -- --allow-missing
       - run: npx playwright install --with-deps chromium

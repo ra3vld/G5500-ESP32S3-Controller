@@ -4,6 +4,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
+import re
 from pathlib import Path
 import struct
 import subprocess
@@ -34,6 +35,11 @@ def verify(site, base_url=None, firmware_tag=None):
     identity = released_identity(firmware_tag) if firmware_tag else resolve()
     digest = source_digest()
     assert catalog['identity'] == identity
+    docs = json.loads((site / 'documentation-check.json').read_text())
+    if docs.get('external_base'):
+        revision = docs['source_identity']['commit']
+        assert re.fullmatch(r'[0-9a-f]{7,40}', revision)
+        assert docs['external_base'] == 'https://github.com/ra3vld/G5500-ESP32S3-Controller/blob/' + revision + '/'
     files = {'catalog.json', 'index.html', 'app.js', 'style.css', 'provisioning.js', 'serial-api.js', 'THIRD_PARTY_LICENSES.txt', 'images/favicon.svg'}
     for name in ('provisioning.js','serial-api.js'):
         assert (site / name).read_bytes() == (Path(__file__).resolve().parents[1] / 'web-flasher' / name).read_bytes()
@@ -69,7 +75,10 @@ def verify(site, base_url=None, firmware_tag=None):
         for name in ['manifest.json', 'build.json', 'SHA256SUMS', 'usb-firmware.zip', *[f['path'] for f in report['files']]]:
             files.add(relative + '/' + name)
         doc = 'documentation/' + str(Path(profile['docs']).with_suffix('.html'))
-        assert (site / doc).is_file(); files.add(doc)
+        if not docs.get('external_base'):
+            assert (site / doc).is_file(); files.add(doc)
+        else:
+            assert (Path(__file__).resolve().parents[1] / profile['docs']).is_file()
     assert len(revisions) == 1
     actual_folders = {str(p.relative_to(site)) for p in (site / 'firmware').iterdir() if p.is_dir()}
     assert actual_folders == revisions
@@ -77,8 +86,8 @@ def verify(site, base_url=None, firmware_tag=None):
     for photo in catalog['photos'].values():
         relative = 'images/' + photo['file']
         assert sha256(site / relative) == photo['sha256']; files.add(relative)
-    docs = json.loads((site / 'documentation-check.json').read_text())
     assert docs['broken_links'] == []
+    files.add('documentation-check.json')
     files.update(str(p.relative_to(site)) for p in (site / 'documentation').rglob('*') if p.is_file())
     files.update(str(p.relative_to(site)) for p in (site / 'vendor').rglob('*') if p.is_file())
     assert sha256(site / 'source-code.zip') == catalog['source_archive_sha256']

@@ -20,6 +20,8 @@ Arduino CLI: `DRIVE_INTERFACE=2 ./tools/build_arduino.sh waveshare-s3-eth`. В A
 
 ## Подключение привода
 
+[Схема этой платы с двумя BTS7960](waveshare-esp32-s3-eth-bts7960.png) · [Соединения мачтового узла](waveshare-esp32-s3-eth-mast-connections.png) · [Все схемы](../hardware/schematics.md).
+
 **Извлеките microSD и оставьте слот пустым.** Его четыре сигнала используются для датчиков и ENABLE. Они не выведены на гребёнки платы: подключите провода к соответствующим контактам слота TF1, сверяясь с [официальной схемой Waveshare](https://files.waveshare.com/wiki/ESP32-S3-ETH/ESP32-S3-ETH-Schematic.pdf). Номера относятся к электрическим контактам microSD, а не к порядку площадок при взгляде на плату.
 
 | Сигнал | GPIO | Точка на плате / подключение |
@@ -33,7 +35,7 @@ Arduino CLI: `DRIVE_INTERFACE=2 ./tools/build_arduino.sh waveshare-s3-eth`. В A
 | Датчик AZ | 4 | TF1 CD/D3, контакт 2 ← защищённый делитель AZ |
 | Датчик EL | 5 | TF1 D0, контакт 7 ← защищённый делитель EL |
 
-![ESP32-S3-ETH, камера и два BTS7960](waveshare-esp32-s3-eth-bts7960.png)
+[![ESP32-S3-ETH, камера и два BTS7960](waveshare-esp32-s3-eth-bts7960.png)](waveshare-esp32-s3-eth-bts7960.png)
 
 [SVG](waveshare-esp32-s3-eth-bts7960.svg) · [PDF](waveshare-esp32-s3-eth-bts7960.pdf).
 
