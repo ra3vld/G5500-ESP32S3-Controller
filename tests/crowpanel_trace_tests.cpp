@@ -10,6 +10,7 @@ static CrowPanelView example() {
   CrowPanelView v;
   v.hud = true; v.dualAxis = true; v.feedback = true; v.targetValid = true;
   v.current = 123.456789f; v.target = 240; v.azDirection = -1;
+  v.tolerance = .5f; v.secondaryTolerance = .25f;
   v.sourceId = UINT64_MAX; v.speedAvailable[0] = true; v.speedPercent[0] = 75;
   std::snprintf(v.hudName, sizeof v.hudName, "Пульт \"А\"\\Б");
   std::snprintf(v.hudRows[0], sizeof v.hudRows[0], "Строка\nещё\t");
@@ -62,6 +63,8 @@ int main(int argc, char **argv) {
   assert(wire.find("\"seq\":2") != std::string::npos);
   assert(wire.find("\"seq\":4") == std::string::npos);
   assert(wire.find("\"current\":123.456787") != std::string::npos); // exact float round-trip
+  assert(wire.find("\"tolerance\":0.5") != std::string::npos);
+  assert(wire.find("\"secondaryTolerance\":0.25") != std::string::npos);
   const auto seq = trace.sequence();
   trace.view(v, Action::None, state, now++); // unchanged, before heartbeat
   trace.knob(true, true, 0, now++); // unchanged button

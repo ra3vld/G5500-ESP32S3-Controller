@@ -25,6 +25,9 @@ p.add_argument('--motion-hz',type=int,choices=[50,100,200],help='Control/feedbac
 p.add_argument('--dry-run',action='store_true')
 a=p.parse_args()
 config=configparser.ConfigParser(interpolation=None);config.read(ROOT/'platformio.ini')
+extra_configs = [ROOT / name for name in config.get('platformio','extra_configs',fallback='').replace(',', ' ').split()]
+config.read(extra_configs)
+extra_config_paths = ', '.join(map(str, [ROOT/'platformio.ini', *extra_configs]))
 section='env:'+a.env
 if section not in config:p.error('Unknown environment '+a.env)
 def option(section,key):
@@ -102,7 +105,7 @@ if lto_override and 'post:tools/platformio_lto.py' not in scripts:
 if 'post:tools/platformio_image_size.py' not in scripts:
     scripts.append('post:tools/platformio_image_size.py')
 script_config = '\nextra_scripts = ' + ' '.join(scripts) if scripts else ''
-path.write_text(f'[platformio]\nextra_configs = {ROOT}/platformio.ini\nsrc_dir = {ROOT}/G5500_Fork\n[env:selected]\nextends = {section}\nbuild_flags = '+ ' '.join(flags)+script_config+('\nlib_ldf_mode = chain' if kind in (1,3,4,5,6) else '')+'\nlib_deps =\n'+''.join(' '+line+'\n' for line in deps.splitlines() if line.strip()))
+path.write_text(f'[platformio]\nextra_configs = {extra_config_paths}\nsrc_dir = {ROOT}/G5500_Fork\n[env:selected]\nextends = {section}\nbuild_flags = '+ ' '.join(flags)+script_config+('\nlib_ldf_mode = chain' if kind in (1,3,4,5,6) else '')+'\nlib_deps =\n'+''.join(' '+line+'\n' for line in deps.splitlines() if line.strip()))
 cmd=[a.pio,'run','-c',str(path),'-e','selected','-j',str(a.jobs)]
 print(shlex.join(cmd),flush=True)
 if not a.dry_run:raise SystemExit(subprocess.call(cmd,cwd=ROOT))

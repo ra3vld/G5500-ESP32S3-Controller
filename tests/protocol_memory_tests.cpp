@@ -72,5 +72,5 @@ int main() {
   assert(!input.feed('R', line) && !input.feed('\n', line));
   assert(!input.feed('C', line) && input.feed('\n', line) && line == "C");
   deny=false;
-  std::cout<<"PASS: two-axis Ruckig/PID replanning and 10000 XML/sequence/line/byte-queue cycles with C++ allocations forbidden\n";
+  std::cout<<"PASS: two-axis motion replanning and 10000 XML/sequence/line/byte-queue cycles with C++ allocations forbidden\n";
 }

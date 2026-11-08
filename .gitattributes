@@ -1,5 +1,2 @@
-* text=auto eol=lf
-*.pdf binary
-
-# Empty context lines in unified diffs contain a required space.
+# Unified patches use a single space to represent an empty context line.
 tools/profiles/*.patch whitespace=-blank-at-eol

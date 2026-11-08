@@ -1,12 +1,11 @@
 // G5500 Fork; GPL-3.0.
 #include "command_api.hpp"
+#include "form_decode.hpp"
 #include <cstdio>
 #include <cstring>
+#include <new>
 namespace forkrot {
 namespace {
-int hex(unsigned char c) {
-  return c >= '0' && c <= '9' ? c-'0' : c >= 'a' && c <= 'f' ? c-'a'+10 : c >= 'A' && c <= 'F' ? c-'A'+10 : -1;
-}
 bool integer(std::string_view s, uint32_t &out) {
   if (s.empty() || s.size() > 10) return false;
   out = 0;
@@ -33,48 +32,12 @@ void base64(JsonWriter &j, std::string_view s) {
   }
 }
 }
-bool CommandForm::parse(std::string_view text,size_t limit) {
-  count = 0;
-  if (limit>=sizeof bytes || text.size() > limit) return false;
-  size_t used = 0;
-  while (!text.empty()) {
-    if (count == entries.size()) return false;
-    const auto amp = text.find('&');
-    const auto pair = text.substr(0, amp);
-    const auto equal = pair.find('=');
-    if (equal == pair.npos || !equal) return false;
-    std::string_view values[2];
-    for (unsigned part = 0; part < 2; ++part) {
-      const auto raw = part ? pair.substr(equal+1) : pair.substr(0,equal);
-      const size_t start = used;
-      for (size_t i = 0; i < raw.size(); ++i) {
-        unsigned char c = raw[i];
-        if (c == '%') {
-          if (i+2 >= raw.size() || hex(raw[i+1]) < 0 || hex(raw[i+2]) < 0) return false;
-          c = unsigned(hex(raw[i+1])*16 + hex(raw[i+2])); i += 2;
-        } else if (c == '+') c = ' ';
-        if (c < 32 || c == 127 || used == limit) return false;
-        bytes[used++] = char(c);
-      }
-      values[part] = {bytes+start,used-start};
-      if (values[part].size() > (part ? 128u : 32u)) return false;
-    }
-    for (size_t i = 0; i < count; ++i) if (entries[i].first == values[0]) return false;
-    entries[count++] = {values[0],values[1]};
-    if (amp == text.npos) break;
-    text.remove_prefix(amp+1);
-    if (text.empty()) return false;
-  }
-  return true;
-}
-std::string_view CommandForm::get(std::string_view name) const {
-  for (size_t i = 0; i < count; ++i) if (entries[i].first == name) return entries[i].second;
-  return {};
-}
-void CommandServer::begin(uint64_t boot, uint32_t seed, Dispatch dispatch, void *context, const uint32_t *selection) {
+void CommandServer::begin(uint64_t boot, uint32_t seed, Dispatch dispatch, void *context, const uint32_t *selection,
+                          AdmitAllocation admit) {
   boot_ = boot; nextSession_ = seed; dispatch_ = dispatch; context_ = context;
   selection_ = selection;
-  for (auto &s : sessions_) s.sid = 0;
+  admit_ = admit;
+  for (auto &s : sessions_) {s.sid = 0;s.reply.reset();}
 }
 size_t CommandServer::process(uint64_t peer, std::string_view request, uint32_t now, char *reply, size_t capacity) {
   if (!capacity) return 0;
@@ -101,6 +64,14 @@ size_t CommandServer::process(uint64_t peer, std::string_view request, uint32_t 
     if (!session) {
       session = &sessions_[0];
       for (auto &s : sessions_) if (!s.sid || uint32_t(now-s.touched) > uint32_t(now-session->touched)) session = &s;
+      // Reserve replay storage before establishing a session or dispatching any
+      // mutations. Unused transports cost no reply cache; all four sessions
+      // remain available. Established sessions never allocate on retry/write.
+      if(!session->reply) {
+        if(admit_ && !admit_(COMMAND_REPLY_MAX+1))return error(503,"command_memory_unavailable");
+        session->reply.reset(new(std::nothrow) char[COMMAND_REPLY_MAX+1]);
+        if(!session->reply)return error(503,"command_memory_unavailable");
+      }
       session->peer = peer; session->client = client; session->cid = 0; session->size = 0;
       if (!++nextSession_) ++nextSession_;
       session->sid = nextSession_;
@@ -119,7 +90,7 @@ size_t CommandServer::process(uint64_t peer, std::string_view request, uint32_t 
   const auto hash = fingerprint(request);
   if (cid == session->cid && hash == session->fingerprint && session->size) {
     if (session->size >= capacity) return error(503,"reply_capacity");
-    std::memcpy(reply,session->reply,session->size+1); return session->size;
+    std::memcpy(reply,session->reply.get(),session->size+1); return session->size;
   }
   if (cid <= session->cid) return error(409,"stale_request");
   const bool selectedOperation=path=="/api/target" || path=="/api/move" || path=="/api/execute" ||
@@ -149,7 +120,7 @@ size_t CommandServer::process(uint64_t peer, std::string_view request, uint32_t 
   if (!dispatch_) return error(503,"unavailable");
   auto cache = [&](size_t size) {
     session->cid=cid;session->fingerprint=hash;session->touched=now;session->size=size;
-    if(size)std::memcpy(session->reply,reply,size+1);
+    if(size)std::memcpy(session->reply.get(),reply,size+1);
     return size;
   };
   dispatch_(context_,method,path,{arguments.data(),count},body,status,type);

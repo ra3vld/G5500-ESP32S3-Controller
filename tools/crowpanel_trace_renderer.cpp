@@ -71,14 +71,14 @@ void advance(uint64_t requested) {
     const auto step = uint32_t(std::min<uint64_t>(5 - cursor % 5, requested - cursor));
     lv_tick_inc(step);
     cursor += step;
+    // Match the panel's 20 ms presentation service, regardless of export FPS.
+    if (cursor % 20 == 0) ui.update(currentView);
     if (cursor % 5 == 0) lv_timer_handler();
   }
   // A source update can restart a marker's 160 ms animation. Sample the old
   // animation at this exact event time so the result is independent of the
   // number of intermediate frames requested by a viewer or video exporter.
   lv_anim_refr_now();
-  // Indicators also advance when a recording has no new telemetry snapshot.
-  ui.update(currentView);
 }
 
 bool boolean(const std::string &value) {
@@ -132,6 +132,7 @@ void field(forkrot::CrowPanelView &v, const std::string &key, const std::string 
   BOOL(uncalibrated) BOOL(secondaryUncalibrated)
   BOOL(pending) BOOL(moving) BOOL(autoMode) BOOL(autoHour)
   INT(direction) REAL(current) REAL(target) REAL(minimum) REAL(maximum)
+  REAL(tolerance) REAL(secondaryTolerance)
   REAL(secondaryCurrent) REAL(secondaryTarget)
   BOOL(secondaryFeedback) BOOL(secondaryTargetValid) BOOL(secondaryPending)
   INT(azDirection) INT(elDirection)

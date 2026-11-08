@@ -37,4 +37,8 @@ partitions = 'partitions_esp32_8mb.csv' if a.target == 'esp32-8mb' else 'partiti
 shutil.copy2(source / partitions, out / 'partitions.csv')
 flash = '8MB' if a.target == 'esp32-8mb' else '16MB' if a.target in ('s3', 'crowpanel', 'waveshare-s3-eth') else '4MB'
 write_capabilities(out / 'build_capabilities.hpp', partition_capabilities(out / 'partitions.csv', flash))
+if a.target == 'esp32-8mb':
+    # This explicit two-slot target keeps OTA, unlike the ordinary ESP32 default.
+    with (out / 'build_capabilities.hpp').open('a') as header:
+        header.write('\n#ifndef OTA_SUPPORT\n#define OTA_SUPPORT 1\n#endif\n')
 print(out / 'G5500_Fork.ino')

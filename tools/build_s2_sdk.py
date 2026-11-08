@@ -100,6 +100,10 @@ def sdk_matches(packages, defaults):
 def configuration(defaults, bootstrap):
     result = ('[platformio]\nextra_configs = base.ini\nsrc_dir = G5500_Fork\n'
               '[env:s2_sdk]\nextends = env:esp32s2_4mb_ota_compact\n')
+    if not bootstrap:
+        # Reuse only the matching custom IDF build, rather than replacing it
+        # when a new Arduino release changes the precompiled archive URL.
+        result += 'platform_packages = framework-arduinoespressif32-libs @ 5.5.5+sha.b774170ff46\n'
     if bootstrap:
         # HybridCompile builds an SDK using a dummy sketch, then an intermediate
         # application. Neither uses LTO or becomes a deliverable flash image.
@@ -114,12 +118,20 @@ def configuration(defaults, bootstrap):
     return result + 'custom_sdkconfig =\n' + ''.join(' ' + line + '\n' for line in defaults.splitlines())
 
 
+def seed_cached_sdk(project, packages, defaults):
+    # HybridCompile also fingerprints board memory settings. Saola-1 has no
+    # PSRAM or memory overrides; call only after validating the custom SDK.
+    checksum = hashlib.md5((defaults.strip() + 'esp32s2|False||').encode()).hexdigest()[:16]
+    current = (packages / 'framework-arduinoespressif32-libs/sdkconfig').read_text()
+    write_changed(project / 'sdkconfig.defaults', '# TASMOTA__' + checksum + '\n' + current)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--pio', default=shutil.which('pio') or 'pio')
     parser.add_argument('--jobs', type=int, default=4)
     parser.add_argument('--project-dir', type=Path, default=ROOT / 'build/s2-sdk-project')
-    parser.add_argument('--packages-dir', type=Path, default=ROOT / '.pio/packages-s2-sdk')
+    parser.add_argument('--packages-dir', type=Path, default=ROOT / '.pio/packages-s2-sdk-55.03.312-1')
     parser.add_argument('--output', type=Path, default=ROOT / 'build/s2-sdk-firmware')
     args = parser.parse_args()
     if args.jobs < 1:
@@ -160,6 +172,9 @@ def main():
         print('Building compact S2 SDK without LTO', flush=True)
         write_changed(project / 'platformio.ini', configuration(defaults, True))
         subprocess.run(command, env=environment, check=True)
+    if not sdk_matches(packages, defaults):
+        raise RuntimeError('Built SDK does not match the required compact S2 configuration')
+    seed_cached_sdk(project, packages, defaults)
     print('Building final S2 application with LTO and OTA size checks', flush=True)
     write_changed(project / 'platformio.ini', configuration(defaults, False))
     subprocess.run(command, env=environment, check=True)

@@ -10,8 +10,9 @@
 
 | Компонент | Версия | Когда нужен |
 |---|---|---|
-| Arduino-ESP32 | 3.3.11 | всегда |
-| pioarduino espressif32 | 55.03.311 | PlatformIO |
+| pioarduino Core | 6.2.0 | PlatformIO |
+| Arduino-ESP32 | 3.3.12 | всегда |
+| pioarduino espressif32 | 55.03.312-1 | PlatformIO |
 | Adafruit GFX | 1.12.1 | ILI9341 и GC9A01 |
 | Adafruit ILI9341 | 1.6.2 | TFT |
 | Adafruit GC9A01A | 1.1.0 | ESP32-2424S012C; также нужны GFX и BusIO |
@@ -20,7 +21,7 @@
 | LiquidCrystal | 1.0.7 | параллельный LCD1602 |
 | LVGL | 9.6.0 | CrowPanel 2.1, ILI9341, GC9A01, ST7796 и ST77916 |
 
-NONE не требует экранных библиотек. LCD требует только LiquidCrystal; TFT не требует LiquidCrystal. Для Bluetooth дополнительные библиотеки не нужны: на ESP32 доступны встроенный SPP и внешний HC-05, на S2/S3 — HC-05. Выберите транспорт после сборки в веб-настройках оборудования; Bluetooth по умолчанию выключен.
+NONE не требует экранных библиотек. LCD требует только LiquidCrystal; TFT не требует LiquidCrystal. Для Bluetooth дополнительные библиотеки не нужны: на классическом ESP32 возможны встроенный SPP и внешний HC-05, на S2/S3/C3 — HC-05. Стандартный профиль WROOM/WROVER исключает встроенный SPP; для него используйте [специальную сборку](boards/esp32-spp.md). Выберите доступный транспорт в веб-настройках оборудования; Bluetooth по умолчанию выключен.
 
 Для [ESP32-C3 без дисплея](boards/esp32-c3.md) используйте `pio run -e esp32c3_4mb` или `./tools/build_arduino.sh esp32-c3`. Профиль рассчитан на Flash 4 МиБ, включает веб-интерфейс и native USB, использует один раздел приложения 3 МиБ без OTA. GPIO привода назначаются при первой настройке; библиотеки дисплея не нужны.
 
@@ -36,7 +37,7 @@ CrowPanel 2.1 (DHE03921D): `pio run -e crowpanel_21` или `./tools/build_ardui
 
 Перед сборкой из Git выполните `python3 tools/project_version.py`, чтобы обновить версию и хеш коммита в прошивке. Повторяйте команду после изменения исходников или переключения коммита. PlatformIO, `build_arduino.sh` и `prepare_sketch.py` делают это автоматически. В архиве исходников сохраняются сведения о версии на момент упаковки. Если ни Git, ни сохранённых сведений нет, версия получает суффикс `+unknown`, а коммит — значение `unknown`.
 
-Добавьте URL `https://espressif.github.io/arduino-esp32/package_esp32_index.json`, установите **esp32 by Espressif Systems 3.3.11** и только библиотеки выбранного дисплея. XPT2046: [официальный ZIP v1.4](https://github.com/PaulStoffregen/XPT2046_Touchscreen/archive/refs/tags/v1.4.zip).
+Добавьте URL `https://espressif.github.io/arduino-esp32/package_esp32_index.json`, установите **esp32 by Espressif Systems 3.3.12** и только библиотеки выбранного дисплея. XPT2046: [официальный ZIP v1.4](https://github.com/PaulStoffregen/XPT2046_Touchscreen/archive/refs/tags/v1.4.zip).
 
 Откройте `G5500_Fork/G5500_Fork.ino`; измените значения в `build_config.hpp`. Все заголовки профилей должны остаться рядом со скетчем. `BOARD_AUTO` выбирает распиновку по плате IDE. При включённом Bluetooth `BT_AUTO` выбирает транспорт по чипу. Таблицу разделов выбирайте отдельно в **Tools → Partition Scheme**: в исходной папке нет `partitions.csv`, который перекрывал бы меню.
 
@@ -49,9 +50,9 @@ CrowPanel 2.1 (DHE03921D): `pio run -e crowpanel_21` или `./tools/build_ardui
 | Partition Scheme | Huge APP (3MB No OTA/1MB SPIFFS) | 16M Flash (3MB APP/9.9MB FATFS) | Huge APP (3MB No OTA/1MB SPIFFS) | Minimal SPIFFS (1.9MB APP with OTA/128KB SPIFFS) |
 | BOARD_PROFILE | AUTO или ESP32 | AUTO или S3 | AUTO или S2_MINI | AUTO или S2_LEGACY |
 
-Стандартные `esp32s2_4mb` / `_headless` сохраняют WebSocket и ArduinoOTA, исключая MQTT при сборке, чтобы поместиться в прежний раздел. Для S2 без PSRAM используйте [отдельный компактный SDK](#esp32-s2-без-psram), уменьшающий расход внутренней памяти Wi-Fi и native USB.
+Для прежней S2 с двумя OTA-разделами и MQTT установите `WEB_LIVE_SUPPORT=0` и `ARDUINO_OTA_SUPPORT=0`: сохраняются HTTP-управление, браузерное OTA и MQTT/Home Assistant. В PlatformIO это профиль `esp32s2_4mb_ota_compact`. Стандартные `esp32s2_4mb` / `_headless` сохраняют WebSocket и ArduinoOTA, исключая новый MQTT при сборке, чтобы поместиться в прежний раздел.
 
-Arduino-ESP32 генерирует бинарную таблицу из выбранной схемы. На ESP32 выбирайте слот приложения 3 МБ: встроенный SPP включён в образ независимо от положения веб-переключателя. Flash Size должен совпадать с физической памятью платы. Если используете старую копию скетча с `partitions.csv`, этот файл по-прежнему имеет приоритет перед меню; для сборки по меню удалите его из той копии. NVS у перечисленных схем остаётся на `0x9000`. Для [обновления по Wi-Fi](maintenance/ota.md) нужны два подходящих раздела приложения: Huge APP OTA не поддерживает.
+Arduino-ESP32 генерирует бинарную таблицу из выбранной схемы. Для стандартного ESP32 с 4 МиБ выбирайте слот приложения 3 МБ. Встроенный SPP в обычной сборке исключён; при необходимости включите его флагом `BLUETOOTH_SPP_SUPPORT=1` и учитывайте расход RAM. Flash Size должен совпадать с физической памятью платы. Если используете старую копию скетча с `partitions.csv`, этот файл по-прежнему имеет приоритет перед меню; для сборки по меню удалите его из той копии. NVS у перечисленных схем остаётся на `0x9000`. Для [обновления по Wi-Fi](maintenance/ota.md) нужны два подходящих раздела приложения: Huge APP OTA не поддерживает.
 
 PlatformIO и `tools/prepare_sketch.py` автоматически исключают ArduinoOTA из сборок без двух OTA-разделов приложения. При прямой сборке исходного скетча в Arduino IDE с Huge APP установите `ARDUINO_OTA_SUPPORT=0` в `build_config.hpp`. Если меняете таблицу разделов или размер flash в подготовленной Arduino-копии, подготовьте её заново для нужной конфигурации.
 
@@ -69,7 +70,7 @@ PlatformIO и `tools/prepare_sketch.py` автоматически исключ�
 
 ```sh
 arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-arduino-cli core install esp32:esp32@3.3.11 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+arduino-cli core install esp32:esp32@3.3.12 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 # Только выбранный дисплей:
 arduino-cli lib install 'LiquidCrystal@1.0.7'
 # либо ILI9341: lvgl@9.6.0, GFX@1.12.1, ILI9341@1.6.2, BusIO@1.17.2 и официальный ZIP XPT2046 v1.4
@@ -80,9 +81,11 @@ DISPLAY_KIND=2 ./tools/build_arduino.sh s2-mini
 DISPLAY_KIND=1 ./tools/build_arduino.sh s2-mini
 ```
 
-`DISPLAY_KIND`: 0 NONE, 1 ILI9341, 2 LCD1602, 3 CrowPanel, 4 GC9A01, 5 ST7796, 6 ST77916. CrowPanel и GC9A01 требуют соответствующего профиля платы. Старый `DISPLAY_ENABLED=0/1` остаётся алиасом NONE/TFT; несовместимые флаги отклоняются. Привод, Bluetooth и кнопка выбираются в вебе после сборки. Скрипт допускает `ARDUINO_CLI`, `ARDUINO_CONFIG_FILE`, `FQBN`, `BUILD_JOBS`; исходники и результаты изолированы в `build/arduino-<target>` и `artifacts/arduino-<target>`. Прежние аппаратные `-D` задают только начальные значения нового устройства; сохранённая конфигурация имеет приоритет.
+`DISPLAY_KIND`: 0 NONE, 1 ILI9341, 2 LCD1602, 3 CrowPanel, 4 GC9A01, 5 ST7796, 6 ST77916. CrowPanel требует своего профиля платы. Внешние GC9A01/CST816 и ST7796/GT911 доступны на generic ESP32, S3, C3 и S2; [профили и настройка GPIO](boards/generic-displays.md). Старый `DISPLAY_ENABLED=0/1` остаётся алиасом NONE/TFT; несовместимые флаги отклоняются. Привод, Bluetooth и кнопка выбираются в вебе после сборки. Скрипт допускает `ARDUINO_CLI`, `ARDUINO_CONFIG_FILE`, `FQBN`, `BUILD_JOBS`; исходники и результаты изолированы в `build/arduino-<target>` и `artifacts/arduino-<target>`. Прежние аппаратные `-D` задают только начальные значения нового устройства; сохранённая конфигурация имеет приоритет.
 
 ## PlatformIO
+
+Установите Core: `python -m pip install -r requirements-platformio.txt`. Проверьте `pio --version`: должна отображаться версия 6.2.0. Пакеты этой версии SDK устанавливаются отдельно от пакетов других проектов; каталог задаёт `packages_dir` в `platformio.ini`.
 
 Скрипт выбирает экранные зависимости согласно общему заголовку и параметрам:
 
@@ -145,9 +148,9 @@ python3 tools/prepare_sketch.py --target esp32
 
 Для обычного ESP32 используйте [параметры IDE](#arduino-ide-2x) выше. Распиновка одинакова для WROOM и WROVER; PSRAM не требуется. Скрипты и профиль `esp32_4mb` используют `partitions_esp32.csv`: один factory-раздел 3 МиБ без OTA. Профиль `esp32_4mb_noweb` использует `partitions_s2.csv`: два OTA-слота по 1 966 080 байт. NVS в обоих случаях начинается с `0x9000`; смена разметки требует записи через USB.
 
-Для универсальной прошивки обычного ESP32 с OTA используйте `esp32_8mb_ota` при физических 8 МиБ Flash. Профиль `esp32_4mb_ota` имеет меньшие разделы и для этого образа не подходит. Arduino-копия для 8 МиБ: `python3 tools/prepare_sketch.py --target esp32-8mb`, CLI-сборка: `./tools/build_arduino.sh esp32-8mb`. [Выбор разделов и обновление](maintenance/ota.md).
+Для универсальной прошивки обычного ESP32 с OTA используйте `esp32_8mb_ota` при физических 8 МиБ Flash. Для 4 МиБ используйте `esp32_4mb_ota_compact` с LTO и меньшим набором сервисов. Arduino-копия для 8 МиБ: `python3 tools/prepare_sketch.py --target esp32-8mb`, CLI-сборка: `./tools/build_arduino.sh esp32-8mb`. [Выбор разделов и обновление](maintenance/ota.md).
 
-Обычный ESP32 с физическими 4 МиБ Flash не вмещает два экземпляра универсального образа со SPP. Выключение Bluetooth в настройках не уменьшает этот образ. Для 4 МиБ с OTA доступны `esp32_4mb_noweb` и `esp32_4mb_ota_compact`.
+Стандартный `pio run -e esp32_4mb` по умолчанию исключает встроенный SPP, сервер WebSocket, историю логов/RSSI и OTA для освобождения RAM, в том числе для MQTT TLS. `esp32_4mb_mqtt_tls` сохранён как совместимый алиас. Используются компактные буферы Wi-Fi. Веб работает через HTTP-опрос; сохраняются внешний HC-05, командный API, MQTT/Home Assistant и управление приводом. Приложение использует прежний слот 3 МиБ, обновление — через USB. Подробности — [MQTT TLS и память](integrations/mqtt.md#tls-и-память).
 
 `pio run -e esp32_4mb_ota_compact` сохраняет веб, браузерное OTA, MQTT/Home Assistant и внешний HC-05. В нём исключены встроенный SPP, WebSocket, ArduinoOTA и несжатые копии HTML. Браузер использует gzip и периодический HTTP-опрос. Первая запись с OTA-разметкой выполняется через USB; дальнейшее обновление — через веб.
 

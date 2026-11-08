@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 WIDTH = HEIGHT = 480
 FRAME_BYTES = WIDTH * HEIGHT * 3
 INPUT_SIZE = 600
-REAL_FIELDS = frozenset(("current", "target", "minimum", "maximum", "secondaryCurrent", "secondaryTarget"))
+REAL_FIELDS = frozenset(("current", "target", "minimum", "maximum", "tolerance", "secondaryTolerance", "secondaryCurrent", "secondaryTarget"))
 NULLABLE_REAL_FIELDS = REAL_FIELDS - {"minimum", "maximum"}
 BOOL_FIELDS = frozenset((
     "movingNow", "settingsAvailable", "enabled", "hud", "hudSelector", "dualAxis", "speedScreen", "speedAvailable[0]", "speedAvailable[1]",

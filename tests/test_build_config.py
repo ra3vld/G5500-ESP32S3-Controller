@@ -24,9 +24,10 @@ class BuildConfigTests(unittest.TestCase):
                 shutil.copy2(path, self.source / path.name)
         shutil.copytree(ROOT / 'G5500_Fork/src', self.source / 'src')
         (self.root / 'tools').mkdir()
-        for name in ['build_platformio.py', 'prepare_sketch.py', 'generate_web_assets.py', 'project_version.py', 'build_capabilities.py', 'web_poll.js', 'web_activity.js']:
+        for name in ['build_platformio.py', 'prepare_sketch.py', 'generate_web_assets.py', 'project_version.py', 'build_capabilities.py', 'web_poll.js', 'web_activity.js', 'web_boot.js', 'web_boot.html', 'web_compile.cjs', 'web_compiled.json']:
             shutil.copy2(ROOT / 'tools' / name, self.root / 'tools' / name)
         shutil.copy2(ROOT / 'platformio.ini', self.root / 'platformio.ini')
+        shutil.copytree(ROOT / 'platformio', self.root / 'platformio')
 
     def edit(self, **settings):
         for name, value in settings.items():
@@ -46,6 +47,20 @@ class BuildConfigTests(unittest.TestCase):
                                  '-x', 'c++', '-'],
                                 input='#include "board.hpp"\n' + assertions, text=True, capture_output=True)
         self.assertEqual(result.returncode == 0, success, result.stderr)
+
+    def test_spp_environments_in_generic_selector(self):
+        for name, hud in [('esp32_spp', 0), ('esp32_spp_hud', 1)]:
+            with self.subTest(profile=name):
+                result = subprocess.run([sys.executable, str(self.root/'tools/build_platformio.py'),
+                                         '--env', name, '--dry-run'], text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                config = configparser.ConfigParser(interpolation=None)
+                config.read(self.root/'build/platformio-config'/f'{name}.ini')
+                self.assertIn(str(self.root/'platformio/esp32_spp.ini'), config.get('platformio', 'extra_configs'))
+                flags = config.get('env:selected', 'build_flags')
+                for required in ['ESP32_SPP_PROFILE=1', 'BLUETOOTH_ENABLED=1', 'N1MM_SUPPORT=1',
+                                 'PSTROTATOR_SUPPORT=1', 'ROTCTLD_SUPPORT=1', f'HUD_SUPPORT={hud}']:
+                    self.assertIn('-D' + required, flags)
 
     def test_feature_dependencies(self):
         flags=['DISPLAY_SUPPORT','LOCAL_INPUT_SUPPORT','WIFI_SUPPORT','ETHERNET_SUPPORT','WEB_LIVE_SUPPORT','WEB_PLAIN_HTML_SUPPORT',
@@ -142,6 +157,49 @@ int main() {
                           BTS7960_PWM_INVERTED=0, USER_BUTTON_GPIO=0, USER_BUTTON_ACTIVE_LOW=1,
                           USER_BUTTON_PULLUP=1, AZ_STOP_TOLERANCE_DEG='5.0f', EL_STOP_TOLERANCE_DEG='5.0f'))
 
+    def test_classic_esp32_resource_defaults(self):
+        reduced = dict(BLUETOOTH_SPP_SUPPORT=0, WEB_LIVE_SUPPORT=0, LOG_HISTORY_SUPPORT=0,
+                       RSSI_HISTORY_SUPPORT=0, OTA_SUPPORT=0, ARDUINO_OTA_SUPPORT=0,
+                       WIFI_COMPACT_BUFFERS=1, WEB_INTERFACE_ENABLED=1, COMMAND_API_SUPPORT=1,
+                       MQTT_SUPPORT=1, MQTT_TLS_SUPPORT=1, HOME_ASSISTANT_DISCOVERY_SUPPORT=1,
+                       HUD_SUPPORT=1, HUD_UDP_SUPPORT=1, HUD_UART_SUPPORT=1,
+                       RESET_HISTORY_SUPPORT=1, ESP32_SPP_PROFILE=0)
+        for flags in (['BOARD_PROFILE=4'], ['CONFIG_IDF_TARGET_ESP32=1']):
+            self.compile(reduced, flags)
+        for display in (1, 2, 6):
+            self.compile(reduced, ['BOARD_PROFILE=4', f'DISPLAY_KIND={display}'])
+        self.compile(reduced, ['BOARD_PROFILE=10', 'DISPLAY_KIND=5'])
+        # Explicit service flags still win over the board defaults.
+        self.compile(dict(BLUETOOTH_SPP_SUPPORT=1, WEB_LIVE_SUPPORT=1, LOG_HISTORY_SUPPORT=1,
+                          RSSI_HISTORY_SUPPORT=1, OTA_SUPPORT=1, WIFI_COMPACT_BUFFERS=0),
+                     ['BOARD_PROFILE=4', 'BLUETOOTH_SPP_SUPPORT=1', 'WEB_LIVE_SUPPORT=1',
+                      'LOG_HISTORY_SUPPORT=1', 'RSSI_HISTORY_SUPPORT=1', 'OTA_SUPPORT=1',
+                      'WIFI_COMPACT_BUFFERS=0'])
+        self.compile(dict(BLUETOOTH_SPP_SUPPORT=1, BLUETOOTH_BACKEND=2),
+                     ['BOARD_PROFILE=4', 'ESP32_SPP_PROFILE=1', 'BLUETOOTH_ENABLED=1'])
+
+    def test_other_boards_keep_service_defaults(self):
+        for board in (1, 2, 3, 5, 6, 7, 8, 9):
+            display = {5: 3, 8: 4, 10: 5}.get(board, 0)
+            self.compile(dict(BLUETOOTH_SPP_SUPPORT=int(board == 6), WEB_LIVE_SUPPORT=1,
+                              LOG_HISTORY_SUPPORT=1, RSSI_HISTORY_SUPPORT=1, OTA_SUPPORT=1,
+                              WIFI_COMPACT_BUFFERS=0),
+                         [f'BOARD_PROFILE={board}', f'DISPLAY_KIND={display}'])
+
+    def test_esp32_environment_service_composition(self):
+        for name in ('esp32_4mb', 'esp32_4mb_mqtt_tls', 'esp32_3248s035c', 'esp32_4mb_lcd', 'esp32_4mb_tft', 'esp32_4mb_noweb',
+                     'esp32_4mb_ota', 'esp32_4mb_ota_compact', 'esp32_8mb_ota',
+                     'esp32_spp', 'esp32_spp_hud'):
+            with self.subTest(profile=name):
+                selected = self.selected_config('--env', name)
+                flags = re.findall(r'-D([^\s]+)', selected['build_flags'])
+                spp = name in ('esp32_spp', 'esp32_spp_hud')
+                self.compile(dict(BLUETOOTH_SPP_SUPPORT=int(spp), WEB_LIVE_SUPPORT=0,
+                                  LOG_HISTORY_SUPPORT=0, RSSI_HISTORY_SUPPORT=0,
+                                  OTA_SUPPORT=int('_ota' in name or name.endswith('_noweb')),
+                                  WEB_INTERFACE_ENABLED=int(not name.endswith('_noweb')),
+                                  MQTT_SUPPORT=int(not spp)), flags)
+
     def test_round_c3_profile(self):
         self.compile(dict(SELECTED_BOARD=8, FORK_C3=1, FORK_S3=0, FORK_CLASSIC_ESP32=0,
                           USER_BUTTON_GPIO=9, DRIVE_SIMULATION=0, TFT_DISPLAY_ENABLED=0),
@@ -164,13 +222,68 @@ int main() {
         sketch=self.root/'build/arduino-esp32-2424s012c/G5500_Fork'
         self.assertEqual((sketch/'partitions.csv').read_bytes(),(self.source/'partitions_esp32.csv').read_bytes())
 
+    def test_generic_display_runtime_wiring(self):
+        source = r'''#include "board.hpp"
+#include "position_sensors.hpp"
+#include <cassert>
+#include <string>
+using namespace forkrot;
+int main() {
+  HardwareConfig c;c.simulation=true;c.bluetooth=false;c.buttonGpio=-1;
+  for(const auto &d:pinDefinitions)c.pins.*d.member=-1;
+  // Missing display wiring must enter setup, never initialize arbitrary GPIOs.
+  assert(board::validateHardware(c,false,true));
+  int next=0;
+  for(const auto &d:pinDefinitions) if(board::pinActive(c,d,true) && !board::pinOptional(c,d)) {
+    while(!board::output(next))++next;
+    c.pins.*d.member=next++;
+  }
+  assert(!board::validateHardware(c,false,true));
+  auto p=displayPins(c);assert(p.tftCs==c.pins.tftCs);
+  for(const auto &d:pinDefinitions)if(board::pinActive(c,d,true)&&!board::pinOptional(c,d)) {
+    auto bad=c;bad.pins.*d.member=-1;assert(board::validateHardware(bad,false,true));
+  }
+  if(DISPLAY_KIND==DISPLAY_GC9A01 || DISPLAY_KIND==DISPLAY_ST7796) {
+    auto conflict=c;conflict.pins.touchSda=c.pins.tftCs;
+    assert(board::validateHardware(conflict,false,true));
+    assert(!board::fixedPinOwner(4)); // no Sunton LED or Guition wiring on generic boards
+    assert(!board::fixedPinOwner(5));
+    c.simulation=false;c.sensors[0]=1;c.sensors[1]=6;
+    c.pins.azSensorSda=c.pins.touchSda;c.pins.azSensorScl=c.pins.touchScl;
+    // No physical axes: validate the shared touch bus directly, then read it.
+    if(DISPLAY_KIND==DISPLAY_GC9A01 || FORK_C3) {
+      assert(board::sharedPanelSensorBus(c,*pinDefinition("pin.azSensorSda")));
+      Wire.begin(c.pins.touchSda,c.pins.touchScl,400000);
+      PositionSensors sensors;sensors.begin(c);
+      assert(fakeI2c[0].begins==1 && fakeI2c[1].begins==0);
+      auto conflict=c;conflict.sensors[1]=DISPLAY_KIND==DISPLAY_GC9A01?0x15:0x5d;
+      assert(std::string(board::validateHardwareDetailed(conflict).error)=="sensor_address_conflict");
+      conflict=c;conflict.pins.azSensorSda=-1;
+      assert(std::string(board::validateHardwareDetailed(conflict).error)=="sensor_bus_unavailable");
+    }
+  }
+}
+'''
+        path = self.root/'generic.cpp';path.write_text(source)
+        for board in [1,2,3,4,9]:
+            for kind in [1,2,4,5]:
+                with self.subTest(board=board, display=kind):
+                    binary=self.root/'generic'
+                    result=subprocess.run(['g++','-std=c++17','-Wall','-Wextra','-Werror',
+                        '-I',str(ROOT/'tests/fakes'),'-I',str(self.source),
+                        f'-DBOARD_PROFILE={board}',f'-DDISPLAY_KIND={kind}',str(path),'-o',str(binary)],
+                        capture_output=True,text=True)
+                    self.assertEqual(result.returncode,0,result.stderr)
+                    result=subprocess.run([str(binary)],capture_output=True,text=True)
+                    self.assertEqual(result.returncode,0,result.stderr)
+
     def test_st7796_profile(self):
         self.compile(dict(SELECTED_BOARD=10, FORK_CLASSIC_ESP32=1, FORK_S3=0, FORK_C3=0,
                           GRAPHICAL_DISPLAY=1, PANEL_COMPACT_FONTS=1, TFT_DISPLAY_ENABLED=0),
                      ['BOARD_PROFILE=BOARD_ESP32_3248S035C','DISPLAY_KIND=DISPLAY_ST7796',
                       'CONFIG_IDF_TARGET_ESP32=1'])
         self.compile({}, ['BOARD_PROFILE=10','DISPLAY_KIND=1'], success=False)
-        self.compile({}, ['BOARD_PROFILE=4','DISPLAY_KIND=5'], success=False)
+        self.compile({}, ['BOARD_PROFILE=4','DISPLAY_KIND=5'])
         self.compile({}, ['BOARD_PROFILE=10','DISPLAY_KIND=5','CONFIG_IDF_TARGET_ESP32C3=1'], success=False)
         result=subprocess.run([sys.executable,str(self.root/'tools/build_platformio.py'),
                                '--env','esp32_3248s035c','--display','st7796','--dry-run'],capture_output=True,text=True)
@@ -245,7 +358,7 @@ int main() {
         for flag, board, backend in [('ARDUINO_LOLIN_S2_MINI=1', 3, 1),
                                      ('CONFIG_IDF_TARGET_ESP32S2=1', 2, 1),
                                      ('CONFIG_IDF_TARGET_ESP32S3=1', 1, 1),
-                                     ('CONFIG_IDF_TARGET_ESP32=1', 4, 2)]:
+                                     ('CONFIG_IDF_TARGET_ESP32=1', 4, 1)]:
             with self.subTest(flag=flag):
                 self.compile(dict(SELECTED_BOARD=board, BLUETOOTH_BACKEND=backend, DRIVE_SIMULATION=0,
                                   **{'forkrot::board::WIFI_AP_ALWAYS_ON': 0}), [flag, 'BLUETOOTH_ENABLED=1'])
@@ -330,7 +443,8 @@ int main() {
                                  '--env', 'esp32_4mb', '--dry-run', *args], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         config = configparser.ConfigParser(interpolation=None)
-        config.read(self.root / 'build/platformio-config/esp32_4mb.ini')
+        name = args[args.index('--env') + 1] if '--env' in args else 'esp32_4mb'
+        config.read(self.root / f'build/platformio-config/{name}.ini')
         return config['env:selected']
 
     def test_motion_rate_build_option(self):
@@ -469,6 +583,14 @@ int main() {
         self.assertEqual(result.returncode, 0, result.stderr)
         sketch = self.root / 'build/arduino-esp32-8mb/G5500_Fork'
         self.assertEqual((sketch / 'partitions.csv').read_bytes(), (self.source / 'partitions_esp32_8mb.csv').read_bytes())
+        for flags, enabled in [([], 1), (['-DOTA_SUPPORT=0'], 0)]:
+            result = subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++17', '-fsyntax-only',
+                                     '-DBOARD_PROFILE=4', *flags, '-x', 'c++', '-'],
+                                    input=f'#include "{sketch}/build_config.hpp"\n'
+                                          f'static_assert(OTA_SUPPORT=={enabled});\n'
+                                          f'static_assert(ARDUINO_OTA_SUPPORT=={enabled});\n',
+                                    text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == '__main__':

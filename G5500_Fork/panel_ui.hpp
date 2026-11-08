@@ -8,10 +8,14 @@
 #include "panel_input.hpp"
 #include "panel_view.hpp"
 #include "panel_connection.hpp"
+#include "panel_presentation.hpp"
+#include "ota_progress.hpp"
 namespace forkrot {
 class PanelUi {
   PanelView previous_;
   bool previousValid_=false;
+  panel::Presentation presentation_;
+  panel::Presentation::Result presented_;
   uint32_t actionEpoch_=0;
   uint32_t background_=0x0a111c;
   int width_=480,height_=480,diameter_=480;
@@ -26,6 +30,8 @@ class PanelUi {
   panel::TouchRect rect(int left,int top,int width,int height) const;
   lv_obj_t *settingsButton_=nullptr,*actionButton_=nullptr,*actionLabel_=nullptr;
   lv_obj_t *root_=nullptr;
+  lv_obj_t *otaPanel_=nullptr,*otaStage_=nullptr,*otaWarning_=nullptr,*otaPercent_=nullptr,*otaSign_=nullptr,*otaDone_=nullptr;
+  lv_font_t otaFont_{},otaSignFont_{};
   lv_obj_t *menuPanel_=nullptr,*menuDevice_=nullptr,*menuInfo_=nullptr,*menuNotice_=nullptr,*menuBrightness_=nullptr;
   lv_obj_t *menuButtons_[7]{},*menuButtonLabels_[7]{},*menuStop_=nullptr;
   void createMenu();
@@ -84,6 +90,7 @@ public:
   void create(bool round=true);
   lv_obj_t *root() const { return root_; }
   void update(const PanelView &view);
+  void showOta(const OtaProgress &progress);
   void setPressed(panel::TouchAction action);
   bool confirmationHit(uint16_t x, uint16_t y) const {
     return confirmationVisible_ && (confirmationCaption_.contains(x, y) || confirmationAngle_.contains(x, y));

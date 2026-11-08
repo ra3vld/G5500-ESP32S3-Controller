@@ -27,6 +27,7 @@
 #include "panel_access_point.hpp"
 #include <atomic>
 #include <WiFiServer.h>
+#include "tcp_reply.hpp"
 namespace forkrot {
 class MqttService;
 class Network : public HudTransport {
@@ -79,6 +80,8 @@ public:
   }
   void handleRotctldTcp();
   void closeRotctld();
+  uint32_t tcpReplyRetries() const {return tcpReply_.retries;}
+  uint32_t tcpReplyMaxMs() const {return tcpReply_.maxPendingMs;}
   uint32_t udpDropped() const { return udpDropped_; }
   uint32_t tcpAborts() const { return tcpAborts_; }
   bool startWifi();
@@ -121,6 +124,7 @@ private:
   bool processCommandApi(std::string_view input, uint8_t port);
   size_t runCommandApi(uint64_t peer, std::string_view input, char *reply, size_t capacity);
   void rotctldSend(const String &s);
+  void serviceTcpReply();
   void processRotctldCommand(std::string_view input);
   bool configureStation();
   bool restoreApOnlyAfterReconnectFail();
@@ -158,6 +162,9 @@ private:
   bool ethernetWasConnected_=false;
   WiFiServer tcpServer_{board::TCP_PORT};
   WiFiClient rotctldClient_;
+  uint32_t rotctldServicedAt_=0;
+  TcpReply<ROTCTLD_SUPPORT ? 1536 : 1> tcpReply_;
+  bool tcpCloseAfterReply_=false;
 #if ROTCTLD_SUPPORT
   SelectionApiLineBuffer tcpReceiver_;
 #else

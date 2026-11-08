@@ -7,6 +7,7 @@
 #include "tcp_memory.hpp"
 #include <tcp_peer.hpp>
 #include "runtime_metrics.hpp"
+#include "network_snapshot.hpp"
 #include "crowpanel_board.hpp"
 #include <esp_app_desc.h>
 #include <esp_system.h>
@@ -102,17 +103,17 @@ int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
   case 1:
     return std::snprintf(reply, capacity,
         "WIFI status=%d savedSSID=%s NVS=%s BTready=%s BTclient=%s BTlink=%s profile=%s\r\n",
-        int(radioWifi.status()), credentials_.wifiSsid.length() ? "yes" : "no",
+        networkStatusSnapshot().wifiStatus, credentials_.wifiSsid.length() ? "yes" : "no",
         diagnostics_.wifiCredentialsReadOk() ? "OK" : "unavailable",
         btReady_ ? "yes" : "no", bluetooth_.connected() ? "yes" : "no",
         bluetooth_.linkConnected() ? "yes" : "no",
         compactWifi_ ? "compact" : bufferedWifi_ ? (FORK_CLASSIC_ESP32 ? "controller" : "buffered") : "standard");
   case 2: {
-    const IPAddress ap = (radioWifi.getMode() & WIFI_AP) ? radioWifi.softAPIP() : IPAddress();
-    const IPAddress sta = radioWifi.localIP();
+    const auto radio=networkStatusSnapshot();
+    const IPAddress ap(radio.apIp),sta(radio.staIp);
     return std::snprintf(reply, capacity, "IP ap=%u.%u.%u.%u sta=%u.%u.%u.%u rssi=%d\r\n",
         unsigned(ap[0]), unsigned(ap[1]), unsigned(ap[2]), unsigned(ap[3]),
-        unsigned(sta[0]), unsigned(sta[1]), unsigned(sta[2]), unsigned(sta[3]), int(radioWifi.RSSI()));
+        unsigned(sta[0]), unsigned(sta[1]), unsigned(sta[2]), unsigned(sta[3]), radio.rssi);
   }
   case 3:
     return std::snprintf(reply, capacity,
@@ -123,24 +124,24 @@ int Network::formatHeapDiagnostics(uint8_t page, char *reply, size_t capacity) {
         static_cast<unsigned long>(http_.writeBytes), static_cast<unsigned long>(http_.writeSize),
         static_cast<unsigned long>(http_.requests));
   case 4: {
-    const auto tcp = tcpMemory();
-    return std::snprintf(reply, capacity, "TCP stats=%s active=%u closing=%u timewait=%u pcbBytes=%u livePeers=%u unsent=%lu unacked=%lu buf=%lu wnd=%lu cwnd=%lu retry=%u\r\n",
+    const auto tcp = networkTcpSnapshot();
+    return std::snprintf(reply, capacity, "TCP stats=%s active=%u closing=%u timewait=%u pcbBytes=%u livePeers=%u unsent=%lu unacked=%lu buf=%lu wnd=%lu cwnd=%lu retry=%u ageMs=%lu\r\n",
         tcp.available ? "OK" : "unavailable", unsigned(tcp.active), unsigned(tcp.closing),
         unsigned(tcp.timewait), unsigned(tcp.pcbBytes),unsigned(tcp.livePeers),
         static_cast<unsigned long>(tcp.liveUnsent),static_cast<unsigned long>(tcp.liveUnacked),
         static_cast<unsigned long>(tcp.liveBuffer),static_cast<unsigned long>(tcp.liveWindow),
-        static_cast<unsigned long>(tcp.liveCwnd),unsigned(tcp.liveRetries));
+        static_cast<unsigned long>(tcp.liveCwnd),unsigned(tcp.liveRetries),static_cast<unsigned long>(networkSnapshotAgeMs()));
   }
   case 5: {
-    const auto mode = radioWifi.getMode();
+    const auto radio=networkStatusSnapshot();const auto mode=radio.wifiMode;
     return std::snprintf(reply, capacity, "WIFI runtimeMode=%s apClients=%u apPolicy=%s ethLink=%s ethIp=%s\r\n",
                          mode == WIFI_STA      ? "STA"
                          : mode == WIFI_AP     ? "AP"
                          : mode == WIFI_AP_STA ? "AP+STA"
                                                : "OFF",
-                         (mode & WIFI_AP) ? unsigned(radioWifi.softAPgetStationNum()) : 0,
+                         radio.apClients,
                          apAlwaysOn() ? "always" : "fallback",
-                         ethernetLinkUp()?"up":"down",ethernetIP().toString().c_str());
+                         radio.ethLink?"up":"down",IPAddress(radio.ethIp).toString().c_str());
   }
   case 6:
     return std::snprintf(reply, capacity,
@@ -381,16 +382,9 @@ void Network::handleBluetoothSerial() {
 void Network::rotctldSend(const String &s) {
   bool sent = false;
   if (rotctldClient_ && rotctldClient_.connected()) {
-    const int socket = rotctldClient_.fd();
-    const auto written = writeWithinBudget(s.c_str(), s.length(), millis(), 5,
-        [socket](const char *data, size_t size) {
-          int count = ::send(socket, data, size, MSG_DONTWAIT);
-          if (count >= 0) return count;
-          return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR || errno == ENOMEM || errno == ENOBUFS ? -2 : -1;
-        }, [] { return millis(); }, [] { delay(1); });
-    sent = written == s.length();
-    if (sent) hardware_.flashTx();
-    else closeRotctld(); // no partial reply carried into the next session
+    sent=tcpReply_.push({s.c_str(),s.length()},millis());
+    if(sent)serviceTcpReply();
+    else closeRotctld(); // bounded overload never truncates or reorders replies
   }
 #if FORK_NATIVE_USB
   if (sent) {
@@ -401,6 +395,17 @@ void Network::rotctldSend(const String &s) {
     diagnostics_.dbgPrintln(t);
   }
 #endif
+}
+
+void Network::serviceTcpReply() {
+  const auto before=tcpReply_.size();
+  if(!tcpReply_.service(millis(),[&](const char *data,size_t size) {
+    const int n=::send(rotctldClient_.fd(),data,size,MSG_DONTWAIT);
+    if(n>=0)return n;
+    return errno==EAGAIN || errno==EWOULDBLOCK || errno==EINTR || errno==ENOMEM || errno==ENOBUFS ? -2 : -1;
+  })) {closeRotctld();return;}
+  if(tcpReply_.size()<before)hardware_.flashTx();
+  if(tcpCloseAfterReply_ && tcpReply_.empty()) {tcpCloseAfterReply_=false;rotctldClient_.stop();}
 }
 
 void Network::processRotctldCommand(std::string_view input) {
@@ -491,7 +496,7 @@ void Network::processRotctldCommand(std::string_view input) {
   // Quit current network session.
   if (cmd == "q" || cmd == "Q" || lower == "\\quit" || lower == "quit") {
     rotctldSend("RPRT 0\n");
-    rotctldClient_.stop();
+    tcpCloseAfterReply_=true;serviceTcpReply();
     return;
   }
 
@@ -520,6 +525,7 @@ void Network::processRotctldCommand(std::string_view input) {
 
 void Network::handleRotctldTcp() {
 #if ROTCTLD_SUPPORT
+  if(!runtime_.controller.serviceBackground(millis(),rotctldServicedAt_))return;
 
   // Accept a client if none is currently connected.
   if (!rotctldClient_ || !rotctldClient_.connected()) {
@@ -547,6 +553,8 @@ void Network::handleRotctldTcp() {
   }
 
   // Reject extra accepted peers without leaving a listener backlog of buffers.
+  serviceTcpReply();
+  if(!rotctldClient_ || tcpCloseAfterReply_)return;
   if(tcpServer_.hasClient()) { auto extra=tcpServer_.accept();if(extra){abortTcpSocket(extra.fd());extra.stop();} }
   if(tcpLinePending_&&uint32_t(millis()-tcpLineAt_)>=1000){closeRotctld();return;}
 
@@ -554,6 +562,10 @@ void Network::handleRotctldTcp() {
   const uint32_t started = millis();
   unsigned commands = 0;
   for (unsigned bytes = 0; bytes < 128 && commands < 4 && rotctldClient_ && uint32_t(millis() - started) < 2; ++bytes) {
+    // Reserve the largest reply before consuming the next command. TCP flow
+    // control then delays input instead of executing a command without room
+    // to acknowledge it. A partial input line already owns this reservation.
+    if(!tcpLinePending_ && tcpReply_.available()<COMMAND_REPLY_MAX+5)break;
     char byte;
     const int count = ::recv(rotctldClient_.fd(), &byte, 1, MSG_DONTWAIT);
     if (count != 1) {
@@ -570,6 +582,7 @@ void Network::handleRotctldTcp() {
 #endif
 }
 void Network::closeRotctld() {
+  tcpReply_.clear();tcpCloseAfterReply_=false;
   const int fd=rotctldClient_.fd();
   if(fd>=0){abortTcpSocket(fd);++tcpAborts_;++tcpSession_;}
   rotctldClient_.stop();tcpReceiver_.clear();tcpLinePending_=false;
@@ -599,7 +612,7 @@ bool Network::startWifi() {
   if (ETHERNET_SUPPORTED && !ethernet_.begin(credentials_.network.ethernet))
     diagnostics_.dbgPrintln("[ETH] PHY start failed; Wi-Fi remains available");
   radioWifi.persistent(false);
-  if (runtime_.recovery || FORK_C3 || FORK_S2 || (FORK_CLASSIC_ESP32 && runtime_.controller.hardware.backend() == BT_ESP32_SPP)) {
+  if (WIFI_COMPACT_BUFFERS || runtime_.recovery || FORK_C3 || FORK_S2 || (FORK_CLASSIC_ESP32 && runtime_.controller.hardware.backend() == BT_ESP32_SPP)) {
     compactWifi_ = initCompactWifi() == ESP_OK;
     if (!compactWifi_) return false; // never fall back to a larger buffer profile on OOM
   } else if (FORK_CLASSIC_ESP32) {
@@ -1101,7 +1114,9 @@ bool Network::sendHud(const HudEndpoint &e, const uint8_t *bytes, size_t size) {
 #endif
   } else {
 #if HUD_UDP_SUPPORT
+    const uint32_t ioStarted=micros();
     sent=hudUdp_.send(e.address,e.port,{reinterpret_cast<const char *>(bytes),size},&error);
+    if(runtime_.controller.controlActive())runtimeMetrics.hudSendMaxUs=std::max(runtimeMetrics.hudSendMaxUs,uint32_t(micros()-ioStarted));
 #endif
   }
 #else
@@ -1172,7 +1187,9 @@ void Network::serviceHud(bool advanceSimulation) {
   for (unsigned i = 0; i < 4 && uint32_t(millis() - started) < 2; ++i) {
     uint32_t address = 0;
     uint16_t port = 0;
+    const uint32_t ioStarted=micros();
     const int n = hudUdp_.receiveInto(hudRx_.data(), hudRx_.size(), address, port);
+    if(runtime_.controller.controlActive())runtimeMetrics.hudReceiveMaxUs=std::max(runtimeMetrics.hudReceiveMaxUs,uint32_t(micros()-ioStarted));
     if (n == -1)
       break;
     if (n > 0)
@@ -1204,7 +1221,9 @@ void Network::serviceHud(bool advanceSimulation) {
         [] { return uart_wait_tx_done(UART_NUM_1,0)==ESP_OK; });
   }
   serviceModbusBus();
+  const uint32_t hudStarted=micros();
   hud.service(millis(), advanceSimulation);
+  if(runtime_.controller.controlActive())runtimeMetrics.hudServiceMaxUs=std::max(runtimeMetrics.hudServiceMaxUs,uint32_t(micros()-hudStarted));
   for (auto &reply : deferred_)
     if (reply.used) {
       const auto r = hud.result(reply.id);

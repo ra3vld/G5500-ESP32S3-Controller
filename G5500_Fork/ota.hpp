@@ -2,11 +2,14 @@
 #pragma once
 #include "ota_policy.hpp"
 #include "build_config.hpp"
+#include "ota_progress.hpp"
 namespace forkrot {
 #if OTA_SUPPORT
 class Ota {
 public:
   using Stop = void (*)(void *);
+  using Progress = void (*)(void *,const OtaProgress &);
+  void setProgress(Progress callback) {progress_=callback;}
   void begin(Stop stop, void *context);
   void service();
   bool locked() const { return locked_; }
@@ -22,6 +25,9 @@ public:
 private:
   void lock();
   void fail(const char *error);
+  void publish(OtaStage stage);
+  Progress progress_=nullptr;
+  OtaProgress shown_{};
   OtaCapacity capacity_;
   Stop stop_ = nullptr;
   void *context_ = nullptr;
@@ -36,6 +42,8 @@ class Ota {
   uint32_t restartAt_=0;bool restarting_=false;
 public:
   using Stop=void(*)(void *);
+  using Progress=void(*)(void *,const OtaProgress &);
+  void setProgress(Progress){}
   void begin(Stop,void *){}
   void service(){}
   bool locked() const{return false;}

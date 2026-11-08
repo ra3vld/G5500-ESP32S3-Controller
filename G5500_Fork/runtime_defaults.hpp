@@ -7,7 +7,7 @@
 #define BLUETOOTH_ENABLED 0
 #endif
 
-// BT_AUTO — встроенный SPP на ESP32, внешний HC-05 на S2/S3.
+// BT_AUTO — встроенный SPP при его наличии в сборке, иначе внешний HC-05.
 // BT_HC05 — внешний модуль по UART на любой плате, включая ESP32.
 // BT_ESP32_SPP — встроенный Bluetooth Classic, только обычная ESP32.
 #ifndef BLUETOOTH_MODE

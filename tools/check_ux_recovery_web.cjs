@@ -70,12 +70,19 @@ async function snapshot(s,name){
    {
     const s=await instance(browser,{width,recovery:true});try{
      assert(await s.page.locator('#recovery-guide').isVisible());assert(await s.page.locator('#manual-settings').isHidden());
+     assert.equal((await s.rpc('POST','/api/mqtt','enabled=1&tls=1&host=broker.example&port=8883&password=keep-secret')).status,200);
+     await s.page.locator('#recovery-mqtt-disable').click();
+     await s.page.waitForFunction(()=>document.getElementById('recovery-mqtt-message').textContent.includes('отключены'));
+     const mqtt=(await s.rpc('GET','/api/mqtt')).body;assert.equal(mqtt.enabled,false);assert.equal(mqtt.tls,false);assert.equal(mqtt.hasPassword,true);
+     await s.page.locator('#recovery-mqtt').screenshot({path:out+'/mqtt-recovery-'+width+'.png'});
      await s.page.locator('#hardwareStop').click();assert(!(await s.rpc('GET','/api/hardware')).moving);
      await s.page.locator('#recovery-network-open').click();await s.page.waitForFunction(()=>recoveryNetworkLoaded);
      await s.page.locator('#recovery-network [name=choice]').selectOption('0');await s.page.locator('#recovery-network [name=ssid]').fill('Fixed-router');await s.page.locator('#recovery-network [name=pass]').fill('password123');
      await s.page.locator('#recovery-network button[type=submit]').click();await s.page.waitForFunction(()=>!recoveryNetworkBusy);
      assert.match(await s.page.locator('#recovery-network-message').textContent(),/Сеть сохранена/);
      assert((await s.rpc('GET','/api/hardware')).body.recovery);await snapshot(s,'recovery-'+width);
+     assert.equal(await s.page.locator('#recovery-manual-open').getAttribute('aria-expanded'),'true');
+     await s.page.locator('#recovery-manual-open').click();assert(await s.page.locator('#manual-settings').isHidden());
      await s.page.locator('#recovery-manual-open').click();assert(await s.page.locator('#manual-settings').isVisible());
      await s.page.locator('#recovery-resume').click();await s.page.waitForFunction(()=>document.getElementById('message').textContent.startsWith('Сохранено.'));
      await s.rpc('POST','/__fixture/reboot');assert(!(await s.rpc('GET','/api/hardware')).body.recovery);

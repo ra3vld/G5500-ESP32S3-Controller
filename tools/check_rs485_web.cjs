@@ -39,10 +39,11 @@ async function sampleState(){return new Promise((resolve,reject)=>{
   });
   await page.goto('http://rs485.test/#settings');await page.waitForFunction(()=>window._forkState?.deviceRole==='hud');
   await page.locator('#peersSettings > details > summary').click();
+  await page.locator('#hudWiredDiscovery > summary').click();
   await page.locator('#hudBusFirst').fill('3');await page.locator('#hudBusLast').fill('7');
   await page.locator('#hudBusSearch').click();
   await page.waitForFunction(()=>document.getElementById('hudBusProgress').textContent.includes('адрес 5 / 7'));
-  assert.deepEqual(posts[0],{path:'/api/hud/discover',form:{transport:'rs485',first:'3',last:'7'}});
+  assert.deepEqual(posts.find(p=>p.path==='/api/hud/discover'),{path:'/api/hud/discover',form:{transport:'rs485',first:'3',last:'7'}});
   assert.match(await page.locator('#hudDiscovered').textContent(),/RS‑485 №3/);
   await page.locator('#hudDiscovered button').first().click();
   await page.waitForFunction(()=>document.querySelectorAll('#hudPeerSettings .device-peer').length===1);

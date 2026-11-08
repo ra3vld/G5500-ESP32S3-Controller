@@ -1,9 +1,8 @@
 diff --git a/tests/direct_motion_tests.cpp b/tests/direct_motion_tests.cpp
 new file mode 100644
-index 0000000..717e01e
 --- /dev/null
 +++ b/tests/direct_motion_tests.cpp
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,51 @@
 +#include "control.hpp"
 +#include <cassert>
 +#include <cmath>
@@ -17,6 +16,14 @@ index 0000000..717e01e
 +}
 +void feed(Controller &c,float az,uint32_t now){c.feedbackAt(0,az,true,now);c.feedbackAt(1,90,true,now);c.tick(now);}
 +int main(){
++ {auto c=rig();feed(c,90,1000);assert(c.setRuntimeSpeed(0,20,1000)==Result::Ok);
++  assert(c.jog(0,1,false,1000)==Result::Ok);feed(c,90,1000);
++  const auto settings=c.motionSettings[0];const auto epoch=c.stopEpoch;
++  assert(c.configureMotion(0,settings,1001));
++  assert(c.stopEpoch==epoch&&c.axes[0].direction==1&&c.axes[0].speedOutputPercent==20);
++  auto changed=settings;changed.outputLimitPercent=25;
++  assert(c.configureMotion(0,changed,1002));assert(c.stopEpoch!=epoch&&!c.moving());
++ }
 + {auto c=rig();feed(c,90,1000);assert(c.jog(0,1,false,1000)==Result::Ok);feed(c,90,1000);
 +  assert(c.axes[0].direction==1&&c.axes[0].speedOutputPercent==30);
 +  c.stopNow(-1,1001);assert(!c.moving()&&c.axes[0].speedOutputPercent==0);
@@ -48,10 +55,9 @@ index 0000000..717e01e
 + std::cout<<"PASS direct PWM, STOP, reverse interlock, target/limits, feedback/stall and disabled autotune\n";
 +}
 diff --git a/tests/http_ingress_tests.cpp b/tests/http_ingress_tests.cpp
-index 9ff73bb..2c05b73 100644
 --- a/tests/http_ingress_tests.cpp
 +++ b/tests/http_ingress_tests.cpp
-@@ -122,40 +122,43 @@ int main() {
+@@ -122,40 +122,43 @@
    connect("GET /api/status HTTP/1.1\r\nX: "+std::string(1600,'x')+"\r\n\r\n");
    fakeHeapFree=8172;fakeHeapBlock=1524;
    web.handleClient();assert(testSocket.parsed==0 && testSocket.reset);
@@ -103,7 +109,7 @@ index 9ff73bb..2c05b73 100644
      fakeHardware.now+=5;
      if(i%16==15) testSocket.outstanding=0; // radio/TCP ACK every 80ms
      const auto bytesBefore=testSocket.output.size();
-@@ -165,7 +168,7 @@ int main() {
+@@ -165,7 +168,7 @@
      assert(fakeHardware.now==timeBefore && !web.writeFailed());
    }
    assert(waiting>20 && web.diagnostics().writeFailures==failuresBefore);
@@ -112,7 +118,7 @@ index 9ff73bb..2c05b73 100644
    // A stable 28 KiB heap (or a fragmented heap below the burst threshold)
    // must still deliver a complete page. The former all-or-nothing gate sent
    // its 200/Content-Length header, then no body until the idle deadline.
-@@ -173,7 +176,7 @@ int main() {
+@@ -173,7 +176,7 @@
      connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
      fakeHeapFree=fragmented?40000:28672;fakeHeapBlock=fragmented?10240:16384;
      testSocket.queueCapacity=1024;
@@ -121,7 +127,7 @@ index 9ff73bb..2c05b73 100644
      const auto lowFailures=web.diagnostics().writeFailures;
      const auto started=fakeHardware.now;
      web.handleClient();
-@@ -190,7 +193,7 @@ int main() {
+@@ -190,7 +193,7 @@
      }
      assert(!testSocket.open && !testSocket.reset && fakeHardware.now-started<30000);
      assert(web.diagnostics().writeFailures==lowFailures);
@@ -130,7 +136,7 @@ index 9ff73bb..2c05b73 100644
    }
    // JSON fallback also makes progress below the burst reserve, including a
    // temporary deeper dip after its first bytes. Never restart the response.
-@@ -210,7 +213,7 @@ int main() {
+@@ -210,7 +213,7 @@
    // Drain a bounded burst so the complete gzip arrives before HTML's deadline.
    connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
    fakeHeapFree=80000;fakeHeapBlock=65536;
@@ -139,7 +145,7 @@ index 9ff73bb..2c05b73 100644
    web.handleClient();
    const auto slowStart=testSocket.output.find("\r\n\r\n")+4;
    unsigned slowLoops=0;
-@@ -220,13 +223,13 @@ int main() {
+@@ -220,13 +223,13 @@
      assert(fakeHardware.now==before && testSocket.output.size()-bytes<=4096);
    }
    assert(!web.writeFailed() && !testSocket.open && slowLoops<30);
@@ -155,7 +161,7 @@ index 9ff73bb..2c05b73 100644
    const auto failuresBeforeStall=web.diagnostics().writeFailures;
    web.handleClient();
    const auto recoveryStart=testSocket.output.find("\r\n\r\n")+4;
-@@ -242,10 +245,10 @@ int main() {
+@@ -242,10 +245,10 @@
    }
    testSocket.blockWrites=false;testSocket.sendQuota=size_t(-1);
    // Allow the larger settings page to drain after recovery; the loop remains bounded.
@@ -170,7 +176,6 @@ index 9ff73bb..2c05b73 100644
    for(unsigned i=0;testSocket.output.size()<statusStart+1500 && i<20;++i) {
 diff --git a/tests/minimal_storage_tests.cpp b/tests/minimal_storage_tests.cpp
 new file mode 100644
-index 0000000..f5f5af2
 --- /dev/null
 +++ b/tests/minimal_storage_tests.cpp
 @@ -0,0 +1,89 @@
@@ -264,10 +269,9 @@ index 0000000..f5f5af2
 +  std::cout << "PASS minimal storage failures, frequency/STOP, deferred speed persistence and legacy tuning load without NVS rewrite\n";
 +}
 diff --git a/tools/build_native.sh b/tools/build_native.sh
-index 29d6e6a..80466ae 100755
 --- a/tools/build_native.sh
 +++ b/tools/build_native.sh
-@@ -34,7 +34,7 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DLWIP_TCPIP_CORE_LOCKING=0 -I
+@@ -34,7 +34,7 @@
  ./build/tcp_peer_no_core_lock_tests
  ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DLWIP_IPV6=0 -I tests/tcp_fakes -I G5500_Fork tests/tcp_peer_tests.cpp -o build/tcp_peer_ipv4_tests
  ./build/tcp_peer_ipv4_tests
@@ -276,7 +280,7 @@ index 29d6e6a..80466ae 100755
  CORE_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp G5500_Fork/mqtt_bridge.cpp G5500_Fork/mqtt_service.cpp"
  ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork $CORE_SOURCES tests/planner_memory_tests.cpp -o build/planner_memory_tests
  ./build/planner_memory_tests
-@@ -336,3 +336,13 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -DDISPLAY_KIN
+@@ -336,3 +336,16 @@
  ./build/pin_map_tests_4_d0
  ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -DDISPLAY_KIND=6 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/pin_map_tests.cpp -o build/pin_map_tests_4_d6
  ./build/pin_map_tests_4_d6
@@ -290,3 +294,41 @@ index 29d6e6a..80466ae 100755
 +${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork $CORE_SOURCES tests/az_range_tests.cpp -o build/essential_az_range_tests
 +
 +${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork $CORE_SOURCES tests/el_range_tests.cpp -o build/essential_el_range_tests
++
++${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -DDISPLAY_SUPPORT=0 -DLOCAL_INPUT_SUPPORT=0 -DWEB_LIVE_SUPPORT=0 -DRS485_SUPPORT=0 -DOTA_SUPPORT=0 -DLOG_HISTORY_SUPPORT=0 -DRESET_HISTORY_SUPPORT=0 -DN1MM_SUPPORT=1 -DPSTROTATOR_SUPPORT=1 -DROTCTLD_SUPPORT=1 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/esp32_spp_api_tests.cpp -o build/esp32_spp_api_tests
++./build/esp32_spp_api_tests
+diff --git a/tests/esp32_spp_api_tests.cpp b/tests/esp32_spp_api_tests.cpp
+new file mode 100644
+--- /dev/null
++++ b/tests/esp32_spp_api_tests.cpp
+@@ -0,0 +1,30 @@
++#include "device_service_fixture.hpp"
++static void essentialProtocolSettingsTests() {
++  for(bool wire:{false,true}) {
++    Fixture f;auto &r=f.runtime;r.hud.config.role=DeviceRole::Controller;r.controller.remote=nullptr;
++    r.controller.driveFault=false;r.controller.fault.clear();r.controller.feedback(90,45,true,true);
++    assert(f.call("POST","/api/settings","n1mmPort=12041&pstPort=1236&reportPort=13011&reportHost=192.0.2.15&n1mmManualFollow=1&pstManualFollow=0&rotctldManualFollow=1&gs232ManualFollow=0",wire).status==200);
++    const auto response=f.call("GET","/api/config","view=essential",wire);
++    assert(response.status==200 && response.body.size()<=COMMAND_PAGE_MAX);
++    for(const char *field:{"\"n1mmPort\":12041","\"pstPort\":1236","\"reportPort\":13011","\"reportHost\":\"192.0.2.15\"","\"n1mmManualFollow\":true","\"pstManualFollow\":false","\"rotctldManualFollow\":true","\"gs232ManualFollow\":false"})
++      assert(response.body.find(field)!=response.body.npos);
++    Runtime loaded;f.storage.loadForkSettings(loaded);
++    assert(loaded.loggerSettings.n1mmPort==12041 && loaded.loggerSettings.pstPort==1236);
++    assert(loaded.loggerSettings.reportPort==13011 && loaded.loggerSettings.reportHost=="192.0.2.15");
++    assert(loaded.protocol.manualFollow.n1mm && loaded.protocol.manualFollow.rotctld);
++    assert(!loaded.protocol.manualFollow.pst && !loaded.protocol.manualFollow.gs232);
++    assert(r.protocol.datagram("<PST><AZIMUTH>100</AZIMUTH></PST>",fakeHardware.now).result==Result::Pending);
++    const auto epoch=r.controller.stopEpoch;
++    assert(f.call("POST","/api/settings","reportHost=",wire).status==200);
++    assert(r.controller.pendingValid && r.controller.pending.az==100 && r.controller.stopEpoch==epoch);
++    assert(!r.controller.moving()); // Saving protocol settings never executes a pending target.
++    const auto before=Preferences::database;
++    assert(f.call("POST","/api/settings","n1mmPort=4534",wire).status==400);
++    assert(Preferences::database==before);
++  }
++}
++int main() {
++  static_assert(ROTCTLD_SUPPORT && N1MM_SUPPORT && PSTROTATOR_SUPPORT);
++  essentialProtocolSettingsTests();
++  std::cout << "PASS compact protocol settings: HTTP/wire projection, independent policies, NVS roundtrip and port conflicts\n";
++}

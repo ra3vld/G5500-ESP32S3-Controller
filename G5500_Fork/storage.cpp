@@ -39,7 +39,7 @@ bool Storage::loadSetup(Runtime &r) {
     const char *keys[]={"config1","ssid","model","cfg1"};
     for(unsigned i=0;i<4;++i){if(prefs_.begin(spaces[i],true)) {
       legacy=legacy||prefs_.isKey(keys[i]);
-      if(i==1)legacy=legacy||prefs_.isKey("appass")||prefs_.isKey("calfmt")||prefs_.isKey("calmode");
+      if(i==1)legacy=legacy||prefs_.isKey("appass")||prefs_.isKey("calfmt")||prefs_.isKey("calmode")||prefs_.isKey("azgeom1");
       if(i==2)legacy=legacy||prefs_.isKey("rotorName");
       if(i==3)legacy=legacy||prefs_.isKey("config");
     }prefs_.end();}
@@ -531,6 +531,22 @@ const char *Storage::calNamespace(const Runtime &runtime) {
   return runtime.controller.model==Model::G800SA?"g800sacal":runtime.controller.model!=Model::G5500?"g800cal":"g5500";
 }
 
+bool Storage::retireLegacyCalibration() {
+  // Caller has verified the complete 512-byte record and opened its namespace
+  // read/write. Never delete the source keys before a successful migration.
+  for (const auto *key : {"calfmt", "calmode", "azmode",
+      "a36z", "a36f", "a45z", "a45f", "a36os", "a36fs", "a45os", "a45fs",
+      "el0mv", "elmaxmv", "elos", "elfs",
+      "a36m0", "a36m90", "a36m180", "a36m270", "a36m360",
+      "a45m0", "a45m90", "a45m180", "a45m270", "a45m360", "a45m450",
+      "elm0", "elm45", "elm90", "elm135", "elm180",
+      "az0mv", "azmaxmv", "az2maxdeg", "az2oset", "az2fset", "el2oset", "el2fset",
+      "azm0", "azm90", "azm180", "azm270", "azm360", "azm450"}) {
+    if (prefs_.isKey(key) && (!prefs_.remove(key) || prefs_.isKey(key))) return false;
+  }
+  return true;
+}
+
 void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredentials &credentials, bool wifiOnly) {
   auto &calibrationState = calibration.state();
   if(!loadNetwork(credentials.network)) {
@@ -564,6 +580,11 @@ void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredenti
       runtime.controller.fault = "calibration_storage_invalid";
     } else if (recordSize == CalibrationRecordV1{}.size() && !saveCal(runtime, calibration)) {
       runtime.controller.fault = "calibration_save_failed";
+    } else if (recordSize == CalibrationRecord{}.size()) {
+      // Reclaim duplicates before a replacement blob needs free NVS entries.
+      // Interrupted cleanup leaves the verified record authoritative and retries.
+      if (prefs_.begin(calNamespace(runtime), false)) retireLegacyCalibration();
+      prefs_.end();
     }
     bindPositionSensors(calibrationState,runtime.controller.hardware);
     calibration.refreshMultiCalValidity();
@@ -737,7 +758,7 @@ void Storage::loadPrefs(Runtime &runtime, Calibration &calibration, WifiCredenti
 
   calibrationState.cal.valid = calibration.selectedCalibrationValid();
   bindPositionSensors(calibrationState,runtime.controller.hardware);
-  // Migrate once, including format 4, without changing the legacy keys' meaning.
+  // Migrate once, including format 4; retire source keys only after verification.
   if (!saveCal(runtime, calibration)) runtime.controller.fault = "calibration_save_failed";
   runtime.controller.setRange(calibration.activeAzRange(), calibrationState.gsAzMode);
   runtime.controller.setElRange(calibration.activeElRange(), calibrationState.elProfile);
@@ -763,46 +784,12 @@ bool Storage::saveCal(const Runtime &runtime, Calibration &calibration) {
   if (!prefs_.begin(calNamespace(runtime), false)) { prefs_.end(); return false; }
   const auto record = calibrationRecord(calibrationState);
   CalibrationRecord verified{};
-  prefs_.putBytes("azgeom1", record.data(), record.size());
-  const bool saved = prefs_.getBytesLength("azgeom1") == record.size() &&
+  const bool saved = prefs_.putBytes("azgeom1", record.data(), record.size()) == record.size() &&
+      prefs_.getBytesLength("azgeom1") == record.size() &&
       prefs_.getBytes("azgeom1", verified.data(), verified.size()) == verified.size() && verified == record;
   if (!saved) { prefs_.end(); return false; }
-  prefs_.putUChar("calfmt", 4);
-  prefs_.putUChar("calmode", (uint8_t)calibrationState.calibrationMode);
-  if (calibrationState.gsAzMode != AZ_CUSTOM) prefs_.putUChar("azmode", calibrationState.gsAzMode);
-
-  prefs_.putInt("a36z", calibrationState.cal.az36_0);
-  prefs_.putInt("a36f", calibrationState.cal.az36Max);
-  prefs_.putInt("a45z", calibrationState.cal.az45_0);
-  prefs_.putInt("a45f", calibrationState.cal.az45Max);
-  prefs_.putBool("a36os", calibrationState.az36OSet);
-  prefs_.putBool("a36fs", calibrationState.az36FSet);
-  prefs_.putBool("a45os", calibrationState.az45OSet);
-  prefs_.putBool("a45fs", calibrationState.az45FSet);
-
-  prefs_.putInt("el0mv", calibrationState.cal.el0);
-  prefs_.putInt("elmaxmv", calibrationState.cal.elMax);
-  prefs_.putBool("elos", calibrationState.elOSet);
-  prefs_.putBool("elfs", calibrationState.elFSet);
-
-  prefs_.putInt("a36m0", calibrationState.az36CalMv[0]);
-  prefs_.putInt("a36m90", calibrationState.az36CalMv[1]);
-  prefs_.putInt("a36m180", calibrationState.az36CalMv[2]);
-  prefs_.putInt("a36m270", calibrationState.az36CalMv[3]);
-  prefs_.putInt("a36m360", calibrationState.az36CalMv[4]);
-
-  prefs_.putInt("a45m0", calibrationState.az45CalMv[0]);
-  prefs_.putInt("a45m90", calibrationState.az45CalMv[1]);
-  prefs_.putInt("a45m180", calibrationState.az45CalMv[2]);
-  prefs_.putInt("a45m270", calibrationState.az45CalMv[3]);
-  prefs_.putInt("a45m360", calibrationState.az45CalMv[4]);
-  prefs_.putInt("a45m450", calibrationState.az45CalMv[5]);
-
-  prefs_.putInt("elm0", calibrationState.elCalMv[0]);
-  prefs_.putInt("elm45", calibrationState.elCalMv[1]);
-  prefs_.putInt("elm90", calibrationState.elCalMv[2]);
-  prefs_.putInt("elm135", calibrationState.elCalMv[3]);
-  prefs_.putInt("elm180", calibrationState.elCalMv[4]);
+  // The verified blob remains authoritative if cleanup is interrupted.
+  retireLegacyCalibration();
   prefs_.end();
   return true;
 }
@@ -913,6 +900,8 @@ void Storage::loadForkSettings(Runtime &runtime) {
                                         : forkrot::ExternalAzMode::Shortest);
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   runtime.loggerSettings.encoderInverted = prefs_.getBool("encinv", true);
+  runtime.loggerSettings.encoderStepDegrees = forkrot::checkedEncoderStepDegrees(
+      prefs_.getFloat("encstep", forkrot::DefaultEncoderStepDegrees));
 #endif
   prefs_.end();
   if (runtime.controller.hardware.drive != DRIVE_YAESU || runtime.controller.hardware.simulation) {
@@ -981,7 +970,14 @@ void Storage::loadMotionSettings(Runtime &runtime) {
     DriveRecord record{}; MotionSettings settings; SpeedSettings speed;
     const size_t storedSize=prefs_.getBytesLength(key);
     if(storedSize==record.size() && prefs_.getBytes(key,record.data(),record.size())==record.size() &&
-       decodeDrive(record,settings,speed)) { runtime.controller.motionSettings[i]=settings;runtime.controller.speeds[i]=speed; }
+       decodeDrive(record,settings,speed)) {
+      runtime.controller.motionSettings[i]=settings;runtime.controller.speeds[i]=speed;
+#if ESP32_SPP_PROFILE
+      // Use direct drive at runtime without rewriting legacy tuning in NVS.
+      auto &motion=runtime.controller.motionSettings[i];
+      motion.mode=RegulatorMode::Simple;motion.kickEnabled=false;motion.holdEnabled=false;
+#endif
+    }
     else if(storedSize) {
       // Missing settings use working defaults; damaged settings fail closed.
       runtime.controller.motionSettings[i].ready=false;
@@ -1049,6 +1045,7 @@ bool Storage::saveForkSettings(const Runtime &runtime) {
   putBool("azmech", runtime.protocol.externalAzMode == forkrot::ExternalAzMode::Mechanical);
 #if SELECTED_BOARD == BOARD_CROWPANEL_21
   putBool("encinv", runtime.loggerSettings.encoderInverted);
+  putFloat("encstep", runtime.loggerSettings.encoderStepDegrees);
 #endif
   prefs_.end();
   if(!valid)return false;

@@ -25,6 +25,7 @@ struct FakeWifi {
   String SSID() const {return connectedSsid;}
   int getMode() const {return WIFI_AP;}
   int RSSI() const {return -50;}
+  unsigned softAPgetStationNum() const {return 0;}
   IPAddress localIP() const {return IPAddress(1);}
   IPAddress softAPIP() const {return IPAddress(1);}
 };

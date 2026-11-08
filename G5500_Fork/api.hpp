@@ -2,12 +2,14 @@
 #pragma once
 #include "protocol.hpp"
 #include "json_writer.hpp"
+#include "encoder_settings.hpp"
 #include <map>
 namespace forkrot {
 struct Settings {
   unsigned n1mmPort = 12040, pstPort = 1234, reportPort = 13010, commandPort = 4535;
   std::string reportHost;
   bool encoderInverted = true;
+  float encoderStepDegrees = DefaultEncoderStepDegrees;
 };
 inline bool commandPortAllowed(unsigned port) {
   // ArduinoOTA, mDNS and the enabled HTTPD control sockets.

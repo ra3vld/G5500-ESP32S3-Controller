@@ -1,6 +1,7 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #pragma once
 #include "build_config.hpp"
+#include "ota_progress.hpp"
 #include <optional>
 #if GRAPHICAL_DISPLAY
 #include "runtime.hpp"
@@ -12,6 +13,9 @@
 #include <array>
 #if DISPLAY_KIND == DISPLAY_CROWPANEL_21
 #include "crowpanel_board.hpp"
+#include "crowpanel_frame.hpp"
+#include "crowpanel_draw_input.hpp"
+#include <memory>
 #if CROWPANEL_USB_TRACE
 #include "crowpanel_trace.hpp"
 #endif
@@ -56,10 +60,13 @@ class Display {
   bool hudTouchDown_=false,speedScreen_=false,speedKnobDown_=false;
   int speedRequested_[2]{-1,-1};
   panel::TouchGesture touchButtons_;
+#if DISPLAY_KIND == DISPLAY_GC9A01
+  CstContactFilter cstContact_;
+#endif
   uint32_t touchSerial_=0,touchSelection_=0,touchNoticeAt_=0;
   uint32_t inputRangeRevision_=0;
   Model inputModel_=Model::G5500;
-  bool touchNotice_=false;
+  const char *touchNotice_=nullptr;
   PanelUi ui_;
   panel::TouchLayout presentedLayout_{};
   PanelCommandContext requestedCommand_{}, presentedCommand_{};
@@ -73,6 +80,7 @@ class Display {
   bool rendering_=false,settingsRequested_=false;
   bool redraw_=true,inputHealthy_=true,touchHealthy_=true,inputReady_=false,displayFailed_=false;
   bool flushPending_=false;
+  bool otaScreen_=false;
   uint32_t flushGeneration_=0,flushStarted_=0;
   bool serviceFrame();
   static constexpr unsigned PanelWidth=DISPLAY_KIND==DISPLAY_ST77916?360:DISPLAY_KIND==DISPLAY_ST7796?480:DISPLAY_KIND==DISPLAY_CROWPANEL_21?480:DISPLAY_KIND==DISPLAY_GC9A01?240:320;
@@ -91,6 +99,9 @@ class Display {
   static void flushFrame(lv_display_t *display,const lv_area_t *area,uint8_t *pixels);
 #if DISPLAY_KIND == DISPLAY_CROWPANEL_21
   esp_lcd_panel_handle_t panel_=nullptr;
+  std::unique_ptr<crowpanel::FrameComposer> frameComposer_;
+  crowpanel::DrawInput drawInput_;
+  void *logicalFrames_[2]{};
 #if CROWPANEL_USB_TRACE
   CrowPanelTrace<> trace_;
   void serviceTrace(uint32_t now);
@@ -109,7 +120,11 @@ class Display {
   TwoWire touchBus_{1};
   bool touchBusReady_=false;
 #elif DISPLAY_KIND == DISPLAY_ST7796
+#if FORK_C3
+  TwoWire &touchBus_=Wire;
+#else
   TwoWire touchBus_{1};
+#endif
   Gt911Touch<TwoWire> touch_{touchBus_};
   static void sendPanelCommand(lv_display_t *,const uint8_t *,size_t,const uint8_t *,size_t);
   static void sendPanelPixels(lv_display_t *,const uint8_t *,size_t,uint8_t *,size_t);
@@ -151,6 +166,7 @@ public:
   void loadTouchCalibration();
   void startAfterCalibrationLoad();
   void initLocalDisplay();void serviceTouch();void updateLocalDisplay();
+  void showOta(const OtaProgress &progress);
 };
 }
 #elif DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_LCD1602
@@ -175,6 +191,7 @@ public:
   void serviceTouch() {}
   void initLocalDisplay();
   void updateLocalDisplay();
+  void showOta(const OtaProgress &){}
 };
 }
 #else
@@ -201,6 +218,7 @@ public:
   void serviceTouch() {}
   void initLocalDisplay() {}
   void updateLocalDisplay() {}
+  void showOta(const OtaProgress &){}
 };
 } // namespace forkrot
 

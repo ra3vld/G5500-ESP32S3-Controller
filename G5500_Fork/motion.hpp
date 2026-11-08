@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <cstddef>
+#include "build_config.hpp"
 #include "motion_timing.hpp"
 namespace forkrot {
 enum class RegulatorMode : uint8_t { Simple, Cascade };
@@ -69,6 +70,7 @@ inline constexpr size_t MotionRecordSize = 12 + 4 * (std::size(motionRealFields)
 using MotionRecord = std::array<uint8_t, MotionRecordSize>;
 MotionRecord encodeMotionSettings(const MotionSettings &);
 bool decodeMotionSettings(const MotionRecord &, MotionSettings &);
+#if !ESP32_SPP_PROFILE
 struct MotionPid {
   float integral = 0, derivative = 0, lastMeasurement = 0;
   bool initialized = false;
@@ -96,12 +98,13 @@ struct MotionPositionProfile {
   unsigned segment = 0;
   bool valid = false, negative = false;
 };
+#endif
 // Timestamped, bounded least-squares velocity estimator; unchanged samples are real
 // zero-motion evidence only when a new ADC conversion has actually occurred.
 struct MotionFeedback {
   struct Sample { float position = 0; uint32_t at = 0; };
   // Preserve the entire maximum 600 ms window, including both endpoints.
-  std::array<Sample, 600 / 5 + 2> samples{};
+  std::array<Sample, ESP32_SPP_PROFILE ? 8 : 600 / 5 + 2> samples{};
   unsigned count = 0, next = 0, rejectedSamples = 0;
   bool timed = false, valid = false;
   uint32_t at = 0, rejectedAt = 0;
@@ -123,6 +126,14 @@ struct MotionFeedback {
 };
 // Only transient regulation state is cleared by STOP/idle. Feedback and
 // timing have a separate lifetime and must never be copied through the stack.
+#if ESP32_SPP_PROFILE
+struct MotionState {
+  bool started=false,progressValid=false;
+  uint32_t at=0,nextAt=0,progressAt=0;
+  float progressPosition=0;
+  int progressDirection=0;
+};
+#else
 struct MotionState {
   MotionPid positionPid, velocityPid;
   MotionVelocityProfile velocityProfile;
@@ -153,6 +164,7 @@ struct MotionState {
   int kickDirection = 0, targetDirection = 0;
   bool crossedTarget = false;
 };
+#endif
 struct MotionRuntime : MotionState {
   MotionFeedback feedback;
   MotionTiming timing;

@@ -1,4 +1,4 @@
-// ESP32-3248S035C: LVGL's ST7796 driver over SPI, GT911 on I2C1. GPL-3.0.
+// ST7796 over SPI with GT911 touch; fixed or runtime wiring. GPL-3.0.
 #include "display.hpp"
 #if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_ST7796
 #include "board.hpp"
@@ -8,15 +8,18 @@
 #include <SPI.h>
 namespace forkrot {
 namespace {
+// LVGL sends initialization commands before create() returns and user data exists.
+// There is one physical SPI panel; capture its validated wiring before create().
+int panelCs=-1,panelDc=-1;
 void transfer(const uint8_t *command,size_t commands,const uint8_t *data,size_t bytes,bool pixels) {
   SPI.beginTransaction(SPISettings(40000000,MSBFIRST,SPI_MODE0));
-  digitalWrite(board::PIN_PANEL_CS,LOW);digitalWrite(board::PIN_PANEL_DC,LOW);
-  SPI.writeBytes(command,commands);digitalWrite(board::PIN_PANEL_DC,HIGH);
+  digitalWrite(panelCs,LOW);digitalWrite(panelDc,LOW);
+  SPI.writeBytes(command,commands);digitalWrite(panelDc,HIGH);
   if(bytes) {
     if(pixels) SPI.writePixels(data,bytes); // ESP32 swaps little-endian RGB565 for the SPI wire.
     else SPI.writeBytes(data,bytes);
   }
-  digitalWrite(board::PIN_PANEL_CS,HIGH);SPI.endTransaction();
+  digitalWrite(panelCs,HIGH);SPI.endTransaction();
 }
 }
 void Display::sendPanelCommand(lv_display_t *,const uint8_t *cmd,size_t commands,const uint8_t *data,size_t bytes) {
@@ -32,16 +35,24 @@ void Display::sendPanelPixels(lv_display_t *display,const uint8_t *cmd,size_t co
   }
 }
 void Display::initLocalDisplay() {
-  pinMode(board::PIN_BACKLIGHT,OUTPUT);digitalWrite(board::PIN_BACKLIGHT,LOW);
-  pinMode(board::PIN_PANEL_CS,OUTPUT);digitalWrite(board::PIN_PANEL_CS,HIGH);
-  pinMode(board::PIN_PANEL_DC,OUTPUT);
+  const auto p=displayPins(runtime_.controller.hardware);
+  panelCs=p.tftCs;panelDc=p.tftDc;
+  if(p.tftBacklight>=0) {pinMode(p.tftBacklight,OUTPUT);digitalWrite(p.tftBacklight,LOW);}
+  pinMode(panelCs,OUTPUT);digitalWrite(panelCs,HIGH);pinMode(panelDc,OUTPUT);
+#if SELECTED_BOARD == BOARD_ESP32_3248S035C
   pinMode(5,OUTPUT);digitalWrite(5,HIGH); // Unselected onboard SD card.
   for(int pin:{4,16,17}) {pinMode(pin,OUTPUT);digitalWrite(pin,HIGH);} // Active-low RGB LED off.
-  SPI.begin(board::PIN_PANEL_SCK,board::PIN_PANEL_MISO,board::PIN_PANEL_MOSI,board::PIN_PANEL_CS);
-  pinMode(board::PIN_GT_RST,OUTPUT);digitalWrite(board::PIN_GT_RST,LOW);delay(10);
-  digitalWrite(board::PIN_GT_RST,HIGH);delay(100);
-  // Do not drive INT: stock revisions may connect it to ground.
-  touchBus_.setTimeOut(3);touchHealthy_=touchBus_.begin(board::PIN_I2C_SDA,board::PIN_I2C_SCL,100000) && touch_.begin();
+#endif
+  SPI.begin(p.tftSck,-1,p.tftMosi,p.tftCs);
+  if(p.tftRst>=0) {
+    pinMode(p.tftRst,OUTPUT);digitalWrite(p.tftRst,LOW);delay(10);digitalWrite(p.tftRst,HIGH);delay(100);
+  }
+  if(p.touchRst>=0) {
+    pinMode(p.touchRst,OUTPUT);digitalWrite(p.touchRst,LOW);delay(10);digitalWrite(p.touchRst,HIGH);delay(100);
+  }
+  // Do not drive INT: stock revisions may connect it to ground. Probe both addresses.
+  if(p.touchIrq>=0) pinMode(p.touchIrq,INPUT);
+  touchBus_.setTimeOut(3);touchHealthy_=touchBus_.begin(p.touchSda,p.touchScl,100000) && touch_.begin();
   lv_init();lv_tick_set_cb([]()->uint32_t{return millis();});lv_delay_set_cb([](uint32_t ms){delay(ms);});
   display_=lv_st7796_create(screenWidth(),screenHeight(),LV_LCD_FLAG_NONE,sendPanelCommand,sendPanelPixels);
   if(!display_) {displayFailed_=true;diagnostics_.dbgPrintln("[Display] ST7796 allocation failed");return;}
@@ -52,7 +63,7 @@ void Display::initLocalDisplay() {
   lv_display_set_buffers(display_,pixels_.data(),nullptr,sizeof pixels_,LV_DISPLAY_RENDER_MODE_PARTIAL);
   ui_.create(false);ui_.update(PanelView{});
   rendering_=true;lv_refr_now(display_);rendering_=false;
-  digitalWrite(board::PIN_BACKLIGHT,HIGH);
+  if(p.tftBacklight>=0) digitalWrite(p.tftBacklight,HIGH);
   diagnostics_.dbgPrintln(touchHealthy_?"[Display] ST7796 480x320 / GT911 ready":"[Display] ST7796 ready; GT911 unavailable");
 }
 bool Display::serviceFrame() {return !displayFailed_;}

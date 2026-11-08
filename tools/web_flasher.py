@@ -7,9 +7,9 @@ import os
 from pathlib import Path
 import re
 import shutil
+import shlex
 import subprocess
 import tempfile
-from itertools import product
 import zipfile
 
 from project_version import resolve
@@ -36,11 +36,21 @@ SERVICES = {
 }
 
 
-def profiles():
+def project_config():
     import configparser
     config = configparser.ConfigParser(interpolation=None)
     config.read(ROOT / 'platformio.ini')
-    config.read(ROOT / 'tools/profiles/esp32_spp.ini')
+    extra = config.get('platformio', 'extra_configs', fallback='')
+    for name in re.split(r'[,\s]+', extra.strip()):
+        if name:
+            config.read(ROOT / name)
+    if not (ROOT / 'platformio/esp32_spp.ini').is_file():
+        config.read(ROOT / 'tools/profiles/esp32_spp.ini')
+    return config
+
+
+def profiles():
+    config = project_config()
     data = json.loads(PROFILES.read_text())['profiles']
     ids = set()
     for profile in data:
@@ -49,18 +59,26 @@ def profiles():
             raise ValueError('Invalid or duplicate profile: ' + name)
         if not (ROOT / profile['docs']).is_file():
             raise ValueError('Missing documentation: ' + profile['docs'])
+        if type(profile.get('display_kind')) is not int or not 0 <= profile['display_kind'] <= 6:
+            raise ValueError('Invalid display kind: ' + name)
+        if type(profile.get('service_variants')) is not bool:
+            raise ValueError('Missing service variant policy: ' + name)
+        for flag, enabled in profile.get('required_capabilities', {}).items():
+            if flag not in CAPABILITIES or type(enabled) is not bool:
+                raise ValueError('Invalid required capability: ' + name)
         ids.add(name)
     variants = []
     for base in data:
         available = base['services']
         if set(available) != set(SERVICES) or any(type(v) is not bool for v in available.values()):
             raise ValueError('Invalid service selection: ' + base['id'])
-        for values in product(*[(True, False) if available[k] else (False,) for k in SERVICES]):
-            services = dict(zip(SERVICES, values))
+        selectable = {k: available[k] and base['service_variants'] for k in SERVICES}
+        for enabled in ((True, False) if base['service_variants'] and any(available.values()) else (True,)):
+            services = {key: enabled and available[key] for key in SERVICES}
             disabled = [k for k in SERVICES if available[k] and not services[k]]
             name = base['id'] + ('_no_' + '_'.join(disabled) if disabled else '')
             variants.append(dict(base, id=name, base_id=base['id'], services=services,
-                                 available_services=available))
+                                 available_services=available, selectable_services=selectable))
     return variants
 
 
@@ -81,11 +99,85 @@ def source_digest():
               'tools/web_flasher_spp.py', 'tools/build_s2_sdk.py',
               'tools/profiles/esp32_spp.patch', 'tools/profiles/sdkconfig_esp32_spp.defaults',
               'tools/profiles/esp32_spp.ini']]
+    paths += [ROOT / name for name in ('platformio/esp32_spp.ini', 'tools/build_esp32_spp.py',
+                                      'tools/sdkconfig_esp32_spp.defaults', 'requirements-platformio.txt')
+              if (ROOT / name).is_file()]
     digest = hashlib.sha256()
-    digest.update(json.dumps([(p['id'], p['services']) for p in profiles()], sort_keys=True).encode())
+    digest.update(json.dumps([(p['id'], p['services'], p.get('display_kind', 0), p.get('required_capabilities', {})) for p in profiles()], sort_keys=True).encode())
     for path in paths:
         digest.update(path.relative_to(ROOT).as_posix().encode() + b'\0' + path.read_bytes() + b'\0')
     return digest.hexdigest()
+
+
+def profile_build_flags(profile):
+    flags = ['-D ' + flag + '=0' for service, names in SERVICES.items()
+             if service in profile.get('available_services', {}) and not profile['services'][service]
+             for flag in names]
+    flags += ['-D ' + flag + '=' + str(int(enabled))
+              for flag, enabled in profile.get('required_capabilities', {}).items()]
+    return flags
+
+
+def config_option(config, section, key, trail=()):
+    token = (section, key)
+    if token in trail:
+        raise ValueError('Cyclic PlatformIO option: ' + section + '.' + key)
+    trail = (*trail, token)
+    value = config.get(section, key, fallback=None)
+    if value is None:
+        parent = config.get(section, 'extends', fallback='').strip()
+        if parent:
+            value = config_option(config, parent, key, trail)
+        elif section != 'env':
+            value = config_option(config, 'env', key, trail)
+        else:
+            value = ''
+    return re.sub(r'\$\{([^}]+)\}',
+                  lambda match: config_option(config, *match[1].rsplit('.', 1), trail), value)
+
+
+def planned_capabilities(profile):
+    """Evaluate the selected headers/defines without compiling firmware."""
+    from build_capabilities import partition_capabilities
+    config = project_config()
+    section = 'env:' + profile.get('base_id', profile['id'])
+    raw = shlex.split(config_option(config, section, 'build_flags') + ' ' +
+                      ' '.join(profile_build_flags(profile)))
+    definitions = []
+    index = 0
+    while index < len(raw):
+        flag = raw[index]
+        if flag in ('-D', '-U'):
+            index += 1
+            if index == len(raw):
+                raise ValueError('Incomplete preprocessor flag: ' + profile['id'])
+            definitions.append(flag + raw[index])
+        elif flag.startswith(('-D', '-U')):
+            definitions.append(flag)
+        index += 1
+    partitions = ROOT / config_option(config, section, 'board_build.partitions')
+    values = partition_capabilities(partitions, profile['flash_bytes'])
+    defined = {flag[2:].split('=', 1)[0] for flag in definitions if flag.startswith('-D')}
+    definitions += ['-D' + key + '=' + str(value) for key, value in values.items() if key not in defined]
+    target = {'ESP32':'ESP32', 'ESP32-S2':'ESP32S2', 'ESP32-S3':'ESP32S3', 'ESP32-C3':'ESP32C3'}[profile['chip_family']]
+    definitions.append('-DCONFIG_IDF_TARGET_' + target + '=1')
+    text = '#include "build_config.hpp"\nG5500_DISPLAY_KIND=DISPLAY_KIND\n' + '\n'.join(
+        f'#if {flag}\nG5500_CAP_{flag}=1\n#else\nG5500_CAP_{flag}=0\n#endif' for flag in CAPABILITIES)
+    compiler = shlex.split(os.environ.get('CXX', 'g++'))
+    result = subprocess.run([*compiler, '-E', '-P', '-x', 'c++', '-I', str(ROOT / 'G5500_Fork'), *definitions, '-'],
+                            input=text, text=True, capture_output=True, timeout=30)
+    if result.returncode:
+        raise ValueError('Cannot derive profile capabilities for ' + profile['id'] + ': ' + result.stderr[-2000:])
+    capabilities = {flag: value == '1' for flag, value in re.findall(r'G5500_CAP_(\w+)=(0|1)', result.stdout)}
+    if set(capabilities) != set(CAPABILITIES):
+        raise ValueError('Incomplete profile capabilities: ' + profile['id'])
+    display = re.search(r'G5500_DISPLAY_KIND=(\d+)', result.stdout)
+    if not display or int(display[1]) != profile['display_kind']:
+        raise ValueError('Profile display differs from configuration: ' + profile['id'])
+    for service, flags in SERVICES.items():
+        if any(capabilities[flag] != profile['services'][service] for flag in flags):
+            raise ValueError('Profile service differs from configuration: ' + profile['id'] + ':' + service)
+    return capabilities
 
 
 def build(profile, pio, jobs):
@@ -93,19 +185,27 @@ def build(profile, pio, jobs):
     name = profile['id']
     base = profile.get('base_id', name)
     digest = source_digest()
+    shared_cache = os.environ.get('G5500_WEB_FLASHER_SHARED_CACHE') == '1'
+    cache_key = base if shared_cache else name
     # Arduino generates and removes .ino.cpp beside the sketch. Each profile
     # therefore needs its own source directory as well as its own build cache.
-    sketch = ROOT / 'build/web-flasher-source' / name / 'G5500_Fork'
-    shutil.rmtree(sketch, ignore_errors=True)
-    shutil.copytree(ROOT / 'G5500_Fork', sketch,
-                    ignore=shutil.ignore_patterns('*.ino.cpp', 'build_identity.hpp', '__pycache__', 'build'))
+    sketch = ROOT / 'build/web-flasher-source' / cache_key / 'G5500_Fork'
+    if shared_cache:
+        from build_s2_sdk import copy_changed
+        shutil.copytree(ROOT / 'G5500_Fork', sketch, dirs_exist_ok=True, copy_function=copy_changed,
+                        ignore=shutil.ignore_patterns('*.ino.cpp', 'build_identity.hpp', '__pycache__', 'build'))
+    else:
+        shutil.rmtree(sketch, ignore_errors=True)
+        shutil.copytree(ROOT / 'G5500_Fork', sketch,
+                        ignore=shutil.ignore_patterns('*.ino.cpp', 'build_identity.hpp', '__pycache__', 'build'))
     project = ROOT
     environment = os.environ.copy()
     for key in ("PLATFORMIO_BUILD_FLAGS", "PLATFORMIO_BUILD_DIR"):
         environment.pop(key, None)
     if profile.get('recipe') == 'esp32_spp':
-        subprocess.run(['git', 'apply', '--unsafe-paths', '-p2', '--directory=' + str(sketch),
-                        str(ROOT / 'tools/profiles/esp32_spp.patch')], cwd=ROOT, check=True)
+        if not (ROOT / 'platformio/esp32_spp.ini').is_file():
+            subprocess.run(['git', 'apply', '--unsafe-paths', '-p2', '--directory=' + str(sketch),
+                            str(ROOT / 'tools/profiles/esp32_spp.patch')], cwd=ROOT, check=True)
         from web_flasher_spp import prepare_sdk, seed_cached_sdk
         project = sketch.parent
         shutil.copytree(ROOT / 'tools', project / 'tools', dirs_exist_ok=True,
@@ -119,31 +219,35 @@ def build(profile, pio, jobs):
     output.parent.mkdir(parents=True, exist_ok=True)
     # Flatten the base config: extra_configs would override src_dir again with
     # the shared sketch directory from platformio.ini.
-    config = configparser.ConfigParser(interpolation=None)
-    config.read(ROOT / 'platformio.ini')
-    config.read(ROOT / 'tools/profiles/esp32_spp.ini')
+    config = project_config()
+    config['platformio'].pop('extra_configs', None)
     config['platformio']['src_dir'] = str(sketch)
-    config['platformio']['build_dir'] = str(ROOT / '.pio/web-flasher' / name)
-    config['env:web_' + name] = {
+    config['platformio']['build_dir'] = str(ROOT / '.pio/web-flasher' / cache_key)
+    config['env:web_' + cache_key] = {
         'extends': 'env:' + base,
-        'build_flags': '${env:' + base + '.build_flags}\n' + '\n'.join(
-            '-D ' + flag + '=0' for service, flags in SERVICES.items()
-            if service in profile.get('available_services', {}) and not profile['services'][service]
-            for flag in flags),
+        'build_flags': '${env:' + base + '.build_flags}\n' + '\n'.join(profile_build_flags(profile)),
         'extra_scripts': f'${{env:{base}.extra_scripts}}\npost:tools/platformio_web_flasher.py',
         'custom_web_flasher_profile': name,
         'custom_web_flasher_root': str(ROOT),
         'custom_web_flasher_source_sha256': digest,
     }
+    ccache_script = environment.get('G5500_WEB_FLASHER_CCACHE_SCRIPT')
+    if ccache_script:
+        config['env:web_' + cache_key]['extra_scripts'] += '\npost:' + ccache_script
     if profile.get('recipe') == 'esp32_spp':
-        defaults = (ROOT / 'tools/profiles/sdkconfig_esp32_spp.defaults').read_text()
-        config['env:web_' + name]['custom_sdkconfig'] = defaults
-        config['env:web_' + name]['extra_scripts'] = '${env:' + base + '.extra_scripts}\npost:' + str(ROOT / 'tools/platformio_web_flasher.py')
+        from web_flasher_spp import sdk_defaults
+        defaults = sdk_defaults()
+        config['env:web_' + cache_key]['custom_sdkconfig'] = defaults
+        # Keep the verified custom SDK; the platform's default URL would replace it.
+        config['env:web_' + cache_key]['platform_packages'] = 'framework-arduinoespressif32-libs @ 5.5.5+sha.b774170ff46'
+        config['env:web_' + cache_key]['extra_scripts'] = '${env:' + base + '.extra_scripts}\npost:' + str(ROOT / 'tools/platformio_web_flasher.py')
+        if ccache_script:
+            config['env:web_' + cache_key]['extra_scripts'] += '\npost:' + ccache_script
     with output.open('w') as stream:
         config.write(stream)
     # Never leave a previous successful binary available after a failed rebuild.
     shutil.rmtree(ARTIFACTS / name, ignore_errors=True)
-    subprocess.run([pio, 'run', '-c', str(output), '-e', 'web_' + name, '-j', str(jobs)],
+    subprocess.run([pio, 'run', '-c', str(output), '-e', 'web_' + cache_key, '-j', str(jobs)],
                    cwd=project, env=environment, check=True)
     if not (ARTIFACTS / name / 'build.json').is_file():
         raise ValueError('Build did not export firmware: ' + name)
@@ -157,11 +261,16 @@ def validate_build(profile, directory, expected_identity, expected_digest):
         raise ValueError('Wrong firmware profile: ' + profile['id'])
     if report['identity'] != expected_identity or report['source_sha256'] != expected_digest:
         raise ValueError('Stale or mixed firmware revision: ' + profile['id'])
+    if report.get('display_kind') != profile.get('display_kind', 0):
+        raise ValueError('Compiled display mismatch: ' + profile['id'])
     if report['flash_bytes'] != profile['flash_bytes']:
         raise ValueError('Wrong flash size: ' + profile['id'])
     for service, flags in SERVICES.items():
         if any(bool(report['capabilities'][flag]) != profile['services'][service] for flag in flags):
             raise ValueError('Compiled service selection mismatch: ' + service)
+    for flag, enabled in profile.get('required_capabilities', {}).items():
+        if bool(report['capabilities'][flag]) != enabled:
+            raise ValueError('Compiled capability mismatch: ' + flag)
     files = report['files']
     names = [item['path'] for item in files]
     if len(set(names)) != len(names) or not {'bootloader.bin', 'partitions.bin', 'firmware.bin'} <= set(names):
@@ -190,6 +299,12 @@ def validate_build(profile, directory, expected_identity, expected_digest):
         raise ValueError('Missing application image')
     if not any(item['path'] == 'bootloader.bin' for item in files):
         raise ValueError('Missing bootloader')
+    elf_sha = report.get('elf_sha256', '')
+    if not re.fullmatch(r'[0-9a-f]{64}', elf_sha):
+        raise ValueError('Missing or invalid ELF digest: ' + profile['id'])
+    app = (directory / 'firmware.bin').read_bytes()
+    if app[32:36] != bytes.fromhex('3254cdab') or app[176:208].hex() != elf_sha:
+        raise ValueError('Embedded ELF digest mismatch: ' + profile['id'])
     return report
 
 
@@ -204,6 +319,7 @@ def assemble(output, allow_missing=False):
     catalog = dict(schema=1, identity=identity, profiles=[])
     prepared = []
     for profile in profiles():
+        profile = dict(profile, planned_capabilities=planned_capabilities(profile))
         directory = ARTIFACTS / profile['id']
         if not (directory / 'build.json').exists():
             if not allow_missing:

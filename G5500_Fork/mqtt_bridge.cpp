@@ -29,7 +29,7 @@ void haName(JsonWriter &j,const char *name) {
   else j << "G5500";
   j << '"';
 }
-struct Entity { const char *domain,*id,*name,*field,*command;int axis; };
+struct Entity { const char *domain,*id,*name,*field,*command;int axis;bool obsolete=false;int direction=0; };
 constexpr Entity entities[MqttBridge::EntityCount]={
   {"sensor","az","Азимут","az.current",nullptr,0},
   {"sensor","el","Элевация","el.current",nullptr,1},
@@ -51,16 +51,22 @@ constexpr Entity entities[MqttBridge::EntityCount]={
   {"button","preset_4","Пресет 4",nullptr,"preset_4",-1},
   {"sensor","name","Поворотка","name",nullptr,-1},
   {"sensor","node","Идентификатор","node",nullptr,-1},
-  {"button","left","Влево",nullptr,"left",0},
-  {"button","right","Вправо",nullptr,"right",0},
-  {"button","up","Вверх",nullptr,"up",1},
-  {"button","down","Вниз",nullptr,"down",1}
+  // Retained tombstones migrate the old button entities before switches appear.
+  {"button","left","Влево",nullptr,nullptr,0,true},
+  {"button","right","Вправо",nullptr,nullptr,0,true},
+  {"button","up","Вверх",nullptr,nullptr,1,true},
+  {"button","down","Вниз",nullptr,nullptr,1,true},
+  {"switch","left","Влево","az.direction","left",0,false,-1},
+  {"switch","right","Вправо","az.direction","right",0,false,1},
+  {"switch","up","Вверх","el.direction","up",1,false,1},
+  {"switch","down","Вниз","el.direction","down",1,false,-1}
 };
 #endif
 }
 MqttBridge::MqttBridge(Runtime &runtime,uint64_t gateway,Callbacks callbacks)
     :runtime_(runtime),gateway_(gateway),callbacks_(callbacks) {
   std::snprintf(base_,sizeof base_,"g5500/%012llx",static_cast<unsigned long long>(gateway));
+  std::snprintf(birthTopic_,sizeof birthTopic_,"%s/status",runtime_.mqtt.discoveryPrefix);
   selection_.store(runtime_.hud.selectionEpoch);
 }
 void MqttBridge::connection(bool online) {
@@ -69,9 +75,9 @@ void MqttBridge::connection(bool online) {
 }
 bool MqttBridge::receive(std::string_view topic,std::string_view payload,bool retained,uint32_t at) {
   const auto reject=[&](){rejected_.fetch_add(1);return false;};
-  char birth[64];std::snprintf(birth,sizeof birth,"%s/status",runtime_.mqtt.discoveryPrefix);
-  // Config is immutable throughout this bridge's lifetime; Runtime/Hud are loop-owned.
-  if(topic==birth) {if(payload=="online")rediscover_.store(true);return true;}
+  // A retiring SDK callback may overlap an owner-side config replacement.
+  // Its subscription belongs to this adapter's immutable startup snapshot.
+  if(topic==birthTopic_) {if(payload=="online")rediscover_.store(true);return true;}
   if(retained || !connected_.load() || payload.empty() || payload.size()>32)return reject();
   const std::string_view base(base_);
   if(topic.size()<=base.size() || topic.substr(0,base.size())!=base || topic[base.size()]!='/')return reject();
@@ -82,8 +88,9 @@ bool MqttBridge::receive(std::string_view topic,std::string_view payload,bool re
   topic.remove_prefix(slash+1);
   if(topic.substr(0,4)!="set/")return reject();
   topic.remove_prefix(4);
-  if(topic=="target_az" || topic=="target_el" || topic=="speed_az" || topic=="speed_el") {
-    request.op=topic.substr(0,6)=="target"?Operation::Target:Operation::Speed;
+  if(topic=="target_az" || topic=="target_el" || topic=="move_az" || topic=="move_el" || topic=="speed_az" || topic=="speed_el") {
+    request.direct=topic.substr(0,5)=="move_";
+    request.op=topic.substr(0,6)=="target" || request.direct?Operation::Target:Operation::Speed;
     request.axis=topic.substr(topic.size()-2)=="az"?0:1;
     if(!number(payload,request.value) || !std::isfinite(request.value))return reject();
   } else if(topic=="mode") {
@@ -92,13 +99,15 @@ bool MqttBridge::receive(std::string_view topic,std::string_view payload,bool re
     else if(payload=="auto")request.mode=Mode::Auto;
     else if(payload=="auto_1h")request.mode=Mode::AutoHour;
     else return reject();
+  } else if(topic=="left" || topic=="right" || topic=="up" || topic=="down") {
+    if(payload!="ON" && payload!="OFF" && payload!="PRESS")return reject();
+    request.axis=topic=="up" || topic=="down"?1:0;
+    request.op=payload=="OFF"?Operation::Stop:Operation::Jog;
+    request.direction=topic=="right" || topic=="up"?1:-1;
   } else {
     if(payload!="PRESS")return reject();
     if(topic=="stop" || topic=="stop_az" || topic=="stop_el") {
       request.op=Operation::Stop;request.axis=topic=="stop"?-1:topic=="stop_az"?0:1;
-    } else if(topic=="left" || topic=="right" || topic=="up" || topic=="down") {
-      request.op=Operation::Jog;request.axis=topic=="up" || topic=="down"?1:0;
-      request.direction=topic=="right" || topic=="up"?1:-1;
     } else if(topic=="execute")request.op=Operation::Execute;
     else if(topic.size()==8 && topic.substr(0,7)=="preset_" && topic[7]>='1' && topic[7]<='4') {
       request.op=Operation::Preset;request.slot=uint8_t(topic[7]-'1');
@@ -182,7 +191,7 @@ void MqttBridge::execute(const Request &request,uint32_t at) {
   if(callbacks_.beforeCommand)callbacks_.beforeCommand(callbacks_.context);
   ControlCommand command;command.axis=request.axis;
   switch(request.op) {
-  case Operation::Target:command.op=ControlOp::Target;command.external=true;command.target={request.axis==0?request.value:0,request.axis==1?request.value:0,request.axis==0,request.axis==1};break;
+  case Operation::Target:command.op=ControlOp::Target;command.external=!request.direct;command.target={request.axis==0?request.value:0,request.axis==1?request.value:0,request.axis==0,request.axis==1};break;
   case Operation::Speed:command.op=ControlOp::RuntimeSpeed;command.speed=request.value;break;
   case Operation::Mode:command.op=ControlOp::Mode;command.mode=request.mode;break;
   case Operation::Stop:command.op=ControlOp::Stop;break;
@@ -197,7 +206,7 @@ void MqttBridge::execute(const Request &request,uint32_t at) {
   } else {
     auto &c=runtime_.controller;
     switch(command.op) {
-    case ControlOp::Target:result=c.target(command.target,true,at);break;
+    case ControlOp::Target:result=c.target(command.target,command.external,at);break;
     case ControlOp::RuntimeSpeed:result=c.setRuntimeSpeed(unsigned(command.axis),command.speed,at);break;
     case ControlOp::Mode:result=c.setMode(command.mode,at);break;
     case ControlOp::Stop:c.stopNow(command.axis,at);result=Result::Ok;break;
@@ -240,11 +249,33 @@ bool MqttBridge::publishState(Node &node,uint32_t at,bool reset) {
     j << ",\"pending\":";
     if(pending)j.decimal(axis?snapshot->pending.el:snapshot->pending.az,2);else j << "null";
     j << ",\"speed\":";if(supported)j.decimal(snapshot->runtimeSpeed[axis],3);else j << "null";
+    // Report controller intent even during the output's reverse dead-time.
+    j << ",\"direction\":";if(supported)j << snapshot->axes[axis].wanted;else j << "null";
     j << ",\"adjustable\":" << (supported && snapshot->speedAvailable[axis]?"true":"false") << '}';
   }
   j << '}';
   if(!publish(topic_,j,true,0))return false;
   node.sentAt=at;node.selection=runtime_.hud.selectionEpoch;return true;
+}
+bool MqttBridge::publishConfiguration(Node &node,const HudState &snapshot) {
+  char destination[17];const auto actual=node.id?node.id:runtime_.hud.config.selected;
+  idText(destination,sizeof destination,actual);
+  char target[17];idText(target,sizeof target,node.id);
+  std::snprintf(topic_,sizeof topic_,"%s/%s/config",base_,target);
+  JsonWriter j(json_,sizeof json_);
+  const bool elevation=snapshot.model==Model::G5500;
+  j << "{\"version\":1,\"node\":" << jsonQuoted(destination)
+    << ",\"axes\":" << jsonQuoted(elevation?"az_el":"az")
+    << ",\"az\":{\"min\":";j.decimal(snapshot.minimum,2) << ",\"max\":";j.decimal(snapshot.maximum,2) << "},\"el\":";
+  if(elevation){j << "{\"min\":";j.decimal(snapshot.elRange.start,2) << ",\"max\":";j.decimal(snapshot.elRange.end,2) << '}';}
+  else j << "null";
+  j << ",\"speed\":{\"max\":";j.decimal(snapshot.speedLimit[0],3)
+    << ",\"unit\":" << jsonQuoted(snapshot.motion[0].mode==RegulatorMode::Cascade?"deg/s":"%")
+    << ",\"adjustable\":" << (snapshot.speedAvailable[0]?"true":"false") << "},\"presets\":[";
+  for(unsigned i=0;i<4;++i){if(i)j << ',';j << jsonQuoted(snapshot.presets[i].label);}
+  j << "],\"direct_target\":true}";
+  if(!publish(topic_,j,true,0))return false;
+  node.configMeta=metadata(&snapshot,node.id);node.configSent=true;return true;
 }
 uint32_t MqttBridge::metadata(const HudState *s,uint64_t node) const {
   if(!s)return 0;
@@ -300,7 +331,7 @@ bool MqttBridge::discovery(Node &node,uint32_t at) {
   if(node.configured)return false;
   const unsigned index=node.entity;const auto &entity=entities[index];
   discoveryTopic(config.discoveryPrefix,node.id,index);JsonWriter j(json_,sizeof json_);
-  const bool supported=(entity.axis!=1 || snapshot->model==Model::G5500) &&
+  const bool supported=!entity.obsolete && (entity.axis!=1 || snapshot->model==Model::G5500) &&
       ((index!=7 && index!=8) || snapshot->speedAvailable[unsigned(entity.axis)]);
   if(supported) {
     char destination[17],key[80],stateTopic[80],availability[64];idText(destination,sizeof destination,node.id);
@@ -317,7 +348,8 @@ bool MqttBridge::discovery(Node &node,uint32_t at) {
     j << " else 'offline' }}\"}]";
     if(entity.field) {
       j << ",\"state_topic\":" << jsonQuoted(stateTopic) << ",\"value_template\":\"{{ ";
-      if(index==2 || index==4)j << "'ON' if value_json." << entity.field << " else 'OFF'";
+      if(entity.direction)j << "'ON' if value_json." << entity.field << " == " << entity.direction << " else 'OFF'";
+      else if(index==2 || index==4)j << "'ON' if value_json." << entity.field << " else 'OFF'";
       else if(index==5 || index==6)j << "value_json." << entity.field << " if value_json." << entity.field
           << " is not none else value_json." << (entity.axis?"el":"az") << ".current";
       else j << "value_json." << entity.field;
@@ -325,7 +357,8 @@ bool MqttBridge::discovery(Node &node,uint32_t at) {
     }
     if(entity.command)j << ",\"command_topic\":\"" << base_ << '/' << destination << "/set/" << entity.command << "\",\"qos\":0,\"retain\":false";
     if(index==0 || index==1 || index==5 || index==6)j << ",\"unit_of_measurement\":\"°\"";
-    if(index==2 || index==4)j << ",\"payload_on\":\"ON\",\"payload_off\":\"OFF\"";
+    if(index==2 || index==4 || entity.direction)j << ",\"payload_on\":\"ON\",\"payload_off\":\"OFF\"";
+    if(entity.direction)j << ",\"optimistic\":false";
     if(!std::strcmp(entity.domain,"button"))j << ",\"payload_press\":\"PRESS\"";
     if(index==9)j << ",\"options\":[\"manual\",\"auto\",\"auto_1h\"]";
     if(index==5 || index==6)j << ",\"min\":" << (entity.axis?snapshot->elRange.start:snapshot->minimum)
@@ -352,7 +385,7 @@ void MqttBridge::service(uint32_t at) {
   if(!online){observedConnection_=false;announced_=false;publishBlocked_=false;return;}
   if(!observedConnection_ || epoch!=observedSession_) {
     observedConnection_=true;observedSession_=epoch;announced_=false;lastScan_=at-1000;
-    for(auto *n=nodes_.get();n;n=n->next.get()){n->resetSession=0;n->configured=false;n->entity=0;n->sentAt=at-1000;}
+    for(auto *n=nodes_.get();n;n=n->next.get()){n->resetSession=0;n->configSent=false;n->configured=false;n->entity=0;n->sentAt=at-1000;}
   }
   if(rediscover_.exchange(false))for(auto *n=nodes_.get();n;n=n->next.get()){n->configured=false;n->entity=0;n->sentAt=at-1000;}
   // Deliver reserved STOPs before normal requests, with bounded loop work.
@@ -405,6 +438,12 @@ void MqttBridge::service(uint32_t at) {
     if(publishBlocked_)return;
   }
   stateCursor_=nextNode(stateCursor_);
+  if(stateCursor_ && wanted(stateCursor_->id)) {
+    const auto *snapshot=state(stateCursor_->id,at);
+    if(snapshot && (!stateCursor_->configSent || stateCursor_->configMeta!=metadata(snapshot,stateCursor_->id))) {
+      publishConfiguration(*stateCursor_,*snapshot);return;
+    }
+  }
   if(stateCursor_ && (uint32_t(at-stateCursor_->sentAt)>=1000 || (!stateCursor_->id && stateCursor_->selection!=runtime_.hud.selectionEpoch)))
     publishState(*stateCursor_,at);
 }

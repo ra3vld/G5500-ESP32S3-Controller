@@ -75,6 +75,9 @@ struct PinMap {
   FORK_PIN_MAP(FORK_PIN_MEMBER)
 #undef FORK_PIN_MEMBER
   PinMap() {
+#if DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796
+    tftMiso=touchCs=touchIrq=-1;
+#endif
 #if DISPLAY_KIND == DISPLAY_ST77916
     tftDc=touchCs=tftRst=touchIrq=-1;
     if(SELECTED_BOARD==BOARD_ESP32) {

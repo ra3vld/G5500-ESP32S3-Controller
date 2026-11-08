@@ -16,8 +16,7 @@
   </header>
   <main class="wrap">
     <section class="hero">
-      <div><p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> КОНФИГУРАТОР ПРОШИВКИ</p>
-        <h1>Ваша плата.<br><span>Ваша конфигурация.</span></h1>
+      <div><h1 class="eyebrow"><span class="status-dot" aria-hidden="true"></span> КОНФИГУРАТОР ПРОШИВКИ</h1>
         <p class="intro">Выберите готовую сборку и установите её через USB.<br class="desktop-break"> Всё необходимое — в браузере.</p>
       </div>
       <div class="hero-meta"><span class="meta-label">ВЕРСИЯ КАТАЛОГА</span><strong id="catalogVersion">Загрузка…</strong><span id="catalogCommit" class="mono"></span></div>
@@ -34,10 +33,10 @@
           <figure class="board-preview"><a id="photoSource" target="_blank" rel="noopener noreferrer"><img id="boardPhoto" width="440" height="210" alt=""></a><figcaption id="photoCaption"></figcaption></figure>
         </section>
         <section class="panel" aria-labelledby="profileHeading">
-          <div class="section-heading"><span class="step">02</span><div><h2 id="profileHeading">Готовая конфигурация</h2><p>Выберите профиль и сервисы из готовых сборок.</p></div></div>
+          <div class="section-heading"><span class="step">02</span><div><h2 id="profileHeading">Готовая конфигурация</h2><p id="profileHint">Выберите готовую прошивку.</p></div></div>
           <fieldset id="profileChoices"><legend class="sr-only">Конфигурация прошивки</legend></fieldset>
           <fieldset id="serviceChoices" class="service-choices"><legend>Дополнительные сервисы</legend></fieldset>
-          <p class="small muted">Выключенные сервисы исключаются из прошивки. Выбор переключает готовые бинарники; размер указан для выбранного варианта.</p>
+          <p id="serviceHint" class="small muted">Выключенные сервисы исключаются из прошивки. Выбор переключает готовые бинарники; размер указан для выбранного варианта.</p>
           <div class="divider"></div>
           <div class="details-heading"><h3>Что входит в сборку</h3><span id="displayLabel" class="small-label"></span></div>
           <ul id="features" class="feature-list"></ul>
@@ -60,6 +59,12 @@
           <ol class="instructions"><li id="connectInstruction">Подключите плату USB-кабелем с передачей данных.</li><li>Закройте монитор порта и программы, использующие устройство.</li><li>Нажмите кнопку и выберите USB-порт платы.</li></ol>
           <label class="confirmation"><input type="checkbox" id="confirmHardware"><span>Проверил модель платы, Flash, PSRAM и подключённый дисплей.</span></label>
           <div id="installerMount"></div>
+          <div id="postInstall" class="post-install" role="status" hidden>
+            <strong>Запись прошивки завершена.</strong>
+            <p id="postInstallProfile"></p>
+            <a id="postInstallConnections" class="text-link" target="_blank" rel="noopener noreferrer">Открыть подключения по умолчанию ↗</a>
+            <p class="small muted">Сохранённые настройки GPIO могут отличаться. Проверьте их в разделе «Оборудование».</p>
+          </div>
           <p id="installHint" class="small muted" role="status"></p>
           <a id="download" class="download-link" hidden download>Скачать USB-комплект <span aria-hidden="true">↓</span></a>
           <p class="erase-advice">Если после прошивки появились проблемы, повторите установку с <strong>Erase device</strong> — полным стиранием Flash. Настройки Wi-Fi, оборудования и калибровки удалятся.</p>
@@ -70,6 +75,6 @@
       </aside>
     </div>
   </main>
-  <footer class="wrap footer"><span>G5500 Controller · RA3VLD / UA1CFM</span><span>GPL-3.0 · <a href="./THIRD_PARTY_LICENSES.txt">Лицензии библиотек</a> · <a href="https://esphome.github.io/esp-web-tools/" target="_blank" rel="noopener noreferrer">ESP Web Tools</a></span></footer>
+  <footer class="wrap footer"><span>GPL-3.0 · <a href="./THIRD_PARTY_LICENSES.txt">Лицензии библиотек</a> · <a href="https://esphome.github.io/esp-web-tools/" target="_blank" rel="noopener noreferrer">ESP Web Tools</a></span></footer>
 </body>
 </html>

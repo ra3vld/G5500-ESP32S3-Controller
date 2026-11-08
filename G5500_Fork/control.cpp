@@ -170,6 +170,7 @@ Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
       const float value = i ? nextTarget.el : nextTarget.az;
       const bool unchanged = axis.accepted && value == axis.target &&
           (axis.tracking || axis.holdArmed || (axis.completed && std::abs(value-axis.current)<=tolerance(i)));
+#if !ESP32_SPP_PROFILE
       if(!unchanged) {
         auto &r=motion_[i];
         r.arriving=r.settling=false;
@@ -201,6 +202,7 @@ Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
         motion_[i].targetDirection=(value>axis.current)-(value<axis.current);
         motion_[i].crossedTarget=false;
       }
+#endif
       accepted = true;
       axis.acceptedTarget = value;
       axis.accepted = true;
@@ -211,7 +213,7 @@ Result Controller::start(Target nextTarget, uint32_t now, bool retryStall) {
       if (unchanged) continue;
       ++motionEpoch[i];
       axis.completed = false;
-      const bool cascade = variableSpeed(i) && motionSettings[i].mode == RegulatorMode::Cascade;
+      const bool cascade = !ESP32_SPP_PROFILE && variableSpeed(i) && motionSettings[i].mode == RegulatorMode::Cascade;
       axis.holdArmed = cascade && motionSettings[i].holdEnabled;
       const float difference = axis.target - axis.current;
       const int requested = std::abs(difference) <= tolerance(i) ? 0 : difference > 0 ? 1 : -1;
@@ -296,13 +298,16 @@ Result Controller::jog(unsigned axis, int direction, bool external, uint32_t now
   if (driveFault) return Result::Invalid;
   if ((axes[axis].motionError != MotionError::None && axes[axis].motionError != MotionError::Stalled) ||
       (variableSpeed(axis) && !motionSettings[axis].ready)) return Result::Unavailable;
-  if (variableSpeed(axis) && motionSettings[axis].mode == RegulatorMode::Cascade && !axes[axis].calibrated) return Result::NotCalibrated;
+  if (!ESP32_SPP_PROFILE && variableSpeed(axis) && motionSettings[axis].mode == RegulatorMode::Cascade && !axes[axis].calibrated) return Result::NotCalibrated;
   if (!prepareMotion()) return Result::Unavailable;
   recoverStall(axis, now);
   if (axes[axis].tracking || axes[axis].holdArmed) {
     // Taking over a running position command changes intent, not the current
     // velocity/acceleration boundary state or the load compensation integral.
-    axes[axis].holdArmed=false;motion_[axis].positionPid.reset();motion_[axis].settling=false;
+    axes[axis].holdArmed=false;
+#if !ESP32_SPP_PROFILE
+    motion_[axis].positionPid.reset();motion_[axis].settling=false;
+#endif
   }
   ++motionEpoch[axis];
   manualScale_[axis] = 1;
@@ -835,7 +840,7 @@ bool Controller::runtimeSpeedAvailable(unsigned i) const {
 float Controller::runtimeSpeedLimit(unsigned i) const {
   if (i > 1) return 0;
   if (remote) return remoteSpeedLimit[i];
-  return motionSettings[i].mode == RegulatorMode::Cascade ? motionSettings[i].velocity :
+  return (!ESP32_SPP_PROFILE && motionSettings[i].mode == RegulatorMode::Cascade) ? motionSettings[i].velocity :
       std::min(100.f, motionSettings[i].outputLimitPercent);
 }
 unsigned Controller::runtimeSpeedIndex(unsigned i) const {
@@ -843,7 +848,7 @@ unsigned Controller::runtimeSpeedIndex(unsigned i) const {
   // physical interface retained for switching back. Reuse its simulation bank.
   const unsigned drive=hardware.simulation==SimulationMechanics?0:unsigned(hardware.drive);
   return ((((unsigned(hardware.simulation!=0) * 3 + drive) * 2 +
-      unsigned(model)) * 2 + i) * 2 + unsigned(motionSettings[i].mode));
+      unsigned(model)) * 2 + i) * 2 + (ESP32_SPP_PROFILE ? 0u : unsigned(motionSettings[i].mode)));
 }
 void Controller::resetRuntimeSpeed(unsigned i, uint32_t now) {
   if (i > 1) return;
@@ -854,7 +859,7 @@ void Controller::resetRuntimeSpeed(unsigned i, uint32_t now) {
 float Controller::runtimeSpeed(unsigned i) const {
   if (i > 1) return 0;
   if (remote) return remoteSpeed[i];
-  const float saved = motionSettings[i].mode == RegulatorMode::Cascade ? motionSettings[i].velocity : float(speeds[i].speedPercent);
+  const float saved = (!ESP32_SPP_PROFILE && motionSettings[i].mode == RegulatorMode::Cascade) ? motionSettings[i].velocity : float(speeds[i].speedPercent);
   const bool tuning = autoTune.active() && autoTune.axis == int(i);
   const float value = runtimeSpeeds.values[runtimeSpeedIndex(i)];
   const float limit = runtimeSpeedLimit(i);
@@ -932,13 +937,20 @@ void Controller::tickCoast(uint32_t now) {
   }
 }
 bool Controller::controlDue(uint32_t now) const {
-  if(remote)return false;
+  return controlHeadroomMs(now)==0;
+}
+uint32_t Controller::controlHeadroomMs(uint32_t now) const {
+  uint32_t remaining=UINT32_MAX;
+  if(remote)return remaining;
   for(unsigned i=0;i<(model==Model::G5500?2u:1u);++i) {
+    if(!variableSpeed(i))continue; // relay outputs have no PID deadline
     const auto &axis=axes[i];const auto &motion=motion_[i];
-    if((axis.wanted || axis.direction || axis.tracking || axis.holdArmed) &&
-        (!motion.started || int32_t(now-motion.nextAt)>=0))return true;
+    if(axis.wanted || axis.direction || axis.tracking || axis.holdArmed) {
+      if(!motion.started || int32_t(now-motion.nextAt)>=0)return 0;
+      remaining=std::min(remaining,uint32_t(motion.nextAt-now));
+    }
   }
-  return false;
+  return remaining;
 }
 unsigned Controller::loopDelayMs(uint32_t now) const {
   if(controlPeriodMs_>=20)return 5;
@@ -952,6 +964,16 @@ void Controller::tick(uint32_t now) {
   if (configurationLocked) { if (!remote) stopNow(-1, now); return; }
   if (remote)
     return;
+  // All axes share one nominal grid even when started at different times.
+  // Advance once per owner tick; axis diagnostics still count missed steps.
+  const unsigned period=controlPeriodMs();
+  if(!controlClockStarted_) {
+    controlNextAt_=now+period;controlClockStarted_=true;
+  } else if(int32_t(now-controlNextAt_)>=0) {
+    controlNextAt_+=(uint32_t(now-controlNextAt_)/period+1)*period;
+  } else if(uint32_t(controlNextAt_-now)>period) {
+    controlNextAt_=now+period;
+  }
   for (auto &s : manualSessions_) {
     if (s.used && !s.closed && uint32_t(now - s.renewed) >= 1000) {
       closeManual(s, now);
@@ -1012,7 +1034,7 @@ void Controller::tick(uint32_t now) {
       axis.tracking = false;
     }
     if (axis.tracking &&
-        (!axis.calibrated || ((motionSettings[i].mode != RegulatorMode::Cascade || !variableSpeed(i)) && (
+        (!axis.calibrated || ((ESP32_SPP_PROFILE || motionSettings[i].mode != RegulatorMode::Cascade || !variableSpeed(i)) && (
          (axis.wanted > 0 && axis.current >= axis.target - tolerance(i)) ||
          (axis.wanted < 0 && axis.current <= axis.target + tolerance(i)))))) {
       axis.completed = axis.calibrated;

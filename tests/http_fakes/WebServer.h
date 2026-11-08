@@ -20,15 +20,19 @@ struct TestSocket {
        respond=false, blockWrites=false;
   unsigned heapBufferReads=0, parsed=0, handled=0, baseHandled=0;
 };
+inline unsigned parserPreemptionMs=0;
 inline TestSocket testSocket;
+inline TestSocket extraSockets[4];
+inline TestSocket &socketFor(int fd) { return fd>=2?extraSockets[fd-2]:testSocket; }
 inline void delay(unsigned ms) { fakeHardware.now+=ms; }
 class NetworkClient {
-  bool active_=false;
+  int socket_=0;
+  unsigned timeout_=1000;
 protected:
   std::shared_ptr<int> _rxBuffer;
 public:
   NetworkClient()=default;
-  explicit NetworkClient(bool active):active_(active),_rxBuffer(std::make_shared<int>(0)){}
+  explicit NetworkClient(int socket):socket_(socket),_rxBuffer(std::make_shared<int>(0)){}
   virtual ~NetworkClient()=default;
   virtual int available() { ++testSocket.heapBufferReads; return 0; }
   virtual int read() { ++testSocket.heapBufferReads; return -1; }
@@ -37,20 +41,29 @@ public:
   virtual int peek() { ++testSocket.heapBufferReads; return -1; }
   virtual size_t write(uint8_t) { return 0; }
   virtual size_t write(const uint8_t *,size_t) { return 0; }
-  int fd() const { return active_ && testSocket.open ? 1 : -1; }
+  int fd() const { return socket_ && socketFor(socket_).open ? socket_ : -1; }
   explicit operator bool() const { return fd()>=0; }
-  void stop() { testSocket.open=false; active_=false; }
+  void stop() { if(socket_)socketFor(socket_).open=false; socket_=0; }
   bool isSSE() const { return false; }
-  void setTimeout(unsigned) {}
-  int setNoDelay(bool enabled) { testSocket.noDelay=enabled;return 0; }
+  void setTimeout(unsigned value) {timeout_=value;}
+  unsigned getTimeout() const {return timeout_;}
+  int setNoDelay(bool enabled) { socketFor(socket_).noDelay=enabled;return 0; }
   void clear() { if (_rxBuffer) ++testSocket.heapBufferReads; }
 };
 class NetworkServer {
 public:
-  bool hasClient() { return testSocket.pending; }
+  bool hasClient() {
+    if(testSocket.pending)return true;
+    for(const auto &socket:extraSockets)if(socket.pending)return true;
+    return false;
+  }
   NetworkClient accept() {
-    if (!testSocket.pending) return NetworkClient();
-    testSocket.pending=false;testSocket.open=true;return NetworkClient(true);
+    for(int fd=1;fd<=5;++fd) {
+      auto &socket=socketFor(fd);
+      if(!socket.pending || socket.open)continue;
+      socket.pending=false;socket.open=true;return NetworkClient(fd);
+    }
+    return NetworkClient();
   }
 };
 class WebServer {
@@ -58,7 +71,19 @@ public:
   explicit WebServer(int){}
   virtual ~WebServer()=default;
   virtual void handleClient() { ++testSocket.baseHandled; }
+  void send(int,const char *,const char *) { assert(false && "unexpected stock response"); }
   NetworkClient &client() { return _currentClient; }
+  String uri() const {
+    const auto &r=testSocket.parsedRequest;const auto at=r.find(' ')+1;
+    return String(r.substr(at,r.find_first_of(" ?",at)-at));
+  }
+  String arg(const char *name) const {
+    const auto &r=testSocket.parsedRequest;const auto body=r.find("\r\n\r\n");
+    const auto key=std::string(name)+"=";const auto at=r.find(key,body==r.npos?0:body+4);
+    if(at==r.npos)return String();
+    const auto value=at+key.size();return String(r.substr(value,r.find('&',value)-value));
+  }
+
 protected:
   virtual size_t _currentClientWrite(const char *,size_t n) { return n; }
   virtual size_t _currentClientWrite_P(PGM_P,size_t n) { return n; }
@@ -67,6 +92,15 @@ protected:
   }
   bool _parseRequest(NetworkClient &input) {
     ++testSocket.parsed;
+    // Model the SDK line reader deadline while its task is preempted. The
+    // complete request is already in RequestClient, not arriving on TCP.
+    if(parserPreemptionMs) {
+      delay(parserPreemptionMs);
+      if(parserPreemptionMs>=input.getTimeout()) {
+        static constexpr char error[]="HTTP/1.1 408 Request Timeout\r\nContent-Length: 0\r\n\r\n";
+        _currentClientWrite(error,sizeof error-1);return false;
+      }
+    }
     // Exercise all read entry points used by the real WebServer parser.
     assert(input.peek()=='G' || input.peek()=='P');
     const auto first=input.read();assert(first=='G' || first=='P');

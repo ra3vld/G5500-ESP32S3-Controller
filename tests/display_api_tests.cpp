@@ -7,6 +7,27 @@ struct DisplayStopSink : CommandSink {
   Result lastResult() const override {return Result::Ok;}
 };
 int main() {
+#if SELECTED_BOARD == BOARD_CROWPANEL_21
+  for(bool remote:{false,true})for(bool wire:{false,true}) {
+    Fixture encoder;
+    if(remote){encoder.runtime.hud.config.role=DeviceRole::Hud;encoder.runtime.hud.begin(1,2);assert(encoder.runtime.hud.setSimulationEnabled(true));assert(encoder.runtime.hud.select(HUD_SIMULATION_ID));}
+    assert(encoder.call("POST","/api/settings","encoderStepDegrees=0.5&encoderInverted=false",wire).status==200);
+    assert(encoder.runtime.loggerSettings.encoderStepDegrees==.5f&&!encoder.runtime.loggerSettings.encoderInverted);
+    Runtime reloaded;reloaded.hud.config.role=remote?DeviceRole::Hud:DeviceRole::Controller;
+    encoder.storage.loadForkSettings(reloaded);assert(reloaded.loggerSettings.encoderStepDegrees==.5f);
+    assert(encoder.call("GET","/api/config").body.find("\"encoderStepDegrees\":0.5")!=std::string::npos);
+    const auto epoch=encoder.runtime.controller.stopEpoch;
+    assert(encoder.call("POST","/api/settings","encoderStepDegrees=5",wire).status==200);
+    assert(encoder.runtime.controller.stopEpoch==epoch);
+    assert(encoder.call("POST","/api/settings","encoderStepDegrees=0&encoderInverted=true",wire).status==400);
+    assert(encoder.runtime.loggerSettings.encoderStepDegrees==5&&!encoder.runtime.loggerSettings.encoderInverted);
+    Preferences::failedKey="encstep";
+    assert(encoder.call("POST","/api/settings","encoderStepDegrees=2",wire).status==503);
+    Preferences::failedKey.clear();
+  }
+#else
+  {Fixture f;assert(f.call("POST","/api/settings","encoderStepDegrees=5").status==400);}
+#endif
   static_assert(GRAPHICAL_DISPLAY);
   const char *key=DISPLAY_KIND==1?"pose1":DISPLAY_KIND==3?"pose3":DISPLAY_KIND==4?"pose4":DISPLAY_KIND==6?"pose6":"pose5";
   for(unsigned mask=0;mask<=DisplayAllFields;++mask) {

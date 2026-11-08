@@ -1,3 +1,8 @@
+#pragma once
+#include "build_config.hpp"
+#if ESP32_SPP_PROFILE
+#include "web_page_spp.hpp"
+#else
 /* Fork modifications by RA3VLD, 2026-10-12. GPLv3; see docs/upstream.md. */
 #pragma once
 #ifndef ARDUINO
@@ -57,9 +62,9 @@ select{width:100%;padding:9px;border-radius:8px;background:#071018;color:var(--t
 .device-section{margin-top:14px;border-top:1px solid var(--b);padding-top:14px}.device-section summary{line-height:1.4;padding:4px 0}.device-section[open] summary{margin-bottom:14px}
 .device-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.device-fields .field{min-width:0}.device-fields label{display:block;margin-bottom:7px;color:var(--m);font-size:14px;line-height:1.4}.device-fields input,.device-fields select{min-height:44px;max-width:100%}
 .device-panel .btn{min-height:44px;font-size:15px;padding:10px 16px;border-radius:10px;cursor:pointer;touch-action:manipulation;overflow-wrap:anywhere}.device-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}.device-panel form{margin:0}.device-panel .hint{margin:12px 0}.device-address{display:grid;gap:12px;padding:16px 0}.device-address>.btn{justify-self:start}
-.device-list{display:grid;gap:10px}.device-peer{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px}.device-peer.select-only{grid-template-columns:minmax(0,1fr)}.device-peer>.btn:first-child{text-align:left}.device-peer-note{grid-column:1/-1;color:var(--m);font-size:13px}.device-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0;font-size:13px;color:var(--m)}.device-pagination>span{text-align:center;overflow-wrap:anywhere}
-.hud-background{grid-column:1/-1;display:flex;align-items:center;flex-wrap:wrap;gap:8px;color:var(--m);font-size:14px}.hud-background select{min-width:0;max-width:100%;min-height:44px}.hud-background-swatch{width:24px;height:24px;flex:none;border:1px solid #678091;border-radius:5px}
-@media(max-width:600px){.device-fields{grid-template-columns:minmax(0,1fr);gap:14px}.device-actions>.btn,.device-address>.btn{width:100%}.device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}.device-peer>.btn:first-child{grid-column:1/-1}.device-pagination .btn{padding:10px 12px}}
+.device-list{display:grid;gap:10px}.device-peer{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}.device-peer.managed{grid-template-columns:minmax(0,1fr) auto;column-gap:6px;align-items:start}.device-peer>.btn:first-child{text-align:left}.device-peer-actions{display:flex;gap:6px}.device-peer-note{color:var(--m);font-size:13px}.device-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0;font-size:13px;color:var(--m)}.device-pagination>span{flex:1;text-align:center;overflow-wrap:anywhere}
+.hud-background{grid-column:1/-1;display:grid;grid-template-columns:auto 24px minmax(0,1fr);align-items:center;gap:8px;max-width:380px;color:var(--m);font-size:14px}.hud-background select{min-width:0;max-width:100%;min-height:44px}.hud-background-swatch{width:24px;height:24px;border:1px solid #678091;border-radius:5px}
+@media(max-width:600px){.device-fields{grid-template-columns:minmax(0,1fr);gap:14px}.device-actions>.btn,.device-address>.btn{width:100%}.device-peer.managed{grid-template-columns:minmax(0,1fr)}.device-peer-actions{display:grid;grid-template-columns:minmax(0,1fr) auto auto}#settingsPanel .device-peer-actions .btn{font-size:12px;padding:10px 8px}.device-pagination .btn{padding:10px 12px}}
 [hidden]{display:none!important}.nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--a);outline-offset:2px}
 .history-intro{margin:20px 0}.history-intro h2{font-size:24px;margin:0 0 8px}.history-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}.history-entry.card{margin:0;padding:18px 20px}.history-entry h3{font-size:16px;color:var(--a);margin:0 0 12px}.history-entry ul{margin:0;padding-left:20px;line-height:1.6;font-size:15px}.history-entry li+li{margin-top:8px}#historyPanel{padding-bottom:16px}
 .current-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;padding:12px;font-size:13px}.current-status span{display:block;color:var(--m);margin-bottom:5px}.current-status b{font-size:14px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.current-status .online,#networkStatus .online{color:var(--a)}.current-status .offline,#networkStatus .offline{color:#e5a94f}
@@ -140,6 +145,14 @@ body.settings-view .nav{position:static}
 #settingsPanel .inline-message{font-size:13px;line-height:1.5;margin-top:12px;color:#b8daca;overflow-wrap:anywhere}
 #settingsPanel .device-list{gap:12px}
 #settingsPanel .device-peer{gap:8px;padding:12px;border:1px solid #294153;border-radius:9px;background:#0c1822}
+#settingsPanel .device-peer.managed{column-gap:6px}
+#settingsPanel .device-peer>.btn:first-child{justify-content:flex-start;text-align:left}
+#settingsPanel .hud-search-method{margin-top:10px;padding:12px;border:1px solid #294153;border-radius:9px;background:#0c1822}
+#settingsPanel .hud-search-method>summary,#settingsPanel .hud-manual-address>summary{min-height:44px;padding:10px 0;line-height:1.5;color:#c9d8e3}
+#settingsPanel .hud-search-method .device-actions{margin-top:12px}
+#settingsPanel .hud-manual-address{margin-top:12px}
+#settingsPanel .hud-search-method .device-address{padding-bottom:0}
+#settingsPanel .hud-search-results{margin:20px 0 12px;font-size:14px}
 #settingsPanel .device-pagination{margin:16px 0;gap:12px}
 #settingsPanel .device-address{padding:16px 0;gap:16px}
 #settingsPanel .device-peer-note{line-height:1.5}
@@ -155,7 +168,7 @@ body.settings-view .nav{position:static}
 #settingsPanel canvas{margin-top:16px}
 .action-feedback{max-height:50dvh;overflow-y:auto}
 @media(max-width:760px){#settingsPanel .range-editors,#settingsPanel .calibration-grid{grid-template-columns:minmax(0,1fr)}#networkStatus .kv{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:600px){.settings-details>summary{padding:10px 14px;gap:12px}.settings-details>summary h2{font-size:16px}.settings-content{padding:16px}#networkStatus .settings-content{padding:10px 14px}#settingsPanel .row,#settingsPanel .device-fields{grid-template-columns:minmax(0,1fr);gap:16px}#settingsPanel .settings-pane{padding:12px}#settingsPanel .form-actions>.btn{width:100%}#settingsPanel .form-actions{gap:10px}#settingsPanel .range-form .row{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel .profile-options{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel #azmc{grid-column:1/-1}#settingsPanel .device-peer{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.settings-details>summary{padding:10px 14px;gap:12px}.settings-details>summary h2{font-size:16px}.settings-content{padding:16px}#networkStatus .settings-content{padding:10px 14px}#settingsPanel .row,#settingsPanel .device-fields{grid-template-columns:minmax(0,1fr);gap:16px}#settingsPanel .settings-pane{padding:12px}#settingsPanel .form-actions>.btn{width:100%}#settingsPanel .form-actions{gap:10px}#settingsPanel .range-form .row{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel .profile-options{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsPanel #azmc{grid-column:1/-1}}
 
 .camera-image{display:block;width:100%;max-width:640px;aspect-ratio:4/3;object-fit:contain;margin:12px auto 0;border-radius:10px;background:#08121a}.camera-image[hidden]{display:none}
 /* Form controls have separate metrics; text-field rules never style checkboxes. */
@@ -252,7 +265,7 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 </div>
 <section class="card hide" id="hudSelector" aria-labelledby="hudSelectorLabel"><div class="label" id="hudSelectorLabel">Поворотки</div>
 <div class="device-list" id="hudPeers" style="margin-top:10px"></div>
-<div class="device-pagination"><button class="btn" id="hudPrev" onclick="hudPage(-1)">Назад</button><span id="hudPageInfo"></span><button class="btn" id="hudNext" onclick="hudPage(1)">Далее</button></div>
+<div class="device-pagination"><button class="btn" id="hudPrev" onclick="hudPage(-1)" hidden>Назад</button><span id="hudPageInfo"></span><button class="btn" id="hudNext" onclick="hudPage(1)" hidden>Далее</button></div>
 </section>
 <section class="card" id="cameraCard" hidden aria-labelledby="cameraTitle"><h2 id="cameraTitle">Камера</h2><p id="cameraMessage" class="hint" role="status">Подключение к камере…</p><img id="cameraImage" class="camera-image" alt="Изображение с камеры" hidden width="640" height="480"/></section>
 <div class="card current-status" id="currentStatus" aria-label="Текущий статус устройства">
@@ -281,7 +294,10 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 </div><p class="hint">Автоследование сразу выполняет новые числовые цели выбранного протокола, сохраняя ручной режим. «С подтверждением» оставляет цель для запуска кнопкой. В автоматическом режиме цели всех протоколов выполняются сразу. Направления и STOP выполняются сразу в обоих режимах; при активной предустановке внешние команды движения отклоняются.</p></div>
 <div class="hint" id="buildInfo"></div>
 <div class="settings-group" id="hardwareSettings"><h3>Оборудование</h3><p class="hint">Привод, имитация, Bluetooth, точка доступа и кнопка настраиваются с проверкой после перезапуска.</p><a class="btn" href="/hardware">Настроить оборудование</a> <a href="/recovery">Восстановление доступа</a></div>
-<div class="hide" id="encoderSettings"><label class="check-field"><input checked="" id="encoderInverted" aria-describedby="encoderInverted-help" name="encoderInverted" type="checkbox"/> Инверсия энкодера</label><p class="field-help" id="encoderInverted-help">Меняет направление изменения цели при вращении энкодера. На направление вращения двигателя не влияет.</p></div>
+<section class="settings-group hide" id="encoderSettings"><h3>Энкодер</h3>
+<div class="device-fields"><div class="field"><label for="encoderStepDegrees">Шаг энкодера, ° на щелчок</label><input id="encoderStepDegrees" name="encoderStepDegrees" type="number" min="0.1" max="90" step="0.1" value="20" required aria-describedby="encoderStepDegrees-help"/><p class="field-help" id="encoderStepDegrees-help">От 0,1 до 90°. Один шаг для AZ и EL, в том числе при повороте нажатой ручки. В HUD применяется к выбранной поворотке. По умолчанию — 20°.</p></div></div>
+<label class="check-field"><input checked="" id="encoderInverted" aria-describedby="encoderInverted-help" name="encoderInverted" type="checkbox"/> Инверсия энкодера</label><p class="field-help" id="encoderInverted-help">Меняет направление изменения цели при вращении энкодера. На направление вращения двигателя не влияет.</p>
+<div class="form-actions" data-setup-save><button class="btn good" type="submit">Сохранить энкодер</button></div></section>
 <div class="settings-group" id="speedSettings"><h3>Скорость и плавность движения</h3><label class="check-field" id="analogSpeedToggle"><input id="speedEnabled" aria-describedby="speedEnabled-help" name="speedEnabled" type="checkbox"/> Управлять скоростью через внешний модуль 0–5 В</label><p class="field-help" id="speedEnabled-help">Включите только при подключённом модуле регулировки скорости 0–5 В. Изменение этого режима останавливает привод.</p>
 <h4>Азимут · AZ</h4><div class="row">
 
@@ -303,7 +319,7 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <div class="field"><label for="forkSettings-elSlowdownDegrees">Начинать замедление за, °</label><input aria-describedby="forkSettings-elSlowdownDegrees-help" id="forkSettings-elSlowdownDegrees" max="90" min="1" name="elSlowdownDegrees" required="" step="1" type="number" value="2"/><p class="field-help" id="forkSettings-elSlowdownDegrees-help">Расстояние до зоны отключения EL, с которого начинается снижение скорости. Увеличьте, если привод не успевает замедлиться.</p></div>
 <div class="field"><label for="elDecelerationFactor">Коэффициент торможения EL</label><input aria-describedby="elDecelerationFactor-help" id="elDecelerationFactor" max="10" min="0.1" name="elDecelerationFactor" required="" step="0.1" type="number" value="1"/><p class="field-help" id="elDecelerationFactor-help">Множитель темпа снижения выхода EL: 1 — обычный, 2 — вдвое быстрее, 0,5 — вдвое медленнее. STOP отключает выход сразу.</p></div>
 </div><div class="hint">Выход EL: <b id="elSpeedOutput">0%</b></div></div><p class="hint">Реверс: торможение и пауза 300 мс перед сменой направления. STOP выключает привод сразу.</p></div>
-<div class="form-actions"><button class="btn good" type="submit">Сохранить настройки</button></div></form></div></details></section><section class="card settings-section" id="motionSettings"><details class="settings-details" ontoggle="if(this.open)loadMotionSettings()"><summary><h2>Регуляторы движения<span class="section-caption">S-профиль, страгивание и удержание AZ / EL</span></h2></summary><div class="settings-content"><p class="hint">Простой регулятор задаёт выход в процентах и отключает привод по ручному выбегу. Каскад регулирует положение и скорость в °/с; удержание доступно только в нём. Изменение настроек останавливает ось.</p><form id="controlFrequencyForm" class="settings-pane" onsubmit="saveControlFrequency(event)"><div class="row"><div class="field"><label for="controlHz">Частота контура и датчиков положения</label><select id="controlHz" name="controlHz"><option value="50">50 Гц · 20 мс</option><option value="100">100 Гц · 10 мс</option><option value="200">200 Гц · 5 мс</option></select><p class="field-help">Общая для AZ и EL. Смена частоты останавливает обе оси; настройка сохраняется без перезагрузки. 200 Гц — экспериментальный режим, задержки зависят от нагрузки.</p></div></div><div class="form-actions"><button class="btn good" type="submit">Сохранить частоту</button></div></form><div id="motionForms"></div></div></details></section><section class="card settings-section" id="calibrationSettings"><details class="settings-details" ontoggle="if(this.open){loadAzCalibration();loadElCalibration();}"><summary id="caltoggle"><h2>Диапазоны и калибровка<span class="section-caption">Упоры и измерения датчиков AZ / EL</span></h2></summary><div class="settings-content" id="calbody">
+<div class="form-actions"><button class="btn good" type="submit">Сохранить настройки</button></div></form></div></details></section><section class="card settings-section" id="motionSettings"><details class="settings-details" ontoggle="if(this.open)loadMotionSettings()"><summary><h2>Регуляторы движения<span class="section-caption">S-профиль, страгивание и удержание AZ / EL</span></h2></summary><div class="settings-content"><p class="hint">Простой регулятор задаёт выход в процентах и отключает привод по ручному выбегу. Каскад регулирует положение и скорость в °/с; удержание доступно только в нём. Изменение настроек останавливает ось.</p><form id="controlFrequencyForm" class="settings-pane" onsubmit="saveControlFrequency(event)"><div class="row"><div class="field"><label for="controlHz">Частота контура и датчиков положения</label><select id="controlHz" name="controlHz"><option value="50">50 Гц · 20 мс</option><option value="100">100 Гц · 10 мс</option><option value="200">200 Гц · 5 мс</option></select><p class="field-help">Общая для AZ и EL. Смена частоты останавливает обе оси; настройка сохраняется без перезагрузки. 200 Гц — экспериментальный режим, задержки зависят от нагрузки.</p></div></div><div class="form-actions"><button class="btn good" type="submit">Сохранить частоту</button></div></form><div id="motionForms"></div></div></details></section><section class="card settings-section" id="calibrationSettings"><details class="settings-details" ontoggle="if(this.open)loadAzCalibration().then(()=>loadElCalibration())"><summary id="caltoggle"><h2>Диапазоны и калибровка<span class="section-caption">Упоры и измерения датчиков AZ / EL</span></h2></summary><div class="settings-content" id="calbody">
 <h3>1. Выберите диапазоны</h3><div class="range-editors"><section class="range-editor settings-pane"><h3>Азимут · AZ</h3>
 <div class="seg profile-options">
 <button class="btn" id="azm36" aria-describedby="azProfileHelp" onclick="setAzMode(36)">P36 · 360°</button>
@@ -369,20 +385,27 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <p class="hint">Команды программ, подключённых к HUD, идут выбранной поворотке.</p>
 <p class="field-help">Для каждой поворотки можно выбрать фон экрана HUD. Цвет сохраняется на этом пульте и переключается вместе с повороткой во всех раскладках.</p>
 <div class="device-list" id="hudPeerSettings"></div>
-<div class="device-pagination"><button class="btn" id="hudSettingsPrev" onclick="hudPage(-1)">Назад</button><span id="hudSettingsPageInfo"></span><button class="btn" id="hudSettingsNext" onclick="hudPage(1)">Далее</button></div>
-<section class="settings-group"><h3>Добавить поворотку</h3>
-<div class="form-actions"><button class="btn" onclick="hudSearch()">Найти по UDP</button><button class="btn" id="hudUartSearch" onclick="hudSearch(true)">Найти по UART</button><button class="btn" id="hudMqttSearch" data-feature="mqtt" onclick="hudSearchMqtt()">Найти по MQTT</button></div>
-<form class="device-address" onsubmit="event.preventDefault();hudSearchRs485()">
-<div class="device-fields"><div class="field"><label for="hudBusFirst">RS‑485 · первый адрес</label><input id="hudBusFirst" type="number" min="1" max="247" value="1" required/></div><div class="field"><label for="hudBusLast">Последний адрес</label><input id="hudBusLast" type="number" min="1" max="247" value="247" required/></div></div>
-<button class="btn" id="hudBusSearch">Найти на шине RS‑485</button><p class="field-help">Для режима «Modbus RTU с маркером». Адреса опрашиваются по очереди; полный поиск может занять несколько минут. Адреса ведущих пропускаются.</p></form>
+<div class="device-pagination"><button class="btn" id="hudSettingsPrev" onclick="hudPage(-1)" hidden>Назад</button><span id="hudSettingsPageInfo"></span><button class="btn" id="hudSettingsNext" onclick="hudPage(1)" hidden>Далее</button></div>
+<section class="settings-group" id="hudDiscovery"><h3>Добавить поворотку</h3>
+<details class="hud-search-method" name="hud-search" id="hudUdpDiscovery" data-feature="hudUdp" open><summary>По сети · UDP</summary>
+<div class="device-actions"><button class="btn" onclick="hudSearch()">Найти по UDP</button></div>
+<details class="hud-manual-address" id="hudManualAddress"><summary>Указать IP вручную</summary>
 <form class="device-address" onsubmit="event.preventDefault();hudSearch(false,true)">
 <div class="device-fields"><div class="field"><label for="hudAddress">IP контроллера</label><input aria-describedby="hudAddress-help" id="hudAddress" placeholder="192.168.4.1"/><p class="field-help" id="hudAddress-help">IPv4-адрес контроллера, если поиск в сети его не нашёл. Адрес указан в веб-интерфейсе самого контроллера.</p></div><div class="field"><label for="hudPeerPort">UDP-порт HUD</label><input aria-describedby="hudPeerPort-help" id="hudPeerPort" max="65535" min="1" type="number" value="4534"/><p class="field-help" id="hudPeerPort-help">UDP-порт HUD на добавляемом контроллере. Он должен совпадать с портом в его настройках связи.</p></div></div>
-<button class="btn">Проверить адрес</button></form>
+<button class="btn">Проверить адрес</button></form></details></details>
+<details class="hud-search-method" name="hud-search" id="hudWiredDiscovery" data-feature="hudUart"><summary>По кабелю · UART / RS‑485</summary>
+<div class="device-actions"><button class="btn" id="hudUartSearch" onclick="hudSearch(true)">Найти по UART</button></div>
+<form class="device-address" id="hudRs485Discovery" onsubmit="event.preventDefault();hudSearchRs485()">
+<div class="device-fields"><div class="field"><label for="hudBusFirst">RS‑485 · первый адрес</label><input id="hudBusFirst" type="number" min="1" max="247" value="1" required/></div><div class="field"><label for="hudBusLast">Последний адрес</label><input id="hudBusLast" type="number" min="1" max="247" value="247" required/></div></div>
+<button class="btn" id="hudBusSearch">Найти на шине RS‑485</button><p class="field-help">Для режима «Modbus RTU с маркером». Адреса опрашиваются по очереди; полный поиск может занять несколько минут. Адреса ведущих пропускаются.</p></form></details>
+<details class="hud-search-method" name="hud-search" id="hudMqttDiscovery" data-feature="mqtt"><summary>Через брокер · MQTT</summary>
 <p class="field-help" id="hudTransportHelp">Основное подключение HUD — UDP. Используйте MQTT, только если подключение по UDP невозможно.</p>
-<form class="device-address" data-feature="mqtt" onsubmit="event.preventDefault();hudAddMqtt()"><div class="field"><label for="hudMqttId">ID контроллера MQTT</label><input id="hudMqttId" pattern="[0-9A-Fa-f]{12}" maxlength="12" required placeholder="001122334455"/><p class="field-help">ID из настроек контроллера. На обоих устройствах включите MQTT и укажите один брокер.</p></div><button class="btn">Добавить по MQTT</button></form>
+<div class="device-actions"><button class="btn" id="hudMqttSearch" data-feature="mqtt" onclick="hudSearchMqtt()">Найти по MQTT</button></div>
+<form class="device-address" data-feature="mqtt" onsubmit="event.preventDefault();hudAddMqtt()"><div class="field"><label for="hudMqttId">ID контроллера MQTT</label><input id="hudMqttId" pattern="[0-9A-Fa-f]{12}" maxlength="12" required placeholder="001122334455"/><p class="field-help">ID из настроек контроллера. На обоих устройствах включите MQTT и укажите один брокер.</p></div><button class="btn">Добавить по MQTT</button></form></details>
+<h4 class="hud-search-results">Найденные поворотки</h4>
 <p class="hint" id="hudBusProgress" role="status"></p>
 <div class="device-list" id="hudDiscovered"></div>
-<div class="device-pagination"><button class="btn" onclick="hudDiscoveryPage(-1)">Назад</button><span id="hudDiscoveryInfo"></span><button class="btn" onclick="hudDiscoveryPage(1)">Далее</button></div>
+<div class="device-pagination"><button class="btn" id="hudDiscoveryPrev" onclick="hudDiscoveryPage(-1)" hidden>Назад</button><span id="hudDiscoveryInfo"></span><button class="btn" id="hudDiscoveryNext" onclick="hudDiscoveryPage(1)" hidden>Далее</button></div>
 </section></div>
 <section class="settings-group"><h3>Роль устройства и связь</h3>
 <form id="hudConfig" onsubmit="saveHudDevice(event)"><div class="device-fields">
@@ -401,17 +424,20 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <div id="ethernetStatus" hidden>Ethernet: <b id="ethip">-</b> <span id="ethstate"></span></div><div>IP клиента (STA): <b id="ip">-</b></div><div>IP точки доступа: <b id="apip">-</b></div><div>TCP rotctld: <b>4533</b></div><div>Режим: <b id="mode">-</b></div><div>Уровень Wi-Fi: <b id="rssi">-</b></div><div>Качество: <b id="sig">-</b></div>
 <div class="hide" id="btlinkrow">Bluetooth-соединение: <b id="btlinkstate" role="status">-</b></div>
 <div><span id="btlabel">Bluetooth</span>: <b id="btstate" role="status">-</b></div><div id="bttransport">-</div>
+<div>ID устройства: <b class="mono" id="networkDeviceId" style="user-select:all">—</b></div>
 <div>MQTT: <b id="mqttstate" role="status">—</b></div>
 <div class="hide" id="btmacrow">Bluetooth MAC: <b class="mono" id="btmac">-</b></div></div><div class="hint hide" id="bthelp">Этот MAC нужен в Look4Sat. Подключение видно и без передачи команд; сопряжение в Android само по себе не означает активное соединение.</div>
 </div></details></section><section class="card settings-section" id="networkSettings"><details class="settings-details"><summary><h2>Настройки сети<span class="section-caption">Подключение, IP-адреса и точка доступа</span></h2></summary><div class="settings-content">
 <section class="settings-group" id="mqttSettings" hidden><h3>MQTT и Home Assistant</h3>
+<div class="field"><label for="mqttDeviceId">ID устройства</label><input id="mqttDeviceId" class="mono" readonly value="—" aria-describedby="mqttDeviceIdHelp" onfocus="this.select()" onclick="this.select()"><p class="field-help" id="mqttDeviceIdHelp">Постоянный ID доступен и при выключенном MQTT. Нажмите на поле, чтобы выделить ID для копирования. При прямом подключении контроллера к MQTT-серверу сервиса укажите этот ID в обоих полях: «ID шлюза» и «ID поворотки».</p></div>
 <form id="mqttForm" onsubmit="saveMqtt(event)"><label class="check-field"><input id="mqttEnabled" type="checkbox"> Подключаться к MQTT</label>
 <div class="row"><div class="field"><label for="mqttHost">Сервер MQTT</label><input id="mqttHost" maxlength="95" placeholder="192.168.1.10" autocomplete="off"></div><div class="field"><label for="mqttPort">Порт TCP</label><input id="mqttPort" type="number" min="1" max="65535" value="1883" required></div></div>
+<div id="mqttTlsFields" data-feature="mqttTls"><label class="check-field"><input id="mqttTls" type="checkbox"> Шифрование TLS</label><p class="field-help">Обычно порт 8883. Укажите DNS-имя из сертификата брокера. Проверка сертификата использует встроенные доверенные центры; самоподписанные сертификаты не поддерживаются. Нужны правильное время через NTP и свободная память. При выключении MQTT или в восстановлении память клиента освобождается.</p></div>
 <div class="row"><div class="field"><label for="mqttUsername">Логин</label><input id="mqttUsername" maxlength="63" autocomplete="off"></div><div class="field"><label for="mqttPassword">Пароль MQTT</label><input id="mqttPassword" type="password" maxlength="95" autocomplete="new-password" placeholder="Оставьте пустым, чтобы сохранить пароль"></div></div>
 <label class="check-field"><input id="mqttClearPassword" type="checkbox"> Удалить сохранённый пароль MQTT</label>
 <div id="mqttDiscoveryFields"><label class="check-field"><input id="mqttDiscovery" type="checkbox" checked> Автообнаружение Home Assistant</label><div class="field"><label for="mqttDiscoveryPrefix">Префикс discovery</label><input id="mqttDiscoveryPrefix" maxlength="47" value="homeassistant" required></div></div>
-<p class="field-help">В Home Assistant добавьте интеграцию MQTT с тем же брокером. Каждая сохранённая поворотка HUD появится отдельным устройством. «Текущая выбранная поворотка» следует выбору на экране. Подключение использует TCP без TLS.</p>
-<div class="form-actions"><button id="mqttSave" type="submit" class="btn good" disabled>Сохранить MQTT и перезапустить</button></div><p id="mqttMessage" role="status" aria-live="polite">Откройте раздел, чтобы загрузить настройки MQTT.</p></form></section>
+<p class="field-help">В Home Assistant добавьте интеграцию MQTT с тем же брокером. Каждая сохранённая поворотка HUD появится отдельным устройством. «Текущая выбранная поворотка» следует выбору на экране. Сохранение остановит движение и переподключит MQTT без перезагрузки устройства.</p>
+<div class="form-actions"><button id="mqttSave" type="submit" class="btn good" disabled>Сохранить MQTT</button></div><p id="mqttMessage" role="status" aria-live="polite">Откройте раздел, чтобы загрузить настройки MQTT.</p></form></section>
 <section class="settings-group" data-feature="wifi"><h3>Домашняя сеть Wi-Fi</h3><div class="row"><div class="field"><label for="ssid">Имя сети (SSID)</label><input autocomplete="off" aria-describedby="ssid-help" id="ssid"/><p class="field-help" id="ssid-help">Точное имя сети Wi-Fi, к которой подключится устройство после сохранения.</p></div><div class="field"><label for="pass">Пароль сети</label><input autocomplete="new-password" aria-describedby="pass-help" id="pass" type="password"/><p class="field-help" id="pass-help">Пароль выбранной сети Wi-Fi. Для открытой сети оставьте пустым. Сохранённый пароль не отображается в этом поле.</p></div></div>
 <div class="form-actions"><button class="btn good" id="wifiSaveButton" onclick="wifi()">Сохранить и подключиться</button><span class="hint">Полученный IP появится ниже. Точка доступа останется доступной до следующей перезагрузки.</span></div><div aria-live="polite" class="inline-message" id="wifiMessage" role="status"></div><a id="wifiClientLink" class="hint" hidden target="_blank" rel="noopener noreferrer"></a></section>
 <section class="settings-group" data-feature="wifi"><h3>Точка доступа устройства</h3><div class="field"><label for="appass">Пароль точки доступа</label><input autocomplete="new-password" aria-describedby="appass-help" id="appass" maxlength="63" minlength="8" placeholder="Пустое поле — открытая сеть" type="password"/><p class="field-help" id="appass-help">Пароль собственной точки доступа устройства: 8–63 символа. Пустое поле отключает защиту паролем. Изменение применяется после перезагрузки.</p></div><p class="hint">От 8 до 63 символов. Оставьте поле пустым, чтобы открыть сеть без пароля.</p><div class="form-actions"><button class="btn good" id="apSaveButton" onclick="saveAp()">Сохранить точку доступа</button><span class="hint">Устройство перезагрузится.</span></div></section></div></details></section><section class="card settings-section" id="otaSettings"><details class="settings-details" ontoggle="if(this.open)loadOta()"><summary><h2>Обновление прошивки<span class="section-caption">OTA через браузер или Arduino IDE</span></h2></summary><div class="settings-content">
@@ -544,27 +570,49 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 /* BEGIN BOUNDED POLLING */
 // Embedded by generate_web_assets.py. Control/STOP requests bypass this pool.
 const background=(()=>{
- const entries=new Map();let active=0,limited=false;
+ try{if(window.frameElement&&window.parent.__g5500Background){
+  const shared=window.parent.__g5500Background.scope('frame:'+(window.frameElement.id||location.pathname)+':',()=>!document.hidden&&!!window.frameElement?.getClientRects().length);
+  window.addEventListener('pagehide',shared.close);return shared;
+ }}catch(_){}
+ const entries=new Map();let active=0,limited=false,paused=false;
  const visible=()=>!document.hidden&&(!window.frameElement||!!window.frameElement.getClientRects().length);
  const entry=key=>{if(!entries.has(key))entries.set(key,{next:0,failures:0,pending:null,controller:null,shown:()=>true});return entries.get(key);};
  const deferred=()=>Object.assign(new Error('Обновление отложено'),{name:'PollingDeferred'});
- const allowed=e=>visible()&&e.shown()&&navigator.onLine!==false;
+ const allowed=e=>!paused&&visible()&&e.shown()&&navigator.onLine!==false;
  async function read(key,url,kind='json',shown=()=>true,controller=null){
   const e=entry(key);e.shown=shown;
   if(e.pending)return e.pending;
-  if(!allowed(e)||Date.now()<e.next||active>=2)throw deferred();
+  if(!allowed(e)||Date.now()<e.next||active>=(window.setupCommissioning?1:2))throw deferred();
   const abort=controller||new AbortController();e.controller=abort;++active;
   const timer=setTimeout(()=>abort.abort(),5000);
   e.pending=Promise.resolve().then(async()=>{
    try{
-    const response=await fetch(url,{cache:'no-store',signal:abort.signal});
-    const data=await response[kind==='reply'?'text':kind]();
+    const receive=async()=>{
+     if(!allowed(e))throw deferred();
+     const response=await fetch(url,{cache:'no-store',signal:abort.signal});
+     const data=await response[kind==='reply'?'text':kind]();return {response,data};
+    };
+    let result;
+    try{result=await receive();}catch(error){
+     // A server can retire an idle HTTP connection just as the browser
+     // reuses it. Only these read-only requests get one retry; the original
+     // five-second deadline also covers the pause and the second attempt.
+     if(!(error instanceof TypeError)||abort.signal.aborted||navigator.onLine===false)throw error;
+     await new Promise((resolve,reject)=>{
+      const cancel=()=>{clearTimeout(retry);reject(new DOMException('aborted','AbortError'));};
+      const retry=setTimeout(()=>{abort.signal.removeEventListener('abort',cancel);resolve();},100);
+      if(abort.signal.aborted)cancel();else abort.signal.addEventListener('abort',cancel,{once:true});
+     });
+     result=await receive();
+    }
+    const {response,data}=result;
     if(!response.ok&&kind!=='reply')throw Error('HTTP '+response.status);
     if(data&&typeof data==='object'&&typeof data.networkMemoryLimited==='boolean')limited=data.networkMemoryLimited;
     if(response.ok){e.failures=0;e.next=Date.now()+(limited?500:0);}
     else e.next=Date.now()+[1000,2000,4000,8000,15000][Math.min(e.failures++,4)];
     return kind==='reply'?{ok:response.ok,status:response.status,text:async()=>data,json:async()=>JSON.parse(data)}:data;
    }catch(error){
+    if(abort.signal.reason?.name==='PollingDeferred')throw abort.signal.reason;if(paused&&abort.signal.aborted)throw deferred();
     if(allowed(e)){const delay=[1000,2000,4000,8000,15000][Math.min(e.failures++,4)];e.next=Date.now()+Math.round(delay*(0.9+Math.random()*0.2));}
     throw error;
    }finally{clearTimeout(timer);--active;e.pending=null;e.controller=null;}
@@ -572,24 +620,34 @@ const background=(()=>{
   return e.pending;
  }
  function poll(key,load,interval,shown=()=>true){
-  const e=entry(key);e.shown=shown;let pending=null,timer=null;
+  const e=entry(key);e.stop?.();e.shown=shown;let pending=null,timer=null,stopped=false;
   const run=()=>{
+   if(stopped)return Promise.resolve();
    if(pending)return pending;clearTimeout(timer);
    pending=Promise.resolve().then(()=>{if(allowed(e))return load();}).catch(()=>{}).finally(()=>{
-    pending=null;timer=setTimeout(run,Math.max(interval,limited?500:0,e.next-Date.now()));
+    pending=null;if(!stopped)timer=setTimeout(run,Math.max(interval,limited?500:0,e.next-Date.now()));
    });return pending;
   };
-  e.run=run;run();return run;
+  e.stop=()=>{stopped=true;clearTimeout(timer);e.run=null;};e.run=run;run();return run;
  }
  function visibility(){
-  for(const e of entries.values())if(!allowed(e))e.controller?.abort();else if(e.run)e.run();
+  for(const e of entries.values())if(!allowed(e))e.controller?.abort(deferred());else if(e.run)e.run();
  }
  document.addEventListener('visibilitychange',visibility);
- document.addEventListener('toggle',()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort();},true);
- document.addEventListener('click',()=>queueMicrotask(()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort();}),true);
+ document.addEventListener('toggle',()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort(deferred());},true);
+ document.addEventListener('click',()=>queueMicrotask(()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort(deferred());}),true);
  window.addEventListener('offline',visibility);window.addEventListener('online',visibility);
- return {read,poll,visible,cancel:key=>entry(key).controller?.abort(),limited:()=>limited,setLimited:value=>{limited=!!value;}};
+ const api={read,poll,visible,refreshVisibility:visibility,cancel:key=>entry(key).controller?.abort(deferred()),limited:()=>limited,setLimited:value=>{limited=!!value;},pause:value=>{if(paused===!!value)return;paused=!!value;visibility();}};
+ api.scope=(prefix,shown)=>({...api,
+  visible:()=>visible()&&shown(),
+  read:(key,url,kind='json',local=()=>true,controller=null)=>read(prefix+key,url,kind,()=>shown()&&local(),controller),
+  poll:(key,load,interval,local=()=>true)=>poll(prefix+key,load,interval,()=>shown()&&local()),
+  cancel:key=>api.cancel(prefix+key),
+  close:()=>{for(const [key,e] of entries)if(key.startsWith(prefix)){e.stop?.();e.controller?.abort(deferred());entries.delete(key);}}
+ });
+ return api;
 })();
+window.__g5500Background=background;
 /* END BOUNDED POLLING */
 /* BEGIN STARTUP ACTIVITY */
 // Report actual input, including navigation and edits that do not send commands.
@@ -633,7 +691,7 @@ function beginSettingsAction(message,key){
  };
 }
 async function settingsRequest(path,options={},timeoutMs=12000){
- if(!options.method&&/^\/api\/(azcal|elcal)(\?|$)/.test(path)){const r=await background.read('calibration:'+path,path,'reply',document.querySelector('#calibrationSettings details').open?()=>!document.getElementById('settingsPanel').hidden&&document.querySelector('#calibrationSettings details').open:()=>true);const text=await r.text();return {ok:r.ok,status:r.status,text,json:()=>JSON.parse(text)};}
+ if(!options.method&&/^\/api\/(azcal|elcal)(\?|$)/.test(path)){const r=await background.read('calibration:'+path,path,'reply',()=>settingsDataVisible('calibrationSettings'));const text=await r.text();return {ok:r.ok,status:r.status,text,json:()=>JSON.parse(text)};}
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
  const cancel=()=>controller.abort();if(options.signal?.aborted)cancel();else options.signal?.addEventListener('abort',cancel,{once:true});
  try{const response=await fetch(path,{cache:'no-store',...options,signal:controller.signal});const text=await response.text();return {ok:response.ok,status:response.status,text,json:()=>JSON.parse(text)};}
@@ -655,6 +713,24 @@ function controlRequest(path,options={}){
 }
 
 const pageTabs=['control','settings','history'];
+function settingsDataVisible(id){
+ const node=document.getElementById(id);
+ return !document.hidden&&!document.getElementById('settingsPanel').hidden&&!!node?.getClientRects().length&&(!node.querySelector(':scope > details')||node.querySelector(':scope > details').open);
+}
+function hudCatalogVisible(){return window._forkState?.deviceRole==='hud'&&(window.setupCommissioning?Number(document.body.dataset.setupStep)===8:!document.getElementById('controlPanel').hidden||settingsDataVisible('peersSettings'));}
+let historyRequest=null;
+async function loadHistory(){
+ const panel=document.getElementById('historyPanel'),url=panel.dataset.contentUrl;
+ if(!url)return;if(historyRequest)return historyRequest;
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
+ historyRequest=(async()=>{try{
+  const response=await fetch(url,{signal:controller.signal});if(!response.ok)throw new Error('load');
+  const html=await response.text();panel.innerHTML=html;delete panel.dataset.contentUrl;
+ }catch(e){
+  const text=document.createElement('p'),button=document.createElement('button');
+  text.textContent='Не удалось загрузить историю. Проверьте связь и повторите.';button.className='btn';button.textContent='Повторить';button.onclick=loadHistory;panel.replaceChildren(text,button);
+ }finally{clearTimeout(timer);historyRequest=null;}})();return historyRequest;
+}
 const cameraView={state:null,timer:0,timeout:0,loading:false,generation:0};
 const cameraErrors={camera_psram_missing:'Камера недоступна: проверьте включение OPI PSRAM в прошивке.',camera_init_failed:'Камера не найдена. Проверьте шлейф и питание, затем перезапустите плату.',camera_server_failed:'Не удалось запустить камеру. Перезапустите плату.'};
 function stopCamera(){
@@ -713,6 +789,8 @@ function selectTab(name,updateHash=true){
  if(!settings)dismissSettingsFeedback();
  refreshCamera();
  if(opening)loadRssi();
+ if(name==='history')loadHistory();
+ background.refreshVisibility();
  if(updateHash)(settings?document.querySelector('.wrap'):window).scrollTo({top:0,behavior:'instant'});
  if(name==='control')focusMovementButtons();
 }
@@ -796,11 +874,12 @@ function networkAddresses(j){
  return [j?.ethConnected&&valid(j.ethIp)?'ETH: '+j.ethIp:'',valid(sta)?'STA: '+sta:'',valid(ap)?'AP: '+ap:''].filter(Boolean);
 }
 function renderMqttStatus(j,unavailable=false){
- const mqtt=j?.mqtt,errors={network_unavailable:'Нет сети',mqtt_memory_limited:'Недостаточно памяти',mqtt_start_failed:'Ошибка запуска',mqtt_storage_failed:'Ошибка настроек',connecting:'Подключение…',not_started:'Ожидает запуска'};
+ const mqtt=j?.mqtt,errors={network_unavailable:'Нет сети',motion_active:'Ожидает остановки',mqtt_memory_limited:'Недостаточно памяти',mqtt_tls_memory_limited:'Недостаточно памяти для TLS',mqtt_tls_time_required:'TLS ожидает время NTP',mqtt_tls_unavailable:'TLS недоступен в сборке',mqtt_tls_retry:'Повтор TLS через 10 с',recovery:'Отключён в восстановлении',mqtt_start_failed:'Ошибка запуска',mqtt_storage_failed:'Ошибка настроек',connecting:'Подключение…',not_started:'Ожидает запуска'};
  let text='Нет данных',style='',hint='Ожидаем состояние MQTT.';
  if(unavailable)hint='Не удалось обновить статус MQTT: нет ответа устройства.';
  else if(mqtt?.supported===false||j?.build?.features?.mqtt===false){text='Недоступен в сборке';hint='Поддержка MQTT не включена в эту прошивку.';}
  else if(mqtt?.storageOk===false||mqtt?.error==='mqtt_storage_failed'){text='Ошибка настроек';style='offline';hint='Не удалось прочитать сохранённые настройки MQTT.';}
+ else if(mqtt?.stopping||mqtt?.error==='stopping'){text='Отключение…';hint='Завершается прежнее соединение MQTT.';}
  else if(mqtt?.enabled===false){text='Отключён';hint='Подключение к MQTT выключено в настройках.';}
  else if(mqtt?.connected===true){text='Подключён';style='online';hint='Соединение с MQTT-брокером установлено.';}
  else if(mqtt){
@@ -904,7 +983,7 @@ function connectLive(port){
    const changed=live.state&&live.state.hudSelectionEpoch!==message.state.hudSelectionEpoch;
    live.boot=message.boot;live.revision=message.revision;live.state=message.state;live.ready=true;queueLiveRender();
    connection.state={...httpState,...message.state};updateConnection();
-   if(changed)setTimeout(()=>upd(true),0);
+   if(changed)setTimeout(()=>upd(true,true),0);
   }else if(message.type==='result')resolveLiveReply(live,message);
  };
  socket.onclose=()=>{
@@ -961,7 +1040,7 @@ function disconnectLive(socket,port){
  connection.state=httpState;queueLiveRender();updateConnection();
  for(const p of live.pending.values()){clearTimeout(p.timer);p.reject(new Error('disconnected'))}live.pending.clear();
  reconnectLive(live,connectLive,port);
- socket.close();upd(true);
+ socket.close();upd(true,true);
 }
 function sendLive(path,body,timeoutMs=liveTimeoutMs,channel=live,acceptDeferred=false){
  if(!channel.ready||channel.socket?.readyState!==WebSocket.OPEN)return Promise.reject(new Error('offline'));
@@ -985,7 +1064,7 @@ setInterval(()=>{
  if(controlLive.socket&&now-controlLive.last>liveTimeoutMs)disconnectControlLive(controlLive.socket,window._forkState?.livePort);
  updateConnection();
 },250);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){queueLiveRender();upd(true)}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){queueLiveRender();upd(true,true)}});
 async function forkPost(path,body){
  const success={'/api/settings':'Настройки сохранены','/api/preset':'Предустановка сохранена','/api/device':'Настройки устройства сохранены','/api/hud/select':'Поворотка выбрана','/api/hud/peers':body.action==='remove'?'Поворотка удалена':body.background!==undefined?'Фон HUD сохранён':body.name?'Имя поворотки сохранено':'Поворотка добавлена','/api/hud/discover':'Поиск устройств запущен'}[path];
  const notice=success?beginSettingsAction(path==='/api/hud/discover'?'Поиск устройств…':'Ожидаем подтверждение устройства…',path+JSON.stringify(body)):null;
@@ -1022,7 +1101,7 @@ function fillPreset(){
  f.elements.label.value=p.label;f.elements.az.value=p.target.az;f.elements.el.value=p.target.el;
 }
 async function savePreset(e){e.preventDefault();await forkPost('/api/preset',Object.fromEntries(new FormData(e.target)))}
-async function saveFork(e){e.preventDefault();const revision=setupDraftRevision(e.target),body=Object.fromEntries(new FormData(e.target));if(window._forkState?.build?.drive==='YAESU')body.speedEnabled=e.target.elements.speedEnabled.checked?'true':'false';else delete body.speedEnabled;if(window._forkState?.build?.display==='CROWPANEL_21')body.encoderInverted=e.target.elements.encoderInverted.checked?'true':'false';else delete body.encoderInverted;if(window._forkState?.deviceRole==='hud')for(const key of Object.keys(body))if(!['rotorName','n1mmPort','pstPort','reportPort','reportHost','encoderInverted','n1mmManualFollow','pstManualFollow','gs232ManualFollow','rotctldManualFollow','externalAzMode'].includes(key))delete body[key];if(await forkPost('/api/settings',body))clearSavedSetupDraft(e.target,revision);}
+async function saveFork(e){e.preventDefault();const revision=setupDraftRevision(e.target),body=Object.fromEntries(new FormData(e.target));if(window._forkState?.build?.drive==='YAESU')body.speedEnabled=e.target.elements.speedEnabled.checked?'true':'false';else delete body.speedEnabled;if(window._forkState?.build?.display==='CROWPANEL_21')body.encoderInverted=e.target.elements.encoderInverted.checked?'true':'false';else{delete body.encoderInverted;delete body.encoderStepDegrees;}if(window._forkState?.deviceRole==='hud')for(const key of Object.keys(body))if(!['rotorName','n1mmPort','pstPort','reportPort','reportHost','encoderInverted','encoderStepDegrees','n1mmManualFollow','pstManualFollow','gs232ManualFollow','rotctldManualFollow','externalAzMode'].includes(key))delete body[key];if(await forkPost('/api/settings',body))clearSavedSetupDraft(e.target,revision);}
 
 const simpleMotionKeys=['speedPercent','approachSpeedPercent','accelerationMs','decelerationMs','slowdownDegrees','coastDegrees','decelerationFactor'];
 const motionFields=[["OutputLimitPercent","Максимальный выход, %","Общий предел выхода, включая пусковой импульс. Проверьте допустимый уровень подключённого каскада.",1.0,100.0,"any","common"],["KickPercent","Пусковой импульс, %","Может превышать рабочий выход, но не общий предел. Например, старт 50%, движение 5%.",1.0,100.0,"any","kick"],["MovementDegrees","Подтверждение движения, °","Изменение угла для обнаружения страгивания. Выберите выше шума датчика.",0.001,10.0,"any","common"],["SustainingPercent","Минимальный выход движения, %","Нижняя граница выхода после страгивания в каскаде и при ручном управлении ШИМ. 0 — без ограничения выхода снизу. Разгон и торможение остаются плавными; STOP и защита отключают выход.",0,100,"1","common"],["Velocity","Скорость, °/с","Предельная скорость профиля движения в каскадном режиме.",0.001,360.0,"any","cascade"],["Acceleration","Ускорение, °/с²","Ограничение ускорения профиля в обоих направлениях.",0.001,1000.0,"any","cascade"],["Deceleration","Торможение, °/с²","Допустимое замедление профиля. Подберите по инерции механизма.",0.001,1000.0,"any","cascade"],["Jerk","Рывок, °/с³","Ограничение изменения ускорения S-профиля. Меньше — плавнее.",0.001,10000.0,"any","cascade"],["PositionKp","Положение · P","Пропорциональная составляющая внешнего контура.",0.0,1000.0,"any","cascade"],["PositionKi","Положение · I","Интегральная составляющая внешнего контура. 0 — отключена.",0.0,1000.0,"any","cascade"],["PositionKd","Положение · D","Гашение движения по производной измеренного положения. 0 — отключено.",0.0,1000.0,"any","cascade"],["VelocityKp","Скорость · P","Пропорциональная составляющая внутреннего контура.",0.0,10000.0,"any","cascade"],["VelocityKi","Скорость · I","Интегральная составляющая внутреннего контура. 0 — отключена.",0.0,10000.0,"any","cascade"],["VelocityKd","Скорость · D","Производная измеренной скорости с фильтрацией. 0 — отключена.",0.0,10000.0,"any","cascade"],["Feedforward","Упреждение выхода, % на °/с","Приближённый выход на единицу скорости; ПИД исправляет остаточную ошибку.",0.0,100000.0,"any","cascade"],["PositionTolerance","Допуск положения, °","Допустимая ошибка при завершении наведения. Выберите по разрешению и шуму датчика.",0.001,90.0,"any","cascade"],["HoldResumeDegrees","Возобновлять удержание за, °","Независимый порог начала коррекции. Обычно 1°; выход снимается в зоне половины этого порога или меньшего допуска положения.",0.001,180.0,"any","cascade"],["StoppedVelocity","Порог остановки, °/с","Измеренная скорость, ниже которой механизм считается остановленным.",0.001,10.0,"any","cascade"],["KickMs","Предел пускового импульса, мс","Задаёт нарастание пускового выхода. В обычном движении подтверждение ожидается не меньше срока контроля заклинивания.",20.0,10000.0,"1","kick"],["KickReleaseMs","Снятие пускового импульса, мс","Плавный переход от пускового выхода к рабочему после обнаружения движения.",20.0,2000.0,"1","kick"],["VelocityWindowMs","Окно оценки скорости, мс","Большее окно уменьшает шум, но увеличивает задержку. Не больше срока свежести.",40.0,600.0,"1","common"],["DerivativeFilterMs","Фильтр D, мс","Сглаживание производных обоих ПИД. Большее время сильнее подавляет шум.",20.0,2000.0,"1","cascade"],["FeedbackTimeoutMs","Срок свежести датчика, мс","При отсутствии новых измерений дольше этого срока выход отключается.",100.0,5000.0,"1","common"],["HoldReverseMs","Пауза реверса в серворежиме, мс","0 — без паузы. Задаёт ожидание между выключением одного направления и включением другого только при активном удержании.",0,2000,"1","cascade"],["SettleMs","Подтверждение позиции, мс","Положение и скорость должны оставаться в допуске всё это время.",20.0,5000.0,"1","cascade"],["StallMs","Контроль заклинивания, мс","Отключение при отсутствии движения под ненулевым выходом. Смена цели таймер не сбрасывает.",500.0,30000.0,"1","common"]];
@@ -1061,9 +1140,10 @@ async function saveControlFrequency(e){
  if(await forkPost('/api/settings',{controlHz:form.elements.controlHz.value})){clearSavedSetupDraft(form,revision);await loadMotionSettings();await upd(true)}
 }
 document.getElementById('controlFrequencyForm').addEventListener('change',e=>e.currentTarget.dataset.dirty='1');
-async function loadMotionSettings(){
- if(window._forkState?.deviceRole==='hud')return;
- try{const config=await background.read('motion','/api/motion');
+async function loadMotionSettings(force=false){
+ if(window._forkState?.deviceRole==='hud'||!settingsDataVisible('motionSettings'))return;
+ try{let config;if(force){const r=await settingsRequest('/api/motion',{method:'GET'});if(!r.ok)throw Error('read');config=r.json();}else config=await background.read('motion','/api/motion','json',()=>settingsDataVisible('motionSettings'));
+  if(!settingsDataVisible('motionSettings'))return;
   const frequency=document.getElementById('controlFrequencyForm');if(!frequency.dataset.dirty)frequency.elements.controlHz.value=String(1000/config.controlPeriodMs);
   for(const [i,axis] of ['az','el'].entries()){
    const f=document.getElementById(axis+'MotionForm'),m=config.axes[i];if(!m||f.dataset.dirty)continue;
@@ -1071,7 +1151,7 @@ async function loadMotionSettings(){
    for(const name of ['KickEnabled','HoldEnabled'])f.elements[axis+'Motion'+name].checked=!!m[name[0].toLowerCase()+name.slice(1)];
    for(const [name] of motionFields)f.elements[axis+'Motion'+name].value=m[name]??(name==='SustainingPercent'?0:'');motionVisibility(f);
   }
- }catch(e){settingsFeedback('Не удалось прочитать параметры движения. Проверьте связь.')}
+ }catch(e){if(settingsDataVisible('motionSettings')&&e.name!=='PollingDeferred')settingsFeedback('Не удалось прочитать параметры движения. Проверьте связь.');if(force)throw e;}
 }
 async function saveMotion(e){
  e.preventDefault();const f=e.target,revision=setupDraftRevision(f),axis=f.dataset.axis,body=Object.fromEntries(new FormData(f));
@@ -1193,9 +1273,9 @@ function renderAutoTune(j){
   else setText(result,'');
  }
  const detailKey=String(t.id)+':'+t.phase;
- if(['complete','failed'].includes(t.phase)&&autoTuneResultKey!==detailKey){
+ if(settingsDataVisible('motionSettings')&&['complete','failed'].includes(t.phase)&&autoTuneResultKey!==detailKey){
   autoTuneResultKey=detailKey;
-  background.read('autotune','/api/motion/autotune?full=1').then(details=>{if(details.id!==window._forkState?.autotune?.id||details.phase!==t.phase||window._forkState?.autotune?.phase!==t.phase)return;autoTuneDetails=details;renderAutoTune(window._forkState)}).catch(()=>{autoTuneResultKey='';settingsFeedback('Не удалось прочитать подробности автотюна.')});
+  background.read('autotune','/api/motion/autotune?full=1','json',()=>settingsDataVisible('motionSettings')).then(details=>{if(!settingsDataVisible('motionSettings')||details.id!==window._forkState?.autotune?.id||details.phase!==t.phase||window._forkState?.autotune?.phase!==t.phase)return;autoTuneDetails=details;renderAutoTune(window._forkState)}).catch(()=>{autoTuneResultKey='';if(settingsDataVisible('motionSettings'))settingsFeedback('Не удалось прочитать подробности автотюна.')});
  }
 }
 function autoTuneTrackingFailureSummary(t){
@@ -1371,7 +1451,8 @@ function updateFork(j){
  setText(document.getElementById('speedOutput'),j.speedOutputPercent.toFixed(1)+'%');
  if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements.speedEnabled.checked=j.speedEnabled;
  document.getElementById('encoderSettings').classList.toggle('hide',j.build?.display!=='CROWPANEL_21');
- if(first||(!f.dataset.dirty&&!f.contains(document.activeElement)))f.elements.encoderInverted.checked=j.encoderInverted??true;
+ f.elements.encoderStepDegrees.disabled=j.build?.display!=='CROWPANEL_21';
+ if(first||(!f.dataset.dirty&&!f.contains(document.activeElement))){f.elements.encoderInverted.checked=j.encoderInverted??true;f.elements.encoderStepDegrees.value=j.encoderStepDegrees??20;}
  document.querySelector('#presetEditor [name=el]').min=j.elStart??0;document.querySelector('#presetEditor [name=el]').max=j.elMax??180;
  document.querySelector('#presetEditor [name=az]').min=j.azStart??0;document.querySelector('#presetEditor [name=az]').max=j.azMax??(j.azMode===36?360:450);
  if(first)fillPreset();
@@ -1519,10 +1600,10 @@ async function setCalMode(m){await calibrationAction('/api/calmode?m='+m,m==='mu
 async function calibrationAction(path,success){
  const url=new URL(path,location.origin),point=url.searchParams.get('p');
  if(point){const axis=point.startsWith('el')||point.endsWith('2')?'el':'az';if(document.getElementById(axis+'RangeForm').dataset.dirty){settingsFeedback('Сначала примените диапазон '+axis.toUpperCase()+', затем запишите положения.');return false;}}
- const notice=beginSettingsAction('Сохранение калибровки…',path);if(!notice)return false;
+ const notice=beginSettingsAction('Сохранение калибровки…',path);if(!notice)return false;let saved=false;
  try{const r=await settingsRequest(path);if(!r.ok){notice.finish(false,r.status===403?'Калибровка доступна на контроллере поворотки':'Не удалось сохранить калибровку. Повторите после проверки устройства.');return false;}
- notice.finish(true,success);await upd(true);await Promise.all([loadAzCalibration(),loadElCalibration()]);return true;
- }catch(e){notice.finish(false,'Подтверждение не получено. Проверьте связь и состояние калибровки перед повтором.');return false;}
+ saved=true;await refreshCalibration();notice.finish(true,success);return true;
+ }catch(e){notice.finish(false,saved?'Калибровка сохранена, но не удалось обновить показания. Обновите страницу.':'Подтверждение не получено. Проверьте связь и состояние калибровки перед повтором.');return false;}
 }
 async function setAzMode(m){await azPost('/api/azrange',{profile:m===36?'p36':'p45'})}
 async function resetCal(axis,cm){
@@ -1535,22 +1616,32 @@ function azEndPreview(){const f=document.getElementById('azRangeForm');azRangeEn
 document.getElementById('azRangeForm').addEventListener('input',e=>{e.currentTarget.dataset.dirty='1';azEndPreview();renderAxisCalibration('az',window._forkState)});
 function calibrationContext(axis){const j=window._forkState;return j?[j.deviceRole,j.model,j[axis+'Profile'],j[axis+'RangeRevision']].join(':'):''}
 const calibrationLoads={};
-async function loadAxisCalibration(axis){
+async function loadAxisCalibration(axis,force=false){
+ if(!force&&!settingsDataVisible('calibrationSettings'))return;
  if(window._forkState?.deviceRole==='hud'||(axis==='el'&&window._forkState?.model!=='G5500'))return;
  const context=calibrationContext(axis),token={context};
- if(calibrationLoads[axis]?.context===context){calibrationLoads[axis].refresh=true;return;}
+ const pending=calibrationLoads[axis];
+ if(pending?.context===context){if(!force)return pending.promise;await pending.promise;if(context!==calibrationContext(axis))return;return loadAxisCalibration(axis,true);}
  calibrationLoads[axis]=token;
  const message=document.getElementById(axis+'RangeMessage');
- try{const r=await settingsRequest('/api/'+axis+'cal');if(!r.ok)throw Error('read');const j=r.json();
+ token.promise=(async()=>{
+ try{const r=await settingsRequest('/api/'+axis+'cal',force?{method:'GET'}:{});if(!r.ok)throw Error('read');const j=r.json();
  if(context!==calibrationContext(axis)||calibrationLoads[axis]!==token)return;
  window['_'+axis+'Cal']=j;window['_'+axis+'CalContext']=context;
  const f=document.getElementById(axis+'RangeForm');if(!f.dataset.dirty&&!f.contains(document.activeElement)){f.elements.start.value=j.customStart;f.elements.span.value=j.customSpan;(axis==='az'?azEndPreview:elEndPreview)()}
  renderAxisCalibration(axis,window._forkState);
  if(j.storageFault)message.textContent='Ошибка сохранённой калибровки. Сбросьте калибровку и настройте её заново.';
- }catch(e){message.textContent='Не удалось прочитать калибровку';}
- finally{if(calibrationLoads[axis]===token){delete calibrationLoads[axis];if(token.refresh)loadAxisCalibration(axis);}}
+ }catch(e){if(e.name==='PollingDeferred')return;message.textContent='Не удалось прочитать калибровку';if(force)throw e;}
+ finally{if(calibrationLoads[axis]===token)delete calibrationLoads[axis];}
+ })();return token.promise;
 }
-async function loadAzCalibration(){return loadAxisCalibration('az')}
+async function loadAzCalibration(force=false){return loadAxisCalibration('az',force)}
+async function refreshCalibration(){
+ if(!await upd(true))throw Error('status');
+ // Explicit readback follows the write; it must not reuse a pre-write response
+ // or be deferred by the background polling pool.
+ await loadAzCalibration(true);await loadElCalibration(true);
+}
 function renderCalibrationPoints(axis,mode,points,custom,storageFault){
  const encoder=window._forkState?.[axis+'Sensor']&&window._forkState[axis+'Sensor']!=='ADC',unit=encoder?'отсч.':'мВ';
  const prefix=axis+(mode==='2'?'2':''),list=document.getElementById(prefix+'PointList');
@@ -1586,13 +1677,13 @@ async function axisCalibrationPost(axis,path,body,notice=null){
  const rangeForm=document.getElementById(axis+'RangeForm');if(path!=='/api/'+axis+'range'&&rangeForm.dataset.dirty){settingsFeedback('Сначала примените диапазон '+axis.toUpperCase()+', затем запишите положения.');return false;}
  const label=axis.toUpperCase();notice=notice||beginSettingsAction('Сохранение '+label+'…',path+JSON.stringify(body));if(!notice)return false;
  notice.update('Сохранение '+label+'…');
- const message=document.getElementById(axis+'RangeMessage'),revision=setupDraftRevision(rangeForm);
+ const message=document.getElementById(axis+'RangeMessage'),revision=setupDraftRevision(rangeForm);let saved=false;
  try{const r=await settingsRequest(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});const j=r.json();
  if(!r.ok||j.ok===false){const error=j.error==='invalid_point'?'Проверьте угол: точка должна быть внутри диапазона, без повторов; максимум 16 точек.':j.error==='invalid_range'?'Проверьте начало и полный ход.':'Не удалось сохранить настройки '+label;setText(message,error);notice.finish(false,error);return false;}
  const text=body.op?(body.op==='add_capture'?'Точка '+label+' '+body.angle+'° добавлена, текущее показание датчика запомнено':body.op==='capture'?'Положение '+label+' '+body.angle+'° запомнено':body.op==='add'?'Точка '+label+' '+body.angle+'° добавлена':'Точка '+label+' '+body.angle+'° удалена'):'Диапазон '+label+' сохранён';
- if(path==='/api/'+axis+'range')clearSavedSetupDraft(rangeForm,revision);setText(message,text);notice.finish(true,text);
- await upd(true);await (axis==='az'?loadAzCalibration():loadElCalibration());return true;
- }catch(e){const error='Подтверждение не получено. Проверьте связь и настройки '+label+' перед повтором.';setText(message,error);notice.finish(false,error);return false;}
+ saved=true;if(path==='/api/'+axis+'range')clearSavedSetupDraft(rangeForm,revision);
+ await refreshCalibration();setText(message,text);notice.finish(true,text);return true;
+ }catch(e){const error=saved?'Настройки '+label+' сохранены, но не удалось обновить показания. Обновите страницу.':'Подтверждение не получено. Проверьте связь и настройки '+label+' перед повтором.';setText(message,error);notice.finish(false,error);return false;}
 }
 async function azPost(path,body){return axisCalibrationPost('az',path,body)}
 async function saveAzRange(e){e.preventDefault();const f=e.target;await azPost('/api/azrange',{profile:'custom',start:f.elements.start.value,span:f.elements.span.value})}
@@ -1606,7 +1697,7 @@ async function useCustomRange(){return useCustomAxisRange('az')}
 async function addAzPoint(e){e.preventDefault();if(await azPost('/api/azcal',{op:'add_capture',angle:azPointAngle.value}))azPointAngle.value=''}
 function elEndPreview(){const f=document.getElementById('elRangeForm');elRangeEnd.textContent=(Number(f.elements.start.value)+Number(f.elements.span.value)).toFixed(1)+'°'}
 document.getElementById('elRangeForm').addEventListener('input',e=>{e.currentTarget.dataset.dirty='1';elEndPreview();renderAxisCalibration('el',window._forkState)});
-async function loadElCalibration(){return loadAxisCalibration('el')}
+async function loadElCalibration(force=false){return loadAxisCalibration('el',force)}
 async function elPost(path,body){return axisCalibrationPost('el',path,body)}
 async function saveElRange(e){e.preventDefault();const f=e.target;await elPost('/api/elrange',{profile:'custom',start:f.elements.start.value,span:f.elements.span.value})}
 async function useCustomElRange(){return useCustomAxisRange('el')}
@@ -1649,24 +1740,27 @@ async function saveAp(){
  catch(e){notice.finish(false,'Подтверждение не получено. Проверьте связь и настройки точки доступа перед повтором.');}
 }
 function pct(v,m){v=Math.max(0,Math.min(m,v));return(v/m*100).toFixed(1)+'%'}
-let statusPending=false,statusRefreshQueued=false,statusController=null;
-async function upd(force=false){
+let statusPending=null,statusRefreshQueued=null,statusController=null,statusRefreshForeground=false;
+async function upd(force=false,backgroundOnly=false){
+if(backgroundOnly&&wizard.busy)return;
 if(otaBusy||keyboardHeld()||!background.visible())return;
 if(liveFresh()&&!force)return;
-if(statusPending){if(force)statusRefreshQueued=true;return;}
-statusPending=true;
+if(statusPending){if(!force)return;if(!backgroundOnly)statusRefreshForeground=true;if(!statusRefreshQueued)statusRefreshQueued=statusPending.then(()=>{const foreground=statusRefreshForeground;statusRefreshForeground=false;statusRefreshQueued=null;return upd(true,!foreground)});return statusRefreshQueued;}
+let statusDone;statusPending=new Promise(resolve=>statusDone=resolve);let updated=false;
 const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5000);statusController=controller;
-try{const j=await background.read('status','/api/status','json',()=>true,controller);if(!j||typeof j!=='object'||!['controller','hud'].includes(j.deviceRole))throw new Error('invalid status');
+try{let j;if(force&&!backgroundOnly){const r=await settingsRequest('/api/status',{signal:controller.signal},5000);if(!r.ok)throw Error('read');j=r.json();}else j=await background.read('status','/api/status','json',()=>true,controller);if(!j||typeof j!=='object'||!['controller','hud'].includes(j.deviceRole))throw new Error('invalid status');
 connection.httpOnline=true;connection.httpLast=Date.now();connection.state=liveFresh()&&live.state?{...j,...live.state}:j;updateConnection();
 httpState=j;connectLive(j.livePort);queueLiveRender();
-if(document.querySelector('#calibrationSettings details').open){loadAzCalibration();loadElCalibration();}
+updated=true;
+if(settingsDataVisible('calibrationSettings'))loadAzCalibration().then(()=>loadElCalibration());
 }catch(e){
+ if(e.name==='PollingDeferred'||controller.signal.aborted&&!background.visible())return;
  if(controller.signal.aborted&&keyboardHeld())return;
  connection.httpOnline=false;updateConnection();
  renderMqttStatus(null,true);
  const wifi=document.getElementById('statusWifi'),addresses=networkAddresses(httpState);setText(wifi,['Нет связи',...(addresses.length?['Последние адреса:',...addresses]:[])].join('\n'));wifi.className='offline';wifi.title='Не удалось обновить статус устройства';
  for(const id of ['statusBt','statusSignal','statusMemory','statusUptime']){const node=document.getElementById(id);setText(node,'—');node.className='';}
-}finally{clearTimeout(timeout);statusController=null;statusPending=false;if(statusRefreshQueued){statusRefreshQueued=false;queueMicrotask(()=>upd(true));}}}
+}finally{clearTimeout(timeout);statusController=null;statusPending=null;statusDone();}return updated;}
 function currentPosition(j,axis){
  if(j.deviceRole==='hud'&&!j.hudOnline)return '—';
  if(j.axes?.[axis==='az'?0:1]?.calibrated===false)return 'NC';
@@ -1705,6 +1799,8 @@ document.getElementById('hardwareTrialConfirm').onclick=async()=>{
 };
 setInterval(renderHardwareTrial,1000);
 function renderStatus(j){
+const deviceId=typeof j.deviceId==='string'&&/^[0-9a-f]{12}$/i.test(j.deviceId)?j.deviceId.toLowerCase():'—';
+setText(document.getElementById('networkDeviceId'),deviceId);const mqttDeviceId=document.getElementById('mqttDeviceId');if(mqttDeviceId.value!==deviceId)mqttDeviceId.value=deviceId;
 updateCamera(j);
 setText(az,currentPosition(j,'az'));setText(el,currentPosition(j,'el'));
 for(const axis of ['az','el'])document.getElementById(axis).title=currentPosition(j,axis)==='NC'?'NC — not calibrated: ось не откалибрована':'';
@@ -1725,7 +1821,7 @@ setText(azrange,rangeName+' · '+azmn+'…'+azmx+'°');azmc.classList.toggle('go
 customAzPoints.classList.toggle('hide',j.azMode!==0);azPointAngle.min=azmn;azPointAngle.max=azmx;
 const elCustom=j.elProfile==='custom';setText(elrange,(elCustom?'Произвольный':'Стандартный')+' · '+elmn+'…'+elmx+'°');elmstd.classList.toggle('good',!elCustom);elmc.classList.toggle('good',elCustom);
 customElPoints.classList.toggle('hide',!elCustom);elPointAngle.min=elmn;elPointAngle.max=elmx;
-for(const axis of ['az','el']){const key=calibrationContext(axis);if(window['_'+axis+'CalKey']!==key){window['_'+axis+'CalKey']=key;loadAxisCalibration(axis)}renderAxisCalibration(axis,j)}
+for(const axis of ['az','el']){const key=calibrationContext(axis);if(settingsDataVisible('calibrationSettings')&&window['_'+axis+'CalKey']!==key){window['_'+axis+'CalKey']=key;loadAxisCalibration(axis)}renderAxisCalibration(axis,j)}
 panel2.classList.toggle('hide',j.calMode!=='2');panelm.classList.toggle('hide',j.calMode!=='multi');multiCalHint.classList.toggle('hide',j.calMode!=='multi');
 document.getElementById('ethernetStatus').hidden=!j.ethernetSupported;setText(document.getElementById('ethip'),j.ethIp||'-');setText(document.getElementById('ethstate'),j.ethStarted===false?'Ошибка запуска':j.ethConnected?'Подключён':j.ethLink?'Ожидание DHCP':'Нет кабеля');
 setText(ip,j.staIp??(Number.isFinite(j.rssi)?j.ip:'-'));setText(document.getElementById('apip'),j.apIp||'-');setText(mode,j.wifiMode);
@@ -1767,7 +1863,7 @@ document.querySelectorAll('[role=tab]').forEach(tab=>tab.addEventListener('keydo
 }));
 selectTab(location.hash.slice(1),false);
 setInterval(loadRssi,30000);
-setInterval(()=>upd(!!wifiSetup),1000);setInterval(()=>upd(true),15000);upd();
+setInterval(()=>upd(!!wifiSetup,true),1000);setInterval(()=>upd(true,true),15000);upd();
 
 ssid.addEventListener('input',function(){ssid.dataset.dirty='1';});
 for(const id of ['forkSettings','hudConfig'])document.getElementById(id).addEventListener('input',event=>{event.currentTarget.dataset.dirty='1';});
@@ -1806,8 +1902,16 @@ document.querySelectorAll('.movebtn').forEach(function(b){
 let hudSelection,hudBackgroundSaving=0;
 const hudBackgrounds=[['Стандартный','#0a111c'],['Тёмно-синий','#081e3a'],['Тёмно-зелёный','#092c20'],['Тёмно-бирюзовый','#073035'],['Тёмно-фиолетовый','#241334'],['Бордовый','#35131e'],['Тёмно-коричневый','#302113'],['Графитовый','#181b20'],['Чёрный','#000000']];
 let hudOffset=0,hudDiscoveredOffset=0,hudTotal=0,hudDiscoveryTotal=0,hudPollBusy=false,hudLastPoll=0;
-async function hudPage(delta){hudOffset=Math.max(0,Math.min(Math.max(0,hudTotal-1),hudOffset+delta*8));await loadHudPeers()}
-async function hudDiscoveryPage(delta){hudDiscoveredOffset=Math.max(0,Math.min(Math.max(0,hudDiscoveryTotal-1),hudDiscoveredOffset+delta*8));await loadHudDiscovery()}
+function hudLastOffset(total){return Math.floor(Math.max(0,total-1)/8)*8}
+async function hudPage(delta){hudOffset=Math.max(0,Math.min(hudLastOffset(hudTotal),hudOffset+delta*8));await loadHudPeers()}
+async function hudDiscoveryPage(delta){hudDiscoveredOffset=Math.max(0,Math.min(hudLastOffset(hudDiscoveryTotal),hudDiscoveredOffset+delta*8));await loadHudDiscovery()}
+function hudPagination(prefix,offset,total){
+ const prev=document.getElementById(prefix+'Prev'),next=document.getElementById(prefix+'Next');
+ prev.hidden=next.hidden=total<=8;prev.disabled=offset===0;next.disabled=offset+8>=total;
+ const range=`${offset+1}–${Math.min(offset+8,total)}`;
+ document.getElementById(prefix+(prefix==='hudDiscovery'?'Info':'PageInfo')).textContent=prefix==='hudDiscovery'?
+  'Найдено: '+total+(total>8?' · '+range:''):total?range+' / '+total:'Добавьте поворотку';
+}
 function hudRow(peer,discovered,manage=false){
  const row=document.createElement('div');row.className='device-peer'+(!discovered&&!manage?' select-only':'');
  const select=document.createElement('button');select.className='btn'+(peer.selected?' good':'');
@@ -1817,12 +1921,14 @@ function hudRow(peer,discovered,manage=false){
  select.textContent=peer.name+(peer.transport==='mqtt'?' · MQTT':'')+(peer.busAddress?' · RS‑485 №'+peer.busAddress:'')+' · '+(peer.online?'AZ '+position('az')+(peer.hasEl===false?'':' / EL '+position('el'))+(peer.moving?' · вращение':''):'нет связи')+' · '+age;
  select.onclick=async()=>{await forkPost(discovered?'/api/hud/peers':'/api/hud/select',{id:peer.id});await loadHudPeers();if(discovered)await loadHudDiscovery()};row.append(select);
  if(manage&&!discovered&&peer.transport!=='simulation'){
+  row.classList.add('managed');
+  const actions=document.createElement('div');actions.className='device-peer-actions';row.append(actions);
   if(window._forkState?.build?.features?.mqtt!==false){
-   const link=document.createElement('button');link.className='btn';link.textContent=peer.transport==='mqtt'?'Перейти на UDP':'Перейти на MQTT';
-   link.onclick=async()=>{const data={id:peer.id,transport:peer.transport==='mqtt'?'wifi':'mqtt'};if(data.transport==='wifi'){const address=prompt('IPv4 контроллера');if(!address)return;data.address=address;data.port=String(window._forkState?.hudPort||4534);}await forkPost('/api/hud/peers',data);await loadHudPeers();};row.append(link);
+   const link=document.createElement('button');link.className='btn peer-transport';link.textContent=peer.transport==='mqtt'?'Перейти на UDP':'Перейти на MQTT';
+   link.onclick=async()=>{const data={id:peer.id,transport:peer.transport==='mqtt'?'wifi':'mqtt'};if(data.transport==='wifi'){const address=prompt('IPv4 контроллера');if(!address)return;data.address=address;data.port=String(window._forkState?.hudPort||4534);}await forkPost('/api/hud/peers',data);await loadHudPeers();};actions.append(link);
   }
-  const rename=document.createElement('button');rename.className='btn';rename.textContent='Имя';rename.onclick=async()=>{const name=prompt('Имя поворотки',peer.name);if(name!==null){await forkPost('/api/hud/peers',{id:peer.id,name});await loadHudPeers()}};row.append(rename);
-  const remove=document.createElement('button');remove.className='btn';remove.textContent='Удалить';remove.onclick=async()=>{await forkPost('/api/hud/peers',{id:peer.id,action:'remove'});await loadHudPeers()};row.append(remove);
+  const rename=document.createElement('button');rename.className='btn';rename.textContent='Имя';rename.onclick=async()=>{const name=prompt('Имя поворотки',peer.name);if(name!==null){await forkPost('/api/hud/peers',{id:peer.id,name});await loadHudPeers()}};actions.append(rename);
+  const remove=document.createElement('button');remove.className='btn';remove.textContent='Удалить';remove.onclick=async()=>{await forkPost('/api/hud/peers',{id:peer.id,action:'remove'});await loadHudPeers()};actions.append(remove);
   const field=document.createElement('label');field.className='hud-background';
   const caption=document.createElement('span');caption.textContent='Фон HUD';
   const swatch=document.createElement('span');swatch.className='hud-background-swatch';swatch.setAttribute('aria-hidden','true');
@@ -1835,19 +1941,28 @@ function hudRow(peer,discovered,manage=false){
  return row;
 }
 async function loadHudPeers(){
- if(otaBusy||hudPollBusy)return;hudPollBusy=true;
- try{const data=await background.read('peers','/api/hud/peers?offset='+hudOffset);hudTotal=data.total;
+ if(otaBusy||hudPollBusy||!hudCatalogVisible())return;hudPollBusy=true;
+ try{let data=await background.read('peers','/api/hud/peers?offset='+hudOffset,'json',hudCatalogVisible);
+ if(hudOffset>hudLastOffset(data.total)){hudOffset=hudLastOffset(data.total);data=await background.read('peers','/api/hud/peers?offset='+hudOffset);}
+ hudTotal=data.total;
  const box=document.getElementById('hudPeers');box.replaceChildren(...data.items.map(p=>hudRow(p,false)));
  const settings=document.getElementById('hudPeerSettings');
  if(!hudBackgroundSaving&&!settings.querySelector('.hud-background select:focus'))settings.replaceChildren(...data.items.map(p=>hudRow(p,false,true)));
- for(const prefix of ['hud','hudSettings']){
-  document.getElementById(prefix+'PageInfo').textContent=hudTotal?`${hudOffset+1}–${Math.min(hudOffset+8,hudTotal)} / ${hudTotal}`:'Добавьте поворотку';
-  document.getElementById(prefix+'Prev').disabled=hudOffset===0;document.getElementById(prefix+'Next').disabled=hudOffset+8>=hudTotal;
- }
+ for(const prefix of ['hud','hudSettings'])hudPagination(prefix,hudOffset,hudTotal);
  }catch(e){}finally{hudPollBusy=false;hudLastPoll=Date.now()}
 }
 let hudScanTimer;
-async function loadHudDiscovery(){if(otaBusy)return;try{const data=await background.read('discovery','/api/hud/peers?discovered=1&offset='+hudDiscoveredOffset,'json',()=>!document.getElementById('settingsPanel').hidden);hudDiscoveryTotal=data.total;document.getElementById('hudDiscovered').replaceChildren(...data.items.map(p=>hudRow(p,true)));document.getElementById('hudBusProgress').textContent=data.scanActive?'Поиск RS‑485: адрес '+data.scanAddress+' / '+data.scanLast:'';document.getElementById('hudDiscoveryInfo').textContent='Найдено: '+data.total;clearTimeout(hudScanTimer);if(data.scanActive)hudScanTimer=setTimeout(loadHudDiscovery,1000)}catch(e){}}
+async function loadHudDiscovery(){
+ if(otaBusy||!settingsDataVisible('peersSettings'))return;
+ try{const read=()=>background.read('discovery','/api/hud/peers?discovered=1&offset='+hudDiscoveredOffset,'json',()=>settingsDataVisible('peersSettings'));
+ let data=await read();
+ if(hudDiscoveredOffset>hudLastOffset(data.total)){hudDiscoveredOffset=hudLastOffset(data.total);data=await read();}
+ hudDiscoveryTotal=data.total;document.getElementById('hudDiscovered').replaceChildren(...data.items.map(p=>hudRow(p,true)));
+ document.getElementById('hudBusProgress').textContent=data.scanActive?'Поиск RS‑485: адрес '+data.scanAddress+' / '+data.scanLast:'';
+ hudPagination('hudDiscovery',hudDiscoveredOffset,hudDiscoveryTotal);
+ clearTimeout(hudScanTimer);if(data.scanActive)hudScanTimer=setTimeout(loadHudDiscovery,1000);
+ }catch(e){}
+}
 async function hudSearchMqtt(){if(await forkPost('/api/hud/discover',{transport:'mqtt'})){hudDiscoveredOffset=0;setTimeout(loadHudDiscovery,500);setTimeout(loadHudDiscovery,1800);}}
 async function hudAddMqtt(){if(await forkPost('/api/hud/peers',{id:document.getElementById('hudMqttId').value,transport:'mqtt'}))await loadHudPeers();}
 async function hudSearchRs485(){if(Number(document.getElementById('hudBusFirst').value)>Number(document.getElementById('hudBusLast').value)){alert('Первый адрес должен быть не больше последнего');return;}if(await forkPost('/api/hud/discover',{transport:'rs485',first:document.getElementById('hudBusFirst').value,last:document.getElementById('hudBusLast').value})){hudDiscoveredOffset=0;await loadHudDiscovery();}}
@@ -2071,7 +2186,7 @@ window.fetch=async(input,options={})=>{
  }
  return originalFetch(input,options);
 };
-async function setupRequest(path,body,textReply=false){const options=body?{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(Object.entries(body).filter(([,v])=>v!==undefined))}:{cache:'no-store'};const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);const parent=body&&!setupMotionPath(path)?wizard.actionAbort?.signal:null,abort=()=>controller.abort();if(parent?.aborted)abort();parent?.addEventListener('abort',abort,{once:true});try{const response=body?await fetch(path,{...options,signal:controller.signal}):await background.read('setup:'+path,path,'reply',path==='/api/network'&&networkConfigVisible()?networkConfigVisible:()=>true);if(textReply){const text=await response.text();if(!response.ok)throw new Error(text||'Не удалось сохранить настройки сети.');return {ok:true};}const result=await response.json();if(result.error==='recovery_only'){location.replace('/recovery');throw new Error('Устройство в режиме восстановления.');}if(!response.ok||result.ok===false)throw new Error(({setup_step_not_ready:'Завершите настройку и проверку текущего шага.',stale_setup:'Настройки изменились. Обновляем этап.',setup_lease_expired:'Сессия настройки изменилась. Обновляем состояние.',setup_test_expired:'Проверка остановлена из-за задержки связи. Запустите её повторно.',not_calibrated:'Сначала откалибруйте ось.',unavailable:'Проверьте готовность, калибровку и ошибки оси.',invalid:'Проверьте значения и свободный ход.',invalid_address:'Укажите допустимый адрес узла в своей подсети.',invalid_dns:'Проверьте адрес DNS.',invalid_network_choice:'Выберите поддерживаемое сетевое подключение.',invalid_ipv4:'Проверьте запись IPv4-адреса.',invalid_netmask:'Проверьте маску подсети.',invalid_gateway:'Шлюз должен находиться в той же подсети.',network_not_verified:'Откройте устройство по новому адресу и подтвердите подключение после перезапуска.',network_rollback_failed:'Не удалось вернуть сеть. Сервисная точка доступа остаётся включённой; откройте восстановление.',no_network_trial:'Настройки сети уже подтверждены или отменены. Обновите страницу.',network_storage_failed:'Не удалось сохранить сеть.',storage_failed:'Не удалось записать настройки. Повторите сохранение.',setup_storage_failed:'Не удалось записать этап настройки.',invalid_range:'Проверьте начало и полный ход оси.',invalid_or_port_conflict:'Проверьте режим связи и конфликты портов.'})[result.error||result.result]||result.error||result.result||'Ошибка запроса');return result;}catch(e){throw new Error(setupError(e));}finally{clearTimeout(timeout);parent?.removeEventListener('abort',abort);}}
+async function setupRequest(path,body,textReply=false){const options=body?{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(Object.entries(body).filter(([,v])=>v!==undefined))}:{cache:'no-store'};const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);const parent=(body||wizard.busy)&&!setupMotionPath(path)?wizard.actionAbort?.signal:null,abort=()=>controller.abort();if(parent?.aborted)abort();parent?.addEventListener('abort',abort,{once:true});try{const response=body||wizard.busy?await fetch(path,{...options,signal:controller.signal}):await background.read('setup:'+path,path,'reply',path==='/api/network'&&networkConfigVisible()?networkConfigVisible:()=>true);if(textReply){const text=await response.text();if(!response.ok)throw new Error(text||'Не удалось сохранить настройки сети.');return {ok:true};}const result=await response.json();if(result.error==='recovery_only'){location.replace('/recovery');throw new Error('Устройство в режиме восстановления.');}if(!response.ok||result.ok===false)throw new Error(({setup_step_not_ready:'Завершите настройку и проверку текущего шага.',stale_setup:'Настройки изменились. Обновляем этап.',setup_lease_expired:'Сессия настройки изменилась. Обновляем состояние.',setup_test_expired:'Проверка остановлена из-за задержки связи. Запустите её повторно.',not_calibrated:'Сначала откалибруйте ось.',unavailable:'Проверьте готовность, калибровку и ошибки оси.',invalid:'Проверьте значения и свободный ход.',invalid_address:'Укажите допустимый адрес узла в своей подсети.',invalid_dns:'Проверьте адрес DNS.',invalid_network_choice:'Выберите поддерживаемое сетевое подключение.',invalid_ipv4:'Проверьте запись IPv4-адреса.',invalid_netmask:'Проверьте маску подсети.',invalid_gateway:'Шлюз должен находиться в той же подсети.',network_not_verified:'Откройте устройство по новому адресу и подтвердите подключение после перезапуска.',network_rollback_failed:'Не удалось вернуть сеть. Сервисная точка доступа остаётся включённой; откройте восстановление.',no_network_trial:'Настройки сети уже подтверждены или отменены. Обновите страницу.',network_storage_failed:'Не удалось сохранить сеть.',storage_failed:'Не удалось записать настройки. Повторите сохранение.',setup_storage_failed:'Не удалось записать этап настройки.',invalid_range:'Проверьте начало и полный ход оси.',invalid_or_port_conflict:'Проверьте режим связи и конфликты портов.'})[result.error||result.result]||result.error||result.result||'Ошибка запроса');return result;}catch(e){if(e.name==='PollingDeferred')throw e;throw new Error(setupError(e));}finally{clearTimeout(timeout);parent?.removeEventListener('abort',abort);}}
 function setupError(e){return e.name==='AbortError'?'Ответ не получен за 10 секунд. Проверьте связь и сохранённые параметры перед повтором.':e instanceof TypeError?'Связь с устройством прервана. Восстановите подключение и проверьте сохранённые параметры.':e.message;}
 let networkConfigRequest=null;
 function loadNetworkConfig(){
@@ -2102,27 +2217,33 @@ function renderSetupSummary(state,j){
 function setupProblems(state){const labels={network:'Сеть: подключитесь к выбранной сети и подтвердите новый адрес.',equipment:'Оборудование: примените настройки и дождитесь подтверждения запуска.',az_calibration:'AZ: запишите калибровку диапазона.',el_calibration:'EL: запишите калибровку диапазона.',az_tuning:'AZ: сохраните корректные параметры движения или измерьте выбег в обе стороны.',el_tuning:'EL: сохраните корректные параметры движения или измерьте выбег в обе стороны.',motion:'Остановите измерение/автотюн и сбросьте ошибки привода.',peer:'Выберите сохранённый контроллер на связи с готовой калибровкой.'};return (state.problems||[]).map(p=>labels[p]||p).join(' ');}
 function renderSetup(){
  const state=wizard.state,j=window._forkState||{};if(!state)return;renderSetupSummary(state,j);
+ const stepChanged=wizard.step!==state.step;
+ const ids={0:['networkStatus','networkSettings'],1:['hudPanel'],2:['rotorSettings'],3:['equipmentSettings'],4:['equipmentSettings'],5:['calibrationSettings','setupTests'],6:['motionSettings','setupTests'],7:['programSettings'],8:['peersSettings'],9:['presetSettings','setupTests']};
+ const visible=new Set(wizard.active?ids[state.step]||[]:[]);
  shell.hidden=footer.hidden=!wizard.active;document.body.classList.toggle('setup-view',wizard.active);window.setupCommissioning=wizard.active;
  hudUartFields();renderMqttSettings();
- for(const card of setupRoot.querySelectorAll(':scope > .settings-section')){card.classList.remove('setup-visible');}
+ // Keep the current section mounted and visible throughout a status refresh.
+ // Hiding it before a layout read clamps scroll and dismisses native selects,
+ // including controls inside the hardware iframe.
+ for(const card of setupRoot.querySelectorAll(':scope > .settings-section'))card.classList.toggle('setup-visible',visible.has(card.id));
  document.getElementById('peersSettings').classList.toggle('hide',j.deviceRole!=='hud');document.getElementById('rotorSettings').classList.toggle('hide',j.deviceRole==='hud');
  document.getElementById('equipmentDisplay').textContent='Дисплей: '+(j.build?.display||'нет данных')+'. Тип выбирается при сборке; GPIO внешнего экрана задаются в оборудовании.';
  const frame=document.getElementById('equipmentFrame'),stage=wizard.active&&[3,4].includes(state.step)?state.step:-1;
  frame.hidden=stage<0;if(stage>=0&&!frame.src)frame.src='/hardware?setup=1';
  if(frame.getAttribute('src'))frame.contentWindow?.postMessage({type:'hardwareStage',step:stage,driveInterface:state.driveInterface,simulation:state.simulation,simulationMode:state.simulationMode},location.origin);
  if(!wizard.active){testCard.hidden=true;return;}renderSetupDrive();
- selectTab('settings',false);document.body.dataset.setupStep=String(state.step);
- const ids={0:['networkStatus','networkSettings'],1:['hudPanel'],2:['rotorSettings'],3:['equipmentSettings'],4:['equipmentSettings'],5:['calibrationSettings','setupTests'],6:['motionSettings','setupTests'],7:['programSettings'],8:['peersSettings'],9:['presetSettings','setupTests']};
- for(const id of ids[state.step]||[]){const card=document.getElementById(id);card.classList.add('setup-visible');const details=card.querySelector(':scope > details');if(details&&state.step!==9)details.open=true;}
+ if(document.getElementById('settingsPanel').hidden)selectTab('settings',false);document.body.dataset.setupStep=String(state.step);
+ for(const id of visible){const details=document.getElementById(id).querySelector(':scope > details');if(details&&state.step!==9&&stepChanged)details.open=true;}
  testCard.hidden=![5,6,9].includes(state.step);document.getElementById('setupMovementCheck').hidden=state.role==='hud';document.getElementById('setupTargetForm').hidden=state.step!==9;
  const sequence=state.role==='hud'?[0,1,3,4,8,7,9]:(state.simulation||state.manualOnly)?[0,1,2,3,4,7,9]:[0,1,2,3,4,5,6,7,9];
  document.getElementById('setupProgress').textContent='Шаг '+(sequence.indexOf(state.step)+1)+' из '+sequence.length+' · '+(state.role==='hud'?'HUD':'Контроллер');
  document.getElementById('setupTitle').textContent=setupTitles[state.step]||'Настройка завершена';document.getElementById('setupHint').textContent=state.role==='hud'&&state.step===3?'Настройте Bluetooth, местные органы управления и GPIO пульта. Тип дисплея определяется прошивкой. Нажмите «Далее» для применения оборудования, затем для подтверждения пробного запуска.':state.role==='hud'&&state.step===9?'Проверьте выбранного контроллера и итоговую конфигурацию. MQTT и предустановки необязательны. После завершения управление доступно на обычном экране HUD.':setupHints[state.step]||'';
  if([3,4].includes(state.step)){document.getElementById('equipmentDriveSummary').textContent=state.role==='hud'?'':'Выбранный привод: '+(state.simulationMode===2?'Имитация с симуляцией механики':state.simulation?'Имитация движения':['Штатный блок Yaesu','LEFT / RIGHT + SPEED_PWM','LEFT_PWM / RIGHT_PWM (+ ENABLE)','DIR + SPEED_PWM'][state.driveInterface??0]);}
- document.getElementById('setupReconnect').hidden=!wizard.waiting;document.getElementById('setupBack').disabled=state.step===0||wizard.busy||wizard.waiting;document.getElementById('setupNext').disabled=wizard.busy||wizard.waiting||(!state.ready&&!setupUnsaved()&&!([3,4].includes(state.step)&&wizard.hardwareCanApply)&&!state.restartRequired);document.getElementById('setupReset').disabled=wizard.busy||wizard.waiting||!setupUnsaved();document.getElementById('setupPause').disabled=wizard.busy||wizard.waiting;
+ document.getElementById('setupReconnect').hidden=!wizard.waiting;document.getElementById('setupBack').disabled=state.step===0||wizard.busy||wizard.waiting;document.getElementById('setupNext').disabled=wizard.busy||wizard.waiting||([3,4].includes(state.step)&&!wizard.hardwareCanApply&&!state.restartRequired)||(!state.ready&&!setupUnsaved()&&!([3,4].includes(state.step)&&wizard.hardwareCanApply)&&!state.restartRequired);document.getElementById('setupReset').disabled=wizard.busy||wizard.waiting||!setupUnsaved();document.getElementById('setupPause').disabled=wizard.busy||wizard.waiting;
  document.getElementById('setupNext').textContent=state.step===9?'Завершить настройку':state.step===7&&!setupUnsaved()?'Пропустить':'Далее';
  document.getElementById('setupPause').textContent='Сохранить и выйти';
- if(wizard.step!==state.step){wizard.step=state.step;wizard.error='';document.getElementById('setupTitle').focus({preventScroll:true});document.querySelector('.wrap').scrollTop=0;if(state.step===5){loadAzCalibration();loadElCalibration();}if(state.step===6)loadMotionSettings();}
+ if(stepChanged){wizard.step=state.step;wizard.error='';document.getElementById('setupTitle').focus({preventScroll:true});document.querySelector('.wrap').scrollTop=0;if(state.step===5)loadAzCalibration().then(()=>loadElCalibration());if(state.step===6)loadMotionSettings();}
+ background.refreshVisibility();
  if(!wizard.busy)setupMessage(wizard.error||(!state.storageOk?'Не удалось сохранить шаг мастера. Устройство продолжает работать.':'')||([3,4].includes(state.step)&&!wizard.hardwareCanApply&&wizard.hardwareError)||(wizard.waiting?(Date.now()-(wizard.waitingSince||0)>15000?'Перезапуск занимает больше времени. Проверьте подключение или откройте восстановление.':'Параметры сохранены. Ожидаем перезапуска; выход доступен внизу.'):setupUnsaved()?'«Далее» сохранит изменения этого шага. «Отменить ввод» отменит несохранённый ввод.':!state.ready?(state.step===0?'Ожидаем выбранное сетевое подключение.':state.step===3?'Нажмите «Далее» для применения или подтверждения оборудования.':state.step===8?'Сохраните и выберите доступный откалиброванный контроллер.':setupProblems(state)||'Проверьте готовность оборудования и калибровку.') : ''));
 }
 function setupForms(){const step=wizard.state?.step;return (step===0?['networkIpForm']:step===1?['setupNameForm','hudConfig']:step===2?['forkSettings','setupDriveForm']:step===3||step===4||step===7?['forkSettings']:step===5?['azRangeForm','elRangeForm']:step===6?['forkSettings','azMotionForm','elMotionForm','controlFrequencyForm']:step===9?['presetEditor',...(featureAvailable('mqtt')?['mqttForm']:[])]:[]).map(id=>document.getElementById(id)).filter(Boolean);}
@@ -2170,28 +2291,28 @@ async function saveSetupCurrent(){
  wizard.state=await req('/api/setup',{action:'end_save'});
  if(setupUnsaved())throw new Error('Во время сохранения появились новые изменения. Сохраните их перед переходом дальше.');
 }
-async function resetSetupDraft(){if(wizard.busy)return;wizard.busy=true;stopTest();try{
+async function resetSetupDraft(){if(wizard.busy)return;wizard.busy=true;background.pause(true);stopTest();try{
  for(const f of setupForms())delete f.dataset.dirty;
  if(wizard.state.step===0){for(const id of ['ssid','pass','appass'])delete document.getElementById(id).dataset.dirty;pass.value=appass.value='';await loadNetworkConfig();}
  const j=await setupRequest('/api/status');httpState=j;renderStatus(j);document.getElementById('setupDeviceName').value=j.rotorName||'';
  if([3,4].includes(wizard.state.step))await hardwareCall('reset');
- if(wizard.state.step===5){await loadAzCalibration();await loadElCalibration();}
- if(wizard.state.step===6)await loadMotionSettings();
+ if(wizard.state.step===5){await loadAzCalibration(true);await loadElCalibration(true);}
+ if(wizard.state.step===6)await loadMotionSettings(true);
  if(wizard.state.step===9){fillPreset();if(featureAvailable('mqtt'))await loadMqtt(true);}
  wizard.error='';
- }catch(e){wizard.error=e.message;}finally{wizard.busy=false;renderSetup();}}
-async function setupAction(action){if(wizard.busy||wizard.waiting)return;const epoch=++wizard.actionEpoch;wizard.actionAbort=new AbortController();wizard.busy=true;wizard.error='';stopTest();renderSetup();setupMessage('Сохраняем параметры шага…');try{
+ }catch(e){wizard.error=e.message;}finally{wizard.busy=false;background.pause(false);renderSetup();}}
+async function setupAction(action){if(wizard.busy||wizard.waiting)return;const epoch=++wizard.actionEpoch;wizard.actionAbort=new AbortController();wizard.busy=true;wizard.error='';background.pause(true);stopTest();renderSetup();setupMessage('Сохраняем параметры шага…');try{
  if(['advance','complete','pause'].includes(action))await saveSetupCurrent();
  if(epoch!==wizard.actionEpoch)return;
  if(wizard.state.restartRequired&&action!=='pause'&&action!=='complete'){wizard.state=await setupRequest('/api/setup',{action:'apply'});wizard.waiting=true;wizard.waitingSince=Date.now();wizard.restartToken=wizard.state.token;return;}
  const s=await setupRequest('/api/setup',{action,generation:wizard.state?.generation});wizard.state=s;
  if(action==='pause'||!s.required){wizard.active=false;location.href='/#control';return;}
  }catch(e){if(epoch!==wizard.actionEpoch)return;wizard.error=e.message;settingsFeedback(e.message);try{await setupRequest('/api/setup',{action:'end_save'});}catch(_){} }
- finally{if(epoch===wizard.actionEpoch){wizard.actionAbort=null;wizard.busy=false;renderSetup();}}}
+ finally{if(epoch===wizard.actionEpoch){wizard.actionAbort=null;wizard.busy=false;background.pause(false);renderSetup();}}}
 async function exitSetup(){
  if(setupUnsaved()&&!confirm('Выйти без сохранения введённых изменений? Уже применённые настройки сохранятся.'))return;
  const pauseToken=wizard.state?.token;
- ++wizard.actionEpoch;wizard.actionAbort?.abort();wizard.actionAbort=null;wizard.active=false;wizard.busy=false;wizard.waiting=false;stopTest();
+ ++wizard.actionEpoch;wizard.actionAbort?.abort();wizard.actionAbort=null;wizard.active=false;wizard.busy=false;wizard.waiting=false;background.pause(false);stopTest();
  for(const pending of wizard.hardwarePending.values()){clearTimeout(pending.timer);pending.reject(new Error('Выход из мастера'));}wizard.hardwarePending.clear();
  for(const f of setupForms())delete f.dataset.dirty;for(const id of ['ssid','pass','appass']){delete document.getElementById(id).dataset.dirty;if(id!=='ssid')document.getElementById(id).value='';}
  history.replaceState(null,'','/?setup=skip#control');renderSetup();selectTab('control',false);
@@ -2201,8 +2322,8 @@ document.getElementById('setupExit').onclick=exitSetup;
 document.getElementById('setupReset').onclick=resetSetupDraft;document.getElementById('setupBack').onclick=()=>setupAction('back');document.getElementById('setupNext').onclick=()=>setupAction(wizard.state.step===9?'complete':'advance');document.getElementById('setupPause').onclick=()=>setupAction('pause');
 // Enter in an ordinary settings form uses the same save-and-continue path.
 setupRoot.addEventListener('submit',event=>{if(!wizard.active)return;if(setupForms().includes(event.target)&&!['azRangeForm','elRangeForm'].includes(event.target.id)){event.preventDefault();event.stopImmediatePropagation();setupAction(wizard.state.step===9?'complete':'advance');}},true);
-async function pollSetup(){if(wizard.polling||wizard.busy||wizard.arming||wizard.renewing||wizard.loaded&&document.hidden)return;wizard.polling=true;const revision=wizard.sessionRevision||0;try{const s=await setupRequest('/api/setup');if(wizard.busy||wizard.arming||revision!==(wizard.sessionRevision||0))return;if(!wizard.loaded){wizard.loaded=true;wizard.state=s;if(location.pathname==='/setup'||s.required&&!s.paused&&new URLSearchParams(location.search).get('setup')!=='skip'){wizard.active=true;wizard.state=await setupRequest('/api/setup',{action:s.required?'resume':'start'});}}else{s.testToken=wizard.state?.token===s.token&&wizard.state?.testToken===s.testToken?s.testToken:0;wizard.state=s;if(wizard.waiting&&s.token!==wizard.restartToken){wizard.waiting=false;const frame=document.getElementById('equipmentFrame');if(frame.src)frame.src='/hardware?setup=1';}if(wizard.active&&s.required&&!s.paused&&!s.token)wizard.state=await setupRequest('/api/setup',{action:'resume'});}renderSetup();if(!ipForm.dataset.dirty&&(!wizard.network||wizard.active&&s.step===0||networkConfigVisible()))await loadNetworkConfig();}catch(e){if(wizard.active)setupMessage('Связь прервана. Переподключитесь к устройству; этап сохранён.');}finally{wizard.polling=false;}}
-function networkConfigVisible(){return !document.hidden&&!setupRoot.hidden&&document.querySelector('#networkSettings > details').open;}
+async function pollSetup(){if(wizard.polling||wizard.busy||wizard.arming||wizard.renewing||wizard.loaded&&document.hidden)return;wizard.polling=true;const revision=wizard.sessionRevision||0,action=wizard.actionEpoch;try{const s=await setupRequest('/api/setup');if(wizard.busy||wizard.arming||action!==wizard.actionEpoch||revision!==(wizard.sessionRevision||0))return;if(!wizard.loaded){wizard.loaded=true;wizard.state=s;if(location.pathname==='/setup'||s.required&&!s.paused&&new URLSearchParams(location.search).get('setup')!=='skip'){wizard.active=true;wizard.state=await setupRequest('/api/setup',{action:s.required?'resume':'start'});}}else{s.testToken=wizard.state?.token===s.token&&wizard.state?.testToken===s.testToken?s.testToken:0;wizard.state=s;if(wizard.waiting&&s.token!==wizard.restartToken){wizard.waiting=false;const frame=document.getElementById('equipmentFrame');if(frame.src)frame.src='/hardware?setup=1';}if(wizard.active&&s.required&&!s.paused&&!s.token)wizard.state=await setupRequest('/api/setup',{action:'resume'});}renderSetup();if(!ipForm.dataset.dirty&&(wizard.active&&(s.step===0||s.step===9&&!wizard.network)||networkConfigVisible()||wizard.network?.trial))await loadNetworkConfig();}catch(e){if(wizard.active&&e.name!=='PollingDeferred')setupMessage('Связь прервана. Переподключитесь к устройству; этап сохранён.');}finally{wizard.polling=false;}}
+function networkConfigVisible(){return settingsDataVisible('networkSettings');}
 function pollSetupBackground(){
  if(document.hidden||wizard.busy||wizard.arming||wizard.renewing)return;
  // Ordinary control uses live telemetry and the occasional full status. Only
@@ -2227,14 +2348,14 @@ let mqttLoaded=false,mqttLoading=null;
 function featureAvailable(name){return window._forkState?.build?.features?.[name]!==false;}
 function renderMqttSettings(){
  const setup=!!window.setupCommissioning,parent=setup?document.getElementById('setupReview'):mqttAnchor.parentNode;
- if((setup?mqttPanel.parentNode?.parentNode:mqttPanel.parentNode)!==parent){if(setup){let details=parent.querySelector('#optionalMqtt');if(!details){details=document.createElement('details');details.id='optionalMqtt';details.innerHTML='<summary>MQTT и Home Assistant · необязательно</summary>';parent.append(details);}details.append(mqttPanel);}else mqttAnchor.after(mqttPanel);}
+ if((setup?mqttPanel.parentNode?.parentNode:mqttPanel.parentNode)!==parent){if(setup){let details=parent.querySelector('#optionalMqtt');if(!details){details=document.createElement('details');details.id='optionalMqtt';details.innerHTML='<summary>MQTT и Home Assistant · необязательно</summary>';details.addEventListener('toggle',renderMqttSettings);parent.append(details);}details.append(mqttPanel);}else mqttAnchor.after(mqttPanel);}
  const shown=featureAvailable('mqtt')&&(!setup||wizard.state?.step===9);mqttPanel.hidden=!shown;
- if(shown&&(setup||document.querySelector('#networkSettings > details').open))loadMqtt();
+ if(shown&&(setup?!!document.getElementById('optionalMqtt')?.open:networkConfigVisible()))loadMqtt();
 }
 function renderFeatures(features){
  if(!features)return;
  const hide=(id,key)=>{const e=document.getElementById(id);if(e)e.hidden=features[key]===false;};
- for(const [id,key] of [['mqttDiscoveryFields','homeAssistantDiscovery'],['otaSettings','ota'],['otaArduino','arduinoOta'],['signalSettings','rssiHistory'],['hudPanel','hud'],['peersSettings','hud']])hide(id,key);
+ for(const [id,key] of [['mqttTlsFields','mqttTls'],['mqttDiscoveryFields','homeAssistantDiscovery'],['otaSettings','ota'],['otaArduino','arduinoOta'],['signalSettings','rssiHistory'],['hudPanel','hud'],['peersSettings','hud']])hide(id,key);
  document.querySelectorAll('[data-feature]').forEach(e=>e.hidden=features[e.dataset.feature]===false);
  for(const [url,key] of [['/diaglog','logHistory'],['/resetdiag','resetHistory']])document.querySelectorAll('a[href="'+url+'"]').forEach(e=>e.hidden=features[key]===false);
  for(const [names,enabled] of [[['n1mmPort','n1mmManualFollow'],features.n1mm],[['pstPort','pstManualFollow'],features.pstrotator],[['reportPort','reportHost'],features.n1mm!==false||features.pstrotator!==false],[['gs232ManualFollow'],features.gs232],[['rotctldManualFollow'],features.rotctld],[['commandPort'],features.commandApi]])
@@ -2242,11 +2363,12 @@ function renderFeatures(features){
  for(const [id,key] of [['wifiIpSettings','wifi'],['ethIpSettings','ethernet']]){const e=document.getElementById(id);if(e)e.hidden=features[key]===false;}
  hudUartFields();
  const udp=document.getElementById('hudAddress');if(udp)udp.closest('form').hidden=features.hudUdp===false;
- const search=document.getElementById('hudBusSearch');if(search)search.hidden=features.rs485===false||features.modbus===false;
+ const search=document.getElementById('hudRs485Discovery');if(search)search.hidden=features.rs485===false||features.modbus===false;
  const role=document.getElementById('deviceRole');if(role)for(const o of role.options)if(o.value==='hud')o.hidden=features.hud===false;
  renderMqttSettings();
 }
 function loadMqtt(force=false){
+ if(wizard.busy&&!force)return Promise.resolve();
  if(mqttLoading)return force?mqttLoading.then(()=>loadMqtt(true)):mqttLoading;
  if((mqttLoaded&&!force)||!featureAvailable('mqtt'))return Promise.resolve();
  mqttLoading=readMqtt().finally(()=>mqttLoading=null);return mqttLoading;
@@ -2257,17 +2379,19 @@ async function readMqtt(){
   if(!document.getElementById('mqttForm').dataset.dirty){
   for(const [id,key] of [['mqttHost','host'],['mqttPort','port'],['mqttUsername','username'],['mqttDiscoveryPrefix','discoveryPrefix']])document.getElementById(id).value=j[key];
   document.getElementById('mqttEnabled').checked=!!j.enabled;document.getElementById('mqttDiscovery').checked=!!j.discovery;
+  document.getElementById('mqttTls').checked=!!j.tls;
   document.getElementById('mqttPassword').value='';document.getElementById('mqttClearPassword').checked=false;
   }mqttFields();
-  document.getElementById('mqttMessage').textContent=j.connected?'MQTT подключён'+(j.baseTopic?' · '+j.baseTopic:''):j.enabled?'MQTT: '+(j.error||'ожидание подключения'):'MQTT отключён';
+  document.getElementById('mqttMessage').textContent=j.stopping?'Завершается соединение MQTT…':j.connected?'MQTT подключён'+(j.baseTopic?' · '+j.baseTopic:''):j.enabled?'MQTT: '+(j.error||'ожидание подключения'):'MQTT отключён';
   document.getElementById('mqttSave').disabled=false;mqttLoaded=true;
  }catch(e){document.getElementById('mqttMessage').textContent='Не удалось загрузить MQTT: '+e.message;}
 }
 function mqttFields(){document.getElementById('mqttHost').required=document.getElementById('mqttEnabled').checked;}
 document.getElementById('mqttForm').addEventListener('input',e=>{e.currentTarget.dataset.dirty='1';mqttFields();});
+document.getElementById('mqttTls').addEventListener('change',e=>{const port=document.getElementById('mqttPort');if(port.value===(e.target.checked?'1883':'8883'))port.value=e.target.checked?'8883':'1883';});
 document.getElementById('mqttSave').closest('.form-actions').dataset.setupSave='1';
 function mqttDraft(){
- const body={enabled:document.getElementById('mqttEnabled').checked?'1':'0',host:document.getElementById('mqttHost').value.trim(),port:document.getElementById('mqttPort').value,username:document.getElementById('mqttUsername').value,discovery:featureAvailable('homeAssistantDiscovery')&&document.getElementById('mqttDiscovery').checked?'1':'0',discoveryPrefix:document.getElementById('mqttDiscoveryPrefix').value};
+ const body={enabled:document.getElementById('mqttEnabled').checked?'1':'0',tls:featureAvailable('mqttTls')&&document.getElementById('mqttTls').checked?'1':'0',host:document.getElementById('mqttHost').value.trim(),port:document.getElementById('mqttPort').value,username:document.getElementById('mqttUsername').value,discovery:featureAvailable('homeAssistantDiscovery')&&document.getElementById('mqttDiscovery').checked?'1':'0',discoveryPrefix:document.getElementById('mqttDiscoveryPrefix').value};
  const password=document.getElementById('mqttPassword').value;
  if(password||document.getElementById('mqttClearPassword').checked)body.password=document.getElementById('mqttClearPassword').checked?'':password;
  return body;
@@ -2289,3 +2413,5 @@ async function saveMqtt(event){
 document.querySelector('#networkSettings > details').addEventListener('toggle',renderMqttSettings);
 </script></body></html>
 )HTML";
+
+#endif

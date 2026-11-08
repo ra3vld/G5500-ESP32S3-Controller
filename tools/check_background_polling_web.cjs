@@ -34,7 +34,8 @@ const network={choice:0,connected:true,staIp:'192.168.1.42',apIp:'0.0.0.0',wifi:
    return route.fulfill({json:{items:[],values:[],points:[],peers:[]}});
   });
   await page.goto('http://background.test/');
-  await page.waitForFunction(()=>live.ready&&wizard.loaded&&wizard.network);
+  await page.waitForFunction(()=>live.ready&&wizard.loaded);
+  assert.equal(counts['/api/network']||0,0,'closed network settings are not prefetched');
   assert.equal(await page.evaluate(()=>wizard.state?.required),false,'initial wizard state must be retained before periodic polling stops');
   const initial={...counts};await page.waitForTimeout(16000);
   const background=Object.fromEntries(['/api/setup','/api/network','/api/status'].map(p=>[p,(counts[p]||0)-(initial[p]||0)]));
@@ -46,7 +47,7 @@ const network={choice:0,connected:true,staIp:'192.168.1.42',apIp:'0.0.0.0',wifi:
 
   await page.getByRole('tab',{name:'Настройки',exact:true}).click();
   await page.locator('#networkSettings > details').evaluate(e=>e.open=true);
-  const opened=counts['/api/network'];
+  const opened=counts['/api/network']||0;
   await page.waitForFunction(()=>!!wizard.network);await page.waitForTimeout(2700);
   assert(counts['/api/network']>opened,'the visible network editor keeps refreshing');
   await page.getByRole('tab',{name:'Управление',exact:true}).click();

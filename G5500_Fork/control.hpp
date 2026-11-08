@@ -161,6 +161,17 @@ struct AutoTuneFailure {
   bool tracking = false;
   unsigned velocityWindowMs = 0;
 };
+#if ESP32_SPP_PROFILE
+struct AutoTuneState {
+  AutoTunePhase phase=AutoTunePhase::Idle;
+  uint32_t id=0;
+  int axis=-1,direction=0;
+  float level=0,validationError=0;
+  const char *reason="disabled";
+  static constexpr bool internal=false;
+  bool active() const { return false; }
+};
+#else
 struct AutoTuneState {
   AutoTuneOptions options{};
   AutoTunePhase phase = AutoTunePhase::Idle;
@@ -227,6 +238,7 @@ struct AutoTuneState {
   std::array<Plateau, 2> confirmedHigh{};
   bool active() const { return phase >= AutoTunePhase::Quiet && phase <= AutoTunePhase::Tracking; }
 };
+#endif
 struct Preset {
   std::string label;
   Target target;
@@ -279,6 +291,16 @@ public:
   void tickCoast(uint32_t now);
   unsigned controlPeriodMs() const { return controlPeriodMs_; }
   bool controlDue(uint32_t now) const;
+  uint32_t controlHeadroomMs(uint32_t now) const;
+  bool backgroundReady(uint32_t now) const {
+    return controlPeriodMs_>=20 || controlHeadroomMs(now)>=controlPeriodMs_-2;
+  }
+  // Each consumer owns its timestamp: an unlucky PID phase may defer it by
+  // at most one control period, never indefinitely (including pending STOP).
+  bool serviceBackground(uint32_t now, uint32_t &lastServiced) const {
+    if(!backgroundReady(now) && uint32_t(now-lastServiced)<controlPeriodMs_)return false;
+    lastServiced=now;return true;
+  }
   unsigned loopDelayMs(uint32_t now) const;
   Result setControlFrequency(unsigned hz, uint32_t now);
   Result centerForAutoTune(unsigned axis, uint32_t now);
@@ -301,7 +323,7 @@ public:
   void resetRuntimeSpeed(unsigned axis, uint32_t now);
   Result setRuntimeSpeed(unsigned axis, float value, uint32_t now);
   float tolerance(unsigned i) const {
-    if (variableSpeed(i) && motionSettings[i].mode == RegulatorMode::Cascade)
+    if (!ESP32_SPP_PROFILE && variableSpeed(i) && motionSettings[i].mode == RegulatorMode::Cascade)
       return motionSettings[i].positionTolerance;
     return std::min(speeds[i].coastDegrees, range(i).span() / 10);
   }
@@ -386,6 +408,8 @@ private:
   std::array<MotionRuntime, 2> motion_{};
   std::array<MechanicalSimulation, 2> mechanics_{};
   unsigned controlPeriodMs_ = MotionControlPeriodMs;
+  uint32_t controlNextAt_ = 0;
+  bool controlClockStarted_ = false;
   void cancelMotion(unsigned axis, bool retainTarget = false);
   void motionFault(unsigned axis, MotionError, uint32_t now);
   void recoverStall(unsigned axis, uint32_t now);

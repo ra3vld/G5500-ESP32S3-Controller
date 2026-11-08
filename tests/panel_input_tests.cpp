@@ -21,6 +21,43 @@ static TouchLayout layout() {
 }
 int main() {
   {
+    auto l=layout();l.menuAccess=true;TouchGesture hold;
+    hold.sample(true,120,110,l,100);
+    assert(hold.sample(true,120,110,l,3100).action==TouchAction::None);
+    assert(hold.sample(true,120,110,l,3101).action==TouchAction::MenuOpen);
+  }
+  {
+    for(bool online:{true,false})for(bool left:{false,true}) {
+      auto l=layout();l.menuAccess=true;l.enabled=online;
+      l.secondaryCurrent={uint16_t(left?50:145),100,40,28};
+      const unsigned x=l.secondaryCurrent.x+20,y=114;
+      TouchGesture tap;
+      auto e=tap.sample(true,x,y,l,100);assert(e.action==TouchAction::None);
+      e=tap.sample(false,0,0,l,200);assert(e.action==(online?TouchAction::Axis:TouchAction::None));
+      if(online)assert(e.manual&&e.release&&!e.mask);
+      // A drag that returns to its origin remains a swipe after release.
+      tap.sample(true,x,y,l,1000);
+      e=tap.sample(true,x+25,y-20,l,1100);
+      if(online)assert(e.manual&&e.absoluteSpeed&&e.az>0&&e.el>0);
+      e=tap.sample(true,x,y,l,1200);assert(e.action==TouchAction::None);
+      assert(tap.sample(false,0,0,l,1300).action==TouchAction::None);
+      // Both current values also admit the menu hold, including offline.
+      tap.sample(true,x,y,l,2000);
+      assert(tap.sample(true,x,y,l,5000).action==TouchAction::None);
+      e=tap.sample(true,x,y,l,5001);assert(e.action==TouchAction::MenuOpen);
+      assert(tap.sample(false,0,0,l,5010).action==TouchAction::None);
+      // A context change cannot switch the newly selected axis on release.
+      tap.sample(true,x,y,l,6000);++l.actionEpoch;
+      assert(tap.sample(false,0,0,l,6100).action==TouchAction::None);
+    }
+    auto l=layout();l.menuAccess=true;l.secondaryCurrent={145,100,40,28};
+    TouchGesture primary;
+    primary.sample(true,100,110,l,100);assert(primary.sample(false,0,0,l,150).action==TouchAction::None);
+    primary.sample(true,100,110,l,200);assert(primary.sample(false,0,0,l,250).action==TouchAction::SpeedOpen);
+    l.dualAxis=false;TouchGesture single;
+    single.sample(true,165,114,l,100);assert(single.sample(false,0,0,l,200).action==TouchAction::None);
+  }
+  {
     auto l=layout();l.menuAccess=true;l.targetSwipeDeadzone=12;
     l.menuTarget={38,120,169,52};
     TouchGesture hold;
@@ -199,5 +236,39 @@ int main() {
   assert(t.healthy && !t.down);
   data[0]=1;data[1]=0x40;data[2]=10;data[3]=0;data[4]=20;
   t=decodeCstTouch(data,240,240,47);assert(t.healthy && !t.down);
+  {
+    // Replay the observed zero-contact holes without extending an idle deadline.
+    CstContactFilter filter;
+    const auto contact=[](uint32_t at,bool down,uint8_t code,bool healthy=true) {
+      return TouchSample{healthy,down,99,128,at,code};
+    };
+    filter.sample(contact(100,true,0x21),true);
+    auto s=filter.sample(contact(110,false,0),true);assert(s.down && s.sampledAt==110 && s.x==99);
+    assert(filter.sample(contact(132,true,0x21),true).down);
+    assert(filter.sample(contact(142,false,0),true).down);
+    assert(filter.sample(contact(155,true,0x21),true).down);
+    assert(filter.sample(contact(194,false,0),true).down);
+    assert(!filter.sample(contact(195,false,0),true).down); // 40 ms since real contact.
+    assert(!filter.sample(contact(196,false,0),true).down);
+    // A read failure or explicit UP must release immediately, even at +1 ms.
+    for(uint8_t up:{uint8_t(0x10),uint8_t(0x11)}) {
+      filter.sample(contact(200,true,0x21),true);
+      assert(!filter.sample(contact(201,false,up),true).down);
+      assert(!filter.sample(contact(202,false,0),true).down);
+    }
+    filter.sample(contact(300,true,0x21),true);
+    s=filter.sample(contact(301,false,0,false),true);assert(!s.down && !s.healthy);
+    assert(!filter.sample(contact(302,false,0),true).down);
+    // Buttons, tap confirmation and cancelled gestures do not inherit the grace.
+    filter.sample(contact(400,true,0x21),true);
+    assert(!filter.sample(contact(401,false,0),false).down);
+    assert(!filter.sample(contact(402,false,0),true).down);
+    // A long input pause cannot resurrect old contact; unsigned clock wrap works.
+    filter.sample(contact(500,true,0x21),true);
+    assert(!filter.sample(contact(600,false,0),true).down);
+    filter.sample(contact(UINT32_MAX-20,true,0x21),true);
+    assert(filter.sample(contact(10,false,0),true).down);
+    assert(!filter.sample(contact(19,false,0),true).down);
+  }
   std::puts("PASS: shared panel startup, stale confirmation, STOP, release/recovery, context and CST coordinates");
 }

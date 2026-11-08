@@ -1,3 +1,5 @@
+#include "build_config.hpp"
+#if !ESP32_SPP_PROFILE
 // GPL-3.0. Ruckig's separately licensed local core is under src/ruckig/.
 #include "control.hpp"
 #include "src/ruckig/ruckig.hpp"
@@ -471,7 +473,7 @@ Result Controller::setControlFrequency(unsigned hz, uint32_t now) {
   if(autoTune.active())return Result::Busy;
   if(controlPeriodMs_==1000/hz)return Result::Ok;
   stopNow(-1,now);
-  controlPeriodMs_=1000/hz;
+  controlPeriodMs_=1000/hz;controlClockStarted_=false;
   for(unsigned i=0;i<2;++i) {
     auto &r=motion_[i];
     const auto at=r.feedback.at;const bool timed=r.feedback.timed, valid=r.feedback.valid;
@@ -512,11 +514,10 @@ void Controller::tickMotion(unsigned i, uint32_t now) {
   MotionComputeTimer compute{r.timing};
 #endif
   const uint32_t interval = r.started ? uint32_t(now-r.at) : 0;
+  if(r.started)r.timing.recordDeadline(uint32_t(now-r.nextAt),period);
   // Keep the nominal phase after jitter. Skip missed deadlines in one step;
   // never replay PID/planner updates against the same measurement.
-  r.nextAt = r.started
-      ? r.nextAt + (uint32_t(now-r.nextAt)/period+1)*period
-      : now+period;
+  r.nextAt = controlNextAt_;
   r.timing.record(interval,period);
   const float dt = r.started ? std::min(.1f, float(interval)/1000) : float(period)/1000;
   r.at = now; r.started = true;
@@ -2062,3 +2063,5 @@ void Controller::tickAutoTune(uint32_t now) {
   }
 }
 } // namespace forkrot
+
+#endif

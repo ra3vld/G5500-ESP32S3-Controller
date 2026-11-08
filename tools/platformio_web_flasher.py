@@ -67,7 +67,7 @@ def export_firmware(source, target, env):
             compiler.append('-D' + str(definition))
     compiler += ['-I' + env.subst('$PROJECT_SRC_DIR')]
     compiler += ['-I' + env.subst(str(path)) for path in env.get('CPPPATH', [])]
-    definitions = '#include "build_config.hpp"\n' + '\n'.join(
+    definitions = '#include "build_config.hpp"\nG5500_DISPLAY_KIND=DISPLAY_KIND\n' + '\n'.join(
         f'#if {flag}\nG5500_CAP_{flag}=1\n#else\nG5500_CAP_{flag}=0\n#endif' for flag in CAPABILITIES)
     result = subprocess.run(compiler + ['-E', '-P', '-x', 'c++', '-'], input=definitions,
                             text=True, capture_output=True, env=env['ENV'])
@@ -86,7 +86,9 @@ def export_firmware(source, target, env):
     report = dict(schema=1, profile=name, chip_family=family, flash_bytes=flash_bytes(flash),
                   identity=identity, source_sha256=source_digest(), app_bytes=app_size,
                   app_limit_bytes=limit, static_dram_bytes=dram, static_iram_bytes=iram,
-                  runtime_heap_bytes=None, capabilities=capabilities, files=files)
+                  runtime_heap_bytes=None, elf_sha256=sha256(build / 'firmware.elf'),
+                  display_kind=int(re.search(r'G5500_DISPLAY_KIND=(\d+)', cpp)[1]),
+                  capabilities=capabilities, files=files)
     (destination / 'build.json').write_text(json.dumps(report, indent=2) + '\n')
     print(f'Web flasher: exported {name}: {app_size}/{limit} bytes')
 

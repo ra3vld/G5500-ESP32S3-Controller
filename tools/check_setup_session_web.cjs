@@ -2,7 +2,7 @@
 const {chromium}=require(process.env.PLAYWRIGHT_PATH||'playwright');
 const {spawn}=require('node:child_process'),readline=require('node:readline');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
-const root=path.resolve(__dirname,'..'),binary=process.env.DEVICE_API_TEST_BINARY;
+const root=path.resolve(process.env.WEB_SOURCE_ROOT||path.join(__dirname,'..')),binary=process.env.DEVICE_API_TEST_BINARY;
 if(!binary)throw Error('Set DEVICE_API_TEST_BINARY to the native device_api_tests executable');
 const html=fs.readFileSync(path.join(root,'G5500_Fork/web_page.hpp'),'utf8').split('R"HTML(')[1].split(')HTML";')[0];
 const hardware=fs.readFileSync(path.join(root,'G5500_Fork/hardware_page.hpp'),'utf8').match(/R"HWHTML\(([\s\S]*?)\)HWHTML"/)[1];
@@ -20,6 +20,7 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
    queue=task.catch(()=>{});return task;
   };
   const hardwarePolling=process.env.SETUP_SESSION_SCENARIO==='hardware-polling',pendingPolls={},maxPolls={};let delayed=true;
+  let releaseInitialModbus;const initialModbus=new Promise(resolve=>releaseInitialModbus=resolve);
   const page=await browser.newPage({viewport:{width,height:1000},locale:'ru-RU'});page.on('pageerror',e=>errors.push(e.message));
   try{
    await page.route('http://setup-session.test/**',async route=>{
@@ -27,6 +28,7 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     if(url.pathname==='/setup'||url.pathname==='/')return route.fulfill({contentType:'text/html',body:html});
     if(url.pathname==='/hardware')return route.fulfill({contentType:'text/html',body:hardware});
     if(url.pathname==='/favicon.ico')return route.fulfill({status:204,body:''});
+    if(process.env.SETUP_SESSION_SCENARIO==='hardware-init'&&req.method()==='GET'&&url.pathname==='/api/hardware/modbus')await initialModbus;
     if(url.pathname==='/api/settings'&&req.method()==='POST'&&saveDelay){const delay=saveDelay;saveDelay=0;await wait(delay);}
     if(url.pathname==='/api/setup'&&form.get('action')==='arm'&&armDelay){const delay=armDelay;armDelay=0;await wait(delay);}
     if(url.pathname==='/api/setup'&&form.get('action')==='renew'&&renewDelay)await wait(renewDelay);
@@ -43,7 +45,16 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     }finally{if(slow)--pendingPolls[key];}
    });
    if(['hud-role','hud-hardware','hud-review','hud-fields'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/hud');
-   if(['simulation','mechanics','motion','optional-drive','controller-fields','passive','audit-fixes'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/controller');
+   if(['simulation','mechanics','motion','optional-drive','controller-fields','passive','audit-fixes','view-stability','hardware-init'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/controller');
+   if(process.env.SETUP_SESSION_SCENARIO==='hardware-init'){
+    let h=(await rpc('GET','/api/hardware')).body;
+    assert.equal((await rpc('POST','/api/hardware',new URLSearchParams({token:h.token,generation:h.generation,driveInterface:2}).toString())).status,200);
+    await rpc('POST','/__fixture/reboot');h=(await rpc('GET','/api/hardware')).body;
+    const body=new URLSearchParams({token:h.token,generation:h.generation}).toString();
+    assert.equal((await rpc('POST','/api/hardware/probe',body)).status,200);
+    assert.equal((await rpc('POST','/api/hardware/confirm',body)).status,200);
+    await rpc('POST','/__fixture/step','1');
+   }
    if(process.env.SETUP_SESSION_SCENARIO==='trial-inline'){
     await rpc('POST','/api/setup','action=pause');
     const stage=async()=>{const h=(await rpc('GET','/api/hardware')).body;assert.equal((await rpc('POST','/api/hardware',new URLSearchParams({token:h.token,generation:h.generation,simulation:1,buttonActiveLow:h.configured.buttonActiveLow?0:1}).toString())).status,200);await rpc('POST','/__fixture/reboot');};
@@ -103,6 +114,83 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
    await page.goto('http://setup-session.test/setup');
    await page.waitForFunction(()=>wizard.active&&wizard.state?.token&&wizard.state.step===1);
    const session=await page.evaluate(()=>wizard.state.token);
+   if(process.env.SETUP_SESSION_SCENARIO==='hardware-init'){
+    await rpc('POST','/__fixture/step','3');await page.evaluate(async()=>{await upd(true);await pollSetup();});
+    const frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
+    await frame.waitForFunction(()=>!!state&&!!metadata&&!formStamp&&!mbLoaded);
+    for(let i=0;i<4;i++){await page.evaluate(()=>renderSetup());await wait(80);}
+    const during=await frame.evaluate(()=>({dirty,formStamp:!!formStamp,mbLoaded}));
+    releaseInitialModbus();await frame.waitForFunction(()=>loadingFields===null);
+    const after=await frame.evaluate(()=>({dirty,configured:state.configured.pins.azAdc,draft:form.elements['pin.azAdc'].value,pinError}));
+    console.log(JSON.stringify({width,during,after}));
+    assert.equal(during.dirty,false,'Setup hint before initial form load must not create a user draft');
+    assert.equal(after.draft,String(after.configured),'Initial delayed Modbus must not lose persisted GPIO');
+    assert.equal(after.dirty,false);assert.equal(after.pinError,null);
+    for(let i=0;i<2;i++){
+     await page.waitForFunction(()=>wizard.hardwareCanApply&&!wizard.busy);
+     await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===4);
+     await page.locator('#setupBack').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===3);
+    }
+    assert.deepEqual(errors,[]);
+    console.log(`PASS: ${width}px, delayed first Modbus preserves persisted GPIO and clean draft; repeated Next/Back works`);continue;
+   }
+   if(process.env.SETUP_SESSION_SCENARIO==='view-stability'){
+    await rpc('POST','/__fixture/step','3');await page.evaluate(async()=>{await upd(true);await pollSetup();});
+    await page.waitForFunction(()=>wizard.state.step===3&&wizard.hardwareCanApply);
+    const frame=page.frames().find(f=>f.url().includes('/hardware'));
+    await frame.waitForFunction(()=>!!state&&!!metadata&&mbLoaded);
+    const view=[];
+    // The scroll container belongs to the parent; hardware inputs live in an
+    // auto-height iframe. A normal poll must not briefly hide their ancestor.
+    await page.evaluate(()=>document.querySelector('.wrap').scrollTop=650);
+    const before=await page.evaluate(()=>document.querySelector('.wrap').scrollTop);
+    assert(before>300,'Fixture must actually scroll the wizard');
+    await page.evaluate(()=>pollSetup());await wait(100);
+    view.push({kind:'scroll',before,after:await page.evaluate(()=>document.querySelector('.wrap').scrollTop)});
+    const select=frame.locator('#pin-azAdc');
+    await select.evaluate(el=>{for(let p=el.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});
+    await select.click();
+    assert(await select.evaluate(e=>e.matches(':open')),'Native dropdown must really be open');
+    await page.evaluate(()=>pollSetup());await wait(100);
+    view.push({kind:'parent-poll-dropdown',open:await select.evaluate(e=>e.matches(':open'))});
+    await page.keyboard.press('Escape');
+    const original=await select.inputValue();
+    const choice=await select.evaluate(e=>[...e.options].filter(o=>!o.disabled).at(-1).value);
+    assert.notEqual(choice,original,'Fixture needs another selectable GPIO');
+    await select.click();await page.keyboard.press('End');
+    await frame.evaluate(()=>refresh());await wait(100);
+    await page.keyboard.press('Enter');
+    view.push({kind:'pending-option',expected:choice,selected:await select.inputValue()});
+    // Polling stays active while the user reads a long section or edits a form.
+    await page.evaluate(()=>document.querySelector('.wrap').scrollTop=650);
+    const settled=await page.evaluate(()=>document.querySelector('.wrap').scrollTop);
+    await wait(5200);
+    view.push({kind:'periodic-scroll',before:settled,after:await page.evaluate(()=>document.querySelector('.wrap').scrollTop)});
+    await select.click();assert(await select.evaluate(e=>e.matches(':open')));
+    await frame.evaluate(()=>refresh());await wait(100);
+    view.push({kind:'hardware-poll-dropdown',open:await select.evaluate(e=>e.matches(':open'))});
+    await page.keyboard.press('Escape');
+    await rpc('POST','/__fixture/step','2');await page.evaluate(()=>pollSetup());
+    await page.waitForFunction(()=>wizard.state.step===2&&wizard.step===2);
+    const drive=page.locator('#setupDriveKind');
+    await drive.click();assert(await drive.evaluate(e=>e.matches(':open')));
+    await page.evaluate(()=>pollSetup());await wait(100);
+    view.push({kind:'wizard-dropdown',open:await drive.evaluate(e=>e.matches(':open'))});
+    await page.keyboard.press('Escape');
+    if(process.env.ARTIFACT_DIR){
+     fs.writeFileSync(path.join(process.env.ARTIFACT_DIR,`view-stability-${width}.json`),JSON.stringify(view,null,2));
+     await page.screenshot({path:path.join(process.env.ARTIFACT_DIR,`view-stability-${width}.png`)});
+    }
+    console.log(JSON.stringify({width,view}));
+    assert(Math.abs(view[0].after-before)<=2,'Polling must preserve wizard scroll');
+    assert(view[1].open,'Parent polling must preserve the native hardware dropdown');
+    assert(view.find(v=>v.kind==='hardware-poll-dropdown').open,'Hardware polling must preserve the native hardware dropdown');
+    assert.equal(view.find(v=>v.kind==='pending-option').selected,choice,'Polling must preserve the pending native option choice');
+    assert(Math.abs(view.find(v=>v.kind==='periodic-scroll').after-settled)<=2,'Periodic polling must preserve wizard scroll');
+    assert(view.find(v=>v.kind==='wizard-dropdown').open,'Polling must preserve the native drive dropdown');
+    assert.deepEqual(errors,[]);
+    console.log(`PASS: ${width}px, wizard scroll and native dropdown survive parent and hardware polls`);continue;
+   }
    if(process.env.SETUP_SESSION_SCENARIO==='audit-fixes'){
     await page.locator('#setupDeviceName').fill('Saved A');saveDelay=1500;
     await page.locator('#setupNext').click();await page.waitForFunction(()=>wizard.busy);await wait(200);

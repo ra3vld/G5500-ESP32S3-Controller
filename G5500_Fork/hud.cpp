@@ -1011,7 +1011,9 @@ bool Hud::sendManual(Job &j) {
   w.real(j.command.manual[1]);
   const auto n = w.finish();
   j.sent = now;
-  return n && transport_ && transport_->sendHud(j.endpoint, tx_, n);
+  const bool sent=n && transport_ && transport_->sendHud(j.endpoint, tx_, n);
+  if(!sent)++manualSendFailures;
+  return sent;
 }
 void Hud::releaseManual() {
   if (!client_ || !client_->manual.used || client_->manual.command.release) {
@@ -1028,9 +1030,15 @@ bool Hud::sendQuery(const HudEndpoint &e, uint64_t targetId, bool discovery) {
   const uint32_t serial = nextSerial();
   Writer w{tx_, sizeof tx_};
   auto *selected = peer(targetId);
+  // A lost newest-version discovery reply must not permanently lock a current
+  // controller to HUD/4. Replace one ordinary poll every five seconds, keeping
+  // the existing request budget and legacy telemetry/command handling intact.
+  const bool upgrade=!discovery && selected && selected->received && selected->id==config.selected &&
+      selected->fresh(now) && selected->wireVersion<5 && !e.uart && !e.mqtt && uint32_t(now-selected->upgradeAt)>=5000;
+  if(upgrade)selected->upgradeAt=now;
   const bool extended = !discovery && selected && (selected->manual || paced(e) || e.mqtt) && selected->received && selected->fresh(now);
   // MQTT is available only on firmware that already supports HUD/5.
-  const uint8_t version = e.mqtt ? 5 : selected && selected->received ? selected->wireVersion :
+  const uint8_t version = e.mqtt || upgrade ? 5 : selected && selected->received ? selected->wireVersion :
       selected ? (selected->probeVersion = selected->probeVersion == 1 ? 5 : selected->probeVersion - 1) : 5;
   header(w, {discovery  ? Kind::Discover
              : extended ? Kind::ExtendedQuery
@@ -1233,8 +1241,13 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
   if (h.kind == Kind::ManualAck) {
     const uint32_t gesture = r.u32();
     const auto result = Result(r.u8());
+    if (result>Result::Cancelled) {++rejected;return;}
     if (isHud() && client_ && r.done() && h.targetBoot == boot) {
       auto &j = client_->manual;
+      if(j.used && j.peer==h.source && j.boot==h.boot && j.manualGesture==gesture &&
+          int32_t(j.id-h.serial)>=0 && (!manualAckSerial || int32_t(h.serial-manualAckSerial)>0)) {
+        manualAckAt=now;manualAckSerial=h.serial;manualAckResult=result;
+      }
       if (j.used && j.peer == h.source && j.boot == h.boot && j.id == h.serial &&
           j.manualGesture == gesture && j.command.release && result <= Result::Cancelled) {
         j.used = false;
@@ -1322,7 +1335,9 @@ void Hud::receive(const HudEndpoint &e, const uint8_t *data, size_t size, uint32
       else
         return;
     }
-    p->freshnessMs = e.mqtt?5000:paced(e)?responseMs(e)+uint32_t(config.link.intervalMs)*3:0;
+    // UDP telemetry can be coalesced to 500ms under memory pressure. Keep its
+    // polling freshness through a short loss burst; UART and input leases stay unchanged.
+    p->freshnessMs = e.mqtt?5000:paced(e)?responseMs(e)+uint32_t(config.link.intervalMs)*3:e.uart?0:2000;
     // Capability is stable for a boot even if a newer state overtook this reply.
     if (extended && (!p->boot || p->boot == h.boot)) {
       p->manual = true;
@@ -1668,6 +1683,7 @@ void Hud::service(uint32_t at, bool advanceSimulation) {
   if (manual.used) {
     if (!manual.command.release &&
         (uint32_t(now - client_->manualInputAt) >= std::clamp<unsigned>(manual.command.inputLeaseMs,100,1000) || manual.selection != selectionEpoch)) {
+      ++manualLeaseExpirations;
 #if CROWPANEL_TOUCH_TRACE
       printf("[TouchLease] t=%lu gap=%lu gesture=%lu selection=%d\n", (unsigned long)now,
              (unsigned long)(now - client_->manualInputAt), (unsigned long)manual.command.gesture,

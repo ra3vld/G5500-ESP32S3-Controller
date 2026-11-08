@@ -5,14 +5,19 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <vector>
 #include "../G5500_Fork/panel_pose.h"
+#include "../G5500_Fork/crowpanel_ota_bitmap.h"
 using esp_err_t = int;
 using gdma_channel_handle_t = int;
 struct gdma_event_data_t {};
 constexpr int ESP_OK = 0, ESP_ERR_NOT_SUPPORTED = -1, ESP_ERR_NO_MEM = -2, ESP_ERR_INVALID_ARG = -3;
 #define IRAM_ATTR
 #define CONFIG_IDF_TARGET_ESP32S3 1
+#define CONFIG_GDMA_ISR_HANDLER_IN_IRAM 1
+#define CONFIG_GDMA_CTRL_FUNC_IN_IRAM 1
+static bool cacheDisabled;
 #define unlikely(x) (x)
 #define RGB_LCD_NEEDS_SEPARATE_RESTART_LINK 1
 #define RGB_LCD_USE_GDMA_LINK_SWITCH_EVENT 0
@@ -34,6 +39,25 @@ constexpr int ESP_OK = 0, ESP_ERR_NOT_SUPPORTED = -1, ESP_ERR_NO_MEM = -2, ESP_E
 #define ESP_RETURN_ON_ERROR(call,...) do { int e = (call); if (e != ESP_OK) return e; } while (0)
 #define COPY_PIXEL_CODE_BLOCK(bits) assert(false); // Tests submit complete owned framebuffers.
 static unsigned lockDepth;
+static int failScanAllocation = -1;
+static unsigned orientationCopies;
+#define MALLOC_CAP_SPIRAM 1
+#define MALLOC_CAP_8BIT 2
+#define MALLOC_CAP_INTERNAL 4
+static void *heap_caps_calloc(size_t count, size_t size, int) {
+    assert(lockDepth == 0);
+    if (failScanAllocation == 0) return nullptr;
+    if (failScanAllocation > 0) --failScanAllocation;
+    return std::calloc(count, size);
+}
+static void *heap_caps_malloc(size_t size,int caps){return heap_caps_calloc(1,size,caps);}
+static void task_copy_rgb565(uint16_t *to, const uint16_t *from, unsigned start,
+                            unsigned count, unsigned w, unsigned h, unsigned pose) {
+    assert(lockDepth == 0); // Orientation must never run inside a refill critical section.
+    ++orientationCopies;
+    panel_copy_rgb565(to, from, start, count, w, h, pose);
+}
+#define panel_copy_rgb565 task_copy_rgb565
 #define portENTER_CRITICAL(lock) (++lockDepth)
 #define portEXIT_CRITICAL(lock) (--lockDepth)
 #define portENTER_CRITICAL_ISR(lock) (++lockDepth)
@@ -55,12 +79,16 @@ struct crowpanel_rgb_restart_stats_t { uint32_t count{}, frame_buffer_mask{}, er
 struct esp_rgb_panel_t {
     esp_lcd_panel_t base;
     int num_fbs{};
-    uint8_t *fbs[3]{}, *bounce_buffer[2]{};
+    uint8_t *fbs[3]{}, *scan_fbs[3]{}, *bounce_buffer[2]{};
     Link *dma_fb_links[3]{}, *dma_restart_links[3]{}, *dma_bb_link{}, *dma_restart_link{};
     size_t fb_size{}, bb_size{}, fb_bits_per_pixel{16}, int_mem_align{4}, ext_mem_align{64};
     uint8_t cur_fb_index{}, bb_fb_index{};
     uint8_t source_pose{};
+    uint8_t *ota_bitmap{}, *ota_staging{};
+    uintptr_t ota_restart_addr{};
     int bounce_pos_px{}, bb_eof_count{}, expect_eof_count{}, spinlock{}, dma_chan{}, rotate_mask{}, x_gap{}, y_gap{};
+    int intr{};
+    bool (*on_vsync)(){};
     struct { int dev; } hal{};
     struct { int h_res{480}, v_res{480}; } timings;
     struct { bool fb_in_psram{true}, fb_behind_cache{true}, bb_behind_cache{}, stream_mode{true}, need_restart{}; } flags;
@@ -71,6 +99,18 @@ struct esp_rgb_panel_t {
     crowpanel_rgb_restart_stats_t restart_stats;
     uint32_t frame_submitted{}, frame_presented{};
 };
+static unsigned otaDmaRecreated,otaDmaStarted,otaIrqEnabled;
+static int otaDmaResult=ESP_OK,otaIrqResult=ESP_OK;
+template<class T> static bool esp_ptr_in_iram(T){return true;}
+static void esp_intr_disable(int){}
+static void esp_intr_enable(int){++otaIrqEnabled;}
+static int esp_intr_set_in_iram(int,bool safe){assert(safe);return otaIrqResult;}
+static void lcd_ll_stop(int){}
+static void gdma_stop(int){}
+static void gdma_disconnect(int){}
+static void gdma_del_channel(int){}
+static esp_err_t lcd_rgb_create_dma_channel(esp_rgb_panel_t *p){assert(p->ota_bitmap);++otaDmaRecreated;return otaDmaResult;}
+static void lcd_rgb_panel_start_transmission(esp_rgb_panel_t *p){assert(p->ota_bitmap);++otaDmaStarted;}
 static std::vector<Link*> allocated;
 static Link *started;
 static esp_err_t startResult = ESP_OK;
@@ -95,14 +135,15 @@ static size_t gdma_link_get_length(Link *link, int) { return link->length; }
 static esp_err_t gdma_link_concat(Link *a, int, Link *b, int index) {
     a->next = b; a->next_item = index; return ESP_OK;
 }
-static uintptr_t gdma_link_get_head_addr(Link *link) { return reinterpret_cast<uintptr_t>(link); }
+static uintptr_t gdma_link_get_head_addr(Link *link) {assert(!cacheDisabled);return reinterpret_cast<uintptr_t>(link); }
 static esp_err_t gdma_start(int, uintptr_t address) { started = reinterpret_cast<Link*>(address); return startResult; }
 static void gdma_reset(int) {}
 static void lcd_ll_fifo_reset(int) {}
-static void Cache_Start_DCache_Preload(uintptr_t, size_t, int) {}
+static void Cache_Start_DCache_Preload(uintptr_t, size_t, int) {assert(!cacheDisabled);}
 static size_t syncedBytes, syncCalls;
 static esp_err_t syncResult = ESP_OK;
 static esp_err_t esp_cache_msync(void*, size_t bytes, int) {
+    assert(!cacheDisabled);
     assert(bytes <= 4096);
     syncedBytes += bytes;
     ++syncCalls;

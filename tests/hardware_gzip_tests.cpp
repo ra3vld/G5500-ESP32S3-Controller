@@ -26,5 +26,13 @@ int main() {
   assert(testSocket.output.find("Content-Encoding: gzip\r\n")!=std::string::npos);
   assert(testSocket.output.find("Vary: Accept-Encoding\r\n")!=std::string::npos);
   assert(testSocket.output.substr(body)==std::string(reinterpret_cast<const char *>(HARDWARE_PAGE_GZIP),sizeof HARDWARE_PAGE_GZIP));
+  // Cache only immutable resources; API/root retain no-store by default.
+  testSocket={};testSocket.input="GET /ui/content.js HTTP/1.1\r\n\r\n";testSocket.pending=true;
+  web.setRequestHandler([](void *ctx,std::string_view) {
+    static_cast<BoundedWebServer *>(ctx)->sendFixed(200,"text/javascript; charset=utf-8","ok",2,false,true,true);return true;
+  },&web);
+  web.handleClient();fakeHardware.now+=20;web.handleClient();
+  assert(testSocket.output.find("Cache-Control: public,max-age=31536000,immutable\r\n")!=std::string::npos);
+  assert(testSocket.output.find("Content-Encoding: gzip\r\nVary: Accept-Encoding\r\n")!=std::string::npos);
   std::cout<<"PASS: hardware gzip negotiation, headers and parser-free bounded transfer\n";
 }

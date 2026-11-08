@@ -12,6 +12,12 @@ from build_s2_sdk import BUILDER, TINYUSB, copy_changed, fetch_sources, sync_sou
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def sdk_defaults():
+    integrated = ROOT / 'tools/sdkconfig_esp32_spp.defaults'
+    return (integrated if (ROOT / 'platformio/esp32_spp.ini').is_file()
+            else ROOT / 'tools/profiles/sdkconfig_esp32_spp.defaults').read_text()
+
+
 def sdk_matches(packages, defaults):
     package = packages / 'framework-arduinoespressif32-libs'
     try:
@@ -37,25 +43,30 @@ def sdk_matches(packages, defaults):
 
 
 def seed_cached_sdk(project, packages):
-    defaults = (ROOT / 'tools/profiles/sdkconfig_esp32_spp.defaults').read_text()
+    defaults = sdk_defaults()
     checksum = hashlib.md5((defaults.strip() + 'esp32|False||').encode()).hexdigest()[:16]
     current = (packages / 'framework-arduinoespressif32-libs/sdkconfig').read_text()
     write_changed(project / 'sdkconfig.defaults', '# TASMOTA__' + checksum + '\n' + current)
 
 
 def prepare_sdk(pio, jobs, sketch):
-    packages = ROOT / '.pio/packages-esp32-spp'
-    defaults = (ROOT / 'tools/profiles/sdkconfig_esp32_spp.defaults').read_text()
+    integrated = (ROOT / 'platformio/esp32_spp.ini').is_file()
+    packages = ROOT / ('.pio/packages-esp32-spp-55.03.312-1' if integrated
+                       else '.pio/packages-esp32-spp')
+    defaults = sdk_defaults()
     if sdk_matches(packages, defaults):
         return packages
     project = ROOT / 'build/web-flasher-spp-sdk'
     project.mkdir(parents=True, exist_ok=True)
     sync_source(sketch, project / 'G5500_Fork')
     sync_source(ROOT / 'tools', project / 'tools')
-    write_changed(project / 'base.ini', (ROOT / 'platformio.ini').read_text() + '\n' +
-                  (ROOT / 'tools/profiles/esp32_spp.ini').read_text())
+    if integrated:
+        sync_source(ROOT / 'platformio', project / 'platformio')
+    write_changed(project / 'base.ini', (ROOT / 'platformio.ini').read_text() +
+                  ('' if integrated else '\n' + (ROOT / 'tools/profiles/esp32_spp.ini').read_text()))
     write_changed(project / 'platformio.ini',
-                  '[platformio]\nextra_configs = base.ini\nsrc_dir = G5500_Fork\n'
+                  '[platformio]\nextra_configs = base.ini' +
+                  (', platformio/esp32_spp.ini' if integrated else '') + '\nsrc_dir = G5500_Fork\n'
                   '[env:spp_sdk]\nextends = env:esp32_spp\ncustom_sdkconfig =\n' +
                   ''.join(' ' + line + '\n' for line in defaults.splitlines()))
     sources = project / 'vendor'

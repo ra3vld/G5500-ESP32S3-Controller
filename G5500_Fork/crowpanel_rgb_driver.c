@@ -54,6 +54,7 @@
 #include "hal/cache_ll.h"
 #include "crowpanel_rgb_rotation.h"
 #include "panel_pose.h"
+#include "crowpanel_ota_bitmap.h"
 #include "esp_private/sleep_retention.h"
 
 #if SOC_AXI_GDMA_SUPPORTED
@@ -132,6 +133,7 @@ struct esp_rgb_panel_t {
     gdma_link_list_handle_t dma_restart_links[RGB_LCD_PANEL_MAX_FB_NUM]; // One restart link per framebuffer
 #endif
     uint8_t *fbs[RGB_LCD_PANEL_MAX_FB_NUM]; // Frame buffers
+    uint8_t *scan_fbs[RGB_LCD_PANEL_MAX_FB_NUM]; // Optional physical-orientation copies in PSRAM
     uint8_t *bounce_buffer[RGB_LCD_PANEL_BOUNCE_BUF_NUM]; // Pointer to the bounce buffers
     size_t fb_size;        // Size of frame buffer, in bytes
     size_t bb_size;        // Size of the bounce buffer, in bytes. If not-zero, the driver uses two bounce buffers allocated from internal memory
@@ -140,6 +142,9 @@ struct esp_rgb_panel_t {
     uint8_t cur_fb_index;  // Current frame buffer index
     uint8_t bb_fb_index;  // Current frame buffer index which used by bounce buffer
     uint8_t source_pose; // Boot-time orientation of the logical LVGL framebuffer
+    uint8_t *ota_bitmap; // Internal SRAM, readable while Flash/PSRAM caches are off
+    uint8_t *ota_staging; // Task-only packing buffer in PSRAM
+    uintptr_t ota_restart_addr; // gdma_link_get_head_addr() itself lives in Flash
     size_t int_mem_align;  // DMA buffer alignment for internal memory
     size_t ext_mem_align;  // DMA buffer alignment for external memory
     int hsync_gpio_num;    // GPIO used for HSYNC signal
@@ -247,6 +252,7 @@ static esp_err_t lcd_rgb_panel_destroy(esp_rgb_panel_t *rgb_panel)
         if (rgb_panel->fbs[i]) {
             free(rgb_panel->fbs[i]);
         }
+        free(rgb_panel->scan_fbs[i]);
         if (rgb_panel->dma_fb_links[i]) {
             gdma_del_link_list(rgb_panel->dma_fb_links[i]);
         }
@@ -256,6 +262,8 @@ static esp_err_t lcd_rgb_panel_destroy(esp_rgb_panel_t *rgb_panel)
             free(rgb_panel->bounce_buffer[i]);
         }
     }
+    free(rgb_panel->ota_bitmap);
+    free(rgb_panel->ota_staging);
     if (rgb_panel->dma_bb_link) {
         gdma_del_link_list(rgb_panel->dma_bb_link);
     }
@@ -334,7 +342,7 @@ esp_err_t esp_lcd_new_rgb_panel(const esp_lcd_rgb_panel_config_t *rgb_panel_conf
     // calculate the number of DMA descriptors
     size_t num_dma_nodes = 0;
     // allocate memory for rgb panel
-    rgb_panel = heap_caps_calloc(1, sizeof(esp_rgb_panel_t), LCD_RGB_MEM_ALLOC_CAPS);
+    rgb_panel = heap_caps_calloc(1, sizeof(esp_rgb_panel_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     ESP_GOTO_ON_FALSE(rgb_panel, ESP_ERR_NO_MEM, err, TAG, "no mem for rgb panel");
     rgb_panel->panel_id = -1;
     rgb_panel->num_dma_nodes = num_dma_nodes;
@@ -467,7 +475,27 @@ esp_err_t crowpanel_rgb_set_source_pose(esp_lcd_panel_handle_t panel, uint8_t po
     ESP_RETURN_ON_FALSE(panel && pose<16,ESP_ERR_INVALID_ARG,TAG,"invalid source pose");
     esp_rgb_panel_t *rgb=__containerof(panel,esp_rgb_panel_t,base);
     ESP_RETURN_ON_FALSE(rgb->bb_size && rgb->num_fbs && rgb->fb_bits_per_pixel==16,ESP_ERR_NOT_SUPPORTED,TAG,"orientation needs RGB565 bounce buffers");
+    // Called during display setup. Keep logical LVGL buffers separate from the
+    // physical scanout so the refill ISR always has a contiguous memcpy.
+    uint8_t *pending[RGB_LCD_PANEL_MAX_FB_NUM] = {0};
+    if (pose) {
+        for (size_t i = 0; i < rgb->num_fbs; ++i) {
+            if (rgb->scan_fbs[i]) continue;
+            pending[i] = (uint8_t *)heap_caps_calloc(1, rgb->fb_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+            if (!pending[i]) {
+                for (size_t j = 0; j < rgb->num_fbs; ++j) free(pending[j]);
+                return ESP_ERR_NO_MEM;
+            }
+            panel_copy_rgb565((uint16_t *)pending[i], (const uint16_t *)rgb->fbs[i],
+                0, rgb->fb_size / 2, rgb->timings.h_res, rgb->timings.v_res, pose);
+        }
+    }
+    portENTER_CRITICAL(&rgb->spinlock);
+    for (size_t i = 0; i < rgb->num_fbs; ++i) {
+        if (pending[i]) rgb->scan_fbs[i] = pending[i];
+    }
     __atomic_store_n(&rgb->source_pose,pose,__ATOMIC_RELAXED);
+    portEXIT_CRITICAL(&rgb->spinlock);
     return ESP_OK;
 }
 
@@ -745,10 +773,6 @@ static esp_err_t rgb_panel_draw_bitmap(esp_lcd_panel_t *panel, int x_start, int 
         if (!rgb_panel->bb_size && rgb_panel->flags.fb_behind_cache) {
             ESP_RETURN_ON_ERROR(lcd_rgb_panel_writeback(flush_ptr, bytes_to_flush), TAG, "cache writeback failed");
         }
-        // after the draw buffer finished copying, notify the user to recycle the draw buffer
-        if (cb) {
-            cb(&rgb_panel->base, NULL, rgb_panel->user_ctx);
-        }
     } else {
         ESP_LOGV(TAG, "draw buffer is part of the frame buffer");
         // when this function is called, the frame buffer already reflects the draw buffer changes
@@ -758,10 +782,19 @@ static esp_err_t rgb_panel_draw_bitmap(esp_lcd_panel_t *panel, int x_start, int 
             size_t cache_sync_size = (y_end - y_start) * bytes_per_line;
             ESP_RETURN_ON_ERROR(lcd_rgb_panel_writeback(cache_sync_start, cache_sync_size), TAG, "cache writeback failed");
         }
-        // after the draw buffer finished copying, notify the user to recycle the draw buffer
-        if (cb) {
-            cb(&rgb_panel->base, NULL, rgb_panel->user_ctx);
-        }
+    }
+
+    // Rotate once per submitted frame in task context, with interrupts enabled.
+    // Repeating the PSRAM transpose in every DMA refill can starve the CPU and
+    // trigger the interrupt watchdog before startup reaches the command API.
+    const uint8_t scan_index = draw_buf_copy_to_fb ? rgb_panel->cur_fb_index : draw_buf_fb_index;
+    if (rgb_panel->scan_fbs[scan_index]) {
+        panel_copy_rgb565((uint16_t *)rgb_panel->scan_fbs[scan_index],
+            (const uint16_t *)rgb_panel->fbs[scan_index], 0, fb_size / 2,
+            h_res, v_res, rgb_panel->source_pose);
+    }
+    if (cb) {
+        cb(&rgb_panel->base, NULL, rgb_panel->user_ctx);
     }
 
     // Publish only after cache writeback. VSYNC must never start an unfinished
@@ -964,7 +997,10 @@ static IRAM_ATTR bool lcd_rgb_panel_fill_bounce_buffer(esp_rgb_panel_t *panel, u
 {
     bool need_yield = false;
     int bytes_per_pixel = panel->fb_bits_per_pixel / 8;
-    if (unlikely(panel->num_fbs == 0)) {
+    if (panel->ota_bitmap) {
+        crowpanel_ota_expand((uint16_t *)buffer,panel->ota_bitmap+panel->bounce_pos_px/8,
+                            panel->bb_size/bytes_per_pixel);
+    } else if (unlikely(panel->num_fbs == 0)) {
         // driver doesn't maintain a frame buffer, so ask the user to fill the bounce buffer
         if (panel->on_bounce_empty) {
             if (panel->on_bounce_empty(&panel->base, buffer, panel->bounce_pos_px, panel->bb_size, panel->user_ctx)) {
@@ -974,13 +1010,12 @@ static IRAM_ATTR bool lcd_rgb_panel_fill_bounce_buffer(esp_rgb_panel_t *panel, u
     } else {
         // copy partial frame buffer to the bounce buffer
         // Note: if the frame buffer is behind a cache, and the cache is disabled, crash would happen here when auto write back happens
-        const unsigned pose=__atomic_load_n(&panel->source_pose,__ATOMIC_RELAXED);
-        if(pose)panel_copy_rgb565((uint16_t *)buffer,(const uint16_t *)panel->fbs[panel->bb_fb_index],
-            panel->bounce_pos_px,panel->bb_size/2,panel->timings.h_res,panel->timings.v_res,pose);
-        else memcpy(buffer, &panel->fbs[panel->bb_fb_index][panel->bounce_pos_px * bytes_per_pixel], panel->bb_size);
+        const uint8_t *source = panel->scan_fbs[panel->bb_fb_index];
+        if (!source) source = panel->fbs[panel->bb_fb_index];
+        memcpy(buffer, source + panel->bounce_pos_px * bytes_per_pixel, panel->bb_size);
     }
     // do memory sync if the bounce buffer is behind the cache
-    if (panel->flags.bb_behind_cache) {
+    if (!panel->ota_bitmap && panel->flags.bb_behind_cache) {
         esp_cache_msync(buffer, panel->bb_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
     }
 
@@ -995,7 +1030,7 @@ static IRAM_ATTR bool lcd_rgb_panel_fill_bounce_buffer(esp_rgb_panel_t *panel, u
         panel->frame_presented = panel->frame_submitted;
         portEXIT_CRITICAL_SAFE(&panel->spinlock);
         esp_lcd_rgb_panel_frame_buf_complete_cb_t cb = panel->on_frame_buf_complete;
-        if (cb) {
+        if (cb && !panel->ota_bitmap) {
             if (cb(&panel->base, NULL, panel->user_ctx)) {
                 need_yield = true;
             }
@@ -1003,12 +1038,14 @@ static IRAM_ATTR bool lcd_rgb_panel_fill_bounce_buffer(esp_rgb_panel_t *panel, u
     }
 
     // Preload the next bit of buffer to the cache memory, this can improve the performance
-    if (panel->num_fbs > 0 && panel->flags.fb_behind_cache && !panel->source_pose) {
+    if (!panel->ota_bitmap && panel->num_fbs > 0 && panel->flags.fb_behind_cache) {
+        const uint8_t *source = panel->scan_fbs[panel->bb_fb_index];
+        if (!source) source = panel->fbs[panel->bb_fb_index];
 #if CONFIG_IDF_TARGET_ESP32S3
-        Cache_Start_DCache_Preload((uint32_t)&panel->fbs[panel->bb_fb_index][panel->bounce_pos_px * bytes_per_pixel],
+        Cache_Start_DCache_Preload((uint32_t)(source + panel->bounce_pos_px * bytes_per_pixel),
                                    panel->bb_size, 0);
 #elif CONFIG_IDF_TARGET_ESP32P4
-        Cache_Start_L2_Cache_Preload((uint32_t)&panel->fbs[panel->bb_fb_index][panel->bounce_pos_px * bytes_per_pixel],
+        Cache_Start_L2_Cache_Preload((uint32_t)(source + panel->bounce_pos_px * bytes_per_pixel),
                                      panel->bb_size, 0);
 #else
 #error "Unsupported target"
@@ -1069,6 +1106,8 @@ static esp_err_t lcd_rgb_create_dma_channel(esp_rgb_panel_t *rgb_panel)
         .direction = GDMA_CHANNEL_DIRECTION_TX,
 #if CONFIG_LCD_RGB_ISR_IRAM_SAFE
         .flags.isr_cache_safe = true,
+#else
+        .flags.isr_cache_safe = rgb_panel->ota_bitmap != NULL,
 #endif
     };
     ESP_RETURN_ON_ERROR(LCD_GDMA_NEW_CHANNEL(&dma_chan_config, &rgb_panel->dma_chan), TAG, "alloc DMA channel failed");
@@ -1083,7 +1122,7 @@ static esp_err_t lcd_rgb_create_dma_channel(esp_rgb_panel_t *rgb_panel)
     // configure DMA transfer
     gdma_transfer_config_t trans_cfg = {
         .max_data_burst_size = rgb_panel->dma_burst_size,
-        .access_ext_mem = rgb_panel->flags.fb_in_psram,
+        .access_ext_mem = rgb_panel->flags.fb_in_psram && !rgb_panel->ota_bitmap,
     };
     ESP_RETURN_ON_ERROR(gdma_config_transfer(rgb_panel->dma_chan, &trans_cfg), TAG, "config DMA transfer failed");
     // get the memory alignment required by the DMA
@@ -1266,7 +1305,7 @@ static IRAM_ATTR void lcd_rgb_panel_try_restart_transmission(esp_rgb_panel_t *pa
 #if RGB_LCD_NEEDS_SEPARATE_RESTART_LINK
     portENTER_CRITICAL_ISR(&panel->spinlock);
     const uint8_t restart_fb = panel->bb_size ? 0 : panel->cur_fb_index;
-    const esp_err_t restart_result = gdma_start(panel->dma_chan,
+    const esp_err_t restart_result = gdma_start(panel->dma_chan, panel->ota_bitmap ? panel->ota_restart_addr :
         gdma_link_get_head_addr(panel->dma_restart_links[restart_fb]));
     if (restart_result == ESP_OK) {
         if (!panel->bb_size) panel->frame_presented = panel->frame_submitted;
@@ -1321,6 +1360,54 @@ static void lcd_rgb_panel_start_transmission(esp_rgb_panel_t *rgb_panel)
     lcd_ll_start(rgb_panel->hal.dev);
 }
 
+esp_err_t crowpanel_rgb_ota_frame(esp_lcd_panel_handle_t panel, const uint16_t *frame)
+{
+#if !CONFIG_GDMA_ISR_HANDLER_IN_IRAM || !CONFIG_GDMA_CTRL_FUNC_IN_IRAM
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
+    ESP_RETURN_ON_FALSE(panel, ESP_ERR_INVALID_ARG, TAG, "missing OTA panel");
+    esp_rgb_panel_t *rgb = __containerof(panel, esp_rgb_panel_t, base);
+    ESP_RETURN_ON_FALSE(rgb->bb_size && rgb->fb_bits_per_pixel == 16 && rgb->fb_size % 16 == 0,
+                        ESP_ERR_NOT_SUPPORTED, TAG, "OTA requires RGB565 bounce mode");
+    const size_t bytes = rgb->fb_size / 16; // One SRAM bit per physical pixel.
+    if (!frame) frame = (const uint16_t *)rgb->fbs[rgb->bb_fb_index];
+    ESP_RETURN_ON_FALSE(frame, ESP_ERR_INVALID_ARG, TAG, "missing OTA frame");
+    if (rgb->ota_bitmap) {
+        crowpanel_ota_pack(rgb->ota_staging, frame, rgb->fb_size / 2);
+        // Leave IRQ windows between small PSRAM -> SRAM copies. Publishing the
+        // whole bitmap under one lock could itself miss a 20-row DMA refill.
+        for (size_t offset = 0; offset < bytes; offset += 1024) {
+            const size_t chunk = MIN(bytes - offset, 1024);
+            portENTER_CRITICAL(&rgb->spinlock);
+            memcpy(rgb->ota_bitmap + offset, rgb->ota_staging + offset, chunk);
+            portEXIT_CRITICAL(&rgb->spinlock);
+        }
+        return ESP_OK;
+    }
+    ESP_RETURN_ON_FALSE(!rgb->on_vsync || esp_ptr_in_iram(rgb->on_vsync), ESP_ERR_INVALID_ARG,
+                        TAG, "OTA VSYNC must be in IRAM");
+    uint8_t *bitmap = (uint8_t *)heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint8_t *staging = (uint8_t *)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!bitmap || !staging) { free(bitmap); free(staging); return ESP_ERR_NO_MEM; }
+    crowpanel_ota_pack(bitmap, frame, rgb->fb_size / 2);
+    // Switch before the first flash operation. The ordinary PSRAM path keeps
+    // its cache-dependent interrupts; only this SRAM-only mode enables IRAM IRQs.
+    esp_intr_disable(rgb->intr);
+    lcd_ll_stop(rgb->hal.dev);
+    gdma_stop(rgb->dma_chan);
+    gdma_disconnect(rgb->dma_chan);
+    gdma_del_channel(rgb->dma_chan);
+    rgb->dma_chan = 0;
+    rgb->ota_bitmap = bitmap;
+    rgb->ota_staging = staging;
+    rgb->ota_restart_addr = gdma_link_get_head_addr(rgb->dma_restart_links[0]);
+    ESP_RETURN_ON_ERROR(lcd_rgb_create_dma_channel(rgb), TAG, "OTA DMA setup failed");
+    ESP_RETURN_ON_ERROR(esp_intr_set_in_iram(rgb->intr, true), TAG, "OTA VSYNC setup failed");
+    lcd_rgb_panel_start_transmission(rgb);
+    esp_intr_enable(rgb->intr);
+    return ESP_OK;
+}
+
 IRAM_ATTR static void lcd_rgb_panel_try_update_pclk(esp_rgb_panel_t *rgb_panel)
 {
     hal_utils_clk_div_t lcd_clk_div = {};
@@ -1360,7 +1447,7 @@ IRAM_ATTR static void rgb_lcd_default_isr_handler(void *args)
         }
 
         // check whether to update the PCLK frequency, it should be safe to update the PCLK frequency in the VSYNC interrupt
-        lcd_rgb_panel_try_update_pclk(rgb_panel);
+        if (!rgb_panel->ota_bitmap) lcd_rgb_panel_try_update_pclk(rgb_panel);
 
         if (rgb_panel->flags.stream_mode) {
             // check whether to restart the transmission

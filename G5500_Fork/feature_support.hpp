@@ -5,6 +5,8 @@
 namespace forkrot {
 struct Feature { const char *name; bool enabled; };
 inline constexpr Feature buildFeatures[] = {
+  {"directControl",ESP32_SPP_PROFILE},{"pid",!ESP32_SPP_PROFILE},
+  {"autotune",!ESP32_SPP_PROFILE},{"ramp",!ESP32_SPP_PROFILE},
   {"display", DISPLAY_SUPPORT && DISPLAY_KIND != DISPLAY_NONE}, {"localInput", LOCAL_INPUT_SUPPORT},
   {"wifi", WIFI_SUPPORT}, {"ethernet", ETHERNET_SUPPORT}, {"web", WEB_INTERFACE_ENABLED},
   {"webPlainHtml", WEB_PLAIN_HTML_SUPPORT}, {"webLive", WEB_LIVE_SUPPORT}, {"bluetooth", BLUETOOTH_SUPPORT}, {"bluetoothSpp", BLUETOOTH_SPP_SUPPORT},
@@ -14,7 +16,7 @@ inline constexpr Feature buildFeatures[] = {
   {"modbus", MODBUS_RTU_SUPPORT}, {"ota", OTA_SUPPORT}, {"arduinoOta", ARDUINO_OTA_SUPPORT},
   {"camera", CAMERA_ENABLED}, {"logHistory", LOG_HISTORY_SUPPORT}, {"rssiHistory", RSSI_HISTORY_SUPPORT},
   {"resetHistory", RESET_HISTORY_SUPPORT}, {"ntp", NTP_SUPPORT}, {"mqtt", MQTT_SUPPORT},
-  {"homeAssistantDiscovery", HOME_ASSISTANT_DISCOVERY_SUPPORT}
+  {"mqttTls", MQTT_TLS_SUPPORT}, {"homeAssistantDiscovery", HOME_ASSISTANT_DISCOVERY_SUPPORT}
 };
 inline void writeBuildFeatures(JsonWriter &j) {
   j << '{'; bool first=true;
@@ -31,6 +33,7 @@ inline bool featureSettingEnabled(std::string_view name) {
   return true;
 }
 inline bool featurePathEnabled(std::string_view path) {
+  if(ESP32_SPP_PROFILE && (path=="/api/motion/autotune" || path=="/api/motion/coast"))return false;
   if(path.substr(0,23)=="/api/hardware/joystick/")return LOCAL_INPUT_SUPPORT;
   if(path=="/api/mqtt")return MQTT_SUPPORT;
   if(path=="/api/rssi")return RSSI_HISTORY_SUPPORT;

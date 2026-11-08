@@ -7,7 +7,7 @@ body.embedded #display-settings{display:none!important}
 .display-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 18px}.display-fields label{display:flex;align-items:center;gap:10px;min-height:44px;margin:4px 0}.display-fields input{accent-color:#6bc9ff}@media(max-width:400px){.display-fields{grid-template-columns:minmax(0,1fr)}}
 .action-feedback{box-sizing:border-box;position:fixed;z-index:50;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:calc(100% - 24px);max-width:620px;max-height:50dvh;overflow-y:auto;display:flex;align-items:center;gap:12px;padding:12px 14px;background:#132532;border:2px solid #57bde8;border-radius:12px;box-shadow:0 6px 30px #0009;line-height:1.4;overflow-wrap:anywhere}.action-feedback[data-state=success]{border-color:#24d18d}.action-feedback[data-state=error]{border-color:#ff7970}.action-feedback>div{flex:1;min-width:0}.action-feedback strong{display:block;margin-bottom:3px}.action-feedback button{flex:none;align-self:center;border:0;min-width:44px;min-height:44px;margin:0;background:#294153;color:white;font-size:24px}.action-feedback[data-state=pending] button{visibility:hidden}
 .pin-bank{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 18px;min-width:0}.pin-bank h3{grid-column:1/-1;font-size:16px;margin:16px 0 0}.pin-bank[data-pin-bank=lcd],.pin-bank[data-pin-bank=touch],.pin-bank[data-pin-bank=data]{grid-template-columns:repeat(4,minmax(0,1fr))}@media(max-width:800px){.pin-bank[data-pin-bank=lcd],.pin-bank[data-pin-bank=touch],.pin-bank[data-pin-bank=data]{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:480px){.pin-bank{grid-template-columns:minmax(0,1fr)!important}}
-.hardware-stop{position:fixed;top:0;left:0;right:0;z-index:60;display:flex;align-items:center;gap:12px;background:#132532;border-bottom:2px solid #7e4248;padding:8px 20px;min-height:48px}.hardware-stop button{background:#8a2334;margin:0;min-width:100px}body{padding-top:86px}body.embedded .hardware-stop,body.embedded #recover,body.embedded #rollback{display:none}details.settings-fold{border:1px solid #405267;border-radius:12px;margin:16px 0;padding:12px}details.settings-fold>summary{cursor:pointer;font-weight:600;min-height:44px;display:list-item;align-content:center}details.settings-fold>fieldset{border:0;padding:8px 0;margin:0}details.settings-fold>fieldset>legend{display:none}.recovery-choice{padding:16px;border:1px solid #405267;border-radius:12px;margin:12px 0}.recovery-choice h2{font-size:19px;margin:0 0 8px}body.recovery-guided #hardware-status>p:not(#state){display:none}body.recovery-guided #recover,body.recovery-guided main>a,body.recovery-guided main>p:last-child{display:none}#recovery-guide button{min-height:44px}#recovery-network input{width:100%}@media(max-width:400px){body:not(.embedded){padding-top:86px}}
+.hardware-stop{position:fixed;top:0;left:0;right:0;z-index:60;display:flex;align-items:center;gap:12px;background:#132532;border-bottom:2px solid #7e4248;padding:8px 20px;min-height:48px}.hardware-stop button{background:#8a2334;margin:0;min-width:100px}body{padding-top:86px}body.embedded .hardware-stop,body.embedded #recover,body.embedded #rollback{display:none}details.settings-fold{border:1px solid #405267;border-radius:12px;margin:16px 0;padding:12px}details.settings-fold>summary{cursor:pointer;font-weight:600;min-height:44px;display:list-item;align-content:center}details.settings-fold>fieldset{border:0;padding:8px 0;margin:0}details.settings-fold>fieldset>legend{display:none}.recovery-choice{padding:16px;border:1px solid #405267;border-radius:12px;margin:12px 0}.recovery-choice h2{font-size:19px;margin:0 0 8px}body.recovery-guided #hardware-status>p:not(#state){display:none}body.recovery-guided #recover,body.recovery-guided main>a,body.recovery-guided main>p:last-child{display:none}#recovery-guide button{min-height:44px}#recovery-network input{width:100%}#recovery-network{margin:8px 0 20px;padding-bottom:16px;border-bottom:1px solid #405267}details.settings-fold{scroll-margin-top:80px}button.section-toggle{display:inline-flex;align-items:center;gap:10px;text-align:left;background:transparent;border-color:#6bc9ff;color:#9edcff}button.section-toggle::before{content:"▸";width:1em;flex:none}button.section-toggle[aria-expanded=true]::before{content:"▾"}@media(max-width:400px){body:not(.embedded){padding-top:86px}}
 </style>
 <div class="hardware-stop"><button type="button" id="hardwareStop">STOP</button><span id="hardwareStopStatus" role="status">Остановка привода</span></div>
 <main><a href="/">← Управление</a><h1>Оборудование</h1><div id="hardware-status"><p class="note" id="state" role="status">Загрузка состояния…</p>
@@ -16,18 +16,19 @@ body.embedded #display-settings{display:none!important}
 </div>
 <section id="recovery-guide" hidden>
 <h2>Что нужно исправить?</h2><p>Привод отключён до выхода из восстановления. Выберите один путь. Сброс всех настроек не требуется.</p>
-<div class="recovery-choice"><h2>1. Не удаётся подключиться по сети</h2><p>Исправьте Wi-Fi или верните автоматическое получение IP. Сервисная AP будет доступна до перезапуска.</p><button type="button" id="recovery-network-open">Исправить подключение</button>
+<div class="recovery-choice"><h2>1. Не удаётся подключиться по сети</h2><p>Исправьте Wi-Fi или верните автоматическое получение IP. Сервисная AP будет доступна до перезапуска.</p><button type="button" class="section-toggle" id="recovery-network-open" aria-controls="hardware-network-section" aria-expanded="false">Исправить подключение</button>
 <form id="recovery-network" hidden><label>Подключение после выхода<select name="choice"><option value="1">Точка доступа устройства</option><option value="0">Wi-Fi через роутер · DHCP</option><option value="4">Ethernet · DHCP</option></select></label><div id="recovery-wifi-fields"><label>Имя сети (SSID)<input name="ssid" maxlength="32" autocomplete="off"></label><label>Пароль сети<input name="pass" type="password" autocomplete="new-password"><small>Введите пароль заново; пустое поле — открытая сеть.</small></label></div><label id="recovery-ap-field">Новый пароль точки доступа<input name="apPass" type="password" maxlength="63" autocomplete="new-password"><small>8–63 символа. Пустое поле — доступ без пароля.</small></label><button type="submit">Сохранить исправление сети</button><p id="recovery-network-message" role="status"></p></form></div>
 <div class="recovery-choice"><h2>2. Ошибка после изменения оборудования</h2><p>Верните последний подтверждённый привод и GPIO. Калибровка и сетевые настройки сохранятся.</p><div id="recovery-rollback-place"></div></div>
-<div class="recovery-choice"><h2>3. Нужно исправить GPIO или другие параметры</h2><p>Откройте ручную настройку, измените нужные поля и нажмите «Сохранить и перезапустить». После успешного запуска подтвердите конфигурацию.</p><button type="button" id="recovery-manual-open">Открыть ручную настройку</button></div>
-<p id="recovery-next" role="status">После исправления сети нажмите «Запустить устройство» ниже. Если подтверждённой конфигурации нет, сначала выполните ручную настройку.</p><button type="button" id="recovery-resume" disabled>Запустить устройство</button>
+<div class="recovery-choice"><h2>3. Нужно исправить GPIO или другие параметры</h2><p>Откройте ручную настройку, измените нужные поля и нажмите «Сохранить и перезапустить». После успешного запуска подтвердите конфигурацию.</p><button type="button" class="section-toggle" id="recovery-manual-open" aria-controls="manual-settings" aria-expanded="false">Открыть ручную настройку</button></div>
+<div class="recovery-choice" id="recovery-mqtt"><h2>MQTT и память</h2><p>В восстановлении MQTT и TLS не запускаются. Можно также выключить их для следующего обычного запуска. Адрес брокера и пароль сохранятся.</p><button type="button" id="recovery-mqtt-disable">Отключить MQTT и TLS</button><p id="recovery-mqtt-message" role="status" aria-live="polite"></p></div>
+<p id="recovery-next" role="status">После исправления сети нажмите «Запустить устройство» ниже. Запуск использует подтверждённые настройки оборудования. Если их ещё нет, сначала выполните ручную настройку.</p><button type="button" id="recovery-resume" aria-describedby="recovery-resume-reason" disabled>Запустить устройство</button><p id="recovery-resume-reason" class="note" role="status">Ожидаем загрузку состояния устройства.</p>
 </section><p id="message" role="status" aria-live="polite"></p><div id="manual-settings"><p id="pin-validation-top" class="error" role="alert"></p><form id="hardware"><fieldset><legend>Привод</legend><label>Режим привода<select name="driveMode"><option value="0">Штатный блок Yaesu</option><option value="1">LEFT / RIGHT + SPEED_PWM</option><option value="2">LEFT_PWM / RIGHT_PWM (+ ENABLE) · BTS7960</option><option value="3">DIR + SPEED_PWM</option><option value="simulation">Имитация движения</option><option value="mechanics">Имитация с симуляцией механики</option></select></label>
 <input type="hidden" name="driveInterface"><input type="hidden" name="simulation"><small id="drive-simulation-help" hidden>Модель учитывает инерцию, трение и люфт. После STOP выход отключается сразу, а виртуальная механика останавливается с выбегом. Моторные GPIO и датчики положения не используются.</small>
 <div id="bts-settings"><label>Выходы BTS7960<select name="pwmInverted"><option value="0">Прямое подключение PWM</option><option value="1">Инвертирующие оптроны RPWM / LPWM</option></select></label><small>Выбирайте по подключённой схеме. ENABLE необязателен; при назначенном GPIO он активен HIGH. CrowPanel без адаптера не управляет физическим приводом.</small></div></fieldset>
 <fieldset><legend>Датчики положения</legend><p>Выберите датчик отдельно для AZ и EL. Для энкодера назначьте SDA и SCL ниже. Питание и подтяжки I²C — 3,3 В. Два AS5600 требуют разных шин; MT6701 и AS5600 могут использовать общую шину.</p><div id="position-sensors" class="pin-group"></div><small>Энкодер измеряет один оборот. Установите программный ноль так, чтобы рабочий ход не пересекал переход отсчётов через ноль. Для хода антенны 360° и более используйте понижающую передачу на датчик. После смены датчика, его GPIO, адреса или нуля заново выполните калибровку этой оси.</small></fieldset>
-<fieldset><legend>Сеть и Bluetooth</legend><label>Bluetooth<select name="bluetoothEnabled"><option value="0">Выключен</option><option value="1">Включён</option></select></label>
-<label>Транспорт<select name="bluetoothMode"><option value="3">Автоматически по плате</option><option value="1">Внешний HC-05</option><option value="2">Встроенный SPP · ESP32</option></select></label>
-<label>Точка доступа<select name="forceApSta"><option value="0">Резервная: при потере сети</option><option value="1">Постоянная: вместе с домашней сетью</option></select></label><small>В постоянном режиме AP доступна вместе с сетью роутера. В режиме восстановления сервисная AP остаётся включённой при любом выборе.</small></fieldset>
+<fieldset id="hardware-network"><legend>Сеть и Bluetooth</legend><label>Bluetooth<select name="bluetoothEnabled" form="hardware"><option value="0">Выключен</option><option value="1">Включён</option></select></label>
+<label>Транспорт<select name="bluetoothMode" form="hardware"><option value="3">Автоматически по плате</option><option value="1">Внешний HC-05</option><option value="2">Встроенный SPP · ESP32</option></select></label>
+<label>Точка доступа<select name="forceApSta" form="hardware"><option value="0">Резервная: при потере сети</option><option value="1">Постоянная: вместе с домашней сетью</option></select></label><small>В постоянном режиме AP доступна вместе с сетью роутера. В режиме восстановления сервисная AP остаётся включённой при любом выборе.</small></fieldset>
 <fieldset><legend>Кнопка подтверждения цели</legend><label>GPIO<select name="buttonGpio" id="pin-buttonGpio" aria-describedby="pin-buttonGpio-hint"></select><small class="pin-hint" id="pin-buttonGpio-hint"></small></label>
 <label>Уровень нажатия<select name="buttonActiveLow"><option value="1">LOW · замыкание на GND</option><option value="0">HIGH</option></select></label>
 <label>Подтяжка<select name="buttonPullup"><option value="1">Внутренняя к питанию</option><option value="0">Внешняя</option></select></label><small>На CrowPanel кнопка ручки также подтверждает цель; отдельная GPIO-кнопка необязательна. Поведение загрузчика на BOOT не изменяется.</small></fieldset>
@@ -78,27 +79,49 @@ function settingsFeedback(message,state='error'){
 /* BEGIN BOUNDED POLLING */
 // Embedded by generate_web_assets.py. Control/STOP requests bypass this pool.
 const background=(()=>{
- const entries=new Map();let active=0,limited=false;
+ try{if(window.frameElement&&window.parent.__g5500Background){
+  const shared=window.parent.__g5500Background.scope('frame:'+(window.frameElement.id||location.pathname)+':',()=>!document.hidden&&!!window.frameElement?.getClientRects().length);
+  window.addEventListener('pagehide',shared.close);return shared;
+ }}catch(_){}
+ const entries=new Map();let active=0,limited=false,paused=false;
  const visible=()=>!document.hidden&&(!window.frameElement||!!window.frameElement.getClientRects().length);
  const entry=key=>{if(!entries.has(key))entries.set(key,{next:0,failures:0,pending:null,controller:null,shown:()=>true});return entries.get(key);};
  const deferred=()=>Object.assign(new Error('Обновление отложено'),{name:'PollingDeferred'});
- const allowed=e=>visible()&&e.shown()&&navigator.onLine!==false;
+ const allowed=e=>!paused&&visible()&&e.shown()&&navigator.onLine!==false;
  async function read(key,url,kind='json',shown=()=>true,controller=null){
   const e=entry(key);e.shown=shown;
   if(e.pending)return e.pending;
-  if(!allowed(e)||Date.now()<e.next||active>=2)throw deferred();
+  if(!allowed(e)||Date.now()<e.next||active>=(window.setupCommissioning?1:2))throw deferred();
   const abort=controller||new AbortController();e.controller=abort;++active;
   const timer=setTimeout(()=>abort.abort(),5000);
   e.pending=Promise.resolve().then(async()=>{
    try{
-    const response=await fetch(url,{cache:'no-store',signal:abort.signal});
-    const data=await response[kind==='reply'?'text':kind]();
+    const receive=async()=>{
+     if(!allowed(e))throw deferred();
+     const response=await fetch(url,{cache:'no-store',signal:abort.signal});
+     const data=await response[kind==='reply'?'text':kind]();return {response,data};
+    };
+    let result;
+    try{result=await receive();}catch(error){
+     // A server can retire an idle HTTP connection just as the browser
+     // reuses it. Only these read-only requests get one retry; the original
+     // five-second deadline also covers the pause and the second attempt.
+     if(!(error instanceof TypeError)||abort.signal.aborted||navigator.onLine===false)throw error;
+     await new Promise((resolve,reject)=>{
+      const cancel=()=>{clearTimeout(retry);reject(new DOMException('aborted','AbortError'));};
+      const retry=setTimeout(()=>{abort.signal.removeEventListener('abort',cancel);resolve();},100);
+      if(abort.signal.aborted)cancel();else abort.signal.addEventListener('abort',cancel,{once:true});
+     });
+     result=await receive();
+    }
+    const {response,data}=result;
     if(!response.ok&&kind!=='reply')throw Error('HTTP '+response.status);
     if(data&&typeof data==='object'&&typeof data.networkMemoryLimited==='boolean')limited=data.networkMemoryLimited;
     if(response.ok){e.failures=0;e.next=Date.now()+(limited?500:0);}
     else e.next=Date.now()+[1000,2000,4000,8000,15000][Math.min(e.failures++,4)];
     return kind==='reply'?{ok:response.ok,status:response.status,text:async()=>data,json:async()=>JSON.parse(data)}:data;
    }catch(error){
+    if(abort.signal.reason?.name==='PollingDeferred')throw abort.signal.reason;if(paused&&abort.signal.aborted)throw deferred();
     if(allowed(e)){const delay=[1000,2000,4000,8000,15000][Math.min(e.failures++,4)];e.next=Date.now()+Math.round(delay*(0.9+Math.random()*0.2));}
     throw error;
    }finally{clearTimeout(timer);--active;e.pending=null;e.controller=null;}
@@ -106,24 +129,34 @@ const background=(()=>{
   return e.pending;
  }
  function poll(key,load,interval,shown=()=>true){
-  const e=entry(key);e.shown=shown;let pending=null,timer=null;
+  const e=entry(key);e.stop?.();e.shown=shown;let pending=null,timer=null,stopped=false;
   const run=()=>{
+   if(stopped)return Promise.resolve();
    if(pending)return pending;clearTimeout(timer);
    pending=Promise.resolve().then(()=>{if(allowed(e))return load();}).catch(()=>{}).finally(()=>{
-    pending=null;timer=setTimeout(run,Math.max(interval,limited?500:0,e.next-Date.now()));
+    pending=null;if(!stopped)timer=setTimeout(run,Math.max(interval,limited?500:0,e.next-Date.now()));
    });return pending;
   };
-  e.run=run;run();return run;
+  e.stop=()=>{stopped=true;clearTimeout(timer);e.run=null;};e.run=run;run();return run;
  }
  function visibility(){
-  for(const e of entries.values())if(!allowed(e))e.controller?.abort();else if(e.run)e.run();
+  for(const e of entries.values())if(!allowed(e))e.controller?.abort(deferred());else if(e.run)e.run();
  }
  document.addEventListener('visibilitychange',visibility);
- document.addEventListener('toggle',()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort();},true);
- document.addEventListener('click',()=>queueMicrotask(()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort();}),true);
+ document.addEventListener('toggle',()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort(deferred());},true);
+ document.addEventListener('click',()=>queueMicrotask(()=>{for(const e of entries.values())if(!allowed(e))e.controller?.abort(deferred());}),true);
  window.addEventListener('offline',visibility);window.addEventListener('online',visibility);
- return {read,poll,visible,cancel:key=>entry(key).controller?.abort(),limited:()=>limited,setLimited:value=>{limited=!!value;}};
+ const api={read,poll,visible,refreshVisibility:visibility,cancel:key=>entry(key).controller?.abort(deferred()),limited:()=>limited,setLimited:value=>{limited=!!value;},pause:value=>{if(paused===!!value)return;paused=!!value;visibility();}};
+ api.scope=(prefix,shown)=>({...api,
+  visible:()=>visible()&&shown(),
+  read:(key,url,kind='json',local=()=>true,controller=null)=>read(prefix+key,url,kind,()=>shown()&&local(),controller),
+  poll:(key,load,interval,local=()=>true)=>poll(prefix+key,load,interval,()=>shown()&&local()),
+  cancel:key=>api.cancel(prefix+key),
+  close:()=>{for(const [key,e] of entries)if(key.startsWith(prefix)){e.stop?.();e.controller?.abort(deferred());entries.delete(key);}}
+ });
+ return api;
 })();
+window.__g5500Background=background;
 /* END BOUNDED POLLING */
 /* BEGIN STARTUP ACTIVITY */
 // Report actual input, including navigation and edits that do not send commands.
@@ -143,7 +176,8 @@ const background=(()=>{
   document.addEventListener(type,activity,{capture:true,passive:true});
 })();
 /* END STARTUP ACTIVITY */
-let state,metadata,formStamp,savedStamp,dirty=false,busy=false,probe=false,pinError,draftRevision=0,mbRevision=0;
+let state,metadata,formStamp,savedStamp,dirty=false,busy=false,probe=false,pinError,draftRevision=0,mbRevision=0,hardwareForeground=false;
+let loadingFields=[...document.querySelectorAll('fieldset')];for(const field of loadingFields)field.disabled=true;
 function hardwareEdited(){dirty=true;++draftRevision;}
 let rebootsLoaded=false,pendingHardwareSave;
 const form=document.getElementById('hardware'),msg=document.getElementById('message');
@@ -170,23 +204,61 @@ const errors={invalid_uart_settings:'Проверьте скорость, чёт
 const fieldLabel=field=>labels[field.replace(/^pin\./,'')]||field;
 const ownerLabel=owner=>owners[owner]||fieldLabel(owner);
 function errorText(e){return (e.field?fieldLabel(e.field)+': ':'')+(errors[e.error]||e.error||'Запрос отклонён')+(e.gpio>=0?' GPIO'+e.gpio+'.':'')+(e.owner?' Занят: '+ownerLabel(e.owner)+'.':'');}
-async function request(path,body,textReply=false){if(!body)return background.read(path,path);const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);try{const r=await fetch(path,{cache:'no-store',signal:controller.signal,...(body?{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)}:{})});if(textReply){const text=await r.text();if(!r.ok)throw Error(text);return {ok:true};}const j=await r.json();if(!r.ok)throw Error(errorText(j));return j;}finally{clearTimeout(timer);}}
+async function request(path,body,textReply=false){if(!body&&!hardwareForeground)return background.read(path,path,'json',path==='/api/hardware/modbus'?modbusDataVisible:()=>true);const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);try{const r=await fetch(path,{cache:'no-store',signal:controller.signal,...(body?{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)}:{})});if(textReply){const text=await r.text();if(!r.ok)throw Error(text);return {ok:true};}const j=await r.json();if(!r.ok)throw Error(errorText(j));return j;}finally{clearTimeout(timer);}}
 const credentials=()=>({token:state.token,generation:state.generation});
-let recoveryGuided=false,recoveryNetworkLoaded=false,recoveryNetworkBusy=false;
+let recoveryGuided=false,recoveryNetworkLoaded=false,recoveryNetworkBusy=false,recoveryNetworkLoading=null;
 const recoveryNetwork=document.getElementById('recovery-network');
+// Keep the network form separate from the hardware form while sharing one
+// visible section and retaining the hardware controls' explicit form owner.
+const hardwareNetwork=document.getElementById('hardware-network');
 function recoveryNetworkFields(){const wifi=recoveryNetwork.elements.choice.value==='0';document.getElementById('recovery-wifi-fields').hidden=!wifi;recoveryNetwork.elements.ssid.required=wifi;document.getElementById('recovery-ap-field').hidden=recoveryNetwork.elements.choice.value!=='1';}
 recoveryNetwork.elements.choice.onchange=recoveryNetworkFields;recoveryNetworkFields();
-function renderRecoveryGuide(){
- const active=!!state?.recovery;document.getElementById('recovery-guide').hidden=!active;document.body.classList.toggle('recovery-guided',active);
- if(active&&!recoveryGuided){recoveryGuided=true;document.querySelector('h1').textContent='Восстановление';document.getElementById('manual-settings').hidden=true;document.getElementById('recovery-rollback-place').append(document.getElementById('rollback'));}
- if(!active&&recoveryGuided){location.replace('/?setup=skip#control');return;}
- document.getElementById('recovery-resume').disabled=busy||recoveryNetworkBusy||!state?.hasConfirmed;
+function renderRecoveryDisclosures(){
+ const manualOpen=!document.getElementById('manual-settings').hidden,networkOpen=manualOpen&&hardwareNetwork.closest('details').open;
+ for(const [id,open,closedLabel,openLabel] of [
+  ['recovery-network-open',networkOpen,'Исправить подключение','Скрыть настройки подключения'],
+  ['recovery-manual-open',manualOpen,'Открыть ручную настройку','Скрыть ручную настройку']]){
+  const button=document.getElementById(id);button.setAttribute('aria-expanded',String(open));button.textContent=open?openLabel:closedLabel;
+ }
 }
-document.getElementById('recovery-manual-open').onclick=()=>{const manual=document.getElementById('manual-settings');manual.hidden=false;manual.scrollIntoView({block:'start',behavior:'smooth'});};
+function recoveryResumeBlockReason(){
+ if(!state)return 'Ожидаем загрузку состояния устройства.';
+ if(recoveryNetworkBusy)return 'Сохраняются настройки сети. Дождитесь завершения записи.';
+ if(busy)return 'Выполняется сохранение или перезапуск устройства. Дождитесь завершения операции.';
+ if(pendingHardwareSave)return 'Настройки сохранены. Ожидаем перезапуск и проверку новой конфигурации.';
+ if(dirty||mbDirty)return 'Есть несохранённые изменения оборудования. Нажмите «Сохранить и перезапустить» в ручной настройке.';
+ if(!state.hasConfirmed)return 'Нет подтверждённых настроек оборудования. Сохраните конфигурацию в ручной настройке.';
+ return '';
+}
+function renderRecoveryGuide(){
+ const active=!!state?.recovery;document.getElementById('recovery-guide').hidden=!active;recoveryNetwork.hidden=!active;document.body.classList.toggle('recovery-guided',active);
+ document.getElementById('recovery-mqtt').hidden=!active||metadata?.features?.mqtt===false;
+ document.getElementById('recovery-mqtt-disable').disabled=busy||recoveryNetworkBusy||!state||!metadata;
+ if(active&&!recoveryGuided){recoveryGuided=true;document.querySelector('h1').textContent='Восстановление';document.getElementById('manual-settings').hidden=true;document.getElementById('recovery-rollback-place').append(document.getElementById('rollback'));form.before(hardwareNetwork.closest('details'));hardwareNetwork.insertBefore(recoveryNetwork,hardwareNetwork.querySelector('label'));}
+ if(!active&&recoveryGuided){location.replace('/?setup=skip#control');return;}
+ const reason=recoveryResumeBlockReason(),button=document.getElementById('recovery-resume'),message=document.getElementById('recovery-resume-reason');
+ button.disabled=!!reason;button.title=reason;message.textContent=reason;message.hidden=!reason;renderRecoveryDisclosures();
+}
+document.getElementById('recovery-mqtt-disable').onclick=async()=>{
+ if(busy||recoveryNetworkBusy||!state?.recovery)return;
+ busy=true;buttons();const message=document.getElementById('recovery-mqtt-message');message.textContent='Отключаем MQTT…';
+ try{await request('/api/mqtt',{enabled:'0',tls:'0'});message.textContent='MQTT и TLS отключены. Настройка сохранена без перезагрузки.';}
+ catch(e){message.textContent='Не удалось отключить MQTT: '+e.message;}
+ finally{busy=false;buttons();}
+};
+document.getElementById('recovery-manual-open').onclick=()=>{const manual=document.getElementById('manual-settings');manual.hidden=!manual.hidden;renderRecoveryDisclosures();if(!manual.hidden)manual.scrollIntoView({block:'start',behavior:'smooth'});};
+function loadRecoveryNetwork(){
+ if(recoveryNetworkLoaded)return Promise.resolve();if(recoveryNetworkLoading)return recoveryNetworkLoading;
+ recoveryNetwork.querySelectorAll('input,select,button').forEach(el=>el.disabled=true);
+ recoveryNetworkLoading=(async()=>{
+  try{const n=await request('/api/hardware/network');recoveryNetwork.elements.choice.value=String([0,1,4].includes(n.choice)?n.choice:1);recoveryNetwork.elements.choice.options[2].disabled=!n.ethernetSupported;recoveryNetwork.elements.ssid.value=n.ssid||'';recoveryNetworkLoaded=true;recoveryNetworkFields();}
+  catch(e){document.getElementById('recovery-network-message').textContent='Не удалось прочитать сеть: '+e.message;}
+ })().finally(()=>{recoveryNetworkLoading=null;recoveryNetwork.querySelectorAll('input,select,button').forEach(el=>el.disabled=!recoveryNetworkLoaded);});return recoveryNetworkLoading;
+}
 document.getElementById('recovery-network-open').onclick=async()=>{
- recoveryNetwork.hidden=false;if(recoveryNetworkLoaded)return;
- try{const n=await request('/api/hardware/network');recoveryNetwork.elements.choice.value=String([0,1,4].includes(n.choice)?n.choice:1);recoveryNetwork.elements.choice.options[2].disabled=!n.ethernetSupported;recoveryNetwork.elements.ssid.value=n.ssid||'';recoveryNetworkLoaded=true;recoveryNetworkFields();}
- catch(e){document.getElementById('recovery-network-message').textContent='Не удалось прочитать сеть: '+e.message;}
+ const manual=document.getElementById('manual-settings'),section=hardwareNetwork.closest('details'),open=manual.hidden||!section.open;
+ section.open=open;if(open)manual.hidden=false;renderRecoveryDisclosures();
+ if(open){await loadRecoveryNetwork();if(!manual.hidden&&section.open)section.scrollIntoView({block:'start',behavior:'smooth'});}
 };
 recoveryNetwork.onsubmit=async event=>{
  event.preventDefault();if(recoveryNetworkBusy||busy)return;recoveryNetworkBusy=true;buttons();recoveryNetwork.querySelector('button').disabled=true;
@@ -199,7 +271,7 @@ recoveryNetwork.onsubmit=async event=>{
   document.getElementById('recovery-next').textContent=message.textContent;
  }catch(e){message.textContent='Исправление не завершено: '+e.message;}finally{recoveryNetworkBusy=false;recoveryNetwork.querySelector('button').disabled=false;buttons();}
 };
-document.getElementById('recovery-resume').onclick=()=>apply('/api/hardware/rollback',{});
+document.getElementById('recovery-resume').onclick=()=>{if(recoveryResumeBlockReason()){renderRecoveryGuide();return;}apply('/api/hardware/rollback',{});};
 document.getElementById('hardwareStop').onclick=async()=>{
  const status=document.getElementById('hardwareStopStatus');status.textContent='Отправляем STOP…';
  try{const result=await request('/api/hardware/stop',{d:'S'});status.textContent=result.ok?'STOP принят':'STOP отправлен; подтверждение поворотки ещё не получено.';}catch(e){status.textContent='Нет подтверждения STOP. Проверьте связь.';}
@@ -210,7 +282,9 @@ for(const field of document.querySelectorAll('fieldset')){
  const title=field.querySelector('legend')?.textContent||'';
  if(!['Сеть и Bluetooth','Кнопка подтверждения цели','Распиновка GPIO','UART и RS‑485','Последние перезагрузки'].some(t=>title.startsWith(t)))continue;
  const details=document.createElement('details');details.className='settings-fold';const summary=document.createElement('summary');summary.textContent=title;details.append(summary);field.before(details);details.append(field);
+ if(field===hardwareNetwork)details.id='hardware-network-section';
 }
+hardwareNetwork.closest('details').addEventListener('toggle',event=>{renderRecoveryDisclosures();if(event.target.open&&state?.recovery&&!document.getElementById('manual-settings').hidden)loadRecoveryNetwork();});
 
 function failureSummary(){
  let text=state&&state.failureCount!==undefined?'Сбои: '+state.failureCount+' / '+state.failureLimit+'. Счётчик сбрасывается после 15 минут стабильной работы.':'';
@@ -227,12 +301,14 @@ function failureSummary(){
 const singleAxis=c=>['elAdc','elPositive',...(c.driveInterface===2?[]:['elSpeedEnable']),...(c.driveInterface===3?[]:['elNegative'])].every(name=>c.pins[name]<0);
 const hud485=c=>['hudRx','hudTx','hudDe'].every(k=>c.pins[k]>=0);
 const sharedSensorPin=(c,d,pin)=>!!c.azSensor&&!!c.elSensor&&c.azSensorAddress!==c.elSensorAddress&&((d.name==='elSensorSda'&&pin===c.pins.azSensorSda)||(d.name==='elSensorScl'&&pin===c.pins.azSensorScl));
-const panelSensorPin=(d,pin)=>metadata.displayKind===4&&['sensorAz','sensorEl'].includes(d.group)&&pin===(d.name.endsWith('Sda')?4:5);
-const sharedPanelSensor=(c,d)=>metadata.displayKind===4&&['sensorAz','sensorEl'].includes(d.group)&&c.pins[(d.group==='sensorEl'?'el':'az')+'SensorSda']===4&&c.pins[(d.group==='sensorEl'?'el':'az')+'SensorScl']===5;
+const panelBus=c=>metadata.boardProfile===8?[4,5]:[c.pins.touchSda,c.pins.touchScl];
+const sharedTouchBus=()=>metadata.displayKind===4||metadata.displayKind===5&&metadata.c3;
+const panelSensorPin=(d,pin)=>sharedTouchBus()&&['sensorAz','sensorEl'].includes(d.group)&&pin===panelBus(draft())[d.name.endsWith('Sda')?0:1];
+const sharedPanelSensor=(c,d)=>sharedTouchBus()&&['sensorAz','sensorEl'].includes(d.group)&&c.pins[(d.group==='sensorEl'?'el':'az')+'SensorSda']===panelBus(c)[0]&&c.pins[(d.group==='sensorEl'?'el':'az')+'SensorScl']===panelBus(c)[1];
 const sharedSensors=c=>!!c.azSensor&&!!c.elSensor&&!singleAxis(c)&&c.pins.azSensorSda===c.pins.elSensorSda&&c.pins.azSensorScl===c.pins.elSensorScl;
 const localAxisConfigured=(c,axis)=>[axis+'Adc',axis+'Positive',...(c.driveInterface===2?[]:[axis+'SpeedEnable']),...(c.driveInterface===3?[]:[axis+'Negative'])].some(name=>c.pins[name]>=0)||!!c[axis+'Sensor'];
 const optional=(c,d)=>d.optional||c.driveInterface===2&&['azSpeedEnable','elSpeedEnable'].includes(d.name);
-function active(c,d){if(state?.role==='hud'&&['drive','sensorAz','sensorEl'].includes(d.group))return false;if(['azEnable','elEnable'].includes(d.name)&&![1,3].includes(c.driveInterface))return false;if(c.driveInterface===3&&['azNegative','elNegative'].includes(d.name))return false;if(d.group==='drive'&&(metadata.optionalDrive||[4,5].includes(metadata.displayKind))){const axis=d.name.startsWith('el')?'el':'az';if(!localAxisConfigured(c,axis))return false;if(d.kind==='adc'&&c.pins[d.name]<0)return false;}if(d.name==='azSpeedEnable'&&c.driveInterface===0&&c.pins.azSpeedEnable<0)return false;if(d.group==='sensorAz')return !c.simulation&&!!c.azSensor;if(d.group==='sensorEl')return !c.simulation&&!singleAxis(c)&&!!c.elSensor;if(d.name==='azAdc'&&c.azSensor||d.name==='elAdc'&&c.elSensor)return false;if(d.group==='hud485')return hud485(c);if(d.group==='buttons')return !!(c.localInputMode&1);if(d.group==='joystick')return !!(c.localInputMode&2);if(d.group==='drive')return !c.simulation&&!(singleAxis(c)&&['elAdc','elNegative','elPositive','elSpeedEnable','elEnable'].includes(d.name))&&!(d.name==='elSpeedEnable'&&c.driveInterface===0);if(d.group==='hc05')return !!c.bluetoothEnabled&&(c.bluetoothMode===1||(c.bluetoothMode===3&&!state.classicEsp32));if(d.group==='tft')return supported(d);if(d.group==='lcd')return metadata.displayKind===2;return true;}
+function active(c,d){if(state?.role==='hud'&&['drive','sensorAz','sensorEl'].includes(d.group))return false;if(['azEnable','elEnable'].includes(d.name)&&![1,3].includes(c.driveInterface))return false;if(c.driveInterface===3&&['azNegative','elNegative'].includes(d.name))return false;if(d.group==='drive'&&metadata.optionalDrive){const axis=d.name.startsWith('el')?'el':'az';if(!localAxisConfigured(c,axis))return false;if(d.kind==='adc'&&c.pins[d.name]<0)return false;}if(d.name==='azSpeedEnable'&&c.driveInterface===0&&c.pins.azSpeedEnable<0)return false;if(d.group==='sensorAz')return !c.simulation&&!!c.azSensor;if(d.group==='sensorEl')return !c.simulation&&!singleAxis(c)&&!!c.elSensor;if(d.name==='azAdc'&&c.azSensor||d.name==='elAdc'&&c.elSensor)return false;if(d.group==='hud485')return hud485(c);if(d.group==='buttons')return !!(c.localInputMode&1);if(d.group==='joystick')return !!(c.localInputMode&2);if(d.group==='drive')return !c.simulation&&!(singleAxis(c)&&['elAdc','elNegative','elPositive','elSpeedEnable','elEnable'].includes(d.name))&&!(d.name==='elSpeedEnable'&&c.driveInterface===0);if(d.group==='hc05')return !!c.bluetoothEnabled&&(c.bluetoothMode===1||(c.bluetoothMode===3&&!state.classicEsp32));if(d.group==='tft')return supported(d);if(d.group==='lcd')return metadata.displayKind===2;return true;}
 function pinVisible(c,d){
  if(['azEnable','elEnable'].includes(d.name))return state.role!=='hud'&&active(c,d);
  if(c.driveInterface===3&&['azNegative','elNegative'].includes(d.name))return false;
@@ -245,14 +321,14 @@ function syncDriveMode(){form.elements.driveMode.value=Number(form.elements.simu
 function setPinValue(el,value){if(![...el.options].some(o=>o.value===String(value)))el.add(new Option('GPIO'+value,String(value)));el.value=String(value);}
 function draft(){const c={pins:{...state.configured.pins}};for(const name of names)c[name]=Number(form.elements[name].value);for(const d of metadata.roles){const el=form.elements['pin.'+d.name];if(el)c.pins[d.name]=Number(el.value);}return c;}
 const qspiPins=['tftD2','tftD3','tftBacklight','touchSda','touchScl','touchRst'];
-const supported=d=>(d.group!=='tft'||(metadata.displayKind===6?!['tftDc','touchCs'].includes(d.name):metadata.displayKind===1&&!qspiPins.includes(d.name)))&&(d.group!=='lcd'||metadata.displayKind===2);
+const supported=d=>(d.group!=='tft'||(metadata.displayKind===6?!['tftDc','touchCs'].includes(d.name):[4,5].includes(metadata.displayKind)&&![8,10].includes(metadata.boardProfile)&&!['tftMiso','tftD2','tftD3','touchCs'].includes(d.name)||metadata.displayKind===1&&!qspiPins.includes(d.name)))&&(d.group!=='lcd'||metadata.displayKind===2);
 const gpioRoles=()=>[...metadata.roles,{name:'buttonGpio',kind:'input',optional:true}];
 // Presentation order is independent of the persisted pin-role table.
 function pinBanks(group,roles){
  const layouts={
   drive:[['az','Азимут · AZ',['azNegative','azPositive','azSpeedEnable','azEnable','azAdc']],['el','Элевация · EL',['elNegative','elPositive','elSpeedEnable','elEnable','elAdc']]],
   buttons:[['az','Азимут · AZ',['localAzNegative','localAzPositive']],['el','Элевация · EL',['localElNegative','localElPositive']]],
-  tft:[['lcd',metadata.displayKind===6?'LCD · QSPI':'LCD · SPI',['tftMosi','tftMiso','tftD2','tftD3','tftSck','tftCs','tftDc','tftRst','tftBacklight']],['touch',metadata.displayKind===6?'Тачскрин · I²C':'Тачскрин · SPI',['touchSda','touchScl','touchCs','touchIrq','touchRst']]],
+  tft:[['lcd',metadata.displayKind===6?'LCD · QSPI':'LCD · SPI',['tftMosi','tftMiso','tftD2','tftD3','tftSck','tftCs','tftDc','tftRst','tftBacklight']],['touch',[4,5,6].includes(metadata.displayKind)?'Тачскрин · I²C':'Тачскрин · SPI',['touchSda','touchScl','touchCs','touchIrq','touchRst']]],
   lcd:[['data','Данные · D4–D7',['lcdD4','lcdD5','lcdD6','lcdD7']],['control','Управление',['lcdRs','lcdE']]],
   uart:[['uart','',['uartRx','uartTx','uartDe']]],hud485:[['hud485','',['hudRx','hudTx','hudDe']]],
   hc05:[['hc05','',['hc05Rx','hc05Tx','hc05State']]],indicator:[['indicator','',['rgb','led']]],
@@ -277,7 +353,7 @@ function buildPins(){
  for(const [group,title] of Object.entries(groupLabels)){
   const roles=metadata.roles.filter(d=>d.group===group&&supported(d));if(!roles.length)continue;
   const section=document.createElement('details');section.className='settings-fold';section.dataset.pinGroup=group;section.open=group==='drive';
-  const h=document.createElement('summary');h.style.gridColumn='1 / -1';h.textContent=group==='tft'&&metadata.displayKind===6?'Экран QSPI и тачскрин I²C':title;section.append(h);
+  const h=document.createElement('summary');h.style.gridColumn='1 / -1';h.textContent=group==='tft'&&[4,5,6].includes(metadata.displayKind)?(metadata.displayKind===6?'Экран QSPI и тачскрин I²C':'Экран SPI и тачскрин I²C'):title;section.append(h);
   for(const bank of pinBanks(group,roles)){
    const fields=document.createElement('div');fields.className='pin-bank';fields.dataset.pinBank=bank.key;
    if(bank.title){const heading=document.createElement('h3');heading.textContent=bank.title;fields.append(heading);}
@@ -288,14 +364,16 @@ function buildPins(){
  const reserved=new Map();for(const g of metadata.gpios)if(g.owner&&g.owner!=='unavailable'){if(!reserved.has(g.owner))reserved.set(g.owner,[]);reserved.get(g.owner).push(g.gpio);}
  document.getElementById('reserved-pins').textContent=reserved.size?'Зарезервированы: '+[...reserved].map(([owner,pins])=>'GPIO '+pins.join(', ')+' · '+ownerLabel(owner)).join('; '):'';
 }
-function checkPins(c){for(const axis of state.role==='hud'?[]:['az','el']){const type=c[axis+'Sensor'],address=c[axis+'SensorAddress'],zero=c[axis+'SensorZero'];if(![0,1].includes(c[axis+'SensorInverted'])||![0,1,2].includes(type)||address<1||address>127||type===2&&address!==54||type&&!(zero>=0&&zero<(type===1?16384:4096)))return {error:'invalid_position_sensor',field:axis+'Sensor'};}if(state.role!=='hud'&&!c.simulation&&sharedSensors(c)&&c.azSensorAddress===c.elSensorAddress)return {error:'sensor_address_conflict',field:'elSensorAddress'};if(state.role!=='hud'&&!c.simulation&&metadata.displayKind===4){for(const axis of ['az','el'])if(c[axis+'Sensor']&&c[axis+'SensorAddress']===21)return {error:'sensor_address_conflict',field:axis+'SensorAddress'};for(const axis of ['az','el'])if(c[axis+'Sensor']&&(axis==='az'||!singleAxis(c))&&(c.pins[axis+'SensorSda']!==4||c.pins[axis+'SensorScl']!==5))return {error:'sensor_bus_unavailable',field:axis+'Sensor'};}if(state.role!=='hud'&&!c.simulation&&[3,5,6].includes(metadata.displayKind)&&c.azSensor&&c.elSensor&&!singleAxis(c)&&!sharedSensors(c))return {error:'sensor_bus_unavailable',field:'elSensor'};if((c.localInputMode&1)&&((c.pins.localAzNegative<0)!==(c.pins.localAzPositive<0)||(c.pins.localElNegative<0)!==(c.pins.localElPositive<0)))return {error:'incomplete_buttons',field:'localInputMode'};if(c.localInputMode&&![...(c.localInputMode&1?[c.pins.localAzNegative,c.pins.localElNegative]:[]),...(c.localInputMode&2?[c.pins.localAzAdc,c.pins.localElAdc]:[])].some(p=>p>=0))return {error:'missing_pin',field:'localInputMode'};for(const axis of ['Az','El']){const lo=c['local'+axis+'Min'],mid=c['local'+axis+'Center'],hi=c['local'+axis+'Max'];if(!(lo>=0&&lo<mid&&mid<hi&&hi<=4095&&c.localDeadzone>=0&&c.localHysteresis>=0&&mid-lo>c.localDeadzone+c.localHysteresis&&hi-mid>c.localDeadzone+c.localHysteresis))return {error:'invalid_joystick_calibration'};}if(state.role!=='hud'&&metadata.localDriveElectrical&&!c.simulation&&(!singleAxis(c)||[1,3].includes(c.driveInterface)))return {error:'drive_not_supported'};if(state.role!=='hud'&&c.pwmInverted&&c.driveInterface!==2)return {error:'invalid_hardware'};if((c.pins.uartRx<0)!==(c.pins.uartTx<0)||(((metadata.hudUart&&!hud485(c))||c.pins.uartDe>=0)&&c.pins.uartRx<0))return {error:'incomplete_uart'};if(['hudRx','hudTx','hudDe'].some(k=>c.pins[k]>=0)&&!hud485(c))return {error:'incomplete_hud485',field:'pin.hudRx'};if(hud485(c)&&c.bluetoothEnabled&&(c.bluetoothMode===1||(c.bluetoothMode===3&&!state.classicEsp32)))return {error:'uart1_conflict',field:'pin.hudRx'};if(metadata.hudUart&&c.pins.uartDe>=0&&!hud485(c))return {error:'hud485_required',field:'pin.hudRx'};if((c.pins.hudReady>=0)&&(c.pins.uartDe>=0||hud485(c)))return {error:'radio_requires_uart',field:'pin.hudReady'};const used=new Map();for(const d of [...metadata.roles,{name:'buttonGpio',kind:'input',optional:true}]){const button=d.name==='buttonGpio',field=button?d.name:'pin.'+d.name,pin=button?c.buttonGpio:c.pins[d.name];if(!Number.isInteger(pin)||pin< -1||pin>48)return {error:'invalid_gpio',field,gpio:pin};if(pin<0){if((button||active(c,d))&&!optional(c,d))return {error:'missing_pin',field};continue;}if(!button&&(state.role==='hud'||c.simulation)&&['drive','sensorAz','sensorEl'].includes(d.group))continue;const g=metadata.gpios.find(g=>g.gpio===pin);if(!g||(g.caps&1)===0)return {error:'invalid_gpio',field,gpio:pin,owner:g?.owner};const bit=d.kind==='adc'?4:d.kind==='output'?2:1;if((g.caps&bit)===0)return {error:d.kind==='adc'?'invalid_adc_gpio':'input_only_gpio',field,gpio:pin};if(((button&&c.buttonPullup)||(d.group==='buttons'&&active(c,d)))&&(g.caps&8)===0)return {error:'invalid_pullup',field,gpio:pin};if(g.owner&&!sharedPanelSensor(c,d)&&(!g.owner.startsWith('local.')||button||active(c,d)))return {error:'gpio_conflict',field,gpio:pin,owner:g.owner};if(!button&&(!active(c,d)||sharedSensors(c)&&d.group==='sensorEl'))continue;const owner=used.get(pin);if(owner)return {error:'gpio_conflict',field,gpio:pin,owner};used.set(pin,field);}return null;}
+function checkPins(c){for(const axis of state.role==='hud'?[]:['az','el']){const type=c[axis+'Sensor'],address=c[axis+'SensorAddress'],zero=c[axis+'SensorZero'];if(![0,1].includes(c[axis+'SensorInverted'])||![0,1,2].includes(type)||address<1||address>127||type===2&&address!==54||type&&!(zero>=0&&zero<(type===1?16384:4096)))return {error:'invalid_position_sensor',field:axis+'Sensor'};}if(state.role!=='hud'&&!c.simulation&&sharedSensors(c)&&c.azSensorAddress===c.elSensorAddress)return {error:'sensor_address_conflict',field:'elSensorAddress'};if(state.role!=='hud'&&!c.simulation&&sharedTouchBus()){for(const axis of ['az','el'])if(c[axis+'Sensor']&&(metadata.displayKind===4?c[axis+'SensorAddress']===21:[20,93].includes(c[axis+'SensorAddress'])))return {error:'sensor_address_conflict',field:axis+'SensorAddress'};for(const axis of ['az','el'])if(c[axis+'Sensor']&&(axis==='az'||!singleAxis(c))&&(c.pins[axis+'SensorSda']!==panelBus(c)[0]||c.pins[axis+'SensorScl']!==panelBus(c)[1]))return {error:'sensor_bus_unavailable',field:axis+'Sensor'};}if(state.role!=='hud'&&!c.simulation&&(metadata.c3||[3,5,6].includes(metadata.displayKind))&&c.azSensor&&c.elSensor&&!singleAxis(c)&&!sharedSensors(c))return {error:'sensor_bus_unavailable',field:'elSensor'};if((c.localInputMode&1)&&((c.pins.localAzNegative<0)!==(c.pins.localAzPositive<0)||(c.pins.localElNegative<0)!==(c.pins.localElPositive<0)))return {error:'incomplete_buttons',field:'localInputMode'};if(c.localInputMode&&![...(c.localInputMode&1?[c.pins.localAzNegative,c.pins.localElNegative]:[]),...(c.localInputMode&2?[c.pins.localAzAdc,c.pins.localElAdc]:[])].some(p=>p>=0))return {error:'missing_pin',field:'localInputMode'};for(const axis of ['Az','El']){const lo=c['local'+axis+'Min'],mid=c['local'+axis+'Center'],hi=c['local'+axis+'Max'];if(!(lo>=0&&lo<mid&&mid<hi&&hi<=4095&&c.localDeadzone>=0&&c.localHysteresis>=0&&mid-lo>c.localDeadzone+c.localHysteresis&&hi-mid>c.localDeadzone+c.localHysteresis))return {error:'invalid_joystick_calibration'};}if(state.role!=='hud'&&metadata.localDriveElectrical&&!c.simulation&&(!singleAxis(c)||[1,3].includes(c.driveInterface)))return {error:'drive_not_supported'};if(state.role!=='hud'&&c.pwmInverted&&c.driveInterface!==2)return {error:'invalid_hardware'};if((c.pins.uartRx<0)!==(c.pins.uartTx<0)||(((metadata.hudUart&&!hud485(c))||c.pins.uartDe>=0)&&c.pins.uartRx<0))return {error:'incomplete_uart'};if(['hudRx','hudTx','hudDe'].some(k=>c.pins[k]>=0)&&!hud485(c))return {error:'incomplete_hud485',field:'pin.hudRx'};if(hud485(c)&&c.bluetoothEnabled&&(c.bluetoothMode===1||(c.bluetoothMode===3&&!state.classicEsp32)))return {error:'uart1_conflict',field:'pin.hudRx'};if(metadata.hudUart&&c.pins.uartDe>=0&&!hud485(c))return {error:'hud485_required',field:'pin.hudRx'};if((c.pins.hudReady>=0)&&(c.pins.uartDe>=0||hud485(c)))return {error:'radio_requires_uart',field:'pin.hudReady'};const used=new Map();for(const d of [...metadata.roles,{name:'buttonGpio',kind:'input',optional:true}]){const button=d.name==='buttonGpio',field=button?d.name:'pin.'+d.name,pin=button?c.buttonGpio:c.pins[d.name];if(!Number.isInteger(pin)||pin< -1||pin>48)return {error:'invalid_gpio',field,gpio:pin};if(pin<0){if((button||active(c,d))&&!optional(c,d))return {error:'missing_pin',field};continue;}if(!button&&(state.role==='hud'||c.simulation)&&['drive','sensorAz','sensorEl'].includes(d.group))continue;const g=metadata.gpios.find(g=>g.gpio===pin);if(!g||(g.caps&1)===0)return {error:'invalid_gpio',field,gpio:pin,owner:g?.owner};const bit=d.kind==='adc'?4:d.kind==='output'?2:1;if((g.caps&bit)===0)return {error:d.kind==='adc'?'invalid_adc_gpio':'input_only_gpio',field,gpio:pin};if(((button&&c.buttonPullup)||(d.group==='buttons'&&active(c,d)))&&(g.caps&8)===0)return {error:'invalid_pullup',field,gpio:pin};if(g.owner&&!sharedPanelSensor(c,d)&&(!g.owner.startsWith('local.')||button||active(c,d)))return {error:'gpio_conflict',field,gpio:pin,owner:g.owner};if(!button&&(!active(c,d)||sharedPanelSensor(c,d)||sharedSensors(c)&&d.group==='sensorEl'))continue;const owner=used.get(pin);if(owner)return {error:'gpio_conflict',field,gpio:pin,owner};used.set(pin,field);}return null;}
 function releaseSimulationPins(){if(!Number(form.elements.simulation.value))return;for(const d of metadata.roles)if(['drive','sensorAz','sensorEl'].includes(d.group)){const el=form.elements['pin.'+d.name];if(el&&el.value!=='-1'){setPinValue(el,-1);hardwareEdited();}}}
 function updatePins(){if(!state||!metadata)return;releaseSimulationPins();const c=draft(),used=new Map();document.getElementById('drive-simulation-help').hidden=c.simulation!==2;document.getElementById('bts-settings').hidden=c.driveInterface!==2||!!c.simulation;for(const axis of ['az','el']){const type=c[axis+'Sensor'];document.getElementById(axis+'-sensor-address').hidden=!type;document.getElementById(axis+'-sensor-zero').hidden=!type;form.elements[axis+'SensorAddress'].readOnly=type===2;form.elements[axis+'SensorZero'].max=type===2?4095:16383;}document.getElementById('joystick-settings').hidden=!(c.localInputMode&2);for(const d of metadata.roles)if(active(c,d)&&c.pins[d.name]>=0&&!sharedSensorPin(c,d,c.pins[d.name]))used.set(c.pins[d.name],'pin.'+d.name);if(c.buttonGpio>=0)used.set(c.buttonGpio,'buttonGpio');for(const d of gpioRoles()){const isButton=d.name==='buttonGpio',el=form.elements[isButton?d.name:'pin.'+d.name];if(!el)continue;const enabled=isButton||active(c,d);if(!isButton){el.closest('label').hidden=!pinVisible(c,d);const axis=d.name.startsWith('el')?'EL':'AZ';const signal=d.name.endsWith('Positive')?'RIGHT_PWM':d.name.endsWith('Negative')?'LEFT_PWM':d.name.endsWith('SpeedEnable')?'ENABLE':null;el.closest('label').firstChild.textContent=d.group==='drive'&&signal?(c.driveInterface===3?axis+' · '+(d.name.endsWith('Positive')?'DIR':'SPEED_PWM'):c.driveInterface===2?axis+' · '+signal+(signal==='ENABLE'?' (необязательно)':''):[1,3].includes(c.driveInterface)&&d.name.endsWith('SpeedEnable')?axis+' · SPEED_PWM':pinLabel(d)):pinLabel(d);}for(const option of el.options){const pin=Number(option.value),g=metadata.gpios.find(g=>g.gpio===pin),owner=g?.owner||(used.get(pin)!==el.name&&!(sharedSensorPin(c,d,pin)&&['pin.azSensorSda','pin.azSensorScl'].includes(used.get(pin)))?used.get(pin):'');option.disabled=pin>=0&&!!(((isButton&&c.buttonPullup||d.group==='buttons'&&enabled)&&!(g?.caps&8))||(g?.owner&&!panelSensorPin(d,pin)&&(!g.owner.startsWith('local.')||enabled))||(enabled&&owner&&!panelSensorPin(d,pin)))&&pin!==Number(el.value);option.textContent=pin<0?'Не подключён · −1':'GPIO'+pin+(owner?' · '+ownerLabel(owner):'');}document.getElementById(el.id+'-hint').textContent=Number(el.value)<0?(d.group==='drive'&&optional(c,d)?'ENABLE отключён. Назначьте GPIO, если он нужен драйверу.':'Не подключён.'):enabled?'Сигнал используется.':'Сейчас не используется и не занимает GPIO.';}for(const section of document.querySelectorAll('[data-pin-bank],[data-pin-group]'))section.hidden=![...section.querySelectorAll('label')].some(label=>!label.hidden);pinError=checkPins(c);document.getElementById('pin-validation').textContent=pinError?errorText(pinError):'';document.getElementById('pin-validation-top').textContent=pinError?errorText(pinError)+' Откройте распиновку GPIO ниже.':'';updateHardwareSections();buttons();}
-function buttons(){renderRecoveryGuide();document.getElementById('confirm').hidden=!state?.trial;document.getElementById('modbus-save').disabled=busy||!state;document.getElementById('joystick-start').disabled=busy||!!capture||calibrationPending||!state||state.recovery||!(state.configured.localInputMode&2)||dirty;document.getElementById('save').disabled=!!capture||calibrationPending||busy||!state||!metadata||!!pinError;document.getElementById('reset-pins').disabled=busy||!metadata;document.getElementById('confirm').disabled=busy||!state?.trial||!state.ready||!probe;document.getElementById('rollback').disabled=busy||recoveryNetworkBusy||!state?.hasConfirmed;document.getElementById('recover').disabled=busy||!state||state.recovery;}
-form.addEventListener('input',e=>{if(e.target.name==='driveMode'){const simulation=['simulation','mechanics'].includes(e.target.value);form.elements.simulation.value=e.target.value==='mechanics'?'2':simulation?'1':'0';if(!simulation){form.elements.driveInterface.value=e.target.value;if(e.target.value!=='2')form.elements.pwmInverted.value='0';}}hardwareEdited();updateHardwareSections();updatePins();});
+function buttons(){renderRecoveryGuide();document.getElementById('confirm').hidden=!state?.trial;document.getElementById('modbus-save').disabled=busy||!state;document.getElementById('joystick-start').disabled=busy||!!capture||calibrationPending||!state||state.recovery||!(state.configured.localInputMode&2)||dirty;document.getElementById('save').disabled=!!capture||calibrationPending||busy||recoveryNetworkBusy||!state||!metadata||!!pinError;document.getElementById('reset-pins').disabled=busy||!metadata;document.getElementById('confirm').disabled=busy||!state?.trial||!state.ready||!probe;document.getElementById('rollback').disabled=busy||recoveryNetworkBusy||!state?.hasConfirmed;document.getElementById('recover').disabled=busy||!state||state.recovery;}
+function hardwareInput(e){if(e.target.name==='driveMode'){const simulation=['simulation','mechanics'].includes(e.target.value);form.elements.simulation.value=e.target.value==='mechanics'?'2':simulation?'1':'0';if(!simulation){form.elements.driveInterface.value=e.target.value;if(e.target.value!=='2')form.elements.pwmInverted.value='0';}}hardwareEdited();updateHardwareSections();updatePins();}
+form.addEventListener('input',hardwareInput);
+hardwareNetwork.addEventListener('input',e=>{if(e.target.form===form&&!form.contains(e.target))hardwareInput(e);});
 function singlePoll(load){let pending=null;return ()=>pending||(pending=load().finally(()=>{pending=null;}));}
 let pollError='';
-const refresh=singlePoll(async()=>{if(busy||document.hidden||(window.frameElement&&!window.frameElement.getClientRects().length))return;try{const next=await request('/api/hardware?view=form');if(state&&(state.token!==next.token||state.generation!==next.generation))probe=false;state=next;if(savedStamp&&(state.token!==savedStamp.token||state.generation!==savedStamp.generation)){formStamp=credentials();savedStamp=null;}failureSummary();if(!metadata){metadata=await request('/api/hardware/pins');buildPins();}document.getElementById('state').textContent=state.recovery?'Режим восстановления. Привод и Bluetooth отключены. '+(reasons[state.reason]||''):state.trial?'Конфигурация изменена. Действие на экране, в веб-интерфейсе или начало поворота к цели подтвердит запуск. Без подтверждения настройки откатятся. До отката: '+Math.ceil(state.remainingMs/1000)+' с.':'Работают подтверждённые настройки.';document.getElementById('effective').textContent='Свободная внутренняя память: '+state.heapFree+' байт; крупнейший блок: '+state.heapMaxBlock+' байт. Bluetooth: '+state.backend+'.';updateHardwareSections();if(!dirty){formStamp=credentials();for(const name of names)form.elements[name].value=state.configured[name]??({azSensorAddress:6,elSensorAddress:6,localAzMin:0,localElMin:0,localAzCenter:2048,localElCenter:2048,localAzMax:4095,localElMax:4095,localDeadzone:200,localHysteresis:50}[name]??0);for(const d of metadata.roles){const el=form.elements['pin.'+d.name];if(el)setPinValue(el,state.configured.pins[d.name]);}}form.elements.bluetoothMode.options[2].disabled=!state.sppSupported;form.elements.forceApSta.disabled=false;form.elements.driveMode.options[1].disabled=state.separateDrive===false;form.elements.driveMode.options[2].disabled=state.btsDrive===false;form.elements.driveMode.options[3].disabled=state.separateDrive===false;form.elements.bluetoothEnabled.disabled=!!state.crowpanelLocalDrive;if(state.crowpanelLocalDrive)form.elements.bluetoothEnabled.value="0";applySetupDrive();syncDriveMode();updateHardwareSections();updatePins();if(!document.getElementById('reboot-history').hidden&&!rebootsLoaded)refreshReboots();if(state.trial&&state.ready&&!probe){await request('/api/hardware/probe',credentials());probe=true;}buttons();if(msg.textContent===pollError)msg.textContent='';pollError='';}catch(e){pollError=msg.textContent='Не удалось получить состояние: '+e.message;probe=false;document.getElementById('confirm').disabled=true;}});
+const refresh=singlePoll(async()=>{if(busy||document.hidden||(window.frameElement&&!window.frameElement.getClientRects().length))return;try{const next=await request('/api/hardware?view=form');if(state&&(state.token!==next.token||state.generation!==next.generation))probe=false;state=next;if(savedStamp&&(state.token!==savedStamp.token||state.generation!==savedStamp.generation)){formStamp=credentials();savedStamp=null;}failureSummary();if(!metadata){metadata=await request('/api/hardware/pins');buildPins();}if(!mbLoaded)await refreshModbus();document.getElementById('state').textContent=state.recovery?'Режим восстановления. Привод и Bluetooth отключены. '+(reasons[state.reason]||''):state.trial?'Конфигурация изменена. Действие на экране, в веб-интерфейсе или начало поворота к цели подтвердит запуск. Без подтверждения настройки откатятся. До отката: '+Math.ceil(state.remainingMs/1000)+' с.':'Работают подтверждённые настройки.';document.getElementById('effective').textContent='Свободная внутренняя память: '+state.heapFree+' байт; крупнейший блок: '+state.heapMaxBlock+' байт. Bluetooth: '+state.backend+'.';updateHardwareSections();if(!dirty){formStamp=credentials();for(const name of names)form.elements[name].value=state.configured[name]??({azSensorAddress:6,elSensorAddress:6,localAzMin:0,localElMin:0,localAzCenter:2048,localElCenter:2048,localAzMax:4095,localElMax:4095,localDeadzone:200,localHysteresis:50}[name]??0);for(const d of metadata.roles){const el=form.elements['pin.'+d.name];if(el)setPinValue(el,state.configured.pins[d.name]);}}form.elements.bluetoothMode.options[2].disabled=!state.sppSupported;form.elements.forceApSta.disabled=false;form.elements.driveMode.options[1].disabled=state.separateDrive===false;form.elements.driveMode.options[2].disabled=state.btsDrive===false;form.elements.driveMode.options[3].disabled=state.separateDrive===false;form.elements.bluetoothEnabled.disabled=!!state.crowpanelLocalDrive;if(state.crowpanelLocalDrive)form.elements.bluetoothEnabled.value="0";applySetupDrive();syncDriveMode();updateHardwareSections();updatePins();if(loadingFields){for(const field of loadingFields)field.disabled=false;loadingFields=null;}if(!document.getElementById('reboot-history').hidden&&!rebootsLoaded)refreshReboots();if(state.trial&&state.ready&&!probe){await request('/api/hardware/probe',credentials());probe=true;}buttons();if(msg.textContent===pollError)msg.textContent='';pollError='';}catch(e){if(e.name==='PollingDeferred')return;pollError=msg.textContent='Не удалось получить состояние: '+e.message;probe=false;document.getElementById('confirm').disabled=true;}});
 const refreshReboots=singlePoll(async()=>{
  rebootsLoaded=true;const status=document.getElementById('reboot-message'),button=document.getElementById('load-reboots');button.disabled=true;status.textContent='Загрузка журнала…';
  try{
@@ -309,7 +387,7 @@ const refreshReboots=singlePoll(async()=>{
  }catch(e){status.textContent='Не удалось получить журнал: '+e.message;}finally{button.disabled=false;}
 });
 document.getElementById('load-reboots').onclick=refreshReboots;
-async function apply(path,values){if(busy||!state)return;const revision=draftRevision,mb=mbRevision,stamp=credentials();busy=true;msg.textContent='Сохраняем настройки…';settingsFeedback(msg.textContent,'pending');buttons();try{const result=await request(path,{...(path==='/api/hardware'?formStamp:credentials()),...values});msg.textContent=path==='/api/hardware/confirm'?'Сохранено. Настройки подтверждены.':path==='/api/hardware'||path==='/api/hardware/rollback'?(result.confirmationRequired===false?'Сохранено. Устройство перезапускается с подтверждёнными настройками. Дополнительное подтверждение не требуется.':'Сохранено. Устройство перезапускается. После подключения действие на экране, в веб-интерфейсе или начало поворота к цели подтвердит запуск.'):path==='/api/hardware/recovery'?'Сохранено. Устройство перезапускается в режим восстановления.':'Сохранено. Дождитесь перезапуска устройства.';if(path==='/api/hardware'||path==='/api/hardware/rollback'){pendingHardwareSave={token:stamp.token,failures:state.failureCount||0};savedStamp=stamp;if(revision===draftRevision)dirty=false;}if(path==='/api/hardware/modbus'){savedStamp=stamp;if(mb===mbRevision)mbDirty=false;}if(dirty||mbDirty)msg.textContent+=' Есть несохранённые изменения.';settingsFeedback(msg.textContent,'success');probe=false;setTimeout(()=>{busy=false;refresh();},path==='/api/hardware/confirm'?0:4000);}catch(e){msg.textContent=e.message;settingsFeedback(e.message);busy=false;buttons();}}
+async function apply(path,values){if(busy||recoveryNetworkBusy||!state)return;const revision=draftRevision,mb=mbRevision,stamp=credentials();busy=true;msg.textContent='Сохраняем настройки…';settingsFeedback(msg.textContent,'pending');buttons();try{const result=await request(path,{...(path==='/api/hardware'?formStamp:credentials()),...values});msg.textContent=path==='/api/hardware/confirm'?'Сохранено. Настройки подтверждены.':path==='/api/hardware'||path==='/api/hardware/rollback'?(result.confirmationRequired===false?'Сохранено. Устройство перезапускается с подтверждёнными настройками. Дополнительное подтверждение не требуется.':'Сохранено. Устройство перезапускается. После подключения действие на экране, в веб-интерфейсе или начало поворота к цели подтвердит запуск.'):path==='/api/hardware/recovery'?'Сохранено. Устройство перезапускается в режим восстановления.':'Сохранено. Дождитесь перезапуска устройства.';if(path==='/api/hardware'||path==='/api/hardware/rollback'){pendingHardwareSave={token:stamp.token,failures:state.failureCount||0};savedStamp=stamp;if(revision===draftRevision)dirty=false;}if(path==='/api/hardware/modbus'){savedStamp=stamp;if(mb===mbRevision)mbDirty=false;}if(dirty||mbDirty)msg.textContent+=' Есть несохранённые изменения.';settingsFeedback(msg.textContent,'success');probe=false;setTimeout(()=>{busy=false;refresh();},path==='/api/hardware/confirm'?0:4000);}catch(e){msg.textContent=e.message;settingsFeedback(e.message);busy=false;buttons();}}
 form.addEventListener('submit',e=>{e.preventDefault();updatePins();if(pinError)return;const body={};for(const name of names)body[name]=form.elements[name].value;for(const d of metadata.roles){const el=form.elements['pin.'+d.name];if(el)body['pin.'+d.name]=el.value;}apply('/api/hardware',body);});
 let capture=null,polling=false,calibrationPending=false;
 const calibrationStatus=document.getElementById('joystick-status');
@@ -338,13 +416,19 @@ document.getElementById('joystick-finish').onclick=async()=>{if(!capture?.center
 document.getElementById('joystick-cancel').onclick=async()=>{await cancelCapture();calibrationStatus.textContent='Измерения отменены.';};
 document.getElementById('reset-pins').onclick=()=>{for(const d of metadata.roles){const el=form.elements['pin.'+d.name];if(el)setPinValue(el,d.default);}form.elements.buttonGpio.value=metadata.buttonDefault;hardwareEdited();updatePins();};
 document.getElementById('confirm').onclick=()=>apply('/api/hardware/confirm',{});document.getElementById('rollback').onclick=()=>apply('/api/hardware/rollback',{});document.getElementById('recover').onclick=()=>apply('/api/hardware/recovery',{});background.poll('/api/hardware?view=form',refresh,2000);
-const mbForm=document.getElementById('modbus'),mbNames=['pc','bus','address','node','first','count','uart0Baud','uart0Parity','uart0StopBits','uart1Baud','uart1Parity','uart1StopBits'];let mbDirty=false;
-mbForm.addEventListener('input',()=>{mbDirty=true;++mbRevision;});
-const refreshModbus=singlePoll(async()=>{if(document.hidden||(window.frameElement&&!window.frameElement.getClientRects().length))return;try{const c=await request('/api/hardware/modbus');if(!mbDirty)for(const n of mbNames)mbForm.elements[n].value=c[n]??({address:1,node:201,first:201,count:1,uart0Baud:9600,uart0StopBits:1,uart1Baud:115200,uart1StopBits:1}[n]??0);document.getElementById('modbus-status').textContent=(c.fault?'Ошибка: параметры кольца не совпадают. ':'')+'Владелец линии: '+(c.owner||'ожидание')+'. Принято: '+(c.received||0)+', отклонено: '+(c.rejected||0)+', таймаутов: '+(c.timeouts||0)+'.';}catch(e){document.getElementById('modbus-status').textContent=e.message;}});
+const mbForm=document.getElementById('modbus'),mbNames=['pc','bus','address','node','first','count','uart0Baud','uart0Parity','uart0StopBits','uart1Baud','uart1Parity','uart1StopBits'];let mbDirty=false,mbLoaded=false;
+mbForm.addEventListener('input',()=>{mbDirty=true;++mbRevision;buttons();});
+function modbusDataVisible(){return !mbLoaded||!!mbForm.getClientRects().length&&(!mbForm.closest('details')||mbForm.closest('details').open);}
+const refreshModbus=singlePoll(async()=>{if(!modbusDataVisible()&&!hardwareForeground||document.hidden||(window.frameElement&&!window.frameElement.getClientRects().length))return;try{const c=await request('/api/hardware/modbus');mbLoaded=true;if(!mbDirty)for(const n of mbNames)mbForm.elements[n].value=c[n]??({address:1,node:201,first:201,count:1,uart0Baud:9600,uart0StopBits:1,uart1Baud:115200,uart1StopBits:1}[n]??0);document.getElementById('modbus-status').textContent=(c.fault?'Ошибка: параметры кольца не совпадают. ':'')+'Владелец линии: '+(c.owner||'ожидание')+'. Принято: '+(c.received||0)+', отклонено: '+(c.rejected||0)+', таймаутов: '+(c.timeouts||0)+'.';}catch(e){document.getElementById('modbus-status').textContent=e.message;}});
 mbForm.addEventListener('submit',e=>{e.preventDefault();const c={};for(const n of mbNames)c[n]=Number(mbForm.elements[n].value);if(c.address>=c.first&&c.address<c.first+c.count||c.node<c.first||c.node>=c.first+c.count||c.first+c.count>248){msg.textContent='Адрес контроллера должен быть вне диапазона ведущих, а адрес HUD — внутри него.';settingsFeedback(msg.textContent);return;}apply('/api/hardware/modbus',c);});
-background.poll('/api/hardware/modbus',refreshModbus,2000);
+background.poll('/api/hardware/modbus',refreshModbus,2000,modbusDataVisible);
 let hardwareStage=null,setupDrive=null;
-function applySetupDrive(){if(!setupDrive||!state||!metadata||state.role==='hud')return;const changed=Number(form.elements.driveInterface.value)!==setupDrive.driveInterface||Number(form.elements.simulation.value)!==setupDrive.simulation;if(changed){form.elements.driveInterface.value=String(setupDrive.driveInterface);form.elements.simulation.value=String(setupDrive.simulation);if(setupDrive.driveInterface!==2)form.elements.pwmInverted.value='0';hardwareEdited();}syncDriveMode();}
+function applySetupDrive(){
+ // Parent messages can arrive while the first refresh waits for Modbus. Until
+ // the persisted form is loaded, defaults are not a user draft or a baseline.
+ if(!setupDrive||!state||!metadata||!formStamp||state.role==='hud')return;
+ const changed=Number(form.elements.driveInterface.value)!==setupDrive.driveInterface||Number(form.elements.simulation.value)!==setupDrive.simulation;if(changed){form.elements.driveInterface.value=String(setupDrive.driveInterface);form.elements.simulation.value=String(setupDrive.simulation);if(setupDrive.driveInterface!==2)form.elements.pwmInverted.value='0';hardwareEdited();}syncDriveMode();
+}
 function updateHardwareSections(){
  const features=state?.features||{},simulation=Number(form.elements.simulation.value)!==0,hud=state?.role==='hud';
  form.elements.driveMode.closest('label').hidden=hardwareStage!==null;
@@ -367,7 +451,7 @@ function updateHardwareSections(){
 if(new URLSearchParams(location.search).has('setup')){
  document.body.classList.add('embedded');
  function validateSetupHardware(){
-  if(!state||!metadata||busy)throw new Error('Дождитесь загрузки оборудования.');
+  if(!state||!metadata||!mbLoaded||busy)throw new Error('Дождитесь загрузки оборудования.');
   if(capture||calibrationPending)throw new Error('Завершите или отмените измерения джойстика.');
   updatePins();if(pinError)throw new Error(errorText(pinError));
   for(const f of [form,mbForm])for(const el of f.elements)if(!el.disabled&&el.getClientRects().length&&el.reportValidity&&!el.reportValidity())throw new Error('Проверьте выделенное поле оборудования.');
@@ -382,6 +466,7 @@ if(new URLSearchParams(location.search).has('setup')){
    if(changed)window.scrollTo(0,0);return;
   }
   if(event.data?.type!=='hardwareAction')return;
+  hardwareForeground=true;
   try{
    const action=event.data.action;
    if(action==='reset'){if(capture)await cancelCapture();dirty=mbDirty=false;await refresh();await refreshModbus();}
@@ -399,12 +484,12 @@ if(new URLSearchParams(location.search).has('setup')){
    }
    reportState();
    parent.postMessage({type:'hardwareResult',id:event.data.id},location.origin);
-  }catch(e){msg.textContent=e.message;parent.postMessage({type:'hardwareResult',id:event.data.id,error:e.message},location.origin);}
+  }catch(e){msg.textContent=e.message;parent.postMessage({type:'hardwareResult',id:event.data.id,error:e.message},location.origin);}finally{hardwareForeground=false;}
  });
  parent.postMessage({type:'hardwareReady'},location.origin);
  const report=()=>parent.postMessage({type:'hardwareHeight',height:Math.ceil(document.querySelector('main').getBoundingClientRect().height+24)},location.origin);
  new ResizeObserver(report).observe(document.querySelector('main'));
- const reportState=()=>parent.postMessage({type:'hardwareState',dirty:dirty||mbDirty||!!capture||calibrationPending||busy,error:pinError?errorText(pinError):pollError||(!state||!metadata?'Дождитесь загрузки оборудования.':state.trial&&(!state.ready||!probe)?'Дождитесь проверки памяти и пробного запуска оборудования.':''),canApply:!!state&&!!metadata&&!busy&&!capture&&!calibrationPending&&!pinError&&(!state.trial||state.ready&&probe)},location.origin);
+ const reportState=()=>parent.postMessage({type:'hardwareState',dirty:dirty||mbDirty||!!capture||calibrationPending||busy,error:pinError?errorText(pinError):pollError||(!state||!metadata||!mbLoaded?'Дождитесь загрузки оборудования.':state.trial&&(!state.ready||!probe)?'Дождитесь проверки памяти и пробного запуска оборудования.':''),canApply:!!state&&!!metadata&&mbLoaded&&!busy&&!capture&&!calibrationPending&&!pinError&&(!state.trial||state.ready&&probe)},location.origin);
  document.addEventListener('input',reportState);setInterval(reportState,500);report();reportState();
 }
 const displayForm=document.getElementById('display-orientation'),displayMessage=document.getElementById('display-message');
@@ -420,7 +505,9 @@ displayForm.oninput=()=>{displayDirty=true;displayMessage.textContent='Изме�
 document.getElementById('display-defaults').onclick=()=>{for(const name of displayPoseNames)displayForm.elements[name].value='0';for(const [i,name] of displayFieldNames.entries())displayForm.elements[name].checked=Boolean((displayState.defaultFields??63)&(1<<i));displayDirty=true;displayMessage.textContent='Выбраны значения по умолчанию. Нажмите «Сохранить и перезапустить».';displayButtons();};
 document.getElementById('display-reload').onclick=()=>loadDisplaySettings();
 displayForm.onsubmit=async event=>{event.preventDefault();if(displayBusy||!displayState?.supported||!displayDirty)return;const values={token:displayState.token,revision:displayState.revision};for(const name of displayPoseNames)values[name]=Number(displayForm.elements[name].value);for(const name of displayFieldNames)values[name]=Number(displayForm.elements[name].checked);displayBusy=true;displayButtons();displayMessage.textContent='Сохраняем настройки экрана…';settingsFeedback(displayMessage.textContent,'pending');try{await request('/api/hardware/display',values);displayState.restartRequired=true;displayDirty=false;displayMessage.textContent='Сохранено. Устройство перезапускается. После запуска нажмите «Обновить настройки».';settingsFeedback(displayMessage.textContent,'success');}catch(e){displayMessage.textContent=e.name==='AbortError'?'Не получен ответ на сохранение. После подключения обновите настройки и проверьте значения.':displayError(e);settingsFeedback(displayMessage.textContent);}finally{displayBusy=false;displayButtons();}};
-loadDisplaySettings();
+displayButtons();
+function displayDataVisible(){return !!state&&!document.hidden&&!!displayForm.getClientRects().length&&(!window.frameElement||!!window.frameElement.getClientRects().length);}
+background.poll('/api/hardware/display',()=>{if(!displayState&&displayDataVisible())return loadDisplaySettings();},2000,displayDataVisible);
 
 </script></html>)HWHTML";
 } // namespace forkrot

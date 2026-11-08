@@ -21,13 +21,16 @@ class HttpIoTask {
   portMUX_TYPE snapshotLock_=portMUX_INITIALIZER_UNLOCKED;
   HttpDiagnostics diagnostics_;
   std::atomic<uint32_t> stackFree_{0};
+  std::atomic<uint32_t> ownerWaitMaxUs_{0};
   uint32_t ownerJobs_=0,ownerMaxUs_=0;
   static void execute(void *context,OwnerCall::Function function,void *arguments) {
     auto &self=*static_cast<HttpIoTask *>(context);
+    const auto started=micros();
     const bool posted=self.call_.post(function,arguments);
     configASSERT(posted);
     xTaskNotifyGive(self.owner_);
     while(!self.call_.takeResult())ulTaskNotifyTake(pdTRUE,portMAX_DELAY);
+    self.ownerWaitMaxUs_.store(std::max(self.ownerWaitMaxUs_.load(),uint32_t(micros()-started)));
   }
   static void worker(void *context) {
     auto &self=*static_cast<HttpIoTask *>(context);
@@ -52,8 +55,9 @@ public:
     if(task_)return true;
     owner_=xTaskGetCurrentTaskHandle();server_=&server;
     server.setExecutor(execute,this);
+    setNetworkSnapshotBackground(true);
     task_=xTaskCreateStaticPinnedToCore(worker,"http-io",StackBytes,this,1,stack_,&taskStorage_,0);
-    if(!task_) { server.setExecutor(nullptr,nullptr);return false; }
+    if(!task_) { setNetworkSnapshotBackground(false);server.setExecutor(nullptr,nullptr);return false; }
     // Preserve one state owner and the existing 8 KiB stack. Adding another
     // motor task plus a duplicate Controller would waste scarce internal RAM.
     vTaskPrioritySet(owner_,4);
@@ -83,7 +87,8 @@ public:
        <<",\"controlCore\":"<<xPortGetCoreID()<<",\"controlPriority\":"<<uxTaskPriorityGet(nullptr)
        <<",\"controlStackFree\":"<<uxTaskGetStackHighWaterMark(nullptr)
        <<",\"httpIoCore\":0,\"httpIoStackFree\":"<<stackFree_.load(std::memory_order_relaxed)
-       <<",\"httpOwnerJobs\":"<<ownerJobs_<<",\"httpOwnerMaxUs\":"<<ownerMaxUs_;
+       <<",\"httpOwnerJobs\":"<<ownerJobs_<<",\"httpOwnerMaxUs\":"<<ownerMaxUs_
+       <<",\"httpOwnerWaitMaxUs\":"<<ownerWaitMaxUs_.load();
   }
 };
 }

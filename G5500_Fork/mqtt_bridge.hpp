@@ -15,7 +15,7 @@ public:
     int8_t axis=-1,direction=0;
     uint8_t slot=0;
     Mode mode=Mode::Manual;
-    bool selected=false;
+    bool selected=false,direct=false;
   };
   struct Callbacks {
     void *context=nullptr;
@@ -40,13 +40,13 @@ public:
   const char *lastResult() const { return lastResult_; }
   const char *baseTopic() const { return base_; }
   size_t nodeCount() const;
-  static constexpr unsigned EntityCount=24;
+  static constexpr unsigned EntityCount=28; // Includes four obsolete direction buttons to clear.
 private:
   struct Node {
     uint64_t id=0;
-    uint32_t meta=0,sentAt=0,selection=0;
+    uint32_t meta=0,sentAt=0,selection=0,configMeta=0;
     uint8_t entity=0,resetSession=0;
-    bool checked=false,cleaning=false,registered=false,configured=false;
+    bool checked=false,cleaning=false,registered=false,configured=false,configSent=false;
     std::unique_ptr<Node> next;
   };
   Runtime &runtime_;
@@ -54,7 +54,7 @@ private:
   Callbacks callbacks_;
   std::unique_ptr<Node> nodes_;
   Node *stateCursor_=nullptr,*discoveryCursor_=nullptr;
-  char base_[32]{},topic_[192]{},json_[1024]{},oldPrefix_[48]{};
+  char base_[32]{},birthTopic_[64]{},topic_[192]{},json_[1024]{},oldPrefix_[48]{};
   HudState local_;
   std::atomic_flag lock_=ATOMIC_FLAG_INIT;
   std::array<Request,4> queue_{};
@@ -78,6 +78,7 @@ private:
   void execute(const Request &,uint32_t);
   bool publish(const char *,JsonWriter &,bool,int);
   bool publishState(Node &,uint32_t,bool reset=false);
+  bool publishConfiguration(Node &,const HudState &);
   bool discovery(Node &,uint32_t);
   uint32_t metadata(const HudState *,uint64_t) const;
   void discoveryTopic(const char *,uint64_t,unsigned);

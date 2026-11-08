@@ -38,8 +38,22 @@ static bool overlaps(const panel::TouchRect &a,const panel::TouchRect &b) {
 static void checkCurrentLayout(const PanelView &v,const panel::TouchLayout &layout) {
   if(v.menu.open||v.speedScreen||v.hudSelector)return;
   const bool compact=std::min(width,height)<320;
+  if(!layout.current.width)std::fprintf(stderr,"missing current %dx%d hud=%d dual=%d pending=%d/%d moving=%d mask=%u current=%.1f/%.1f\n",
+      width,height,v.hud,v.dualAxis,v.pending,v.secondaryPending,v.movingNow,unsigned(v.visible),double(v.current),double(v.secondaryCurrent));
   assert(layout.current.width && layout.current.height && inside(layout.current));
   assert(layout.outerRadius==std::min(width,height)/2+panel::DialTouchExtension);
+  if(layout.name.width) {
+    // Marker-ring contacts above the controls must never select a controller.
+    const int r=layout.nameRadius+std::max(2,std::min(width,height)/96);
+    for(int degrees=-60;degrees<=60;degrees+=5) {
+      const float angle=degrees*3.14159265f/180;
+      const unsigned x=unsigned(layout.centerX+std::lround(r*std::sin(angle)));
+      const unsigned y=unsigned(layout.centerY-std::lround(r*std::cos(angle)));
+      assert(!layout.nameHit(x,y));
+      if(layout.name.contains(x,y))assert(layout.dialHit(x,y));
+    }
+    assert(layout.nameHit(layout.name.x+layout.name.width/2,layout.name.y+layout.name.height/2));
+  }
   const panel::TouchRect controls[]={layout.current,layout.mode,layout.name,layout.axis,layout.settings,layout.stop,layout.target,
       layout.arrows[0],layout.arrows[1],layout.arrows[2],layout.arrows[3]};
   for(unsigned i=0;i<std::size(controls);++i) {
@@ -84,7 +98,11 @@ int main(int argc,char **argv) {
   };
   char path[512];
   const auto snapshot=[&](const char *name) {
-    ui.update(v);settle(d);std::snprintf(path,sizeof path,"%s/%dx%d-%s.ppm",argv[1],width,height,name);save(path);
+    // Independent layout poses start with fresh readings, rather than animating
+    // from the unrelated pose before them. Behaviour is exercised below.
+    ++v.sourceId;
+    ui.update(v);settle(d);ui.update(v);settle(d);ui.update(v);settle(d);
+    std::snprintf(path,sizeof path,"%s/%dx%d-%s.ppm",argv[1],width,height,name);save(path);
     if(std::getenv("PANEL_GEOMETRY")) {
       const auto &l=ui.touchLayout();
       std::printf("%s current=%u,%u %ux%u arrows",name,l.current.x,l.current.y,l.current.width,l.current.height);
@@ -154,6 +172,62 @@ int main(int argc,char **argv) {
     }
   };
   snapshot("dual");
+  {
+    const auto saved=v;
+    v.hud=false;v.movingNow=true;v.current=135;v.secondaryCurrent=45;v.secondaryTarget=60;
+    v.azDirection=v.elDirection=1;std::strcpy(v.status,"Имитация · вращение");snapshot("doc-dual");
+    v=saved;v.dualAxis=false;v.current=121;v.target=180;
+    std::strcpy(v.hudName,"Дача · G-800DXA");snapshot("doc-hud");
+    v.hud=false;v.current=450;v.target=359.9f;v.autoHour=true;
+    std::strcpy(v.status,"Остановлен");snapshot("doc-markers");
+    v.autoHour=false;v.current=20;v.target=430;snapshot("doc-target-limits");
+    v.current=121;v.target=225;v.autoMode=false;v.pending=true;snapshot("doc-confirm");
+    v=saved;ui.update(v);settle(d);
+  }
+  {
+    const auto saved=v;
+    auto *caption=findLabel(findLabel,ui.root(),"Цель");assert(caption);
+    auto *primary=findLabel(findLabel,ui.root(),"210.0°");assert(primary);
+    auto *secondary=findLabel(findLabel,ui.root()," / 80.0°");assert(secondary);
+    const auto checkGoalColor=[&](uint32_t expected) {
+      ui.update(v);settle(d);ui.update(v);settle(d);ui.update(v);settle(d);
+      for(auto *label:{caption,primary,secondary})
+        assert(lv_color_to_u32(lv_obj_get_style_text_color(label,LV_PART_MAIN))==lv_color_to_u32(lv_color_hex(expected)));
+    };
+    v.current=v.target;v.secondaryCurrent=v.secondaryTarget;
+    snapshot("target-reached");checkGoalColor(0x65717e);
+    v.tolerance=.5f;v.secondaryTolerance=.25f;
+    v.current-=.5f;v.secondaryCurrent-=.25f;
+    snapshot("target-within-tolerance");checkGoalColor(0x65717e);
+    v.tolerance=.49f;checkGoalColor(0x64cfff); // Only tolerance changes: invalidate the cached view.
+    v.tolerance=.5f;v.secondaryTolerance=.24f;checkGoalColor(0x64cfff);
+    v.secondaryTolerance=.25f;checkGoalColor(0x65717e);
+    v.secondaryFeedback=false;checkGoalColor(0x64cfff);
+    v.secondaryFeedback=true;v.movingNow=true;checkGoalColor(0x64cfff);
+    v.movingNow=false;v.autoMode=false;v.pending=true;checkGoalColor(0x65717e);
+    v.target+=10;checkGoalColor(0xf0b85c); // A new pending target keeps its confirmation color.
+    v.pending=false;checkGoalColor(0x64cfff);
+    v.targetValid=v.secondaryTargetValid=false;checkGoalColor(0x64cfff);
+    v=saved;ui.update(v);settle(d);
+  }
+  {
+    const auto saved=v;
+    v.current=v.target=90;v.secondaryCurrent=v.secondaryTarget=40;
+    v.tolerance=v.secondaryTolerance=.5f;++v.sourceId;
+    ui.update(v);settle(d);ui.update(v);settle(d);ui.update(v);settle(d);
+    auto *reading=findLabel(findLabel,ui.root(),"90°");assert(reading);
+    auto *goal=findLabel(findLabel,ui.root(),"Цель");assert(goal);
+    for(unsigned i=0;i<100;++i) {
+      v.current=i%2?90.68f:90.32f;
+      ui.update(v);lv_tick_inc(100);lv_timer_handler();lv_refr_now(d);
+      assert(!std::strcmp(lv_label_get_text(reading),"90°"));
+      assert(lv_color_to_u32(lv_obj_get_style_text_color(goal,LV_PART_MAIN))==lv_color_to_u32(lv_color_hex(0x65717e)));
+    }
+    v.movingNow=true;v.current=95;ui.update(v);settle(d);
+    assert(!std::strcmp(lv_label_get_text(reading),"95°"));
+    assert(lv_color_to_u32(lv_obj_get_style_text_color(goal,LV_PART_MAIN))==lv_color_to_u32(lv_color_hex(0x64cfff)));
+    v=saved;ui.update(v);settle(d);
+  }
   {
     const auto saved=v;
     v.menu.open=true;v.menu.local=true;v.menu.devices=true;v.menu.brightnessAvailable=true;v.menu.brightness=70;
@@ -256,6 +330,15 @@ int main(int argc,char **argv) {
       assert(lv_obj_is_hidden(findLabel(findLabel,ui.root(),v.ip))==!bool(mask&(DisplayLocalAddress|DisplayApAddress)));
       assert(bool(ui.touchLayout().axis.width)==bool(mask&DisplayAxis));
       assert(bool(ui.touchLayout().name.width)==bool(mask&(DisplayName|DisplayControllerAddress)));
+      const auto header=ui.touchLayout().name;
+      if(header.width) {
+        assert(!overlaps(header,ui.touchLayout().mode)&&!overlaps(header,ui.touchLayout().axis));
+        if(mask&DisplayControllerAddress) {
+          auto *line=findLabel(findLabel,ui.root(),compact?v.hudAddress:"hud:192.168.3.234 · 0.0°..450.0°");
+          lv_area_t a;lv_obj_get_coords(line,&a);
+          assert(header.contains((a.x1+a.x2)/2,(a.y1+a.y2)/2));
+        }
+      }
       auto *axis=findLabel(findLabel,ui.root(),compact?"AZ":"АЗИМУТ · AZ");assert(axis);
       assert(lv_obj_is_hidden(axis)==!bool(mask&DisplayAxis));
       auto *address=findLabel(findLabel,ui.root(),compact?v.hudAddress:"hud:192.168.3.234 · 0.0°..450.0°");assert(address);
@@ -346,6 +429,7 @@ int main(int argc,char **argv) {
     v.wifiRssi=-55;std::strcpy(v.heap,"Heap: 123 КБ");ui.update(v);settle(d);
     assert(flushes==quiet);
     const auto saved=v;
+    ++v.sourceId;v.movingNow=true; // Isolate marker redraw while the drive moves.
     v.minimum=-50;v.maximum=190;v.current=-20.23f;v.target=154;
     ui.update(v);settle(d);
     const auto before=flushedPixels;
@@ -382,6 +466,7 @@ int main(int argc,char **argv) {
     // The full dashboard keeps its readings and targets fixed while STOP
     // replaces status/telemetry, and restores those fields after release.
     for(bool dual:{false,true})for(bool elevation:{false,true})for(bool pending:{false,true}) {
+      ++v.sourceId; // Each pose starts at its own fixed position.
       v.dualAxis=dual;v.elevation=elevation;v.autoMode=false;v.pending=pending;
       std::strcpy(v.status,"Остановлен");ui.update(v);settle(d);
       std::vector<lv_obj_t *> labels;
@@ -415,6 +500,7 @@ int main(int argc,char **argv) {
   if(std::min(width,height)<320) {
     const auto saved=v;
     for(bool elevation:{false,true}) {
+      ++v.sourceId; // Independent idle/swipe pose, without residual filtering.
       v.autoMode=false;v.pending=v.secondaryPending=false;v.elevation=elevation;
       v.current=107.71f;v.secondaryCurrent=190;v.status[0]=0;
       ui.update(v);settle(d);
@@ -516,6 +602,43 @@ int main(int argc,char **argv) {
   v.current=v.minimum+4;v.target=v.maximum-8;snapshot("limits");
   std::strcpy(v.ip,"255.255.255.255  AP: 192.168.4.1");snapshot("network");
   v.statusFault=true;std::strcpy(v.status,"Ошибка AZ: нет изменения положения");snapshot("fault");
+  {
+    const auto saved=v;
+    for(bool elevation:{false,true})for(bool offline:{false,true}) {
+      v.hud=true;v.enabled=!offline;v.dualAxis=true;v.elevation=elevation;
+      v.statusFault=false;v.movingNow=false;v.hudSelector=v.speedScreen=false;v.menu.open=false;
+      std::strcpy(v.status,offline?"Нет связи с повороткой":"");
+      ui.update(v);settle(d);const auto l=ui.touchLayout();
+      if(width==480&&height==480) {
+        assert(l.current.contains(240,240)||l.menuTargetHit(240,240));
+        panel::TouchGesture center;center.sample(true,240,240,l,100);
+        assert(center.sample(true,240,240,l,3101).action==panel::TouchAction::MenuOpen);
+      }
+      assert(l.secondaryCurrent.width && inside(l.secondaryCurrent));
+      const auto &r=l.secondaryCurrent;
+      assert(l.current.contains(r.x,r.y)&&l.current.contains(r.x+r.width-1,r.y+r.height-1));
+      const int sx=r.x+r.width/2,sy=r.y+r.height/2;
+      panel::TouchGesture tap;auto e=tap.sample(true,sx,sy,l,100);
+      assert(e.action==panel::TouchAction::None);
+      e=tap.sample(false,0,0,l,200);
+      assert(e.action==(offline?panel::TouchAction::None:panel::TouchAction::Axis));
+      tap.sample(true,sx,sy,l,1000);
+      e=tap.sample(true,sx+30,sy-30,l,1100);
+      assert(e.action==panel::TouchAction::None);
+      if(!offline)assert(e.manual&&e.az>0&&e.el>0);
+      tap.sample(true,sx,sy,l,1200);
+      assert(tap.sample(false,0,0,l,1300).action==panel::TouchAction::None);
+      // A stationary hold on either value opens settings and consumes release.
+      for(const int x:{sx,int(l.current.x)+4}) {
+        panel::TouchGesture hold;hold.sample(true,x,sy,l,2000);
+        assert(hold.sample(true,x,sy,l,5000).action==panel::TouchAction::None);
+        e=hold.sample(true,x,sy,l,5001);
+        assert(e.action==panel::TouchAction::MenuOpen&&e.manual&&e.release&&!e.mask);
+        assert(hold.sample(false,0,0,l,5010).action==panel::TouchAction::None);
+      }
+    }
+    v=saved;ui.update(v);settle(d);
+  }
   {
     const auto saved=v;
     for(bool offline:{true,false})for(bool hasTarget:{false,true}) {

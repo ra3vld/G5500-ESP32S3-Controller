@@ -41,7 +41,7 @@ class CrowPanelUsbTraceTests(unittest.TestCase):
                    secondaryTargetValid secondaryPending wifiConnected wifiAp mqttEnabled mqttConnected bluetoothEnabled
                    bluetoothConnected statusFault menu.open menu.connections menu.local menu.devices
                    menu.brightnessAvailable menu.apAvailable menu.apOn'''.split()
-        numbers = '''direction current target minimum maximum secondaryCurrent secondaryTarget
+        numbers = '''direction current target minimum maximum tolerance secondaryTolerance secondaryCurrent secondaryTarget
                      azDirection elDirection sourceId wifiRssi menu.brightness menu.epoch'''.split()
         texts = 'hudName hudAddress ip heap status menu.device menu.info menu.notice menu.apLabel'.split()
         arrays = ['hudRows', 'speedAvailable', 'speedPercent']

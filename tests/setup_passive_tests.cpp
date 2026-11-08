@@ -79,7 +79,9 @@ static void staleBatchDoesNotCaptureOrdinaryRequests() {
     Fixture f;bookmark(f);auto &r=f.runtime;r.setupSaving=true;
     Preferences::failedBytesKey="state1";
     assert(f.call("POST","/api/mqtt","enabled=1&host=broker.local",false).status==200);
-    assert(f.restart.pending()&&!r.setupRestartRequired);
+    assert(!f.restart.pending()&&!r.setupRestartRequired);
+    assert(r.mqtt.enabled&&std::string(r.mqtt.host)=="broker.local");
+    assert(r.setup.paused&&r.setup.step==SetupStep::Calibration&&r.setup.generation==77);
   }
 #endif
   // An abandoned active save is also local to requests carrying its token.

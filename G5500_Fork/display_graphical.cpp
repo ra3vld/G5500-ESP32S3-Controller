@@ -16,10 +16,10 @@
 #include <esp_timer.h>
 namespace forkrot {
 int Display::backlightPin() const {
-#if DISPLAY_KIND == DISPLAY_CROWPANEL_21 || DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796
+#if DISPLAY_KIND == DISPLAY_CROWPANEL_21
   return board::PIN_BACKLIGHT;
 #else
-  return runtime_.controller.hardware.pins.tftBacklight;
+  return displayPins(runtime_.controller.hardware).tftBacklight;
 #endif
 }
 void Display::applyBrightness() {
@@ -163,7 +163,7 @@ void Display::startAfterCalibrationLoad() {
 #endif
 }
 void Display::serviceTouch() {
-  if(!inputReady_ || !display_) return;
+  if(!inputReady_ || !display_ || otaScreen_) return;
   serviceKnob();
 #if CROWPANEL_USB_TRACE
   // Pump even while the display is waiting for VSYNC or has failed.
@@ -171,6 +171,7 @@ void Display::serviceTouch() {
 #endif
   uint32_t now = millis();
   if (uint32_t(now - lastTouch_) < 10) return;
+  if(lastTouch_)panelMetrics.touchGapMaxMs=std::max(panelMetrics.touchGapMaxMs,uint32_t(now-lastTouch_));
 #if CROWPANEL_TOUCH_TRACE
   if (uint32_t(now - lastTouch_) >= 80)
     Serial.printf("[TouchGap] t=%lu gap=%lu down=%d\n", (unsigned long)now,
@@ -188,9 +189,13 @@ void Display::serviceTouch() {
   panelMetrics.touchHealthy=sample.healthy;panelMetrics.touchDown=sample.down;
   panelMetrics.touchX=sample.x;panelMetrics.touchY=sample.y;
   now=sample.sampledAt;
-  const uint16_t x=sample.x,y=sample.y;
+  auto input=sample;
+#if DISPLAY_KIND == DISPLAY_GC9A01
+  input=cstContact_.sample(sample,touchButtons_.manualActive());
+#endif
+  const uint16_t x=input.x,y=input.y;
   touchHealthy_=sample.healthy;
-  const bool touch=sample.down && sample.healthy && inputHealthy_;
+  const bool touch=input.down && input.healthy && inputHealthy_;
   if (touch) runtime_.noteUserActivity();
   const bool touchHealthy=sample.healthy && inputHealthy_;
   if (display_) {
@@ -212,7 +217,7 @@ void Display::serviceTouch() {
     layout.enabled = layout.enabled && !displayFailed_ && touchHealthy && !runtime_.controller.movementBlocked() &&
                      presentedCommand_.sameScope(command) && (!hud || runtime_.hud.available()) &&
                      (!hud || (!hudKnob_.menu && (touchButtons_.contactDown() ||
-                                                  !layout.name.contains(x, y))));
+                                                  !layout.nameHit(x, y))));
     const bool selectionChanged = touchSelection_ != runtime_.hud.selectionEpoch;
     const bool contextChanged=selectionChanged || inputRangeRevision_!=runtime_.controller.rangeRevision || inputModel_!=runtime_.controller.model;
     inputRangeRevision_=runtime_.controller.rangeRevision;inputModel_=runtime_.controller.model;
@@ -224,6 +229,10 @@ void Display::serviceTouch() {
     // Commands use the timestamp of the input sample, before slow rendering.
     if(!touchHealthy) layout.enabled=false;
     auto event = touchButtons_.sample(touch, x, y, layout, now);
+    panelMetrics.traceTouch({now,event.gesture,sample.x,sample.y,
+        uint8_t(unsigned(sample.down) | unsigned(sample.healthy)<<1 | unsigned(layout.enabled)<<2 |
+                unsigned(event.manual)<<3 | unsigned(event.release)<<4 | unsigned(selectionChanged)<<5),
+        event.mask,sample.contactCode,int8_t(std::lround(event.az*100)),int8_t(std::lround(event.el*100))});
 #if CROWPANEL_TOUCH_TRACE
     static uint32_t tracedGesture = 0;
     static bool tracedCancelled = false;
@@ -248,7 +257,15 @@ void Display::serviceTouch() {
         }
         const auto result = runtime_.controller.manualDrive(0, 1, event.gesture, touchSerial_, event.mask, event.az,
                                                           event.el, event.release, now, 100, event.absoluteSpeed);
-        if (result == Result::Unavailable && hud) { touchNotice_ = true; touchNoticeAt_ = now; }
+        panelMetrics.manualResult=uint8_t(result);
+        if(result==Result::Unavailable)++panelMetrics.manualUnavailable;
+        if(result==Result::Cancelled)++panelMetrics.manualCancelled;
+        if (result == Result::Unavailable && hud && runtime_.hud.available()) {
+          const auto *peer=runtime_.hud.active();
+          touchNotice_=event.absoluteSpeed && peer && peer->wireVersion<5
+              ? "Обновите прошивку контроллера" : "Ручное управление недоступно";
+          touchNoticeAt_=now;
+        }
 #if CROWPANEL_TOUCH_TRACE
         if (result == Result::Cancelled && !tracedCancelled) {
           Serial.printf("[TouchCancelled] t=%lu gesture=%lu release=%d xy=%u,%u\n",
@@ -259,7 +276,7 @@ void Display::serviceTouch() {
         (void)result;
 #endif
       } else if (!event.release && hud && runtime_.hud.available()) {
-        touchNotice_ = true;
+        touchNotice_ = "Ручное управление недоступно";
         touchNoticeAt_ = now;
       }
       redraw_ = true;
@@ -309,7 +326,7 @@ void Display::serviceTouch() {
       if (action == panel::TouchAction::Mode)
         hudKnob_.toggleMode(now);
       if (touch && !hudTouchDown_ && !speedScreen_ && !menuOpen_) {
-        if (layout.name.contains(x, y))
+        if (layout.nameHit(x, y))
           hudKnob_.open();
         else if (hudKnob_.menu) {
           if(layout.rows[0].contains(x,y)) hudKnob_.moveSelection(-1);
@@ -335,7 +352,7 @@ void Display::updateLocalDisplay() {
 #if CROWPANEL_USB_TRACE
   serviceTrace(millis());
 #endif
-  if (!display_ || displayFailed_) return;
+  if (!display_ || displayFailed_ || otaScreen_) return;
   if (!serviceFrame()) return;
   const uint32_t now = millis();
 #if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_ILI9341
@@ -452,6 +469,7 @@ void Display::updateLocalDisplay() {
     view.feedback = online && controller.axes[axis].calibrated;
     view.uncalibrated = online && !controller.axes[axis].calibrated;
     view.current = controller.axes[axis].current;
+    view.tolerance = controller.effectiveTolerance(axis);
     view.direction = controller.axes[axis].direction;
     view.pending = controller.pendingValid && (axis ? controller.pending.hasEl : controller.pending.hasAz);
     view.targetValid = online && (view.pending || controller.axes[axis].targetKnown);
@@ -460,6 +478,7 @@ void Display::updateLocalDisplay() {
     view.secondaryFeedback = view.dualAxis && online && controller.axes[other].calibrated;
     view.secondaryUncalibrated = view.dualAxis && online && !controller.axes[other].calibrated;
     view.secondaryCurrent = controller.axes[other].current;
+    view.secondaryTolerance = controller.effectiveTolerance(other);
     view.secondaryPending = view.dualAxis && controller.pendingValid &&
                             (other ? controller.pending.hasEl : controller.pending.hasAz);
     view.secondaryTargetValid =
@@ -470,9 +489,9 @@ void Display::updateLocalDisplay() {
     view.azDirection = controller.axes[0].direction;
     view.elDirection = controller.axes[1].direction;
     if (touchNotice_ && uint32_t(now - touchNoticeAt_) < 2000) {
-      std::snprintf(view.status, sizeof view.status, "Обновите прошивку контроллера");
+      std::snprintf(view.status, sizeof view.status, "%s", touchNotice_);
     } else {
-      touchNotice_ = false;
+      touchNotice_ = nullptr;
     }
     if (online) {
       view.statusFault = writeDriveFault(view.status, sizeof view.status,

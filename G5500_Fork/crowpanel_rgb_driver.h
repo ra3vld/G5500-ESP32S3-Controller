@@ -24,6 +24,8 @@ typedef struct {
 esp_err_t crowpanel_rgb_frame_status(esp_lcd_panel_handle_t panel, uint32_t *submitted, uint32_t *presented);
 esp_err_t crowpanel_rgb_get_restart_stats(esp_lcd_panel_handle_t panel, crowpanel_rgb_restart_stats_t *stats);
 esp_err_t crowpanel_rgb_set_source_pose(esp_lcd_panel_handle_t panel, uint8_t pose);
+// Irreversible until reboot. NULL frame reserves SRAM using the current image.
+esp_err_t crowpanel_rgb_ota_frame(esp_lcd_panel_handle_t panel, const uint16_t *frame);
 #ifdef __cplusplus
 }
 #endif

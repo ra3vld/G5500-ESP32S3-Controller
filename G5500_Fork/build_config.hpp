@@ -7,7 +7,15 @@
 // Экономия при 0 в байтах: полный firmware.bin / статическая DRAM / IRAM.
 // Пары одного снимка; отдельные результаты не складываются из-за общих зависимостей.
 
+// Compact Classic ESP32 firmware: direct PWM and essential web pages.
+// Select through env:esp32_spp or env:esp32_spp_hud.
+#ifndef ESP32_SPP_PROFILE
+#define ESP32_SPP_PROFILE 0
+#endif
+
 // Compile-time capabilities. Unlike runtime defaults these remove services.
+// ESP32 WROOM/WROVER и Sunton ESP32-3248S035C: без SPP, WebSocket, истории
+// логов/RSSI и OTA, с компактными Wi-Fi-буферами. Флаги -D имеют приоритет.
 // При 0, Б (BIN/DRAM/IRAM): ST 190464/8048/424; S3 512560/8040/256.
 // Вместе с WebSocket; heap HTTP/SDK не измерена. WS: stack 6144 Б; очереди выделяются на подключение, общие JSON-снимки — блоками по 256 Б, бинарный снимок 160 Б.
 #ifndef WEB_INTERFACE_ENABLED
@@ -39,6 +47,10 @@
 #ifndef WIFI_SUPPORT
 #define WIFI_SUPPORT 1
 #endif
+// Компактные буферы драйвера Wi-Fi для сборок с малым запасом RAM.
+#ifndef WIFI_COMPACT_BUFFERS
+#define WIFI_COMPACT_BUFFERS G5500_ESP32_LOW_RAM_DEFAULTS
+#endif
 // При 0, Б (BIN/DRAM/IRAM): ST 0/0/0; S3 0/0/0.
 // WT32-ETH01 54528/168/1064; Waveshare S3-ETH 90928/236/1536.
 // Heap PHY/W5500/сетевого стека при запуске не измерена; на платах без Ethernet выигрыш 0.
@@ -48,7 +60,7 @@
 // При 0, Б (BIN/DRAM/IRAM): ST 44480/280/424; S3 45104/280/256.
 // HTTP остаётся. Heap при WS: stack 6144 Б, очереди подключений и общие JSON-снимки по фактической ёмкости; полный runtime не измерен.
 #ifndef WEB_LIVE_SUPPORT
-#define WEB_LIVE_SUPPORT WEB_INTERFACE_ENABLED
+#define WEB_LIVE_SUPPORT (WEB_INTERFACE_ENABLED && !G5500_ESP32_LOW_RAM_DEFAULTS)
 #endif
 // Несжатая копия HTML для клиентов без gzip; JSON API не зависит от флага.
 // При 0, Б (BIN/DRAM/IRAM): ST 0/0/0; S3 317584/0/0.
@@ -59,7 +71,7 @@
 // При 0, Б (BIN/DRAM/IRAM): ST 708592/14916/34676; S3 0/0/0.
 // HC-05 остаётся; SppState 2320 Б heap при включении + SDK BT, полный runtime не измерен; на S2/S3/C3 SPP уже отсутствует.
 #ifndef BLUETOOTH_SPP_SUPPORT
-#define BLUETOOTH_SPP_SUPPORT (BLUETOOTH_SUPPORT && FORK_CLASSIC_ESP32)
+#define BLUETOOTH_SPP_SUPPORT (BLUETOOTH_SUPPORT && FORK_CLASSIC_ESP32 && !G5500_ESP32_LOW_RAM_DEFAULTS)
 #endif
 // При 0, Б (BIN/DRAM/IRAM): ST 3696/0/0; S3 3584/0/0.
 // Постоянных собственных heap-буферов нет; временные String/ответы и runtime heap не измерены.
@@ -114,7 +126,7 @@
 // При 0, Б (BIN/DRAM/IRAM): ST 27616/1952/0; S3 30544/1944/0.
 // Также выключает ArduinoOTA; heap Update/загрузки/SDK при обновлении не измерена.
 #ifndef OTA_SUPPORT
-#define OTA_SUPPORT 1
+#define OTA_SUPPORT (!G5500_ESP32_LOW_RAM_DEFAULTS)
 #endif
 // При 0, Б (BIN/DRAM/IRAM): ST 19696/1816/0; S3 22160/1808/0.
 // Браузерное OTA остаётся при наличии веба и OTA-разделов; heap ArduinoOTA/mDNS/SDK не измерена.
@@ -124,12 +136,12 @@
 // Фиксированный ByteLog: 2048 байт истории + 220 байт незавершённой строки.
 // Собственная память журнала не растёт в heap; USB/SDK runtime отдельно.
 #ifndef LOG_HISTORY_SUPPORT
-#define LOG_HISTORY_SUPPORT 1
+#define LOG_HISTORY_SUPPORT (!G5500_ESP32_LOW_RAM_DEFAULTS)
 #endif
 // При 0, Б (BIN/DRAM/IRAM): ST 2448/1488/0; S3 1984/1488/0.
 // RssiHistory 1488 Б статически; отдельного постоянного heap-буфера нет, полный runtime не измерен.
 #ifndef RSSI_HISTORY_SUPPORT
-#define RSSI_HISTORY_SUPPORT WIFI_SUPPORT
+#define RSSI_HISTORY_SUPPORT (WIFI_SUPPORT && !G5500_ESP32_LOW_RAM_DEFAULTS)
 #endif
 // При 0, Б (BIN/DRAM/IRAM): ST 2224/0/0; S3 3024/0/0.
 // История в NVS; постоянного собственного heap-буфера нет, временный runtime heap не измерен. Защитная история recovery сохраняется.
@@ -146,6 +158,10 @@
 // Active: Impl 2464 Б (включает JSON 1024 Б), stack 6144 Б, RX/TX 1024+1024 Б, outbox limit 2048 Б, +32 Б/устройство; SDK/runtime не измерены.
 #ifndef MQTT_SUPPORT
 #define MQTT_SUPPORT (WIFI_SUPPORT || ETHERNET_SUPPORT)
+#endif
+// No extra client/task. TLS state is allocated only while MQTT TLS is active.
+#ifndef MQTT_TLS_SUPPORT
+#define MQTT_TLS_SUPPORT MQTT_SUPPORT
 #endif
 // При 0, Б (BIN/DRAM/IRAM): ST 4848/0/0; S3 5200/0/0.
 // MQTT-клиент/стек и общий JSON остаются; отдельного подключения нет. NVS/SDK runtime heap не измерена.
@@ -168,7 +184,7 @@
 // BOARD_WAVESHARE_S3_ETH — Waveshare ESP32-S3-ETH, W5500 + DVP-камера.
 // BOARD_CROWPANEL_21 — Elecrow DHE03921D, круглый ST7701 480x480.
 // BOARD_ESP32_2424S012C — Guition ESP32-C3, GC9A01 240x240 + CST816.
-// BOARD_ESP32_C3 — обычная ESP32-C3 с Flash 4 МБ, без дисплея.
+// BOARD_ESP32_C3 — обычная ESP32-C3 с Flash 4 МБ; внешний дисплей выбирается отдельно.
 // BOARD_ESP32_3248S035C — Sunton ESP32, ST7796 480x320 + GT911.
 #ifndef BOARD_PROFILE
 #define BOARD_PROFILE BOARD_AUTO
@@ -199,8 +215,8 @@
 // DISPLAY_ILI9341 — TFT ILI9341 + сенсор XPT2046.
 // DISPLAY_LCD1602 — параллельный LCD1602 / HD44780 (не I2C).
 // DISPLAY_CROWPANEL_21 — встроенный экран CrowPanel 2.1 (только эта плата).
-// DISPLAY_GC9A01 — встроенный экран ESP32-2424S012C, включая Y(B).
-// DISPLAY_ST7796 — встроенный экран ESP32-3248S035C.
+// DISPLAY_GC9A01 — GC9A01/CST816, внешний или встроенный ESP32-2424S012C.
+// DISPLAY_ST7796 — ST7796/GT911, внешний или встроенный ESP32-3248S035C.
 // DISPLAY_ST77916 — внешний Waveshare 1.85, QSPI + CST816S, ESP32 / ESP32-S3.
 #ifndef DISPLAY_KIND
 #define DISPLAY_KIND DISPLAY_NONE

@@ -22,10 +22,11 @@ struct FakeUpdate {
   bool running = false, beginOk = true, writeOk = true, endOk = true;
   unsigned aborts = 0;
   uint32_t count = 0, size = 0;
+  std::function<void()> beforeBegin,beforeWrite,beforeEnd;
   bool isRunning() const { return running; }
-  bool begin(uint32_t n, int) { size = n; count = 0; return running = beginOk; }
-  size_t write(uint8_t *, size_t n) { if (!writeOk) return 0; count += n; return n; }
-  bool end() { running = false; return endOk && count == size; }
+  bool begin(uint32_t n, int) {if(beforeBegin)beforeBegin();size = n; count = 0; return running = beginOk; }
+  size_t write(uint8_t *, size_t n) {if(beforeWrite)beforeWrite();if (!writeOk) return 0; count += n; return n; }
+  bool end() {if(beforeEnd)beforeEnd();running = false; return endOk && count == size; }
   void abort() { running = false; ++aborts; }
 };
 inline FakeUpdate Update;
