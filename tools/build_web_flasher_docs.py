@@ -122,7 +122,7 @@ def bundle_sources(output, catalog):
     catalog['source_archive'] = './source-code.zip'
     catalog['source_archive_sha256'] = hashlib.sha256(archive.read_bytes()).hexdigest()
     catalog['documentation_base'] = './documentation/'
-    catalog_path.write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + '\n')
+    (output / 'catalog.json').write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + '\n')
 
 
 def rewrite(url):

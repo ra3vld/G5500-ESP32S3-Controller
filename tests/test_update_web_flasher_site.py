@@ -1,5 +1,6 @@
 """Release reuse must preserve identity and reject corrupt or unsafe archives."""
 import hashlib
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -48,6 +49,36 @@ class SiteUpdateTests(unittest.TestCase):
         self.assertEqual((site/'catalog.json').read_bytes(),catalog)
         self.assertEqual((site/'source-code.zip').read_bytes(),b'unchanged released firmware sources')
         self.assertIn('Новая форма MQTT',(site/'documentation/docs/web-flasher.html').read_text())
+
+    def test_release_docs_archive_is_bound_to_catalog(self):
+        import build_web_flasher_docs as docs
+        source = self.root / 'source'
+        for name in ('docs', 'hardware', 'G5500_Fork', 'tools/local-notes'):
+            (source / name).mkdir(parents=True, exist_ok=True)
+        (source / 'README.md').write_text('# Controller\n')
+        (source / 'docs/web-flasher.md').write_text('# USB setup\n')
+        (source / 'G5500_Fork/main.ino').write_text('void setup() {}\n')
+        (source / 'tools/local-notes/private.txt').write_text('excluded local evidence')
+        site = self.root / 'site'
+        site.mkdir()
+        (site / 'index.html').write_text('<html></html>')
+        (site / 'style.css').write_text('body{}')
+        identity = dict(version='1.2.3', commit='fixture', dirty=False)
+        catalog = dict(identity=identity, profiles=[dict(id='fixture', docs='docs/web-flasher.md')])
+        (site / 'catalog.json').write_text(json.dumps(catalog))
+        with patch.object(docs, 'ROOT', source), patch.object(docs, 'generate', return_value=identity):
+            docs.build(site)
+        saved = json.loads((site / 'catalog.json').read_text())
+        self.assertEqual(saved['identity'], identity)
+        self.assertEqual(saved['profiles'], catalog['profiles'])
+        self.assertEqual(saved['source_archive'], './source-code.zip')
+        archive = site / saved['source_archive']
+        self.assertEqual(saved['source_archive_sha256'], hashlib.sha256(archive.read_bytes()).hexdigest())
+        self.assertEqual(saved['documentation_base'], './documentation/')
+        with zipfile.ZipFile(archive) as package:
+            self.assertEqual(package.read('G5500_Fork/main.ino'), b'void setup() {}\n')
+            self.assertEqual(package.read('docs/web-flasher.md'), b'# USB setup\n')
+            self.assertNotIn('tools/local-notes/private.txt', package.namelist())
 
     def test_extract_and_existing_output(self):
         archive = self.root / 'site.zip'
