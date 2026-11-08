@@ -16,7 +16,7 @@ const cases=[
 ];
 (async()=>{
  fs.mkdirSync(out,{recursive:true});
- const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+ const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),args:['--no-sandbox']});
  const passed=[];
  try{
   for(const [name,installed,tag,available] of cases){
