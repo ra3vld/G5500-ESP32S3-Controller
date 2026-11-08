@@ -421,7 +421,12 @@ const refreshModbus=singlePoll(async()=>{if(!modbusDataVisible()&&!hardwareForeg
 mbForm.addEventListener('submit',e=>{e.preventDefault();const c={};for(const n of mbNames)c[n]=Number(mbForm.elements[n].value);if(c.address>=c.first&&c.address<c.first+c.count||c.node<c.first||c.node>=c.first+c.count||c.first+c.count>248){msg.textContent='Адрес контроллера должен быть вне диапазона ведущих, а адрес HUD — внутри него.';settingsFeedback(msg.textContent);return;}apply('/api/hardware/modbus',c);});
 background.poll('/api/hardware/modbus',refreshModbus,2000,modbusDataVisible);
 let hardwareStage=null,setupDrive=null;
-function applySetupDrive(){if(!setupDrive||!state||!metadata||state.role==='hud')return;const changed=Number(form.elements.driveInterface.value)!==setupDrive.driveInterface||Number(form.elements.simulation.value)!==setupDrive.simulation;if(changed){form.elements.driveInterface.value=String(setupDrive.driveInterface);form.elements.simulation.value=String(setupDrive.simulation);if(setupDrive.driveInterface!==2)form.elements.pwmInverted.value='0';hardwareEdited();}syncDriveMode();}
+function applySetupDrive(){
+ // Parent messages can arrive while the first refresh waits for Modbus. Until
+ // the persisted form is loaded, defaults are not a user draft or a baseline.
+ if(!setupDrive||!state||!metadata||!formStamp||state.role==='hud')return;
+ const changed=Number(form.elements.driveInterface.value)!==setupDrive.driveInterface||Number(form.elements.simulation.value)!==setupDrive.simulation;if(changed){form.elements.driveInterface.value=String(setupDrive.driveInterface);form.elements.simulation.value=String(setupDrive.simulation);if(setupDrive.driveInterface!==2)form.elements.pwmInverted.value='0';hardwareEdited();}syncDriveMode();
+}
 function updateHardwareSections(){
  const features=state?.features||{},simulation=Number(form.elements.simulation.value)!==0,hud=state?.role==='hud';
  form.elements.driveMode.closest('label').hidden=hardwareStage!==null;

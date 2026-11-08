@@ -20,6 +20,7 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
    queue=task.catch(()=>{});return task;
   };
   const hardwarePolling=process.env.SETUP_SESSION_SCENARIO==='hardware-polling',pendingPolls={},maxPolls={};let delayed=true;
+  let releaseInitialModbus;const initialModbus=new Promise(resolve=>releaseInitialModbus=resolve);
   const page=await browser.newPage({viewport:{width,height:1000},locale:'ru-RU'});page.on('pageerror',e=>errors.push(e.message));
   try{
    await page.route('http://setup-session.test/**',async route=>{
@@ -27,6 +28,7 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     if(url.pathname==='/setup'||url.pathname==='/')return route.fulfill({contentType:'text/html',body:html});
     if(url.pathname==='/hardware')return route.fulfill({contentType:'text/html',body:hardware});
     if(url.pathname==='/favicon.ico')return route.fulfill({status:204,body:''});
+    if(process.env.SETUP_SESSION_SCENARIO==='hardware-init'&&req.method()==='GET'&&url.pathname==='/api/hardware/modbus')await initialModbus;
     if(url.pathname==='/api/settings'&&req.method()==='POST'&&saveDelay){const delay=saveDelay;saveDelay=0;await wait(delay);}
     if(url.pathname==='/api/setup'&&form.get('action')==='arm'&&armDelay){const delay=armDelay;armDelay=0;await wait(delay);}
     if(url.pathname==='/api/setup'&&form.get('action')==='renew'&&renewDelay)await wait(renewDelay);
@@ -43,7 +45,16 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
     }finally{if(slow)--pendingPolls[key];}
    });
    if(['hud-role','hud-hardware','hud-review','hud-fields'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/hud');
-   if(['simulation','mechanics','motion','optional-drive','controller-fields','passive','audit-fixes','view-stability'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/controller');
+   if(['simulation','mechanics','motion','optional-drive','controller-fields','passive','audit-fixes','view-stability','hardware-init'].includes(process.env.SETUP_SESSION_SCENARIO))await rpc('POST','/__fixture/controller');
+   if(process.env.SETUP_SESSION_SCENARIO==='hardware-init'){
+    let h=(await rpc('GET','/api/hardware')).body;
+    assert.equal((await rpc('POST','/api/hardware',new URLSearchParams({token:h.token,generation:h.generation,driveInterface:2}).toString())).status,200);
+    await rpc('POST','/__fixture/reboot');h=(await rpc('GET','/api/hardware')).body;
+    const body=new URLSearchParams({token:h.token,generation:h.generation}).toString();
+    assert.equal((await rpc('POST','/api/hardware/probe',body)).status,200);
+    assert.equal((await rpc('POST','/api/hardware/confirm',body)).status,200);
+    await rpc('POST','/__fixture/step','1');
+   }
    if(process.env.SETUP_SESSION_SCENARIO==='trial-inline'){
     await rpc('POST','/api/setup','action=pause');
     const stage=async()=>{const h=(await rpc('GET','/api/hardware')).body;assert.equal((await rpc('POST','/api/hardware',new URLSearchParams({token:h.token,generation:h.generation,simulation:1,buttonActiveLow:h.configured.buttonActiveLow?0:1}).toString())).status,200);await rpc('POST','/__fixture/reboot');};
@@ -103,6 +114,26 @@ if(process.env.ARTIFACT_DIR)fs.mkdirSync(process.env.ARTIFACT_DIR,{recursive:tru
    await page.goto('http://setup-session.test/setup');
    await page.waitForFunction(()=>wizard.active&&wizard.state?.token&&wizard.state.step===1);
    const session=await page.evaluate(()=>wizard.state.token);
+   if(process.env.SETUP_SESSION_SCENARIO==='hardware-init'){
+    await rpc('POST','/__fixture/step','3');await page.evaluate(async()=>{await upd(true);await pollSetup();});
+    const frame=await(await page.locator('#equipmentFrame').elementHandle()).contentFrame();
+    await frame.waitForFunction(()=>!!state&&!!metadata&&!formStamp&&!mbLoaded);
+    for(let i=0;i<4;i++){await page.evaluate(()=>renderSetup());await wait(80);}
+    const during=await frame.evaluate(()=>({dirty,formStamp:!!formStamp,mbLoaded}));
+    releaseInitialModbus();await frame.waitForFunction(()=>loadingFields===null);
+    const after=await frame.evaluate(()=>({dirty,configured:state.configured.pins.azAdc,draft:form.elements['pin.azAdc'].value,pinError}));
+    console.log(JSON.stringify({width,during,after}));
+    assert.equal(during.dirty,false,'Setup hint before initial form load must not create a user draft');
+    assert.equal(after.draft,String(after.configured),'Initial delayed Modbus must not lose persisted GPIO');
+    assert.equal(after.dirty,false);assert.equal(after.pinError,null);
+    for(let i=0;i<2;i++){
+     await page.waitForFunction(()=>wizard.hardwareCanApply&&!wizard.busy);
+     await page.locator('#setupNext').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===4);
+     await page.locator('#setupBack').click();await page.waitForFunction(()=>!wizard.busy&&wizard.state.step===3);
+    }
+    assert.deepEqual(errors,[]);
+    console.log(`PASS: ${width}px, delayed first Modbus preserves persisted GPIO and clean draft; repeated Next/Back works`);continue;
+   }
    if(process.env.SETUP_SESSION_SCENARIO==='view-stability'){
     await rpc('POST','/__fixture/step','3');await page.evaluate(async()=>{await upd(true);await pollSetup();});
     await page.waitForFunction(()=>wizard.state.step===3&&wizard.hardwareCanApply);
