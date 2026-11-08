@@ -17,9 +17,10 @@ public:
       if(!c.sensorType(i) || (i && c.singleAxis())) continue;
       const int sda=i?c.pins.elSensorSda:c.pins.azSensorSda;
       const int scl=i?c.pins.elSensorScl:c.pins.azSensorScl;
-#if DISPLAY_KIND == DISPLAY_GC9A01
+#if DISPLAY_KIND == DISPLAY_GC9A01 || (DISPLAY_KIND == DISPLAY_ST7796 && FORK_C3)
       // The panel initializes Wire once. Do not remap/restart its touch bus.
-      if(sda==board::PIN_I2C_SDA && scl==board::PIN_I2C_SCL) axes_[i]=&Wire;
+      const auto panel=displayPins(c);
+      if(sda==panel.touchSda && scl==panel.touchScl) axes_[i]=&Wire;
       continue;
 #endif
       if(i && axes_[0] && sda==c.pins.azSensorSda && scl==c.pins.azSensorScl) {

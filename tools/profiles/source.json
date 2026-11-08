@@ -1,0 +1,6 @@
+{
+  "source_commit": "f9a4fb863c4e2b84043b6526466d2fb6d83663b7",
+  "base_commit": "131403cfedbc6a6a1c437a5daafd1d2a662f8bd4",
+  "description": "Dedicated essential web and direct PWM source from esp32_spp; apply only in the isolated SPP sketch.",
+  "patch_sha256": "7df7f30b3cf9bcd2bb1f0c47bee286f67419e92e32b7dce0308077c6203252af"
+}

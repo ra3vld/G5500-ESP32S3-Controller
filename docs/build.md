@@ -81,7 +81,7 @@ DISPLAY_KIND=2 ./tools/build_arduino.sh s2-mini
 DISPLAY_KIND=1 ./tools/build_arduino.sh s2-mini
 ```
 
-`DISPLAY_KIND`: 0 NONE, 1 ILI9341, 2 LCD1602, 3 CrowPanel, 4 GC9A01, 5 ST7796, 6 ST77916. CrowPanel и GC9A01 требуют соответствующего профиля платы. Старый `DISPLAY_ENABLED=0/1` остаётся алиасом NONE/TFT; несовместимые флаги отклоняются. Привод, Bluetooth и кнопка выбираются в вебе после сборки. Скрипт допускает `ARDUINO_CLI`, `ARDUINO_CONFIG_FILE`, `FQBN`, `BUILD_JOBS`; исходники и результаты изолированы в `build/arduino-<target>` и `artifacts/arduino-<target>`. Прежние аппаратные `-D` задают только начальные значения нового устройства; сохранённая конфигурация имеет приоритет.
+`DISPLAY_KIND`: 0 NONE, 1 ILI9341, 2 LCD1602, 3 CrowPanel, 4 GC9A01, 5 ST7796, 6 ST77916. CrowPanel требует своего профиля платы. Внешние GC9A01/CST816 и ST7796/GT911 доступны на generic ESP32, S3, C3 и S2; [профили и настройка GPIO](boards/generic-displays.md). Старый `DISPLAY_ENABLED=0/1` остаётся алиасом NONE/TFT; несовместимые флаги отклоняются. Привод, Bluetooth и кнопка выбираются в вебе после сборки. Скрипт допускает `ARDUINO_CLI`, `ARDUINO_CONFIG_FILE`, `FQBN`, `BUILD_JOBS`; исходники и результаты изолированы в `build/arduino-<target>` и `artifacts/arduino-<target>`. Прежние аппаратные `-D` задают только начальные значения нового устройства; сохранённая конфигурация имеет приоритет.
 
 ## PlatformIO
 

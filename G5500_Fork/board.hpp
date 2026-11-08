@@ -3,6 +3,7 @@
 #include <cstdint>
 #include "build_config.hpp"
 #include "hardware_config.hpp"
+#include "display_pins.hpp"
 #ifdef ARDUINO
 #include <soc/soc_caps.h>
 #if !CONFIG_IDF_TARGET_ESP32 && !CONFIG_IDF_TARGET_ESP32S2 && !CONFIG_IDF_TARGET_ESP32S3 && !CONFIG_IDF_TARGET_ESP32C3
@@ -118,10 +119,10 @@ inline constexpr int activePins[] = {
  PIN_TFT_MOSI, PIN_TFT_SCK, PIN_TFT_MISO, PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_RST, PIN_TOUCH_CS, PIN_TOUCH_IRQ,
 #elif DISPLAY_KIND == DISPLAY_LCD1602
  PIN_LCD_RS, PIN_LCD_E, PIN_LCD_D4, PIN_LCD_D5, PIN_LCD_D6, PIN_LCD_D7,
-#elif DISPLAY_KIND == DISPLAY_GC9A01
+#elif SELECTED_BOARD == BOARD_ESP32_2424S012C
  PIN_PANEL_MOSI, PIN_PANEL_SCK, PIN_PANEL_CS, PIN_PANEL_DC, PIN_BACKLIGHT,
  PIN_I2C_SDA, PIN_I2C_SCL, PIN_CST_RST, PIN_CST_IRQ,
-#elif DISPLAY_KIND == DISPLAY_ST7796
+#elif SELECTED_BOARD == BOARD_ESP32_3248S035C
  PIN_PANEL_MOSI, PIN_PANEL_MISO, PIN_PANEL_SCK, PIN_PANEL_CS, PIN_PANEL_DC, PIN_BACKLIGHT,
  PIN_I2C_SDA, PIN_I2C_SCL, PIN_GT_RST, PIN_GT_IRQ,
 #elif DISPLAY_KIND == DISPLAY_CROWPANEL_21
@@ -187,10 +188,10 @@ inline const char *fixedPinOwner(int n) {
   if(n>=0 && n==PIN_BACKLIGHT) return "crowpanel.backlight";
   for(int pin:{16,2,1,40,7,15,41,46,3,8,18,17,14,13,12,11,10,9,5,45,48,47,21})
     if(n==pin) return "crowpanel.display";
-#elif DISPLAY_KIND == DISPLAY_GC9A01
+#elif SELECTED_BOARD == BOARD_ESP32_2424S012C
   if(n==PIN_I2C_SDA || n==PIN_I2C_SCL || n==PIN_CST_RST || n==PIN_CST_IRQ) return "panel.touch";
   if(n==PIN_PANEL_MOSI || n==PIN_PANEL_SCK || n==PIN_PANEL_CS || n==PIN_PANEL_DC || n==PIN_BACKLIGHT) return "panel.display";
-#elif DISPLAY_KIND == DISPLAY_ST7796
+#elif SELECTED_BOARD == BOARD_ESP32_3248S035C
   if(n==1 || n==3) return "usb.uart";
   if(n==PIN_I2C_SDA || n==PIN_I2C_SCL || n==PIN_GT_RST || n==PIN_GT_IRQ) return "panel.touch";
   if(n==PIN_PANEL_MOSI || n==PIN_PANEL_MISO || n==PIN_PANEL_SCK || n==PIN_PANEL_CS || n==PIN_PANEL_DC || n==PIN_BACKLIGHT) return "panel.display";
@@ -247,6 +248,10 @@ inline bool pinActive(const HardwareConfig &c,const PinDefinition &d,bool hud=fa
   case PinGroup::HudRadio:return true;
   case PinGroup::Tft:
     if(DISPLAY_KIND==DISPLAY_ST77916) return d.member!=&PinMap::tftDc && d.member!=&PinMap::touchCs;
+    if(SELECTED_BOARD==BOARD_ESP32_2424S012C || SELECTED_BOARD==BOARD_ESP32_3248S035C) return false;
+    if(DISPLAY_KIND==DISPLAY_GC9A01 || DISPLAY_KIND==DISPLAY_ST7796)
+      return d.member!=&PinMap::tftMiso && d.member!=&PinMap::tftD2 &&
+             d.member!=&PinMap::tftD3 && d.member!=&PinMap::touchCs;
     if(DISPLAY_KIND!=DISPLAY_ILI9341) return false;
     return d.member!=&PinMap::tftD2 && d.member!=&PinMap::tftD3 && d.member!=&PinMap::tftBacklight &&
            d.member!=&PinMap::touchSda && d.member!=&PinMap::touchScl && d.member!=&PinMap::touchRst;
@@ -259,11 +264,12 @@ inline bool pinOptional(const HardwareConfig &c,const PinDefinition &d) {
       (d.member==&PinMap::azSpeedEnable || d.member==&PinMap::elSpeedEnable));
 }
 inline bool sharedPanelSensorBus(const HardwareConfig &c,const PinDefinition &d) {
-#if DISPLAY_KIND == DISPLAY_GC9A01
+#if DISPLAY_KIND == DISPLAY_GC9A01 || (DISPLAY_KIND == DISPLAY_ST7796 && FORK_C3)
+  const auto panel=displayPins(c);
   const bool el=d.group==PinGroup::SensorEl;
   return (el || d.group==PinGroup::SensorAz) &&
-      (el?c.pins.elSensorSda:c.pins.azSensorSda)==PIN_I2C_SDA &&
-      (el?c.pins.elSensorScl:c.pins.azSensorScl)==PIN_I2C_SCL;
+      (el?c.pins.elSensorSda:c.pins.azSensorSda)==panel.touchSda &&
+      (el?c.pins.elSensorScl:c.pins.azSensorScl)==panel.touchScl;
 #else
   (void)c;(void)d;return false;
 #endif
@@ -285,12 +291,14 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &configu
         (c.sensorType(i) && c.sensorZero(i)>=sensorCounts(c.sensorType(i))))
       return {"invalid_position_sensor",sensorSettingNames[at]};
   }
-#if DISPLAY_KIND == DISPLAY_GC9A01
-  // C3 has one I2C controller, already used by CST816. Encoders share that bus.
+#if DISPLAY_KIND == DISPLAY_GC9A01 || (DISPLAY_KIND == DISPLAY_ST7796 && FORK_C3)
+  const auto panel=displayPins(c);
+  // The touch bus is shared; never restart its I2C controller for an encoder.
   for(unsigned i=0;i<2;++i) if(physical && c.sensorType(i) && (i==0 || !c.singleAxis())) {
-    if(c.sensorAddress(i)==0x15) return {"sensor_address_conflict",i?"elSensorAddress":"azSensorAddress"};
-    if((i?c.pins.elSensorSda:c.pins.azSensorSda)!=PIN_I2C_SDA ||
-       (i?c.pins.elSensorScl:c.pins.azSensorScl)!=PIN_I2C_SCL)
+    if(DISPLAY_KIND==DISPLAY_GC9A01 ? c.sensorAddress(i)==0x15 :
+        c.sensorAddress(i)==0x5d || c.sensorAddress(i)==0x14) return {"sensor_address_conflict",i?"elSensorAddress":"azSensorAddress"};
+    if((i?c.pins.elSensorSda:c.pins.azSensorSda)!=panel.touchSda ||
+       (i?c.pins.elSensorScl:c.pins.azSensorScl)!=panel.touchScl)
       return {"sensor_bus_unavailable",i?"elSensor":"azSensor"};
   }
 #endif
@@ -359,7 +367,7 @@ inline HardwareValidation validateHardwareDetailed(const HardwareConfig &configu
     }
     if(!pinActive(c,d,hud)) continue;
     // Both axes may use one physical bus, provided their addresses differ.
-    if(sharedSensors && d.group==PinGroup::SensorEl) continue;
+    if(sharedPanelSensorBus(c,d) || (sharedSensors && d.group==PinGroup::SensorEl)) continue;
     if(auto error=add(pin,d.field,d.kind,!pinOptional(c,d),d.group==PinGroup::Buttons,sharedPanelSensorBus(c,d))) return error;
   }
   if(auto error=add(c.buttonGpio,"buttonGpio",PinKind::Input,false,c.buttonPullup)) return error;

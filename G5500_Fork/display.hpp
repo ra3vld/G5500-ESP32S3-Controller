@@ -120,7 +120,11 @@ class Display {
   TwoWire touchBus_{1};
   bool touchBusReady_=false;
 #elif DISPLAY_KIND == DISPLAY_ST7796
+#if FORK_C3
+  TwoWire &touchBus_=Wire;
+#else
   TwoWire touchBus_{1};
+#endif
   Gt911Touch<TwoWire> touch_{touchBus_};
   static void sendPanelCommand(lv_display_t *,const uint8_t *,size_t,const uint8_t *,size_t);
   static void sendPanelPixels(lv_display_t *,const uint8_t *,size_t,uint8_t *,size_t);

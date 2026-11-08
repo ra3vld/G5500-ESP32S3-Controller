@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Выбор готовой прошивки G5500 Controller и установка на ESP32 через USB из браузера.">
+  <title>G5500 · Выбор и установка прошивки</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <header class="topbar wrap">
+    <a class="brand" href="./" aria-label="G5500 — начало"><span class="brand-mark" aria-hidden="true">↗</span> G5500<span class="brand-suffix">CONTROLLER</span></a>
+    <a class="source-link" href="https://github.com/ra3vld/G5500-ESP32S3-Controller" target="_blank" rel="noopener noreferrer">Исходный код <span aria-hidden="true">↗</span></a>
+  </header>
+  <main class="wrap">
+    <section class="hero">
+      <div><h1 class="eyebrow"><span class="status-dot" aria-hidden="true"></span> КОНФИГУРАТОР ПРОШИВКИ</h1>
+        <p class="intro">Выберите готовую сборку и установите её через USB.<br class="desktop-break"> Всё необходимое — в браузере.</p>
+      </div>
+      <div class="hero-meta"><span class="meta-label">ВЕРСИЯ КАТАЛОГА</span><strong id="catalogVersion">Загрузка…</strong><span id="catalogCommit" class="mono"></span></div>
+    </section>
+    <div id="globalStatus" class="notice" role="status" hidden></div>
+    <noscript><p class="notice error">Для выбора и установки прошивки включите JavaScript.</p></noscript>
+    <div class="workspace" id="workspace" hidden>
+      <div class="configuration">
+        <section class="panel board-panel" aria-labelledby="boardHeading">
+          <div class="section-heading"><span class="step">01</span><div><h2 id="boardHeading">Выберите плату</h2><p>Модель и объём памяти должны совпадать с вашим устройством.</p></div></div>
+          <label class="sr-only" for="boardSelect">Плата</label>
+          <select id="boardSelect"></select>
+          <div id="boardSpecs" class="spec-pills"></div>
+          <figure class="board-preview"><a id="photoSource" target="_blank" rel="noopener noreferrer"><img id="boardPhoto" width="440" height="210" alt=""></a><figcaption id="photoCaption"></figcaption></figure>
+        </section>
+        <section class="panel" aria-labelledby="profileHeading">
+          <div class="section-heading"><span class="step">02</span><div><h2 id="profileHeading">Готовая конфигурация</h2><p id="profileHint">Выберите готовую прошивку.</p></div></div>
+          <fieldset id="profileChoices"><legend class="sr-only">Конфигурация прошивки</legend></fieldset>
+          <fieldset id="serviceChoices" class="service-choices"><legend>Дополнительные сервисы</legend></fieldset>
+          <p id="serviceHint" class="small muted">Выключенные сервисы исключаются из прошивки. Выбор переключает готовые бинарники; размер указан для выбранного варианта.</p>
+          <div class="divider"></div>
+          <div class="details-heading"><h3>Что входит в сборку</h3><span id="displayLabel" class="small-label"></span></div>
+          <ul id="features" class="feature-list"></ul>
+          <p id="featureNotice" class="muted small"></p>
+          <div id="profileNotes" class="profile-notes"></div>
+          <a id="documentation" class="text-link" target="_blank" rel="noopener noreferrer">Подключение и настройка <span aria-hidden="true">↗</span></a>
+        </section>
+      </div>
+      <aside class="installation">
+        <section class="panel install-panel" aria-labelledby="installHeading">
+          <div class="section-heading"><span class="step">03</span><div><h2 id="installHeading">Установите прошивку</h2><p id="selectedName"></p></div></div>
+          <div id="buildStatus" class="build-status"></div>
+          <div id="memory" class="memory" hidden>
+            <div class="memory-heading"><span>Раздел приложения</span><strong id="flashPercent" class="mono"></strong></div>
+            <progress id="flashProgress" aria-label="Заполнение раздела приложения" max="100"></progress>
+            <p id="flashDetail" class="muted small mono"></p>
+            <dl class="memory-stats"><div><dt>Статическая DRAM</dt><dd id="dram"></dd></div><div><dt>IRAM: код и данные</dt><dd id="iram"></dd></div></dl>
+          </div>
+          <p class="runtime-note">Свободная RAM и отзывчивость зависят от работающих сервисов и числа клиентов. Размер файла не определяет быстродействие.</p>
+          <ol class="instructions"><li id="connectInstruction">Подключите плату USB-кабелем с передачей данных.</li><li>Закройте монитор порта и программы, использующие устройство.</li><li>Нажмите кнопку и выберите USB-порт платы.</li></ol>
+          <label class="confirmation"><input type="checkbox" id="confirmHardware"><span>Проверил модель платы, Flash, PSRAM и подключённый дисплей.</span></label>
+          <div id="installerMount"></div>
+          <div id="postInstall" class="post-install" role="status" hidden>
+            <strong>Запись прошивки завершена.</strong>
+            <p id="postInstallProfile"></p>
+            <a id="postInstallConnections" class="text-link" target="_blank" rel="noopener noreferrer">Открыть подключения по умолчанию ↗</a>
+            <p class="small muted">Сохранённые настройки GPIO могут отличаться. Проверьте их в разделе «Оборудование».</p>
+          </div>
+          <p id="installHint" class="small muted" role="status"></p>
+          <a id="download" class="download-link" hidden download>Скачать USB-комплект <span aria-hidden="true">↓</span></a>
+          <p class="erase-advice">Если после прошивки появились проблемы, повторите установку с <strong>Erase device</strong> — полным стиранием Flash. Настройки Wi-Fi, оборудования и калибровки удалятся.</p>
+          <p id="sppEraseAdvice" class="erase-advice" hidden>Для SPP после полного стирания сначала установите основную прошивку и выполните первичную настройку. Затем установите SPP без стирания.</p>
+          <details class="settings-note"><summary>Что будет с настройками?</summary><p>Установщик предложит полное стирание. Оставьте <strong>Erase device</strong> выключенным, чтобы сохранить NVS с настройками и калибровками.</p><p>USB-установка записывает разметку выбранной сборки и приложение. При смене платы или оборудования проверьте настройки и калибровку после запуска.</p></details>
+        </section>
+        <div class="help-note"><span aria-hidden="true">↳</span><p id="bootHelpDefault">Плата не подключается? Зажмите <strong>BOOT</strong>, нажмите и отпустите <strong>RESET / EN</strong>, затем отпустите BOOT и повторите подключение.</p><p id="bootHelpWT32" hidden>Для WT32-ETH01 замкните <strong>IO0 на GND</strong> и перезапустите плату через <strong>EN</strong>. После записи снимите перемычку IO0–GND и снова перезапустите плату: IO0 нужен Ethernet.</p></div>
+      </aside>
+    </div>
+  </main>
+  <footer class="wrap footer"><span>GPL-3.0 · <a href="./THIRD_PARTY_LICENSES.txt">Лицензии библиотек</a> · <a href="https://esphome.github.io/esp-web-tools/" target="_blank" rel="noopener noreferrer">ESP Web Tools</a></span></footer>
+</body>
+</html>

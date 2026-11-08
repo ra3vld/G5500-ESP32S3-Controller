@@ -16,17 +16,20 @@ bool touchWrite(uint8_t reg,uint8_t value) {
 #endif
 }
 void Display::initLocalDisplay() {
+  const auto pins=displayPins(runtime_.controller.hardware);
 #if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_GC9A01
-  pinMode(board::PIN_BACKLIGHT,OUTPUT);digitalWrite(board::PIN_BACKLIGHT,LOW);
-  SPI.begin(board::PIN_PANEL_SCK,-1,board::PIN_PANEL_MOSI,board::PIN_PANEL_CS);
-  panel_.emplace(&SPI,board::PIN_PANEL_DC,board::PIN_PANEL_CS,-1);
+  if(pins.tftBacklight>=0) {pinMode(pins.tftBacklight,OUTPUT);digitalWrite(pins.tftBacklight,LOW);}
+  SPI.begin(pins.tftSck,-1,pins.tftMosi,pins.tftCs);
+  panel_.emplace(&SPI,pins.tftDc,pins.tftCs,pins.tftRst);
   panel_->begin(40000000);panel_->setRotation(runtime_.displaySettings.screen&3);panel_->invertDisplay(true);
-  pinMode(board::PIN_CST_IRQ,INPUT_PULLUP);pinMode(board::PIN_CST_RST,OUTPUT);
-  digitalWrite(board::PIN_CST_RST,LOW);delay(10);digitalWrite(board::PIN_CST_RST,HIGH);delay(100);
-  touchHealthy_=Wire.begin(board::PIN_I2C_SDA,board::PIN_I2C_SCL,400000);
+  if(pins.touchIrq>=0) pinMode(pins.touchIrq,INPUT_PULLUP);
+  if(pins.touchRst>=0) {
+    pinMode(pins.touchRst,OUTPUT);digitalWrite(pins.touchRst,LOW);delay(10);
+    digitalWrite(pins.touchRst,HIGH);delay(100);
+  }
+  touchHealthy_=Wire.begin(pins.touchSda,pins.touchScl,400000);
   Wire.setTimeOut(3);touchHealthy_=touchHealthy_ && touchWrite(0xfe,1);
 #else
-  const auto &pins=runtime_.controller.hardware.pins;
   panel_.emplace(&SPI,pins.tftDc,pins.tftCs,pins.tftRst);
   touch.emplace(pins.touchCs,pins.touchIrq);
   pinMode(pins.tftCs,OUTPUT);digitalWrite(pins.tftCs,HIGH);
@@ -48,7 +51,7 @@ void Display::initLocalDisplay() {
   ui_.create(DISPLAY_KIND==DISPLAY_GC9A01);ui_.update(PanelView{});
   rendering_=true;lv_refr_now(display_);rendering_=false;
 #if DISPLAY_SUPPORT && DISPLAY_KIND == DISPLAY_GC9A01
-  digitalWrite(board::PIN_BACKLIGHT,HIGH);
+  if(pins.tftBacklight>=0) digitalWrite(pins.tftBacklight,HIGH);
 #endif
   diagnostics_.dbgPrintln("[Display] LVGL RGB565 partial buffer ready");
 }

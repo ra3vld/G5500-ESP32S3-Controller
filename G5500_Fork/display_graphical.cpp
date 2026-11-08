@@ -16,10 +16,10 @@
 #include <esp_timer.h>
 namespace forkrot {
 int Display::backlightPin() const {
-#if DISPLAY_KIND == DISPLAY_CROWPANEL_21 || DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796
+#if DISPLAY_KIND == DISPLAY_CROWPANEL_21
   return board::PIN_BACKLIGHT;
 #else
-  return runtime_.controller.hardware.pins.tftBacklight;
+  return displayPins(runtime_.controller.hardware).tftBacklight;
 #endif
 }
 void Display::applyBrightness() {

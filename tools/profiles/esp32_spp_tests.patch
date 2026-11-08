@@ -1,0 +1,334 @@
+diff --git a/tests/direct_motion_tests.cpp b/tests/direct_motion_tests.cpp
+new file mode 100644
+--- /dev/null
++++ b/tests/direct_motion_tests.cpp
+@@ -0,0 +1,51 @@
++#include "control.hpp"
++#include <cassert>
++#include <cmath>
++#include <iostream>
++using namespace forkrot;
++Controller rig(){
++ Controller c;auto hw=c.hardware;hw.drive=DRIVE_BTS7960;hw.simulation=0;c.configureHardware(hw);
++ c.model=Model::G5500;c.restoreMode(Mode::Auto);c.feedback(90,90,true,true);
++ c.speeds[0].speedPercent=30;c.speeds[0].coastDegrees=.5f;
++ c.motionSettings[0].outputLimitPercent=40;return c;
++}
++void feed(Controller &c,float az,uint32_t now){c.feedbackAt(0,az,true,now);c.feedbackAt(1,90,true,now);c.tick(now);}
++int main(){
++ {auto c=rig();feed(c,90,1000);assert(c.setRuntimeSpeed(0,20,1000)==Result::Ok);
++  assert(c.jog(0,1,false,1000)==Result::Ok);feed(c,90,1000);
++  const auto settings=c.motionSettings[0];const auto epoch=c.stopEpoch;
++  assert(c.configureMotion(0,settings,1001));
++  assert(c.stopEpoch==epoch&&c.axes[0].direction==1&&c.axes[0].speedOutputPercent==20);
++  auto changed=settings;changed.outputLimitPercent=25;
++  assert(c.configureMotion(0,changed,1002));assert(c.stopEpoch!=epoch&&!c.moving());
++ }
++ {auto c=rig();feed(c,90,1000);assert(c.jog(0,1,false,1000)==Result::Ok);feed(c,90,1000);
++  assert(c.axes[0].direction==1&&c.axes[0].speedOutputPercent==30);
++  c.stopNow(-1,1001);assert(!c.moving()&&c.axes[0].speedOutputPercent==0);
++  assert(c.jog(0,-1,false,1002)==Result::Ok);feed(c,90,1002);assert(!c.axes[0].direction);
++  feed(c,90,1299);assert(!c.axes[0].direction);feed(c,90,1330);assert(c.axes[0].direction==-1);
++ }
++ {auto c=rig();feed(c,90,1000);assert(c.target({91,0,true,false},false,1000)==Result::Ok);feed(c,90,1000);
++  assert(c.axes[0].speedOutputPercent==30);feed(c,90.6f,1020);assert(!c.moving()&&c.axes[0].completed);
++ }
++ {auto c=rig();feed(c,c.azRange.end,1000);assert(c.jog(0,1,false,1000)==Result::Ok);feed(c,c.azRange.end,1000);assert(!c.moving());}
++ {auto c=rig();feed(c,90,1000);assert(c.jog(0,1,false,1000)==Result::Ok);feed(c,90,1000);c.tick(1600);
++  assert(!c.moving()&&c.axes[0].motionError==MotionError::FeedbackStale);}
++ {auto c=rig();feed(c,90,1000);assert(c.jog(0,1,false,1000)==Result::Ok);feed(c,90,1000);
++  c.feedbackAt(0,NAN,false,1010);assert(!c.moving()&&c.axes[0].motionError==MotionError::FeedbackInvalid);}
++ {auto c=rig();feed(c,90,1000);assert(c.jog(0,1,false,1000)==Result::Ok);
++  for(unsigned t=1000;t<=4100;t+=20)feed(c,90,t);
++  assert(!c.moving()&&c.axes[0].motionError==MotionError::Stalled);}
++ {auto c=rig();feed(c,90,1000);assert(c.startAutoTune(0,RegulatorMode::Cascade,20,30,1000)==Result::Unavailable);assert(!c.autoTune.active());
++  auto m=c.motionSettings[0];m.mode=RegulatorMode::Cascade;m.kickEnabled=true;m.holdEnabled=true;m.kickPercent=30;
++  assert(c.configureMotion(0,m,1000));assert(c.motionSettings[0].mode==RegulatorMode::Simple&&!c.motionSettings[0].holdEnabled&&!c.motionSettings[0].kickEnabled);
++ }
++ {auto c=rig();feed(c,90,1000);
++  assert(c.manualDrive(1,2,1,1,1,1,0,false,1000)==Result::Ok);
++  feed(c,90,1000);assert(c.axes[0].speedOutputPercent==30);
++  for(unsigned t=1020;t<2000;t+=20)feed(c,90,t);
++  assert(c.axes[0].direction==1);feed(c,90,2000);assert(!c.moving());
++  assert(c.manualDrive(1,2,1,2,1,1,0,false,2001)!=Result::Ok);
++ }
++ std::cout<<"PASS direct PWM, STOP, reverse interlock, target/limits, feedback/stall and disabled autotune\n";
++}
+diff --git a/tests/http_ingress_tests.cpp b/tests/http_ingress_tests.cpp
+--- a/tests/http_ingress_tests.cpp
++++ b/tests/http_ingress_tests.cpp
+@@ -122,40 +122,43 @@
+   connect("GET /api/status HTTP/1.1\r\nX: "+std::string(1600,'x')+"\r\n\r\n");
+   fakeHeapFree=8172;fakeHeapBlock=1524;
+   web.handleClient();assert(testSocket.parsed==0 && testSocket.reset);
++  // Keep pacing coverage independent of the compact main page size.
++  const std::string largePage(256*1024, 'P');
+   connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
+   fakeHeapFree=8172;fakeHeapBlock=1524;
+-  testSocket.handler=[&] { web.sendPage(200,"text/html",WEB_PAGE,sizeof WEB_PAGE-1); };
++  testSocket.handler=[&] { web.sendPage(200,"text/html",largePage.data(),largePage.size()); };
+   const auto beforePage=fakeHardware.now;
+   web.handleClient();assert(testSocket.handled==1 && !web.writeFailed());
+   const auto bodyStart=testSocket.output.find("\r\n\r\n")+4;
+-  assert(testSocket.output.find("Content-Length: "+std::to_string(sizeof WEB_PAGE-1))!=std::string::npos);
++  assert(testSocket.output.find("Content-Length: "+std::to_string(largePage.size()))!=std::string::npos);
+   // Bulk traffic waits for the control reserve; admitting a fixed-buffer
+   // request at low heap must not bypass that reserve.
+   fakeHardware.now+=20;web.handleClient();assert(testSocket.output.size()==bodyStart && !web.writeFailed());
+   fakeHeapFree=40000;fakeHeapBlock=16384;
+   unsigned controlLoops=0;
+-  while(testSocket.output.size()<bodyStart+sizeof WEB_PAGE-1 && controlLoops<2000) {
++  while(testSocket.output.size()<bodyStart+largePage.size() && controlLoops<2000) {
+     fakeHardware.now+=10;testSocket.sendQuota=256;
+     const auto beforeLoop=fakeHardware.now;
+     web.handleClient();++controlLoops;
+-    if(fakeHardware.now!=beforeLoop || web.writeFailed())std::cerr<<"page failure now="<<fakeHardware.now<<" before="<<beforeLoop<<" elapsed="<<fakeHardware.now-beforePage<<" loops="<<controlLoops<<" bytes="<<testSocket.output.size()-bodyStart<<" total="<<sizeof WEB_PAGE-1<<" cause="<<web.diagnostics().writeCause<<"\n";
++    if(fakeHardware.now!=beforeLoop || web.writeFailed())std::cerr<<"page failure now="<<fakeHardware.now<<" before="<<beforeLoop<<" elapsed="<<fakeHardware.now-beforePage<<" loops="<<controlLoops<<" bytes="<<testSocket.output.size()-bodyStart<<" total="<<largePage.size()<<" cause="<<web.diagnostics().writeCause<<"\n";
+     assert(fakeHardware.now==beforeLoop && !web.writeFailed());
+   }
+   assert(fakeHardware.now-beforePage>250 && controlLoops>100);
+-  assert(testSocket.output.substr(bodyStart)==WEB_PAGE && !testSocket.reset);
++  assert(testSocket.output.substr(bodyStart)==largePage && !testSocket.reset);
+   assert(testSocket.heapBufferReads==0 && testSocket.parsed==1);
+   assert(testSocket.noDelay);
+   // A small transport queue returns ENOMEM until ACKs release it. It must
+   // delay transmission instead of resetting the connection at the first miss.
+   connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
+   fakeHeapFree=40000;fakeHeapBlock=16384;testSocket.queueCapacity=1024;
+-  const char *compressed=reinterpret_cast<const char *>(WEB_PAGE_GZIP);
+-  testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof WEB_PAGE_GZIP); };
++  // The larger hardware asset exercises backpressure even when main is tiny.
++  const char *compressed=reinterpret_cast<const char *>(HARDWARE_PAGE_GZIP);
++  testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof HARDWARE_PAGE_GZIP); };
+   const auto failuresBefore=web.diagnostics().writeFailures;
+   web.handleClient();
+   const auto gzipStart=testSocket.output.find("\r\n\r\n")+4;
+   unsigned waiting=0;
+-  for(unsigned i=0;testSocket.output.size()<gzipStart+sizeof WEB_PAGE_GZIP && i<2000;++i) {
++  for(unsigned i=0;testSocket.output.size()<gzipStart+sizeof HARDWARE_PAGE_GZIP && i<2000;++i) {
+     fakeHardware.now+=5;
+     if(i%16==15) testSocket.outstanding=0; // radio/TCP ACK every 80ms
+     const auto bytesBefore=testSocket.output.size();
+@@ -165,7 +168,7 @@
+     assert(fakeHardware.now==timeBefore && !web.writeFailed());
+   }
+   assert(waiting>20 && web.diagnostics().writeFailures==failuresBefore);
+-  assert(testSocket.output.substr(gzipStart)==std::string(compressed,sizeof WEB_PAGE_GZIP));
++  assert(testSocket.output.substr(gzipStart)==std::string(compressed,sizeof HARDWARE_PAGE_GZIP));
+   // A stable 28 KiB heap (or a fragmented heap below the burst threshold)
+   // must still deliver a complete page. The former all-or-nothing gate sent
+   // its 200/Content-Length header, then no body until the idle deadline.
+@@ -173,7 +176,7 @@
+     connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
+     fakeHeapFree=fragmented?40000:28672;fakeHeapBlock=fragmented?10240:16384;
+     testSocket.queueCapacity=1024;
+-    testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof WEB_PAGE_GZIP); };
++    testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof HARDWARE_PAGE_GZIP); };
+     const auto lowFailures=web.diagnostics().writeFailures;
+     const auto started=fakeHardware.now;
+     web.handleClient();
+@@ -190,7 +193,7 @@
+     }
+     assert(!testSocket.open && !testSocket.reset && fakeHardware.now-started<30000);
+     assert(web.diagnostics().writeFailures==lowFailures);
+-    assert(testSocket.output.substr(lowStart)==std::string(compressed,sizeof WEB_PAGE_GZIP));
++    assert(testSocket.output.substr(lowStart)==std::string(compressed,sizeof HARDWARE_PAGE_GZIP));
+   }
+   // JSON fallback also makes progress below the burst reserve, including a
+   // temporary deeper dip after its first bytes. Never restart the response.
+@@ -210,7 +213,7 @@
+   // Drain a bounded burst so the complete gzip arrives before HTML's deadline.
+   connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
+   fakeHeapFree=80000;fakeHeapBlock=65536;
+-  testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof WEB_PAGE_GZIP); };
++  testSocket.handler=[&] { web.sendPage(200,"text/html",compressed,sizeof HARDWARE_PAGE_GZIP); };
+   web.handleClient();
+   const auto slowStart=testSocket.output.find("\r\n\r\n")+4;
+   unsigned slowLoops=0;
+@@ -220,13 +223,13 @@
+     assert(fakeHardware.now==before && testSocket.output.size()-bytes<=4096);
+   }
+   assert(!web.writeFailed() && !testSocket.open && slowLoops<30);
+-  assert(testSocket.output.substr(slowStart)==std::string(compressed,sizeof WEB_PAGE_GZIP));
++  assert(testSocket.output.substr(slowStart)==std::string(compressed,sizeof HARDWARE_PAGE_GZIP));
+   // Reproduce the device's partial gzip response. TCP retransmission can take
+   // 3s initially, followed by a longer backoff. The former 2s deadline killed
+   // this response; HTML must survive a 9s stall without blocking the loop.
+   connect("GET / HTTP/1.1\r\nHost: esp32\r\n\r\n");
+   fakeHeapFree=40000;fakeHeapBlock=16384;
+-  testSocket.handler=[&] { web.sendPage(200,"text/html; charset=utf-8",compressed,sizeof WEB_PAGE_GZIP); };
++  testSocket.handler=[&] { web.sendPage(200,"text/html; charset=utf-8",compressed,sizeof HARDWARE_PAGE_GZIP); };
+   const auto failuresBeforeStall=web.diagnostics().writeFailures;
+   web.handleClient();
+   const auto recoveryStart=testSocket.output.find("\r\n\r\n")+4;
+@@ -242,10 +245,10 @@
+   }
+   testSocket.blockWrites=false;testSocket.sendQuota=size_t(-1);
+   // Allow the larger settings page to drain after recovery; the loop remains bounded.
+-  const auto recoveryDeadline=fakeHardware.now+uint32_t((sizeof WEB_PAGE_GZIP+511)/512)*20+500;
++  const auto recoveryDeadline=fakeHardware.now+uint32_t((sizeof HARDWARE_PAGE_GZIP+511)/512)*20+500;
+   while(testSocket.open && fakeHardware.now<recoveryDeadline) { fakeHardware.now+=20;web.handleClient(); }
+   assert(!testSocket.open && !testSocket.reset && web.diagnostics().writeFailures==failuresBeforeStall);
+-  assert(testSocket.output.substr(recoveryStart)==std::string(compressed,sizeof WEB_PAGE_GZIP));
++  assert(testSocket.output.substr(recoveryStart)==std::string(compressed,sizeof HARDWARE_PAGE_GZIP));
+   connect(request);testSocket.handler=[&] { web.sendBuffer(200,"application/json",WEB_PAGE,1500); };
+   web.handleClient();const auto statusStart=testSocket.output.find("\r\n\r\n")+4;
+   for(unsigned i=0;testSocket.output.size()<statusStart+1500 && i<20;++i) {
+diff --git a/tests/minimal_storage_tests.cpp b/tests/minimal_storage_tests.cpp
+new file mode 100644
+--- /dev/null
++++ b/tests/minimal_storage_tests.cpp
+@@ -0,0 +1,89 @@
++#include "storage.hpp"
++#include "motion_json.hpp"
++#include <cassert>
++#include <iostream>
++#include <limits>
++using namespace forkrot;
++static void settingsStorageFailures() {
++  Preferences::database.clear();Storage storage;Runtime r;
++  r.controller.hardware.simulation=false;r.controller.hardware.drive=DRIVE_YAESU;
++  r.loggerSettings.reportHost="192.168.1.2";
++  assert(storage.saveForkSettings(r));
++  for(const char *key:{"model","mode","speedon","speed","startspd","approachspd","accelms","decelms","slowdeg","azcoast","elcoast","azdecelf","eldecelf","name","nport","pport","rport","cmdport","rhost","nmanual","pmanual","gmanual","rmanual","azmech"}) {
++    Preferences::failedKey=key;assert(!storage.saveForkSettings(r));Preferences::failedKey.clear();
++  }
++  Preferences::corruptStringKey="name";assert(!storage.saveForkSettings(r));Preferences::corruptStringKey.clear();
++  assert(storage.saveForkSettings(r));
++  // Empty string writes must create a key, rather than match a default value.
++  r.loggerSettings.reportHost.clear();Preferences::database["forkcfg"].erase("rhost");Preferences::failedStringKey="rhost";
++  assert(!storage.saveForkSettings(r));Preferences::failedStringKey.clear();assert(storage.saveForkSettings(r));
++  r.controller.hardware.drive=DRIVE_BTS7960;
++  assert(storage.saveForkSettings(r));
++  for(const char *key:{"azwork","elwork","azstart","elstart","azapproach","elapproach","azaccel","elaccel","azdecel","eldecel","azslow","elslow","azcoast","elcoast","azdecelf","eldecelf","controlhz","r200","r201"}) {
++    Preferences::failedKey=key;assert(!storage.saveForkSettings(r));Preferences::failedKey.clear();
++  }
++  for(const char *space:{"forkcfg","forkpwm","forkmotion"}) {
++    Preferences::failedBeginNamespace=space;assert(!storage.saveForkSettings(r));Preferences::failedBeginNamespace.clear();
++  }
++  r.hud.config.role=DeviceRole::Hud;r.loggerSettings.reportHost="192.168.1.3";assert(storage.saveForkSettings(r));
++  for(const char *key:{"hudname","nport","nmanual","rhost"}) {
++    Preferences::failedKey=key;assert(!storage.saveForkSettings(r));Preferences::failedKey.clear();
++  }
++  Preferences::failedBeginNamespace="forkcfg";assert(!storage.saveForkSettings(r));Preferences::failedBeginNamespace.clear();
++  assert(storage.saveForkSettings(r));Preferences::database.clear();
++}
++int main(){
++  settingsStorageFailures();
++  {
++    Preferences::database.clear();Storage storage;Runtime r;
++    auto &c=r.controller;c.hardware.simulation=false;c.hardware.drive=DRIVE_BTS7960;c.speedEnabled=true;
++    for(unsigned hz:{50u,100u,200u}) {
++      assert(api(c,r.protocol,r.loggerSettings,"/api/settings",{{"controlHz",std::to_string(hz)}},0).status==200);
++      assert(c.controlPeriodMs()==1000/hz);
++      assert(storage.saveForkSettings(r));Runtime reload;reload.controller.hardware=c.hardware;
++      storage.loadForkSettings(reload);assert(reload.controller.controlPeriodMs()==1000/hz);
++    }
++    const auto saved=c.motionSettings;
++    for(const char *bad:{"0","51","150","201","100.5","nan"}) {
++      assert(api(c,r.protocol,r.loggerSettings,"/api/settings",{{"controlHz",bad},{"azMotionVelocity","10"}},0).status==400);
++      assert(c.controlPeriodMs()==5 && c.motionSettings==saved);
++    }
++    c.feedbackAt(0,90,true,0);c.feedbackAt(1,90,true,0);
++    assert(c.jog(0,1,false,0)==Result::Ok);c.tick(0);
++    assert(api(c,r.protocol,r.loggerSettings,"/api/settings",{{"controlHz","50"}},1).status==200);
++    assert(!c.moving() && !c.axes[0].tracking && !c.axes[1].holdArmed);
++    Preferences::database.clear();
++  }
++  {
++    Preferences::database.clear();Runtime r;Storage storage;
++    auto &c=r.controller;c.hardware.simulation=false;c.hardware.drive=DRIVE_BTS7960;
++    c.feedbackAt(0,90,true,0);c.feedbackAt(1,90,true,0);
++    assert(c.setRuntimeSpeed(0,20,0)==Result::Ok);
++    assert(c.jog(0,1,false,0)==Result::Ok);c.tick(0);assert(c.axes[0].direction==1);
++    const auto opened=Preferences::opened.size();
++    assert(storage.serviceRuntimeSpeeds(r,40000));
++    if(MotionControlPeriodMs<20) {
++      assert(c.runtimeSpeeds.dirty && Preferences::opened.size()==opened);
++      assert(c.axes[0].direction==1);
++      // Forced restart flush is retained even when an axis is active.
++      assert(storage.serviceRuntimeSpeeds(r,40001,true));
++      assert(!c.runtimeSpeeds.dirty);
++      assert(c.setRuntimeSpeed(0,21,40002)==Result::Ok);
++      assert(storage.serviceRuntimeSpeeds(r,80002));assert(c.runtimeSpeeds.dirty);
++      c.stopNow(-1,80003);
++      assert(storage.serviceRuntimeSpeeds(r,80003));assert(!c.runtimeSpeeds.dirty);
++    } else assert(!c.runtimeSpeeds.dirty);
++    Preferences::database.clear();
++  }
++  {
++    Preferences::database.clear();Runtime r;Storage storage;
++    r.controller.hardware.drive=DRIVE_BTS7960;r.controller.hardware.simulation=false;
++    auto &m=r.controller.motionSettings[0];m.mode=RegulatorMode::Cascade;m.holdEnabled=true;m.kickEnabled=true;m.positionKp=7;
++    assert(storage.saveForkSettings(r));const auto records=Preferences::database;
++    Runtime reload;reload.controller.hardware=r.controller.hardware;storage.loadForkSettings(reload);
++    assert(reload.controller.motionSettings[0].mode==RegulatorMode::Simple);
++    assert(!reload.controller.motionSettings[0].holdEnabled&&!reload.controller.motionSettings[0].kickEnabled);
++    assert(Preferences::database==records);
++  }
++  std::cout << "PASS minimal storage failures, frequency/STOP, deferred speed persistence and legacy tuning load without NVS rewrite\n";
++}
+diff --git a/tools/build_native.sh b/tools/build_native.sh
+--- a/tools/build_native.sh
++++ b/tools/build_native.sh
+@@ -34,7 +34,7 @@
+ ./build/tcp_peer_no_core_lock_tests
+ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DLWIP_IPV6=0 -I tests/tcp_fakes -I G5500_Fork tests/tcp_peer_tests.cpp -o build/tcp_peer_ipv4_tests
+ ./build/tcp_peer_ipv4_tests
+-MOTION_SOURCES="G5500_Fork/motion.cpp build/motion/libruckig.a"
++MOTION_SOURCES="G5500_Fork/motion.cpp"
+ CORE_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp G5500_Fork/mqtt_bridge.cpp G5500_Fork/mqtt_service.cpp"
+ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork $CORE_SOURCES tests/planner_memory_tests.cpp -o build/planner_memory_tests
+ ./build/planner_memory_tests
+@@ -336,3 +336,16 @@
+ ./build/pin_map_tests_4_d0
+ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -DDISPLAY_KIND=6 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/pin_map_tests.cpp -o build/pin_map_tests_4_d6
+ ./build/pin_map_tests_4_d6
++
++${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -DDRIVE_INTERFACE=2 -I G5500_Fork $CORE_SOURCES tests/direct_motion_tests.cpp -o build/direct_motion_tests
++./build/direct_motion_tests
++
++${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/minimal_storage_tests.cpp -o build/minimal_storage_tests
++./build/minimal_storage_tests
++
++${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork $CORE_SOURCES tests/az_range_tests.cpp -o build/essential_az_range_tests
++
++${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork $CORE_SOURCES tests/el_range_tests.cpp -o build/essential_el_range_tests
++
++${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -DDISPLAY_SUPPORT=0 -DLOCAL_INPUT_SUPPORT=0 -DWEB_LIVE_SUPPORT=0 -DRS485_SUPPORT=0 -DOTA_SUPPORT=0 -DLOG_HISTORY_SUPPORT=0 -DRESET_HISTORY_SUPPORT=0 -DN1MM_SUPPORT=1 -DPSTROTATOR_SUPPORT=1 -DROTCTLD_SUPPORT=1 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/esp32_spp_api_tests.cpp -o build/esp32_spp_api_tests
++./build/esp32_spp_api_tests
+diff --git a/tests/esp32_spp_api_tests.cpp b/tests/esp32_spp_api_tests.cpp
+new file mode 100644
+--- /dev/null
++++ b/tests/esp32_spp_api_tests.cpp
+@@ -0,0 +1,30 @@
++#include "device_service_fixture.hpp"
++static void essentialProtocolSettingsTests() {
++  for(bool wire:{false,true}) {
++    Fixture f;auto &r=f.runtime;r.hud.config.role=DeviceRole::Controller;r.controller.remote=nullptr;
++    r.controller.driveFault=false;r.controller.fault.clear();r.controller.feedback(90,45,true,true);
++    assert(f.call("POST","/api/settings","n1mmPort=12041&pstPort=1236&reportPort=13011&reportHost=192.0.2.15&n1mmManualFollow=1&pstManualFollow=0&rotctldManualFollow=1&gs232ManualFollow=0",wire).status==200);
++    const auto response=f.call("GET","/api/config","view=essential",wire);
++    assert(response.status==200 && response.body.size()<=COMMAND_PAGE_MAX);
++    for(const char *field:{"\"n1mmPort\":12041","\"pstPort\":1236","\"reportPort\":13011","\"reportHost\":\"192.0.2.15\"","\"n1mmManualFollow\":true","\"pstManualFollow\":false","\"rotctldManualFollow\":true","\"gs232ManualFollow\":false"})
++      assert(response.body.find(field)!=response.body.npos);
++    Runtime loaded;f.storage.loadForkSettings(loaded);
++    assert(loaded.loggerSettings.n1mmPort==12041 && loaded.loggerSettings.pstPort==1236);
++    assert(loaded.loggerSettings.reportPort==13011 && loaded.loggerSettings.reportHost=="192.0.2.15");
++    assert(loaded.protocol.manualFollow.n1mm && loaded.protocol.manualFollow.rotctld);
++    assert(!loaded.protocol.manualFollow.pst && !loaded.protocol.manualFollow.gs232);
++    assert(r.protocol.datagram("<PST><AZIMUTH>100</AZIMUTH></PST>",fakeHardware.now).result==Result::Pending);
++    const auto epoch=r.controller.stopEpoch;
++    assert(f.call("POST","/api/settings","reportHost=",wire).status==200);
++    assert(r.controller.pendingValid && r.controller.pending.az==100 && r.controller.stopEpoch==epoch);
++    assert(!r.controller.moving()); // Saving protocol settings never executes a pending target.
++    const auto before=Preferences::database;
++    assert(f.call("POST","/api/settings","n1mmPort=4534",wire).status==400);
++    assert(Preferences::database==before);
++  }
++}
++int main() {
++  static_assert(ROTCTLD_SUPPORT && N1MM_SUPPORT && PSTROTATOR_SUPPORT);
++  essentialProtocolSettingsTests();
++  std::cout << "PASS compact protocol settings: HTTP/wire projection, independent policies, NVS roundtrip and port conflicts\n";
++}

@@ -14,7 +14,7 @@
 #endif
 
 // Compile-time capabilities. Unlike runtime defaults these remove services.
-// Обычный ESP32 WROOM/WROVER по умолчанию: без SPP, WebSocket, истории
+// ESP32 WROOM/WROVER и Sunton ESP32-3248S035C: без SPP, WebSocket, истории
 // логов/RSSI и OTA, с компактными Wi-Fi-буферами. Флаги -D имеют приоритет.
 // При 0, Б (BIN/DRAM/IRAM): ST 190464/8048/424; S3 512560/8040/256.
 // Вместе с WebSocket; heap HTTP/SDK не измерена. WS: stack 6144 Б; очереди выделяются на подключение, общие JSON-снимки — блоками по 256 Б, бинарный снимок 160 Б.
@@ -184,7 +184,7 @@
 // BOARD_WAVESHARE_S3_ETH — Waveshare ESP32-S3-ETH, W5500 + DVP-камера.
 // BOARD_CROWPANEL_21 — Elecrow DHE03921D, круглый ST7701 480x480.
 // BOARD_ESP32_2424S012C — Guition ESP32-C3, GC9A01 240x240 + CST816.
-// BOARD_ESP32_C3 — обычная ESP32-C3 с Flash 4 МБ, без дисплея.
+// BOARD_ESP32_C3 — обычная ESP32-C3 с Flash 4 МБ; внешний дисплей выбирается отдельно.
 // BOARD_ESP32_3248S035C — Sunton ESP32, ST7796 480x320 + GT911.
 #ifndef BOARD_PROFILE
 #define BOARD_PROFILE BOARD_AUTO
@@ -215,8 +215,8 @@
 // DISPLAY_ILI9341 — TFT ILI9341 + сенсор XPT2046.
 // DISPLAY_LCD1602 — параллельный LCD1602 / HD44780 (не I2C).
 // DISPLAY_CROWPANEL_21 — встроенный экран CrowPanel 2.1 (только эта плата).
-// DISPLAY_GC9A01 — встроенный экран ESP32-2424S012C, включая Y(B).
-// DISPLAY_ST7796 — встроенный экран ESP32-3248S035C.
+// DISPLAY_GC9A01 — GC9A01/CST816, внешний или встроенный ESP32-2424S012C.
+// DISPLAY_ST7796 — ST7796/GT911, внешний или встроенный ESP32-3248S035C.
 // DISPLAY_ST77916 — внешний Waveshare 1.85, QSPI + CST816S, ESP32 / ESP32-S3.
 #ifndef DISPLAY_KIND
 #define DISPLAY_KIND DISPLAY_NONE

@@ -1,2 +1,2 @@
-* text=auto eol=lf
-*.pdf binary
+# Unified patches use a single space to represent an empty context line.
+tools/profiles/*.patch whitespace=-blank-at-eol

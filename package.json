@@ -3,12 +3,16 @@
   "private": true,
   "scripts": {
     "test:web": "node tools/check_web.cjs",
-    "test:wifi-web": "node tools/check_wifi_web.cjs"
+    "test:wifi-web": "node tools/check_wifi_web.cjs",
+    "build:web-flasher": "node tools/build_web_flasher.mjs",
+    "test:web-flasher": "node tools/check_web_flasher.cjs",
+    "test:generic-displays": "node tools/check_generic_display_web.cjs"
   },
   "engines": {
     "node": ">=20"
   },
   "devDependencies": {
-    "playwright": "1.63.0"
+    "playwright": "1.63.0",
+    "esp-web-tools": "10.4.0"
   }
 }

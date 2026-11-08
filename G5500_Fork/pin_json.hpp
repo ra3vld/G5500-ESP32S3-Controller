@@ -13,7 +13,7 @@ inline void writePinMap(JsonWriter &j,const PinMap &pins) {
 }
 inline void writePinCapabilities(JsonWriter &j,bool hudUart) {
   const PinMap defaults;
-  j << "{\"displayKind\":" << DISPLAY_KIND << ",\"localDriveElectrical\":" << unsigned(CROWPANEL_LOCAL_DRIVE)
+  j << "{\"boardProfile\":" << SELECTED_BOARD << ",\"c3\":" << unsigned(FORK_C3) << ",\"displayKind\":" << DISPLAY_KIND << ",\"localDriveElectrical\":" << unsigned(CROWPANEL_LOCAL_DRIVE)
     << ",\"optionalDrive\":" << unsigned(FORK_OPTIONAL_DRIVE)
     << ",\"hudUart\":" << unsigned(hudUart) << ",\"roles\":[";
   bool first=true;

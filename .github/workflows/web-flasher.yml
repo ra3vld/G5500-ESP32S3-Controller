@@ -1,0 +1,202 @@
+name: Firmware and web flasher
+
+on:
+  push:
+    branches: [main, web_flasher]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-flasher-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+      full: ${{ steps.matrix.outputs.full }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: python3 -m unittest discover -s tests -p test_web_flasher.py
+      - run: python3 -m unittest discover -s tests -p test_build_config.py
+      - run: python3 -m unittest discover -s tests -p test_package_web_release.py
+      - run: python3 -m pip install Markdown==3.5.2
+      - run: npm run build:web-flasher -- --allow-missing
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:web-flasher
+      - run: npm run test:generic-displays
+      - id: matrix
+        env:
+          FULL_BUILD: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        run: |
+          if [[ "$FULL_BUILD" == true ]]; then
+            echo "value=$(python3 tools/web_flasher.py matrix)" >> "$GITHUB_OUTPUT"
+          else
+            echo 'value={"include":[{"profile":"esp32s3_n16r8_headless"}]}' >> "$GITHUB_OUTPUT"
+          fi
+          echo "full=$FULL_BUILD" >> "$GITHUB_OUTPUT"
+      - name: Verify release tag and clean identity
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 tools/package_web_release.py --check-tag "$RELEASE_TAG"
+
+  firmware:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJSON(needs.check.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Cache the shared pinned toolchains and SDK
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/platforms
+            ~/.platformio/packages-pioarduino-55.03.312-1
+          key: pio-sdk-${{ runner.os }}-${{ hashFiles('platformio.ini', 'requirements-platformio.txt') }}-v1
+      - name: Cache the compact SPP SDK
+        if: matrix.profile == 'esp32_spp'
+        uses: actions/cache@v4
+        with:
+          path: .pio/packages-esp32-spp-55.03.312-1
+          key: pio-spp-${{ runner.os }}-${{ hashFiles('platformio/esp32_spp.ini', 'tools/sdkconfig_esp32_spp.defaults', 'tools/build_esp32_spp.py', 'tools/build_s2_sdk.py', 'tools/web_flasher_spp.py', 'requirements-platformio.txt') }}-v1
+      - run: python3 -m pip install -r requirements-platformio.txt
+      - run: python3 tools/generate_web_assets.py --check
+      - if: matrix.profile == 'esp32_spp'
+        run: python3 tools/check_web_flasher_spp.py
+      - env:
+          PROFILE: ${{ matrix.profile }}
+        run: python3 tools/web_flasher.py build "$PROFILE" --jobs 4
+      - name: Retain the matching ELF for diagnostics
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: cp ".pio/web-flasher/$PROFILE/web_$PROFILE/firmware.elf" "artifacts/web-flasher/$PROFILE/firmware.elf"
+      - uses: actions/upload-artifact@v4
+        if: needs.check.outputs.full == 'true'
+        with:
+          name: firmware-${{ matrix.profile }}
+          path: artifacts/web-flasher/
+          if-no-files-found: error
+          retention-days: 1
+
+  site:
+    if: needs.check.outputs.full == 'true'
+    needs: [check, firmware]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: firmware-*
+          path: artifacts/web-flasher
+          merge-multiple: true
+      - run: npm ci --ignore-scripts
+      - run: python3 -m pip install Markdown==3.5.2
+      - run: npm run build:web-flasher
+      - run: python3 tools/check_web_flasher_catalog.py
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:web-flasher
+      - name: Package the verified release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 tools/package_web_release.py --tag "$RELEASE_TAG"
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: release-assets
+          path: dist/release/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: web-flasher-site
+          path: dist/web-flasher/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-pages-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          path: dist/web-flasher
+          retention-days: 1
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Verify and publish the complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          cd release-assets
+          sha256sum --check SHA256SUMS
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --notes-file RELEASE_NOTES.md
+          fi
+          gh release upload "$RELEASE_TAG" ./*.zip release-manifest.json RELEASE_NOTES.md SHA256SUMS --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest
+
+  deploy:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [site, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -31,7 +31,7 @@
 
 // Expanded after board selection in build_config_checks.hpp. Dedicated SPP
 // builds retain their own service composition; explicit -D flags take priority.
-#define G5500_ESP32_LOW_RAM_DEFAULTS (SELECTED_BOARD == BOARD_ESP32 && !ESP32_SPP_PROFILE)
+#define G5500_ESP32_LOW_RAM_DEFAULTS ((SELECTED_BOARD == BOARD_ESP32 || SELECTED_BOARD == BOARD_ESP32_3248S035C) && !ESP32_SPP_PROFILE)
 
 #define DISPLAY_NONE 0
 #define DISPLAY_ILI9341 1
