@@ -7,6 +7,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      profile:
+        description: Build the full catalog or only the compact SPP profile
+        type: choice
+        default: all
+        options: [all, esp32_spp]
 
 permissions:
   contents: read
@@ -44,13 +50,14 @@ jobs:
       - run: npm run test:generic-displays
       - id: matrix
         env:
-          FULL_BUILD: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+          FULL_BUILD: ${{ startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.profile != 'esp32_spp') }}
+          SINGLE_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.profile == 'esp32_spp' && 'esp32_spp' || 'esp32s3_n16r8_headless' }}
         shell: bash
         run: |
           if [[ "$FULL_BUILD" == true ]]; then
             echo "value=$(python3 tools/web_flasher.py matrix)" >> "$GITHUB_OUTPUT"
           else
-            echo 'value={"include":[{"profile":"esp32s3_n16r8_headless"}]}' >> "$GITHUB_OUTPUT"
+            echo "value={\"include\":[{\"profile\":\"$SINGLE_PROFILE\"}]}" >> "$GITHUB_OUTPUT"
           fi
           echo "full=$FULL_BUILD" >> "$GITHUB_OUTPUT"
       - name: Verify release tag and clean identity
@@ -63,6 +70,11 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      # HybridCompile creates its own Python environment. Apply the same pin
+      # there, including the pip fallback, instead of resolving 6.2.0.post1.
+      UV_CONSTRAINT: ${{ github.workspace }}/requirements-platformio.txt
+      PIP_CONSTRAINT: ${{ github.workspace }}/requirements-platformio.txt
     strategy:
       fail-fast: false
       max-parallel: 3
@@ -99,7 +111,7 @@ jobs:
           PROFILE: ${{ matrix.profile }}
         run: cp ".pio/web-flasher/$PROFILE/web_$PROFILE/firmware.elf" "artifacts/web-flasher/$PROFILE/firmware.elf"
       - uses: actions/upload-artifact@v4
-        if: needs.check.outputs.full == 'true'
+        if: needs.check.outputs.full == 'true' || github.event_name == 'workflow_dispatch'
         with:
           name: firmware-${{ matrix.profile }}
           path: artifacts/web-flasher/
