@@ -242,7 +242,7 @@ async function main() {
         $('postInstallConnections').href = connectionsURL(profile);
         $('postInstallConnections').textContent = profile.docs.endsWith('generic-displays.md')
           ? 'Открыть назначение GPIO и подключение дисплея ↗'
-          : 'Открыть подключения по умолчанию ↗';
+          : 'Открыть схему подключения периферии к плате ↗';
       });
     })
       .observe(document.body, {childList: true});

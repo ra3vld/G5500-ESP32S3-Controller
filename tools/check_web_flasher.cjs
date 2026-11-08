@@ -7,7 +7,7 @@ const {chromium} = require('playwright');
 const root = path.resolve(__dirname, '..');
 const directory = path.join(root, 'dist/web-flasher');
 const original = JSON.parse(fs.readFileSync(path.join(directory, 'catalog.json')));
-const types = {'.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.json':'application/json', '.webp':'image/webp'};
+const types = {'.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.json':'application/json', '.webp':'image/webp', '.svg':'image/svg+xml'};
 const server = http.createServer((request, response) => {
   const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
   const relative = pathname.replace(/^\/controller\//, '') || 'index.html';
@@ -64,6 +64,12 @@ function readyCatalog() {
     page.on('request', (request) => {if (!request.url().startsWith(base)) external.push(request.url());});
     await page.goto(base);
     await page.locator('#workspace').waitFor({state:'visible'});
+    const faviconURL = await page.locator('link[rel="icon"]').evaluate((link) => link.href);
+    assert.equal(faviconURL, base + 'images/favicon.svg');
+    const favicon = await page.request.get(faviconURL);
+    assert.equal(favicon.status(), 200);
+    assert.match(favicon.headers()['content-type'], /image\/svg\+xml/);
+    assert.deepEqual(await favicon.body(), fs.readFileSync(path.join(root, 'web-flasher/images/favicon.svg')));
     assert.equal(await page.getByText('Ваша плата.', {exact:false}).count(), 0);
     assert.equal(await page.getByText('Ваша конфигурация.', {exact:false}).count(), 0);
     assert.equal(await page.getByText('G5500 Controller · RA3VLD / UA1CFM', {exact:true}).count(), 0);
@@ -264,6 +270,7 @@ function readyCatalog() {
     const dialogName = fs.readdirSync(path.join(directory, 'vendor')).find((n) => /^install-dialog-.*\.js$/.test(n));
     assert.match(fs.readFileSync(path.join(directory, 'vendor', dialogName), 'utf8'), /this\._installState=e,this\.dispatchEvent\(new CustomEvent\("g5500-flash-state"/);
     for (const [board, profile, expected] of [
+      ['guition','esp32_2424s012c','esp32-2424s012c.html#местный-релейный-привод'],
       ['crowpanel','crowpanel_21','crowpanel-21.html#подключения'],
       ['crowpanel','crowpanel_21_az','crowpanel-az.html#вход-положения-вместо-подсветки'],
       ['s3','esp32s3_n16r8_gc9a01','generic-displays.html#подключение-и-первая-настройка'],
@@ -290,6 +297,18 @@ function readyCatalog() {
       if (expected.includes('#')) assert.ok((await doc.text()).includes('id="' + expected.split('#')[1] + '"'));
       await page.evaluate(() => document.querySelector('ewt-install-dialog').remove());
       await page.waitForFunction(() => !document.getElementById('boardSelect').disabled);
+      if (board === 'guition') {
+        for (const width of [1280,390]) {
+          await page.setViewportSize({width,height:1000});
+          for (const selector of ['#postInstall > strong','#postInstallProfile','#postInstallConnections']) {
+            assert.ok(await page.locator(selector).evaluate((element) => parseFloat(getComputedStyle(element).fontSize) >= 24), selector);
+          }
+          assert.ok((await page.locator('#postInstallConnections').boundingBox()).height >= 96);
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+          await page.locator('#postInstall').screenshot({path:path.join(output, `post-install-guition-${width}.png`)});
+        }
+        await page.setViewportSize({width:1280,height:1000});
+      }
     }
     for (const width of [1280,390]) {
       await page.setViewportSize({width,height:1000});

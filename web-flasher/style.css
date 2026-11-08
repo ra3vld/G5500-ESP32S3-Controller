@@ -7,4 +7,12 @@
 
 .board-preview{margin:20px 0 0;border-top:1px solid var(--line);padding-top:18px}.board-preview a{display:block;border-radius:8px;background:#fff;padding:10px}.board-preview img{display:block;width:100%;height:210px;object-fit:contain}.board-preview figcaption{font-size:10px;color:var(--muted);line-height:1.6;margin-top:9px}.service-choices{margin-top:23px;gap:12px}.service-choices legend{font-size:13px;font-weight:600;margin-bottom:12px}.service-choices label{display:flex;gap:10px;font-size:12px;align-items:center;cursor:pointer}.service-choices input{width:17px;height:17px;accent-color:var(--accent);flex:none}.service-choices .unavailable{color:#8592a2;cursor:default}.erase-advice{font-size:11px;line-height:1.8;color:var(--warm);margin:18px 0 0}
 
-.post-install{margin-top:18px;padding:16px;border:1px solid #416953;border-radius:9px;background:#172a20;font-size:12px;line-height:1.7}.post-install>strong{color:var(--accent)}.post-install p{margin:8px 0}.post-install .text-link{display:inline-block;padding:8px 0}
+.post-install{display:grid;gap:24px;margin-top:28px;padding:32px 28px;border:3px solid #d9ffad;border-radius:16px;background:linear-gradient(135deg,#d1ff78,#8eedb0);box-shadow:0 0 36px #9bff7133;color:#123822;font-size:24px;line-height:1.45;overflow-wrap:anywhere}
+.post-install-mark{display:grid;place-items:center;width:72px;height:72px;border-radius:50%;background:#153c27;color:#d1ff78;font-size:48px;font-weight:800;line-height:1}
+.post-install>strong{color:#123822;font-size:32px;font-weight:800;line-height:1.2;letter-spacing:-.02em}
+.post-install p{margin:0}
+#postInstallProfile{font-size:24px;font-weight:600}
+.post-install .text-link{display:flex;align-items:center;justify-content:center;min-height:96px;padding:20px 16px;border:2px solid #123822;border-radius:10px;background:#123822;color:#f1ffe9;font-size:24px;font-weight:750;line-height:1.35;text-align:center}
+.post-install .text-link:hover{background:#214f32}
+.post-install .text-link:focus-visible{outline:3px solid #123822;outline-offset:5px}
+.post-install .small{color:#28503a;font-size:18px;line-height:1.55}

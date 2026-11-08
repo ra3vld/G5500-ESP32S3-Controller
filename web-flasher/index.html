@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Выбор готовой прошивки G5500 Controller и установка на ESP32 через USB из браузера.">
   <title>G5500 · Выбор и установка прошивки</title>
+  <link rel="icon" type="image/svg+xml" sizes="any" href="./images/favicon.svg">
   <link rel="stylesheet" href="./style.css">
   <script type="module" src="./app.js"></script>
 </head>
@@ -60,9 +61,10 @@
           <label class="confirmation"><input type="checkbox" id="confirmHardware"><span>Проверил модель платы, Flash, PSRAM и подключённый дисплей.</span></label>
           <div id="installerMount"></div>
           <div id="postInstall" class="post-install" role="status" hidden>
+            <span class="post-install-mark" aria-hidden="true">✓</span>
             <strong>Запись прошивки завершена.</strong>
             <p id="postInstallProfile"></p>
-            <a id="postInstallConnections" class="text-link" target="_blank" rel="noopener noreferrer">Открыть подключения по умолчанию ↗</a>
+            <a id="postInstallConnections" class="text-link" target="_blank" rel="noopener noreferrer">Открыть схему подключения периферии к плате ↗</a>
             <p class="small muted">Сохранённые настройки GPIO могут отличаться. Проверьте их в разделе «Оборудование».</p>
           </div>
           <p id="installHint" class="small muted" role="status"></p>

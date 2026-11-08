@@ -6,25 +6,36 @@ import hashlib
 import json
 from pathlib import Path
 import struct
+import subprocess
 import urllib.request
 from urllib.parse import urljoin, quote
 import zipfile
 from web_flasher import profiles, source_digest, validate_build, sha256, planned_capabilities
-from project_version import resolve
+from project_version import RELEASE, render, resolve
 
 CHIP_IDS = {'ESP32': 0, 'ESP32-S2': 2, 'ESP32-C3': 5, 'ESP32-S3': 9}
 
 
-def verify(site, base_url=None):
+def released_identity(tag, root=Path(__file__).resolve().parents[1]):
+    if not tag.startswith('v') or not RELEASE.fullmatch(tag[1:]):
+        raise ValueError('Expected a stable vMAJOR.MINOR.PATCH release tag')
+    commit = subprocess.check_output(
+        ['git', 'rev-parse', '--verify', '--short=7', 'refs/tags/' + tag + '^{commit}'],
+        cwd=root, text=True).strip()
+    return dict(version=tag[1:], commit=commit, dirty=False)
+
+
+def verify(site, base_url=None, firmware_tag=None):
     site = Path(site).resolve()
     catalog = json.loads((site / 'catalog.json').read_text())
     expected = profiles()
     assert len(catalog['profiles']) == len(expected)
     assert [p['id'] for p in catalog['profiles']] == [p['id'] for p in expected]
-    identity = resolve()
+    identity = released_identity(firmware_tag) if firmware_tag else resolve()
     digest = source_digest()
     assert catalog['identity'] == identity
-    files = {'catalog.json', 'index.html', 'app.js', 'style.css', 'THIRD_PARTY_LICENSES.txt'}
+    files = {'catalog.json', 'index.html', 'app.js', 'style.css', 'THIRD_PARTY_LICENSES.txt', 'images/favicon.svg'}
+    assert (site / 'images/favicon.svg').read_bytes() == (Path(__file__).resolve().parents[1] / 'web-flasher/images/favicon.svg').read_bytes()
     revisions = set()
     for profile, actual in zip(expected, catalog['profiles']):
         assert actual['build'] is not None, profile['id']
@@ -73,8 +84,11 @@ def verify(site, base_url=None):
     with zipfile.ZipFile(site / 'source-code.zip') as archive:
         assert archive.testzip() is None
         assert 'G5500_Fork/build_identity.hpp' in archive.namelist()
+        assert archive.read('G5500_Fork/build_identity.hpp').decode() == render(identity)
         for name in ['requirements-platformio.txt', 'platformio/esp32_spp.ini', '.github/workflows/web-flasher.yml']:
-            assert archive.read(name) == (Path(__file__).resolve().parents[1] / name).read_bytes()
+            root = Path(__file__).resolve().parents[1]
+            expected_source = subprocess.check_output(['git', 'show', firmware_tag + ':' + name], cwd=root) if firmware_tag else (root / name).read_bytes()
+            assert archive.read(name) == expected_source
         assert all('local-notes' not in Path(name).parts and '.pio' not in Path(name).parts for name in archive.namelist())
     print('PASS static catalog: ' + str(len(expected)) + ' images, one source revision, actual chip/flash/display/services, ELF identity, all manifests and USB archives', flush=True)
     if base_url:
@@ -95,7 +109,8 @@ if __name__ == '__main__':
     parser.add_argument('--site', default='dist/web-flasher')
     parser.add_argument('--url')
     parser.add_argument('--report')
+    parser.add_argument('--firmware-tag', help='Verify unchanged firmware from this release with the current website')
     args = parser.parse_args()
-    result = verify(args.site, args.url)
+    result = verify(args.site, args.url, args.firmware_tag)
     if args.report:
         Path(args.report).write_text(json.dumps(result, indent=2) + '\n')

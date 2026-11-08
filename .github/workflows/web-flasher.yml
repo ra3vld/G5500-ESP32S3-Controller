@@ -4,6 +4,16 @@ on:
   push:
     branches: [main, web_flasher]
     tags: ['v*']
+    paths-ignore:
+      - 'web-flasher/index.html'
+      - 'web-flasher/app.js'
+      - 'web-flasher/style.css'
+      - 'web-flasher/images/favicon.svg'
+      - 'tools/update_web_flasher_site.py'
+      - 'tools/check_web_flasher_catalog.py'
+      - 'tools/check_web_flasher.cjs'
+      - 'tests/test_update_web_flasher_site.py'
+      - '.github/workflows/web-flasher-site.yml'
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -202,6 +212,9 @@ jobs:
     needs: [site, release]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write
