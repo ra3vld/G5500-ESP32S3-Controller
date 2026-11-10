@@ -209,7 +209,7 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 
 .safety-bar{box-sizing:border-box;position:fixed;inset:0 0 auto;z-index:60;display:flex;align-items:center;gap:12px;padding:8px max(12px,calc((100vw - 960px)/2));background:#132532;border-bottom:2px solid #7e4248;min-height:64px}.safety-bar button{min-width:100px;min-height:44px}.safety-bar span{font-size:14px;overflow-wrap:anywhere}body{padding-top:68px;box-sizing:border-box}body.setup-view>.wrap{padding-bottom:220px}body.setup-view .page-header h1{font-size:18px;line-height:1.35}body.setup-view #setupWizard p{margin:8px 0}body.setup-view #setupFooter{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:calc(100% - 24px);max-width:960px;z-index:35;background:#132532;border:1px solid #355063;border-radius:12px 12px 0 0;padding:10px}#setupFooter .setup-navigation{gap:8px}#setupExit{margin-left:auto}#setupReconnect{min-height:44px}body.setup-view .action-feedback{bottom:190px}#setupFooter .btn{min-height:44px;padding:8px 12px}@media(max-width:600px){#setupFooter .setup-navigation{display:grid;grid-template-columns:1fr 1fr}#setupFooter .btn{width:100%;margin:0;font-size:13px}#setupExit{grid-column:1/-1}body.setup-view .action-feedback{bottom:200px}}
 
-#firmwareReleaseBox .form-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}#firmwareReleaseBox a{color:#9be6b4}
+#firmwareReleaseBox .form-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}#firmwareReleaseBox a{color:#9be6b4}#firmwareReleaseHelp{overflow-wrap:anywhere}
 </style></head><body>
 <div class="safety-bar" role="region" aria-label="Остановка движения"><button class="btn stop" type="button" id="globalStop" onclick="globalStop()">STOP</button><span id="globalDriveStatus" role="status">Проверяем состояние привода…</span></div><div class="wrap">
 <header class="page-header">
@@ -443,7 +443,14 @@ body.setup-view #setupWizard,body.setup-view #setupFooter{padding:16px;margin:0}
 <section class="settings-group" data-feature="wifi"><h3>Домашняя сеть Wi-Fi</h3><div class="row"><div class="field"><label for="ssid">Имя сети (SSID)</label><input autocomplete="off" aria-describedby="ssid-help" id="ssid"/><p class="field-help" id="ssid-help">Точное имя сети Wi-Fi, к которой подключится устройство после сохранения.</p></div><div class="field"><label for="pass">Пароль сети</label><input autocomplete="new-password" aria-describedby="pass-help" id="pass" type="password"/><p class="field-help" id="pass-help">Пароль выбранной сети Wi-Fi. Для открытой сети оставьте пустым. Сохранённый пароль не отображается в этом поле.</p></div></div>
 <div class="form-actions"><button class="btn good" id="wifiSaveButton" onclick="wifi()">Сохранить и подключиться</button><span class="hint">Полученный IP появится ниже. Точка доступа останется доступной до следующей перезагрузки.</span></div><div aria-live="polite" class="inline-message" id="wifiMessage" role="status"></div><a id="wifiClientLink" class="hint" hidden target="_blank" rel="noopener noreferrer"></a></section>
 <section class="settings-group" data-feature="wifi"><h3>Точка доступа устройства</h3><div class="field"><label for="appass">Пароль точки доступа</label><input autocomplete="new-password" aria-describedby="appass-help" id="appass" maxlength="63" minlength="8" placeholder="Пустое поле — открытая сеть" type="password"/><p class="field-help" id="appass-help">Пароль собственной точки доступа устройства: 8–63 символа. Пустое поле отключает защиту паролем. Изменение применяется после перезагрузки.</p></div><p class="hint">От 8 до 63 символов. Оставьте поле пустым, чтобы открыть сеть без пароля.</p><div class="form-actions"><button class="btn good" id="apSaveButton" onclick="saveAp()">Сохранить точку доступа</button><span class="hint">Устройство перезагрузится.</span></div></section></div></details></section><section class="card settings-section" id="otaSettings"><details class="settings-details" ontoggle="if(this.open)loadOta()"><summary><h2>Обновление прошивки<span class="section-caption">Релизы GitHub, USB и OTA</span></h2></summary><div class="settings-content">
-<section class="settings-group" id="firmwareReleaseBox"><h3>Новые версии на GitHub</h3><p id="firmwareReleaseStatus" role="status" aria-live="polite">Проверка начнётся после получения версии устройства.</p><div class="form-actions"><button id="firmwareReleaseCheck" type="button" class="btn" onclick="firmwareReleases.check(true)">Проверить сейчас</button><a id="firmwareReleaseLink" href="https://github.com/ra3vld/G5500-ESP32S3-Controller/releases/latest" target="_blank" rel="noopener noreferrer">Открыть релиз ↗</a><a href="https://ra3vld.github.io/G5500-ESP32S3-Controller/" target="_blank" rel="noopener noreferrer">Открыть прошивальщик ↗</a></div><p class="field-help small">Проверка выполняется браузером при открытии страницы и раз в 6 часов. Для установки выберите ту же плату и конфигурацию; обновление запускается вручную.</p></section>
+<section class="settings-group" id="firmwareReleaseBox"><h3>Новые версии</h3><p id="firmwareReleaseStatus" role="status" aria-live="polite">Проверка начнётся после получения версии устройства.</p><div class="form-actions"><button id="firmwareReleaseCheck" type="button" class="btn" onclick="firmwareReleases.check(true)">Проверить сейчас</button><a id="firmwareReleaseLink" href="https://github.com/ra3vld/G5500-ESP32S3-Controller/releases/latest" target="_blank" rel="noopener noreferrer">Открыть релиз ↗</a><a href="https://ra3vld.github.io/G5500-ESP32S3-Controller/" target="_blank" rel="noopener noreferrer">Открыть прошивальщик ↗</a></div><p class="field-help small" id="firmwareReleaseHelp">Проверка релизов GitHub. Для USB выберите ту же плату и конфигурацию.</p></section>
+<section class="settings-group" id="otaSourceBox"><h3>Обновление по адресу</h3>
+<div class="field"><label for="otaSourceKind">Источник обновлений</label><select id="otaSourceKind" onchange="editOtaSource()"><option value="github">GitHub Releases проекта</option><option value="custom">Свой адрес</option></select></div>
+<div class="field" id="otaSourceUrlField" hidden><label for="otaSourceUrl">Адрес JSON-манифеста</label><input id="otaSourceUrl" type="url" maxlength="384" placeholder="https://example.org/ota.json" oninput="otaSourceDirty=true"/><p class="field-help">Постоянный HTTP(S)-адрес с версией и ссылкой на файл приложения для этого профиля.</p></div>
+<label class="check"><input id="otaAutomatic" type="checkbox" onchange="otaSourceDirty=true"/> Автоматически устанавливать новые стабильные версии</label>
+<p class="field-help">Устройство проверяет сохранённый источник каждые 6 часов, даже при закрытом браузере. Автообновление ждёт 30 секунд без управления и движения. Настройки и калибровки сохраняются.</p>
+<div class="form-actions"><button class="btn" id="otaSourceSave" type="button" onclick="saveOtaSource()">Сохранить источник</button><button class="btn good" id="otaRemoteInstall" type="button" onclick="installRemoteOta()" disabled>Установить новую версию</button><button class="btn" id="otaRemoteCancel" type="button" onclick="cancelRemoteOta()" hidden>Отменить загрузку</button></div>
+<p id="otaSourceMessage" role="status" aria-live="polite"></p></section>
 <p id="otaCapacity" role="status">Откройте раздел, чтобы проверить доступность OTA.</p><div class="kv"><div>Flash: <b id="otaFlash">—</b></div><div>Текущая прошивка: <b id="otaImage">—</b></div><div>Раздел OTA: <b id="otaSlot">—</b></div></div>
 <p class="field-help">Выберите файл приложения .bin для той же платы и подключения. Настройки и калибровки сохраняются. Во время обновления движение будет остановлено; не отключайте питание.</p>
 <form id="otaForm" onsubmit="uploadOta(event)"><div class="field"><label for="otaFile">Файл прошивки</label><input id="otaFile" type="file" accept=".bin,application/octet-stream" onchange="validateOtaFile()" disabled/><p id="otaFileHelp" class="field-help">Нужен firmware.bin из PlatformIO или файл приложения из Arduino IDE.</p></div>
@@ -800,12 +807,12 @@ function selectTab(name,updateHash=true){
 }
 
 /* BEGIN RELEASE CHECK */
-// Public release metadata is fetched by the browser, never by the controller.
+// OTA devices use their saved source; USB-only builds check public release metadata in the browser.
 window.firmwareReleases = (() => {
   const repository = 'https://github.com/ra3vld/G5500-ESP32S3-Controller';
   const api = 'https://api.github.com/repos/ra3vld/G5500-ESP32S3-Controller/releases/latest';
   const interval = 6 * 60 * 60 * 1000;
-  let current = '', release = null, busy = false, attempted = false, checkedAt = 0;
+  let current = '', release = null, busy = false, attempted = false, checkedAt = 0, deviceOta = false;
   const element = id => document.getElementById(id);
   function version(text) {
     const match = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(text || '');
@@ -844,6 +851,7 @@ window.firmwareReleases = (() => {
   async function check(force = false) {
     if (busy || (!force && attempted && Date.now() - checkedAt < interval)) return;
     attempted = true; checkedAt = Date.now(); busy = true; render();
+    if(deviceOta){if(await loadRemoteOta(force)){busy=false;const b=element('firmwareReleaseCheck');if(b)b.disabled=false;return;}deviceOta=false;}
     message('Проверяем последний релиз на GitHub…');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
@@ -868,7 +876,8 @@ window.firmwareReleases = (() => {
       if (button) button.disabled = false;
     }
   }
-  function update(value) {
+  function update(value, ota = false) {
+    deviceOta = ota;
     if (typeof value !== 'string' || !value || value === current) return;
     current = value; render();
     if (!attempted) check();
@@ -886,7 +895,42 @@ window.firmwareReleases = (() => {
 })();
 /* END RELEASE CHECK */
 
-let otaState=null,otaBusy=false,otaCancelled=false,otaTimer;
+let otaState=null,otaBusy=false,otaCancelled=false,otaTimer,otaSourceDirty=false,otaRemoteState=null;
+
+const otaRemoteErrors={source_url:'Введите HTTP(S)-адрес JSON-манифеста.',source_storage:'Не удалось сохранить или прочитать источник обновлений.',unknown_profile:'Профиль этой сборки не задан. Для обновления используйте файл .bin.',update_memory:'Недостаточно свободной RAM для загрузки. Повторите позже.',update_busy:'Другая операция обновления уже выполняется.',no_new_version:'Новой версии для установки нет.',source_not_found:'Манифест этого профиля пока отсутствует в источнике.',source_http:'Не удалось загрузить обновление. Проверьте адрес, интернет и время устройства для HTTPS.',source_manifest:'Некорректный манифест обновления.',source_profile:'Манифест предназначен для другого профиля устройства.',image_hash:'SHA-256 прошивки не совпадает с манифестом.'};
+function editOtaSource(){otaSourceDirty=true;document.getElementById('otaSourceUrlField').hidden=document.getElementById('otaSourceKind').value!=='custom';}
+async function loadRemoteOta(check=false){
+ try{
+  if(!otaState){const r=await settingsRequest('/api/ota');otaState=r.json();}
+  document.getElementById('otaSourceBox').hidden=!otaState.available;
+  if(!otaState.available)return false;
+  if(check)await otaPost('/api/ota/check');
+  const r=await settingsRequest('/api/ota/source');if(!r.ok)throw Error('Не удалось прочитать источник обновлений.');
+  const s=r.json();otaRemoteState=s;
+  if(!otaSourceDirty){document.getElementById('otaSourceKind').value=s.source?'custom':'github';document.getElementById('otaSourceUrl').value=s.source||'';document.getElementById('otaAutomatic').checked=!!s.automatic;document.getElementById('otaSourceUrlField').hidden=!s.source;}
+  const locked=!!otaState.locked;
+  for(const id of ['otaSourceKind','otaSourceUrl','otaAutomatic','otaSourceSave'])document.getElementById(id).disabled=s.busy||locked||!otaState.available;
+  document.getElementById('otaRemoteInstall').disabled=!s.newer||s.busy||locked||!otaState.available;
+  document.getElementById('otaRemoteCancel').hidden=!s.busy;
+  document.getElementById('otaFile').disabled=s.busy||locked||!otaState.available;
+  document.getElementById('otaArduino').disabled=s.busy||locked||!otaState.available;
+  if(s.busy)document.getElementById('otaUpload').disabled=true;
+  const text=s.error?(otaRemoteErrors[s.error]||otaErrors[s.error]||s.error):s.busy?(s.downloading?'Устройство загружает прошивку…':'Проверяем сохранённый источник…'):s.version?(s.newer?'Доступна версия '+s.version+'.':'Установлена актуальная версия. В источнике: '+s.version+'.'):'Источник сохранён. Выполните проверку новых версий.';
+  setText(document.getElementById('firmwareReleaseStatus'),text);
+  setText(document.getElementById('firmwareReleaseHelp'),'Профиль: '+(s.profile||'не задан')+'. Источник: '+(s.source||'GitHub Releases проекта'));
+  const badge=document.getElementById('firmwareUpdateBadge');badge.hidden=!s.newer;badge.textContent=s.newer?'Доступна прошивка '+s.version:'';
+  document.getElementById('firmwareReleaseLink').hidden=!!s.source;
+ }catch(e){setText(document.getElementById('firmwareReleaseStatus'),e.message);}
+ return true;
+}
+async function saveOtaSource(){
+ const url=document.getElementById('otaSourceKind').value==='custom'?document.getElementById('otaSourceUrl').value.trim():'';
+ if(document.getElementById('otaSourceKind').value==='custom'&&!url){setText(document.getElementById('otaSourceMessage'),otaRemoteErrors.source_url);return;}
+ try{await otaPost('/api/ota/source?automatic='+(document.getElementById('otaAutomatic').checked?1:0),url);otaSourceDirty=false;setText(document.getElementById('otaSourceMessage'),'Источник сохранён.');await loadRemoteOta(true);}catch(e){setText(document.getElementById('otaSourceMessage'),e.message);}
+}
+async function installRemoteOta(){try{await otaPost('/api/ota/install');await loadRemoteOta();otaTimer=setTimeout(loadOta,1000);}catch(e){setText(document.getElementById('otaSourceMessage'),e.message);}}
+async function cancelRemoteOta(){try{await otaPost('/api/ota/cancel');await loadOta();}catch(e){setText(document.getElementById('otaSourceMessage'),e.message);}}
+
 const otaBytes=n=>Number.isFinite(n)?n.toLocaleString('ru-RU')+' байт ('+(n/1048576).toFixed(2)+' МиБ)':'—';
 const otaErrors={image_size:'Файл не помещается в раздел OTA.',wrong_chip:'Файл предназначен для другого чипа или не является прошивкой ESP32.',invalid_image:'Прошивка не прошла проверку целостности.',begin_failed:'Не удалось начать запись: проверьте свободную RAM и разметку flash.',write_failed:'Ошибка записи во flash.',incomplete_image:'Файл передан не полностью.',upload_timeout:'Загрузка прервана: данные не поступали 30 секунд.',cancelled:'Обновление отменено.',wrong_offset:'Нарушен порядок передачи файла.',ota_token:'Устройство перезагрузилось. Обновите состояние OTA.',update_locked:'Управление заблокировано до перезагрузки.',connect_failed:'ESP32 не смог подключиться к отправителю ArduinoOTA.',arduino_failed:'Ошибка передачи ArduinoOTA.',firmware_only:'Можно обновлять только приложение.',no_update:'Нет активной загрузки.'};
 function otaMessage(text){setText(document.getElementById('otaMessage'),text);}
@@ -917,15 +961,17 @@ async function loadOta(){
   document.getElementById('otaFile').disabled=!s.available||s.locked;
   document.getElementById('otaArduino').disabled=!s.available||s.locked;
   document.getElementById('otaReboot').hidden=!s.locked||s.complete;
+  if(s.locked){const p=document.getElementById('otaProgress');p.hidden=false;p.value=s.complete?100:s.totalBytes?Math.min(99,Math.floor(s.receivedBytes/s.totalBytes*100)):0;}
   if(s.locked)otaMessage(s.complete?'Прошивка проверена. Устройство перезагружается.':(otaErrors[s.error]||'Обновление начато.')+' Управление остановлено до перезагрузки.');
   setText(document.getElementById('otaArduinoInfo'),s.arduinoEnabled?'Сетевой порт: '+s.hostname+'.local:3232 · пароль: '+s.password:'Сетевой порт ArduinoOTA выключен.');
   validateOtaFile();
+  await loadRemoteOta();
  }catch(e){setText(document.getElementById('otaCapacity'),'Не удалось проверить OTA. Повторите после восстановления связи.');}
  if(document.querySelector('#otaSettings details').open)otaTimer=setTimeout(loadOta,5000);
 }
 async function otaPost(path,body){
  const r=await settingsRequest(path,{method:'POST',headers:{'X-OTA-Token':otaState.token,'Content-Type':'application/octet-stream'},...(body?{body}:{})});
- const j=r.json();if(!r.ok||!j.ok)throw new Error(otaErrors[j.error]||j.error||'Ошибка OTA.');return j;
+ const j=r.json();if(!r.ok||!j.ok)throw new Error(otaRemoteErrors[j.error]||otaErrors[j.error]||j.error||'Ошибка OTA.');return j;
 }
 async function uploadOta(event){
  event.preventDefault();if(!validateOtaFile())return;
@@ -1499,7 +1545,7 @@ function renderManualSpeeds(j){
  document.querySelector('.manual-drive').classList.toggle('has-speeds',!!visible);
 }
 function updateFork(j){
- window.firmwareReleases.update(j.build?.version);
+ window.firmwareReleases.update(j.build?.version, j.build?.features?.ota === true);
  const build=j.build;setText(document.getElementById('firmwareIdentity'),'G5500 Fork'+(build?.version?' '+build.version.split('+')[0]:'')+(build?.commit?' · коммит '+build.commit:'')+(build?.dirty?' · изменённые исходники':''));
  const programMode=document.getElementById('programModeHelp');if(programMode)programMode.textContent='Текущий режим: '+(j.controlMode==='manual'?'ручной':'автоматический')+'. Подтверждение отдельных протоколов действует в ручном режиме; кнопка «Рекомендуемые режимы» включает его.';
  const first=!window._forkState;window._forkState=j;

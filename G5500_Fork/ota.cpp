@@ -1,6 +1,8 @@
 // G5500 Fork; original by UA1CFM. GPL-3.0.
 #include "ota.hpp"
 #if OTA_SUPPORT
+#include "ota_remote.hpp"
+#include <new>
 #if ARDUINO_OTA_SUPPORT
 #include <ArduinoOTA.h>
 #else
@@ -36,6 +38,10 @@ void Ota::begin(Stop stop, void *context) {
   }
   for (unsigned i = 0; i < 4; ++i) std::snprintf(token_ + i * 8, 9, "%08lx", static_cast<unsigned long>(esp_random()));
   std::snprintf(hostname_, sizeof hostname_, "g5500-%06lx", static_cast<unsigned long>(ESP.getEfuseMac() & 0xffffff));
+#if G5500_HAS_OTA_PARTITIONS && (defined(ARDUINO_ARCH_ESP32) || defined(OTA_REMOTE_TEST))
+  if(capacity_.available())remote_=new(std::nothrow) OtaRemote(*this);
+  if(remote_)remote_->begin();
+#endif
 }
 void Ota::lock() {
   if (!locked_) { locked_ = true; if (stop_) stop_(context_); }
@@ -93,7 +99,7 @@ const char *Ota::finish() {
   publish(OtaStage::Complete);
   return nullptr;
 }
-void Ota::cancel() { if (writing_) fail("cancelled"); }
+void Ota::cancel() { if(remote_)remote_->cancel();if (writing_) fail("cancelled"); }
 void Ota::reboot() { restartAt_ = millis(); restarting_ = true; }
 bool Ota::readyToRestart() const { return restarting_ && uint32_t(millis() - restartAt_) >= 1500; }
 const char *Ota::armArduino() {

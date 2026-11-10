@@ -15,10 +15,14 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/crowpanel_f
 ./build/crowpanel_frame_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DRGB_INDICATOR_TEST -I tests/rgb_fakes -I tests/fakes -I G5500_Fork tests/rgb_indicator_tests.cpp -o build/rgb_indicator_tests
 ./build/rgb_indicator_tests
-${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/ota_fakes -I G5500_Fork G5500_Fork/ota.cpp tests/ota_tests.cpp -o build/ota_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/ota_fakes -I G5500_Fork G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp tests/ota_tests.cpp -o build/ota_tests
 ./build/ota_tests
-${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DG5500_HAS_OTA_PARTITIONS=0 -I tests/ota_noarduino_fakes -I tests/ota_fakes -I G5500_Fork G5500_Fork/ota.cpp tests/ota_tests.cpp -o build/ota_no_partitions_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DG5500_HAS_OTA_PARTITIONS=0 -I tests/ota_noarduino_fakes -I tests/ota_fakes -I G5500_Fork G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp tests/ota_tests.cpp -o build/ota_no_partitions_tests
 ./build/ota_no_partitions_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -pthread -DDEVICE_API_TEST -DOTA_REMOTE_TEST -DG5500_OTA_PROFILE=\"test\" -I tests/ota_remote_fakes -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp tests/ota_remote_tests.cpp -o build/ota_remote_tests
+./build/ota_remote_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -pthread -DDEVICE_API_TEST -DOTA_REMOTE_TEST -DARDUINO_OTA_SUPPORT=0 -DG5500_OTA_PROFILE=\"test\" -I tests/ota_remote_fakes -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp tests/ota_remote_tests.cpp -o build/ota_remote_noarduino_tests
+./build/ota_remote_noarduino_tests
 python3 -m unittest discover -s tests -p test_build_capabilities.py
 sh tools/build_ruckig_native.sh
 sh tools/test_st7796.sh
@@ -89,23 +93,25 @@ done
 
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork G5500_Fork/command_api.cpp tests/command_api_tests.cpp -o build/command_api_tests
 ./build/command_api_tests
-${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/device_api_tests.cpp -o build/device_api_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/device_api_tests.cpp -o build/device_api_tests
 ./build/device_api_tests
-${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DMQTT_TLS_SUPPORT=0 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/device_api_tests.cpp -o build/device_api_no_tls_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DOTA_SUPPORT=1 -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/device_api_tests.cpp -o build/device_api_ota_tests
+./build/device_api_ota_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DMQTT_TLS_SUPPORT=0 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/device_api_tests.cpp -o build/device_api_no_tls_tests
 ./build/device_api_no_tls_tests
-${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DDISPLAY_KIND=1 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DDISPLAY_KIND=1 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_tests
 ./build/display_api_tests
-${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=5 -DDISPLAY_KIND=3 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_crowpanel_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=5 -DDISPLAY_KIND=3 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_crowpanel_tests
 ./build/display_api_crowpanel_tests
-${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=8 -DDISPLAY_KIND=4 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_round_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=8 -DDISPLAY_KIND=4 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_round_tests
 ./build/display_api_round_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/display_settings_tests.cpp -o build/display_settings_tests
 ./build/display_settings_tests
-${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_unavailable_tests.cpp -o build/display_unavailable_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_unavailable_tests.cpp -o build/display_unavailable_tests
 ./build/display_unavailable_tests
-${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DDISPLAY_KIND=2 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_unavailable_tests.cpp -o build/display_lcd_unavailable_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DDISPLAY_KIND=2 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_unavailable_tests.cpp -o build/display_lcd_unavailable_tests
 ./build/display_lcd_unavailable_tests
-${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=6 -DBLUETOOTH_SUPPORT=0 -I tests/ethernet_fakes -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/device_api_tests.cpp -o build/device_api_wt32_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=6 -DBLUETOOTH_SUPPORT=0 -I tests/ethernet_fakes -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/device_api_tests.cpp -o build/device_api_wt32_tests
 ./build/device_api_wt32_tests
 python3 -m unittest discover -s tests -p test_command_api.py
 python3 -m unittest discover -s tests -p test_setup_transport.py
@@ -307,7 +313,7 @@ for variant in 0:0 1:0 2:0 2:1; do
 done
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/mqtt_tests.cpp -o build/mqtt_tests
 ./build/mqtt_tests
-MQTT_ADAPTER_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp G5500_Fork/mqtt_bridge.cpp G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp"
+MQTT_ADAPTER_SOURCES="G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp G5500_Fork/mqtt_bridge.cpp G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp"
 ${CXX:-g++} -std=c++17 -DG5500_MQTT_CRYPTO_BUDGET=1 -Wall -Wextra -Werror -O2 -I tests/crypto_fakes -I G5500_Fork tests/mqtt_crypto_budget_tests.cpp -o build/mqtt_crypto_budget_tests
 ./build/mqtt_crypto_budget_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -DHOME_ASSISTANT_DISCOVERY_SUPPORT=0 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -Wall -Wextra -Werror -O2 -pthread -I tests/mqtt_fakes -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $MQTT_ADAPTER_SOURCES tests/mqtt_service_tests.cpp -o build/mqtt_service_tests
@@ -316,7 +322,7 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -DMQTT_TLS_SUPPORT=0 -DHOME_ASSISTAN
 ./build/mqtt_service_no_tls_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -DBOARD_PROFILE=4 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/bluetooth.cpp tests/mqtt_tls_profile_tests.cpp -o build/mqtt_tls_profile_tests
 ./build/mqtt_tls_profile_tests
-${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -DWEB_LIVE_SUPPORT=0 -Wall -Wextra -Werror -O2 -I tests/mqtt_http_fakes -I tests/device_fakes -I tests/http_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/mqtt_recovery_http_tests.cpp -o build/mqtt_recovery_http_tests
+${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -DWEB_LIVE_SUPPORT=0 -Wall -Wextra -Werror -O2 -I tests/mqtt_http_fakes -I tests/device_fakes -I tests/http_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/mqtt_recovery_http_tests.cpp -o build/mqtt_recovery_http_tests
 ./build/mqtt_recovery_http_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/mqtt_hud_tests.cpp -o build/mqtt_hud_tests
 ./build/mqtt_hud_tests
@@ -330,7 +336,7 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/panel_prese
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/panel_menu_tests.cpp -o build/panel_menu_tests
 ./build/panel_menu_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_Fork -I tests $CORE_SOURCES tools/mqtt_host.cpp -o build/mqtt_host
-${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -DDISPLAY_SUPPORT=0 -DLOCAL_INPUT_SUPPORT=0 -DWEB_INTERFACE_ENABLED=0 -DWIFI_SUPPORT=0 -DHUD_SUPPORT=0 -DRS485_SUPPORT=0 -DOTA_SUPPORT=0 -DLOG_HISTORY_SUPPORT=0 -DRESET_HISTORY_SUPPORT=0 -DN1MM_SUPPORT=0 -DPSTROTATOR_SUPPORT=0 -DGS232_SUPPORT=0 -DROTCTLD_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/features_disabled_tests.cpp -o build/features_disabled_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DBLUETOOTH_SUPPORT=0 -DDISPLAY_SUPPORT=0 -DLOCAL_INPUT_SUPPORT=0 -DWEB_INTERFACE_ENABLED=0 -DWIFI_SUPPORT=0 -DHUD_SUPPORT=0 -DRS485_SUPPORT=0 -DOTA_SUPPORT=0 -DLOG_HISTORY_SUPPORT=0 -DRESET_HISTORY_SUPPORT=0 -DN1MM_SUPPORT=0 -DPSTROTATOR_SUPPORT=0 -DGS232_SUPPORT=0 -DROTCTLD_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/features_disabled_tests.cpp -o build/features_disabled_tests
 ./build/features_disabled_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=10 -DDISPLAY_KIND=5 -I G5500_Fork $CORE_SOURCES tests/status_memory_tests.cpp -o build/status_memory_st7796_tests
 ./build/status_memory_st7796_tests
@@ -341,7 +347,7 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -DHOME_ASSISTANT_DISCOVERY_SUPPORT=0
 
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=1 -DDISPLAY_KIND=6 -I G5500_Fork tests/st77916_tests.cpp -o build/st77916_tests_1
 ./build/st77916_tests_1
-${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=1 -DDISPLAY_KIND=6 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_st77916_tests_1
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=1 -DDISPLAY_KIND=6 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_st77916_tests_1
 ./build/display_api_st77916_tests_1
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=1 -DDISPLAY_KIND=0 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/pin_map_tests.cpp -o build/pin_map_tests_1_d0
 ./build/pin_map_tests_1_d0
@@ -349,7 +355,7 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=1 -DDISPLAY_KIN
 ./build/pin_map_tests_1_d6
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -DDISPLAY_KIND=6 -I G5500_Fork tests/st77916_tests.cpp -o build/st77916_tests_4
 ./build/st77916_tests_4
-${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DDISPLAY_KIND=6 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_st77916_tests_4
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBOARD_PROFILE=4 -DDISPLAY_KIND=6 -DBLUETOOTH_SUPPORT=0 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/display_api_tests.cpp -o build/display_api_st77916_tests_4
 ./build/display_api_st77916_tests_4
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -DDISPLAY_KIND=0 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/hardware.cpp G5500_Fork/storage.cpp tests/pin_map_tests.cpp -o build/pin_map_tests_4_d0
 ./build/pin_map_tests_4_d0
@@ -358,7 +364,7 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=4 -DDISPLAY_KIN
 
 SPP_CORE_SOURCES="G5500_Fork/control.cpp G5500_Fork/motion_direct.cpp G5500_Fork/protocol.cpp G5500_Fork/input.cpp G5500_Fork/api.cpp G5500_Fork/live.cpp G5500_Fork/calibration.cpp G5500_Fork/hud.cpp G5500_Fork/mqtt_bridge.cpp G5500_Fork/mqtt_service.cpp"
 
-${CXX:-g++} -std=c++17 -DESP32_SPP_PROFILE=1 -DBOARD_PROFILE=4 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBLUETOOTH_SUPPORT=0 -DDISPLAY_SUPPORT=0 -DLOCAL_INPUT_SUPPORT=0 -DWEB_LIVE_SUPPORT=0 -DRS485_SUPPORT=0 -DOTA_SUPPORT=0 -DLOG_HISTORY_SUPPORT=0 -DRESET_HISTORY_SUPPORT=0 -DN1MM_SUPPORT=1 -DPSTROTATOR_SUPPORT=1 -DROTCTLD_SUPPORT=1 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $SPP_CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/esp32_spp_api_tests.cpp -o build/esp32_spp_api_tests
+${CXX:-g++} -std=c++17 -DESP32_SPP_PROFILE=1 -DBOARD_PROFILE=4 -Wall -Wextra -Werror -O2 -DDEVICE_API_TEST -DBLUETOOTH_SUPPORT=0 -DDISPLAY_SUPPORT=0 -DLOCAL_INPUT_SUPPORT=0 -DWEB_LIVE_SUPPORT=0 -DRS485_SUPPORT=0 -DOTA_SUPPORT=0 -DLOG_HISTORY_SUPPORT=0 -DRESET_HISTORY_SUPPORT=0 -DN1MM_SUPPORT=1 -DPSTROTATOR_SUPPORT=1 -DROTCTLD_SUPPORT=1 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $SPP_CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/esp32_spp_api_tests.cpp -o build/esp32_spp_api_tests
 ./build/esp32_spp_api_tests
 
 ${CXX:-g++} -std=c++17 -DESP32_SPP_PROFILE=1 -DBOARD_PROFILE=4 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -DDRIVE_INTERFACE=2 -I G5500_Fork $SPP_CORE_SOURCES tests/direct_motion_tests.cpp -o build/direct_motion_tests
@@ -394,5 +400,5 @@ ${CXX:-g++} -std=c++17 -DESP32_SPP_PROFILE=1 -DBOARD_PROFILE=4 -DDRIVE_SIMULATIO
 ${CXX:-g++} -std=c++17 -DESP32_SPP_PROFILE=1 -DBOARD_PROFILE=4 -Wall -Wextra -Werror -O2 -I tests/http_fakes -I tests/fakes -I G5500_Fork tests/http_ingress_tests.cpp -o build/spp_http_ingress_esp32_tests
 ./build/spp_http_ingress_esp32_tests
 
-${CXX:-g++} -std=c++17 -DESP32_SPP_PROFILE=1 -DBOARD_PROFILE=4 -Wall -Wextra -Werror -O2 -DHUD_SUPPORT=0 -DHUD_UDP_SUPPORT=0 -DHUD_UART_SUPPORT=0 -DDEVICE_API_TEST -DBLUETOOTH_SUPPORT=0 -DDISPLAY_SUPPORT=0 -DLOCAL_INPUT_SUPPORT=0 -DWEB_LIVE_SUPPORT=0 -DRS485_SUPPORT=0 -DOTA_SUPPORT=0 -DLOG_HISTORY_SUPPORT=0 -DRESET_HISTORY_SUPPORT=0 -DN1MM_SUPPORT=1 -DPSTROTATOR_SUPPORT=1 -DROTCTLD_SUPPORT=1 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $SPP_CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/esp32_spp_api_tests.cpp -o build/esp32_spp_no_hud_api_tests
+${CXX:-g++} -std=c++17 -DESP32_SPP_PROFILE=1 -DBOARD_PROFILE=4 -Wall -Wextra -Werror -O2 -DHUD_SUPPORT=0 -DHUD_UDP_SUPPORT=0 -DHUD_UART_SUPPORT=0 -DDEVICE_API_TEST -DBLUETOOTH_SUPPORT=0 -DDISPLAY_SUPPORT=0 -DLOCAL_INPUT_SUPPORT=0 -DWEB_LIVE_SUPPORT=0 -DRS485_SUPPORT=0 -DOTA_SUPPORT=0 -DLOG_HISTORY_SUPPORT=0 -DRESET_HISTORY_SUPPORT=0 -DN1MM_SUPPORT=1 -DPSTROTATOR_SUPPORT=1 -DROTCTLD_SUPPORT=1 -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork $SPP_CORE_SOURCES G5500_Fork/storage.cpp G5500_Fork/hardware.cpp G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp G5500_Fork/device_api.cpp G5500_Fork/command_api.cpp tests/esp32_spp_api_tests.cpp -o build/esp32_spp_no_hud_api_tests
 ./build/esp32_spp_no_hud_api_tests

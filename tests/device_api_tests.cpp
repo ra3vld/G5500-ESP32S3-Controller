@@ -1373,8 +1373,9 @@ int main(int argc,char **argv) {
   const auto otaStatus=f.call("GET","/api/ota");assert(otaStatus.status==200 && otaStatus.body.size()<=COMMAND_PAGE_MAX);
   assert(f.call("POST","/api/ota/arduino","token=wrong").status==403);
   assert(f.call("POST","/api/ota/reboot","token=wrong").status==403);
+  for(const auto path:{"/api/ota/source","/api/ota/check","/api/ota/install","/api/ota/cancel"})assert(f.call("POST",path,"token=wrong").status==403);
 #else
-  for(const auto path:{"/api/ota","/api/ota/arduino","/api/ota/reboot"}) {
+  for(const auto path:{"/api/ota","/api/ota/arduino","/api/ota/reboot","/api/ota/source","/api/ota/check","/api/ota/install","/api/ota/cancel"}) {
     const auto response=f.call(path==std::string_view("/api/ota")?"GET":"POST",path,"token=wrong");
     assert(response.status==501 && response.body.find("feature_disabled")!=response.body.npos);
   }

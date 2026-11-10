@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from package_web_release import check_tag, matching_elf
+from package_web_release import check_tag, matching_elf, write_ota_assets
 
 
 class ReleaseTests(unittest.TestCase):
@@ -71,6 +71,39 @@ class ReleaseTests(unittest.TestCase):
         elf.symlink_to(target)
         with self.assertRaisesRegex(ValueError, 'Missing or mismatched ELF'):
             matching_elf(profile, self.root)
+
+
+class OtaReleaseTests(unittest.TestCase):
+    def test_matching_application_manifest_and_single_partition_exclusion(self):
+        from web_flasher import profiles
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            site, output = root / 'site', root / 'output'
+            output.mkdir()
+            items = []
+            for ident in ('esp32s3_n16r8_headless', 'esp32_4mb'):
+                profile = next(p for p in profiles() if p['id'] == ident).copy()
+                folder = site / ident
+                folder.mkdir(parents=True)
+                image = b'ESP32 application ' + ident.encode()
+                (folder / 'firmware.bin').write_bytes(image)
+                profile.update(artifact_base=ident, build=dict(
+                    capabilities=dict(OTA_SUPPORT=True), app_bytes=len(image), app_limit_bytes=6553600,
+                    files=[dict(path='firmware.bin', sha256=hashlib.sha256(image).hexdigest())]))
+                items.append(profile)
+            catalog = dict(identity=dict(version='2.0.0'), profiles=items)
+            names = write_ota_assets(site, output, catalog, 'v2.0.0')
+            self.assertEqual(set(names), {'ota-esp32s3_n16r8_headless.bin', 'ota-esp32s3_n16r8_headless.json'})
+            import json
+            manifest = json.loads((output / names[1]).read_text())
+            self.assertEqual(manifest['profile'], 'esp32s3_n16r8_headless')
+            self.assertEqual(manifest['version'], '2.0.0')
+            self.assertEqual(manifest['size'], len((output / names[0]).read_bytes()))
+            self.assertEqual(manifest['sha256'], hashlib.sha256((output / names[0]).read_bytes()).hexdigest())
+            self.assertTrue(manifest['url'].endswith('/v2.0.0/' + names[0]))
+            (site / items[0]['id'] / 'firmware.bin').write_bytes(b'wrong bytes')
+            with self.assertRaisesRegex(ValueError, 'Mismatched OTA'):
+                write_ota_assets(site, output, catalog, 'v2.0.0')
 
 
 if __name__ == '__main__':

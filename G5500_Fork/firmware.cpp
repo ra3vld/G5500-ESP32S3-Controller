@@ -316,6 +316,9 @@ void Application::controllerLoop() {
     stageStartedUs=micros();
   };
   ota_.service();
+  ota_.serviceRemote(!runtime_.recovery && !runtime_.hardwareTrial && !runtime_.networkTrial &&
+    !runtime_.setup.required && !runtime_.controller.controlActive() && !runtime_.controller.sequenceCount() &&
+    (!runtime_.hud.isHud() || !runtime_.hud.active() || runtime_.hud.active()->fresh(millis())));
   checkpoint("ota");
   network_.serviceCommandReplies();
   checkpoint("commandReplies");

@@ -16,6 +16,29 @@ int main() {
     testSocket={};testSocket.input=input;testSocket.pending=true;
     fakeHeapFree=32768;fakeHeapBlock=16384;
   };
+  // OTA source bodies are raw URLs, including query delimiters and long paths.
+  // They must reach the owner without going through the ordinary form parser.
+  BoundedWebServer sourceWeb(81);sourceWeb.setRequestBuffer(buffer,sizeof buffer);
+  struct SourceRequest {BoundedWebServer *web;std::string expected;unsigned calls=0;} sourceRequest{&sourceWeb,"https://updates.test/ota.json?channel=stable&board=s3",0};
+  sourceWeb.setRequestHandler([](void *context,std::string_view raw) {
+    auto &s=*static_cast<SourceRequest *>(context);
+    assert(raw.substr(raw.find("\r\n\r\n")+4)==s.expected);++s.calls;
+    s.web->sendFixed(200,"application/json","{}",2);return true;
+  },&sourceRequest);
+  const auto sourcePost=[](const std::string &url,const std::string &body) {
+    return "POST "+url+" HTTP/1.1\r\nContent-Length: "+std::to_string(body.size())+
+      "\r\nX-OTA-Token: source-test\r\nContent-Type: application/octet-stream\r\n\r\n"+body;
+  };
+  connect(sourcePost("/api/ota/source?automatic=1",sourceRequest.expected));
+  sourceWeb.handleClient();assert(sourceRequest.calls==1 && !testSocket.reset && !testSocket.parsed);
+  sourceRequest.expected="https://updates.test/";sourceRequest.expected.resize(384,'a');assert(sourceRequest.expected.size()==384);
+  connect(sourcePost("/api/ota/source?automatic=0",sourceRequest.expected));
+  sourceWeb.handleClient();assert(sourceRequest.calls==2 && !testSocket.reset);
+  connect(sourcePost("/api/ota/source?automatic=0",sourceRequest.expected+"a"));
+  sourceWeb.handleClient();assert(sourceRequest.calls==2 && testSocket.reset);
+  connect(sourcePost("/api/settings",sourceRequest.expected));
+  sourceWeb.handleClient();assert(sourceRequest.calls==2 && testSocket.reset);
+  sourceWeb.setRequestHandler(nullptr,nullptr);
   // Accept precedes the first HTTP packet: another queued connection must
   // not make us close a legitimate browser request before its bytes arrive.
   connect("");web.handleClient();assert(testSocket.open);

@@ -1255,8 +1255,27 @@ void DeviceApi::executeGeneral(std::string_view method, std::string_view path, F
   if(path=="/api/ota" && method=="GET") {
     char data[768];const auto n=ota_.status(data,sizeof data);output << std::string_view(data,n);return;
   }
+  if(path=="/api/ota/source" && method=="GET") {
+    char data[1024];const auto n=ota_.remoteStatus(data,sizeof data);
+    if(!n){reply(409,"feature_disabled");return;}
+    output<<std::string_view(data,n);return;
+  }
+  if(method=="POST" && (path=="/api/ota/source" || path=="/api/ota/check" ||
+      path=="/api/ota/install" || path=="/api/ota/cancel")) {
+    if(!ota_.authorized(web_.value("token"))){reply(403,"ota_token");return;}
+    const char *error=nullptr;
+    if(path=="/api/ota/source") {
+      const auto automatic=web_.value("automatic");
+      if(automatic!="0" && automatic!="1"){reply(400,"invalid_request");return;}
+      error=ota_.saveSource(web_.value("url"),automatic=="1");
+    } else if(path=="/api/ota/check")error=ota_.checkRemote();
+    else if(path=="/api/ota/install")error=ota_.installRemote();
+    else ota_.cancel();
+    reply(error?409:200,error?error:"");return;
+  }
   if(path=="/api/ota/arduino" && method=="POST") {
     if(!ota_.authorized(web_.value("token"))) {reply(403,"ota_token");return;}
+    if(ota_.remoteBusy()){reply(409,"update_busy");return;}
     const auto error=ota_.armArduino();reply(error?409:200,error?error:"");return;
   }
   if(path=="/api/ota/reboot" && method=="POST") {

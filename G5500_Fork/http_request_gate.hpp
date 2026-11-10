@@ -190,9 +190,12 @@ inline RequestState inspectRequest(std::string_view bytes, size_t capacity, size
   if (bytes.size() < headerSize + bodySize) return RequestState::Incomplete;
   const bool otaChunk = requestLine.substr(0, methodEnd) == "POST" &&
                         url.substr(0, 22) == "/api/ota/write?offset=";
-  if (bodySize && !otaChunk && (requestLine.substr(0, methodEnd) != "POST" ||
+  const bool otaSource = requestLine.substr(0, methodEnd) == "POST" &&
+      (url == "/api/ota/source?automatic=0" || url == "/api/ota/source?automatic=1");
+  if (bodySize && !otaChunk && !otaSource && (requestLine.substr(0, methodEnd) != "POST" ||
       !boundedForm(bytes.substr(headerSize, bodySize), arguments,argumentLimit))) return RequestState::TooLarge;
   if (otaChunk && bodySize > 2048) return RequestState::TooLarge;
+  if (otaSource && bodySize > 384) return RequestState::TooLarge;
   if (completeSize) *completeSize = headerSize + bodySize;
   return RequestState::Ready;
 }

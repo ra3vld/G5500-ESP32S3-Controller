@@ -66,6 +66,36 @@ def write_archives(site, artifacts, output, catalog):
     return archives
 
 
+def write_ota_assets(site, output, catalog, tag):
+    """Publish independently verifiable application images for OTA-capable profiles."""
+    names = []
+    from web_flasher import project_config, config_option
+    from build_capabilities import partition_capabilities
+    config = project_config()
+    base = f'https://github.com/ra3vld/G5500-ESP32S3-Controller/releases/download/{tag}/'
+    for profile in catalog['profiles']:
+        build = profile['build']
+        if not build['capabilities']['OTA_SUPPORT'] or build['app_bytes'] > build['app_limit_bytes']:
+            continue
+        # A profile can compile the OTA API with a single-app partition table.
+        section = 'env:' + profile.get('base_id', profile['id'])
+        partitions = ROOT / config_option(config, section, 'board_build.partitions')
+        if not partition_capabilities(partitions, profile['flash_bytes'])['G5500_HAS_OTA_PARTITIONS']:
+            continue
+        ident = profile['id']
+        image = Path(site) / profile['artifact_base'] / 'firmware.bin'
+        record = next(f for f in build['files'] if f['path'] == 'firmware.bin')
+        if image.is_symlink() or image.stat().st_size != build['app_bytes'] or sha256(image) != record['sha256']:
+            raise ValueError('Mismatched OTA application: ' + ident)
+        binary, manifest = f'ota-{ident}.bin', f'ota-{ident}.json'
+        shutil.copyfile(image, Path(output) / binary)
+        data = dict(schema=1, profile=ident, version=catalog['identity']['version'],
+                    size=image.stat().st_size, sha256=sha256(image), url=base + binary)
+        (Path(output) / manifest).write_text(json.dumps(data, separators=(',', ':')) + '\n')
+        names.extend([binary, manifest])
+    return names
+
+
 def package(tag, site=ROOT / 'dist/web-flasher', artifacts=ROOT / 'artifacts/web-flasher',
             output=ROOT / 'dist/release'):
     release = check_tag(tag)
@@ -73,7 +103,8 @@ def package(tag, site=ROOT / 'dist/web-flasher', artifacts=ROOT / 'artifacts/web
     audit = verify(site)
     catalog = json.loads((site / 'catalog.json').read_text())
     archives = write_archives(site, artifacts, output, catalog)
-    release.update(schema=2, archives=archives, source_sha256=audit['source_sha256'], profiles=[
+    ota = write_ota_assets(site, output, catalog, tag)
+    release.update(schema=2, archives=archives, ota_assets=ota, source_sha256=audit['source_sha256'], profiles=[
         dict(id=p['id'], chip_family=p['chip_family'], services=p['services'],
              app_bytes=p['build']['app_bytes'], app_limit_bytes=p['build']['app_limit_bytes'],
              elf_sha256=p['build']['elf_sha256'], files=p['build']['files'])
@@ -91,6 +122,7 @@ def package(tag, site=ROOT / 'dist/web-flasher', artifacts=ROOT / 'artifacts/web
         'загрузчик, разметка, manifest.json и SHA256SUMS.\n'
         '- web-flasher-site.zip: интерфейс без BIN/ELF и встроенной документации; '
         'документация открывается на GitHub.\n'
+        '- ota-<профиль>.json и ota-<профиль>.bin: манифесты и файлы приложения для обновления по сети.\n'
         '- diagnostic-elf.zip: точные ELF всех вариантов для диагностики.\n'
         '- source-code.zip: исходники с сохранённой идентичностью сборки.\n\n'
         'Если после прошивки возникают проблемы, повторите установку с полным '
@@ -103,7 +135,7 @@ def package(tag, site=ROOT / 'dist/web-flasher', artifacts=ROOT / 'artifacts/web
         services = 'MQTT + RS-485' if profile['services']['mqtt'] and profile['services']['rs485'] else 'без MQTT / RS-485' if not profile['services']['mqtt'] and not profile['services']['rs485'] else ', '.join(k.upper() for k, v in profile['services'].items() if v)
         notes += f'| {profile["board_label"]} | {profile["title"]} · {services} | [{name}](https://github.com/ra3vld/G5500-ESP32S3-Controller/releases/download/{tag}/{name}) |\n'
     (output / 'RELEASE_NOTES.md').write_text(notes)
-    names = [archives['website'], archives['source'], archives['elf'],
+    names = [*ota, archives['website'], archives['source'], archives['elf'],
              *archives['firmware'].values(), 'release-manifest.json', 'RELEASE_NOTES.md']
     (output / 'SHA256SUMS').write_text(''.join(sha256(output / name) + '  ' + name + '\n' for name in names))
     print(f'Release {tag}: {len(archives["firmware"])} separate USB archives, interface, matching ELF and SHA256SUMS')

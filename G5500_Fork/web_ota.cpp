@@ -21,6 +21,12 @@ bool WebInterface::handleOtaRequest(std::string_view request) {
     web_.sendBuffer(200, "application/json", statusBuffer_, size);
     return true;
   }
+  if(method=="GET" && url=="/api/ota/source") {
+    const auto size=ota_.remoteStatus(statusBuffer_,sizeof statusBuffer_);
+    if(size)web_.sendBuffer(200,"application/json",statusBuffer_,size);
+    else web_.send(409,"application/json","{\"error\":\"feature_disabled\"}");
+    return true;
+  }
   // A custom header and a per-boot random token prevent cross-origin form uploads.
   if (method != "POST" || !ota_.authorized(httpHeader(request, "x-ota-token"))) {
     web_.send(403, "application/json", "{\"error\":\"ota_token\"}"); return true;
@@ -29,7 +35,12 @@ bool WebInterface::handleOtaRequest(std::string_view request) {
   const auto body = request.substr(request.find("\r\n\r\n") + 4);
   const char *error = "invalid_request";
   uint32_t value = 0;
-  if (path == "/api/ota/start" && parameter.substr(0, 5) == "size=" && body.empty() && requestGeneration(parameter.substr(5), value))
+  if(ota_.remoteBusy() && (path=="/api/ota/start" || path=="/api/ota/arduino"))error="update_busy";
+  else if(path=="/api/ota/source" && (parameter=="automatic=0" || parameter=="automatic=1"))
+    error=ota_.saveSource(body,parameter=="automatic=1");
+  else if(url=="/api/ota/check" && body.empty())error=ota_.checkRemote();
+  else if(url=="/api/ota/install" && body.empty())error=ota_.installRemote();
+  else if (path == "/api/ota/start" && parameter.substr(0, 5) == "size=" && body.empty() && requestGeneration(parameter.substr(5), value))
     error = ota_.start(value);
   else if (path == "/api/ota/write" && parameter.substr(0, 7) == "offset=" && requestGeneration(parameter.substr(7), value))
     error = ota_.write(value, body);

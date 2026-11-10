@@ -19,12 +19,12 @@ nav{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}nav a{padding:8px 0}
 <script>
 'use strict';
 /* BEGIN RELEASE CHECK */
-// Public release metadata is fetched by the browser, never by the controller.
+// OTA devices use their saved source; USB-only builds check public release metadata in the browser.
 window.firmwareReleases = (() => {
   const repository = 'https://github.com/ra3vld/G5500-ESP32S3-Controller';
   const api = 'https://api.github.com/repos/ra3vld/G5500-ESP32S3-Controller/releases/latest';
   const interval = 6 * 60 * 60 * 1000;
-  let current = '', release = null, busy = false, attempted = false, checkedAt = 0;
+  let current = '', release = null, busy = false, attempted = false, checkedAt = 0, deviceOta = false;
   const element = id => document.getElementById(id);
   function version(text) {
     const match = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(text || '');
@@ -63,6 +63,7 @@ window.firmwareReleases = (() => {
   async function check(force = false) {
     if (busy || (!force && attempted && Date.now() - checkedAt < interval)) return;
     attempted = true; checkedAt = Date.now(); busy = true; render();
+    if(deviceOta){if(await loadRemoteOta(force)){busy=false;const b=element('firmwareReleaseCheck');if(b)b.disabled=false;return;}deviceOta=false;}
     message('Проверяем последний релиз на GitHub…');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
@@ -87,7 +88,8 @@ window.firmwareReleases = (() => {
       if (button) button.disabled = false;
     }
   }
-  function update(value) {
+  function update(value, ota = false) {
+    deviceOta = ota;
     if (typeof value !== 'string' || !value || value === current) return;
     current = value; render();
     if (!attempted) check();

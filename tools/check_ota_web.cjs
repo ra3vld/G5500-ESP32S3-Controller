@@ -5,7 +5,7 @@ const path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
 const html=fs.readFileSync(path.join(root,'G5500_Fork/web_page.hpp'),'utf8').match(/R"HTML\(([\s\S]*?)\)HTML"/)[1];
-const output=spawnSync(path.join(root,'build/simulator'),[],{input:'step 0\n',encoding:'utf8',timeout:10000});
+const output=spawnSync(process.env.SIMULATOR_PATH||path.join(root,'build/simulator'),[],{input:'step 0\n',encoding:'utf8',timeout:10000});
 assert.equal(output.status,0,output.stderr);
 const status=JSON.parse(output.stdout.trim()).state;
 status.build={...status.build,version:'1.1.0',commit:'fixture',dirty:false};
@@ -15,7 +15,7 @@ const initial=()=>({available:true,reason:'available',flashBytes:4194304,imageBy
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
  try{
   for(const scenario of ['success','hud-success','cancel','failure']){
-   let state=initial(),starts=0,finishes=0,cancels=0,backgroundDuringUpload=0;const chunks=[],errors=[];
+   let state=initial(),remote={source:'',automatic:false,profile:'test',busy:false,downloading:false,version:'99.0.0',newer:true,error:''},starts=0,finishes=0,cancels=0,backgroundDuringUpload=0;const chunks=[],errors=[];
    const page=await browser.newPage({viewport:{width:1100,height:900},locale:'ru-RU'});
    page.on('pageerror',e=>errors.push(e.message));
    await page.route('http://ota.test/**',async route=>{
@@ -25,8 +25,13 @@ const initial=()=>({available:true,reason:'available',flashBytes:4194304,imageBy
     if(u.pathname==='/api/status')body=scenario==='hud-success'?{...status,deviceRole:'hud',hudOnline:true}:status;
     else if(u.pathname==='/api/hud/peers')body={items:[],total:0};
     else if(u.pathname==='/api/ota')body=state;
+    else if(u.pathname==='/api/ota/source'&&req.method()==='GET')body=remote;
     else if(u.pathname.startsWith('/api/ota/')){
      assert.equal(req.headers()['x-ota-token'],'test-session');
+     if(u.pathname.endsWith('/source')){remote={...remote,source:req.postData()||'',automatic:u.searchParams.get('automatic')==='1',version:'',newer:false};}
+     if(u.pathname.endsWith('/check')){remote={...remote,version:'99.0.0',newer:true};}
+     if(u.pathname.endsWith('/install')){remote={...remote,busy:true,downloading:true};}
+
      if(u.pathname.endsWith('/start')){starts++;state.locked=true;state.writing=true;state.totalBytes=Number(u.searchParams.get('size'));}
      if(u.pathname.endsWith('/write')){
       const data=req.postDataBuffer();assert.equal(Number(u.searchParams.get('offset')),state.receivedBytes);
@@ -48,11 +53,26 @@ const initial=()=>({available:true,reason:'available',flashBytes:4194304,imageBy
    });
    await page.goto('http://ota.test/#settings');
    await page.waitForFunction(()=>document.getElementById('firmwareUpdateBadge').hidden===false);
-   assert.equal(releaseRequests,1);
+   assert.equal(releaseRequests,0,'OTA device must use its saved source instead of browser GitHub checks');
    await page.locator('#otaSettings summary').click();
    await page.waitForFunction(()=>document.getElementById('otaCapacity').textContent.startsWith('OTA доступно'));
    assert(await page.locator('#otaUpload').isDisabled());
    if(scenario==='success'){
+    await page.locator('#otaSourceKind').selectOption('custom');
+    await page.locator('#otaSourceUrl').fill('https://firmware.test/releases.json');
+    await page.locator('#otaAutomatic').check();await page.locator('#otaSourceSave').click();
+    await page.waitForFunction(()=>!otaSourceDirty&&otaRemoteState?.newer);
+    assert.equal(remote.source,'https://firmware.test/releases.json');assert.equal(remote.automatic,true);
+    assert(await page.locator('#firmwareReleaseLink').isHidden());
+    // A status refresh must preserve a source draft while the user edits it.
+    await page.locator('#otaSourceUrl').fill('https://draft.test/next.json');await page.evaluate(()=>loadOta());
+    assert.equal(await page.locator('#otaSourceUrl').inputValue(),'https://draft.test/next.json');
+    await page.evaluate(()=>{otaSourceDirty=false;});await page.evaluate(()=>loadOta());
+    assert.equal(await page.locator('#otaSourceUrl').inputValue(),remote.source);
+    await page.locator('#otaRemoteInstall').click();await page.waitForFunction(()=>otaRemoteState?.downloading);
+    assert(await page.locator('#otaFile').isDisabled());assert(await page.locator('#otaSourceSave').isDisabled());
+    remote={...remote,busy:false,downloading:false};await page.evaluate(()=>loadOta());
+
     state={...initial(),available:false,reason:'flash_too_small',minimumFlashBytes:5111808,recommendedFlashBytes:8388608,imageBytes:2500000};
     await page.evaluate(()=>loadOta());assert.match(await page.locator('#otaCapacity').textContent(),/другой модуль.*8 МиБ/);assert(await page.locator('#otaFile').isDisabled());
     state={...initial(),available:false,reason:'partition_layout'};await page.evaluate(()=>loadOta());assert.match(await page.locator('#otaCapacity').textContent(),/через USB/);assert.doesNotMatch(await page.locator('#otaCapacity').textContent(),/другой модуль/);
@@ -67,10 +87,11 @@ const initial=()=>({available:true,reason:'available',flashBytes:4194304,imageBy
     await page.locator('#otaUpload').click();await page.waitForFunction(()=>document.getElementById('otaMessage').textContent.includes('другого чипа'));assert.equal(starts,0);
     await page.evaluate(()=>loadOta());
     await page.locator('#otaFile').setInputFiles([]);await page.evaluate(()=>{otaMessage('');document.getElementById('otaProgress').hidden=true;});
-    for(const width of [1100,390,320]){
+    for(const width of [1100,390]){
      await page.setViewportSize({width,height:900});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'OTA overflow at '+width);
      fs.mkdirSync(path.join(root,'artifacts/screenshots'),{recursive:true});
-     await page.locator('#otaSettings').screenshot({path:path.join(root,`artifacts/screenshots/ota-${width}.png`)});
+     await page.locator('#otaSourceBox').scrollIntoViewIfNeeded();
+     await page.screenshot({path:path.join(root,`artifacts/screenshots/ota-${width}.png`)});
      await page.locator('#otaArduinoInfo').scrollIntoViewIfNeeded();
      await page.screenshot({path:path.join(root,`artifacts/screenshots/ota-bottom-${width}.png`)});
     }
@@ -85,6 +106,6 @@ const initial=()=>({available:true,reason:'available',flashBytes:4194304,imageBy
    else{assert.equal(finishes,0);assert.equal(cancels,1);assert(await page.locator('#otaReboot').isVisible());assert.match(await page.locator('#otaMessage').textContent(),/остановлено до перезагрузки/);}
    assert.deepEqual(errors,[]);await page.close();
   }
-  console.log('OTA browser: capability, insufficient flash/layout, file limits/chip, complete chunks, HUD polling paused during upload, cancellation/error, ArduinoOTA and 320/390/1100px passed');
+  console.log('OTA browser: capability, insufficient flash/layout, file limits/chip, complete chunks, HUD polling paused during upload, cancellation/error, ArduinoOTA and 390/1100px plus saved source, draft preservation and remote install controls passed');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -4,6 +4,7 @@
 #include "build_config.hpp"
 #include "ota_progress.hpp"
 namespace forkrot {
+class OtaRemote;
 #if OTA_SUPPORT
 class Ota {
 public:
@@ -12,6 +13,12 @@ public:
   void setProgress(Progress callback) {progress_=callback;}
   void begin(Stop stop, void *context);
   void service();
+  void serviceRemote(bool idle);
+  const char *saveSource(std::string_view url,bool automatic);
+  const char *checkRemote();
+  const char *installRemote();
+  size_t remoteStatus(char *,size_t) const;
+  bool remoteBusy() const;
   bool locked() const { return locked_; }
   bool readyToRestart() const;
   bool authorized(std::string_view token) const { return token == token_; }
@@ -23,6 +30,8 @@ public:
   void reboot();
   size_t status(char *data, size_t capacity) const;
 private:
+  friend class OtaRemote;
+  OtaRemote *remote_=nullptr;
   void lock();
   void fail(const char *error);
   void publish(OtaStage stage);
@@ -46,6 +55,12 @@ public:
   void setProgress(Progress){}
   void begin(Stop,void *){}
   void service(){}
+  void serviceRemote(bool){}
+  const char *saveSource(std::string_view,bool){return "feature_disabled";}
+  const char *checkRemote(){return "feature_disabled";}
+  const char *installRemote(){return "feature_disabled";}
+  size_t remoteStatus(char *,size_t) const{return 0;}
+  bool remoteBusy() const{return false;}
   bool locked() const{return false;}
   bool readyToRestart() const;
   bool authorized(std::string_view) const{return false;}

@@ -17,6 +17,10 @@ if not partitions.is_file():
 flash = env.GetProjectOption('board_upload.flash_size', board.get('upload.flash_size', '4MB'))
 capabilities = partition_capabilities(partitions, flash)
 defines = list(capabilities.items())
+profile = env.GetProjectOption('custom_web_flasher_profile', env.subst('$PIOENV'))
+if not profile.replace('_', '').isalnum() or len(profile) >= 80:
+    raise ValueError('Invalid OTA profile identity')
+defines.append(('G5500_OTA_PROFILE', '\\"' + profile + '\\"'))
 # LDF cannot reliably resolve the nested defaults in build_config.hpp. Give it
 # the direct flag too, otherwise ArduinoOTA's global constructor survives even
 # when the compiler removes every call. Explicit build flags still take priority.
