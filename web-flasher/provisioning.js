@@ -56,9 +56,9 @@ export class Preconfigurator {
     window.addEventListener('beforeunload', this.beforeUnload);
   }
 
-  select(profile) {this.profile = profile; this.flashDraft = null; this.render();}
+  select(profile) {if (this.profile?.id !== profile.id) this.localURL = null; this.profile = profile; this.flashDraft = null; this.render();}
   get enabled() {return (this.profile?.build?.capabilities || this.profile?.planned_capabilities || {}).COMMAND_API_SUPPORT === true;}
-  lock(installing) {this.installing = installing; this.render();}
+  lock(installing) {if (installing) this.localURL = null; this.installing = installing; this.render();}
   render() {
     if (!this.profile) return;
     const caps = this.profile.build?.capabilities || this.profile.planned_capabilities || {};
@@ -85,6 +85,12 @@ export class Preconfigurator {
     $('presetMqttPassword').disabled = $('presetMqttKeepPassword').checked || this.busy || this.installing;
     $('presetRestartLink').hidden = !this.service.session || this.busy || this.installing;
     $('presetNewDevice').hidden = !this.expectedId || this.busy || this.installing;
+    const localLink = $('presetLocalLink');
+    const canOpen = Boolean(this.localURL && caps.WEB_INTERFACE_ENABLED && !this.busy && !this.installing);
+    if (canOpen) localLink.href = this.localURL; else localLink.removeAttribute('href');
+    localLink.setAttribute('aria-disabled', String(!canOpen));
+    localLink.tabIndex = canOpen ? 0 : -1;
+    localLink.title = canOpen ? 'Открыть веб-интерфейс устройства в новой вкладке.' : 'Подключитесь по USB и дождитесь проверки сети.';
   }
   message(text, error = false) {
     $('presetProgress').hidden = false; $('presetProgress').dataset.error = String(error); $('presetStatus').textContent = text;
@@ -159,7 +165,7 @@ export class Preconfigurator {
     if (this.service.credentialPending && this.serviceResult?.mqtt?.password &&
         !confirm('MQTT-пароль ещё не подтверждён в плате. При новой привязке потребуется явно заменить его. Продолжить?')) return false;
     this.service = new ServiceLink(this.service.origin); this.serviceResult = null;
-    if (newDevice) {this.expectedId = null; this.port = null; this.flashDraft = null;}
+    if (newDevice) {this.expectedId = null; this.port = null; this.flashDraft = null; this.localURL = null;}
     for (const id of ['presetConsent','presetDeviceLink','presetRefresh']) $(id).hidden = true;
     this.message(newDevice ? 'Можно выбрать другую плату и начать новый сеанс настройки.' : 'Начинаем новую привязку. Существующая карточка устройства сохранится.');
     this.render(); return true;
@@ -224,8 +230,8 @@ export class Preconfigurator {
     if (this.busy || (!frozen && !this.enabled)) return;
     let draft;
     try {draft = frozen || this.collect();} catch (error) {this.message(error.message, true); return;}
-    this.busy = true; this.cancelled = false; this.setBusy(true); this.render();
-    $('presetLog').replaceChildren(); $('presetLocalLink').hidden = true;
+    this.localURL = null; this.busy = true; this.cancelled = false; this.setBusy(true); this.render();
+    $('presetLog').replaceChildren();
     this.message('Подключаемся к запущенной прошивке по USB…');
     let api;
     try {
@@ -289,7 +295,7 @@ export class Preconfigurator {
         if ((await api.request('GET', '/api/network')).trial) throw Error('Не подтверждена новая сетевая конфигурация.');
         this.log('Сетевая конфигурация успешно запущена и подтверждена.');
       }
-      if (ip && ipv4(ip) && ip !== '0.0.0.0') {$('presetLocalLink').href = 'http://' + ip + '/'; $('presetLocalLink').hidden = false;}
+      if (ip && ipv4(ip) && ip !== '0.0.0.0') this.localURL = 'http://' + ip + '/';
       this.message(network.connected || network.ethConnected ? 'Настройки применены. Устройство подключено к сети.' : 'Настройки сохранены. Подключение к сети пока не подтверждено — проверьте Wi-Fi и повторите проверку.');
       if (draft.mqttMode === 'manual' || draft.mqttMode === 'service') {
         const mqtt = await api.request('GET', '/api/mqtt');

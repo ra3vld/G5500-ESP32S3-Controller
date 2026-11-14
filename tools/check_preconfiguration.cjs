@@ -130,6 +130,9 @@ const server=http.createServer((req,res)=>{
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
   if(process.env.PROVISIONING_SERVICE_URL)context.on('request',r=>{if(r.url().startsWith(serviceBase+'/api/provisioning/public/')&&r.method()==='POST')requests.push({path:new URL(r.url()).pathname,data:r.postDataJSON(),cookie:r.headers().cookie});});
   await page.goto(base);await page.locator('#workspace').waitFor({state:'visible'});
+  const localLink=page.locator('#presetLocalLink');
+  assert(await localLink.isVisible());assert.equal(await localLink.getAttribute('aria-disabled'),'true');assert.equal(await localLink.getAttribute('href'),null);
+  assert.equal(await localLink.innerText(),'Перейти на устройство ↗');
   assert.equal(await page.locator('#presetEnabled').count(),0);assert(await page.locator('#presetForm').isVisible());await page.locator('#presetName').fill('RA3VLD_Test');
   await page.locator('#presetSsid').fill('Сеть дома');await page.locator('#presetWifiPassword').fill('fixture-wifi-password');
   await page.locator('#presetMqttMode').selectOption('manual');await page.locator('#presetMqttHost').fill('192.168.1.10');
@@ -139,6 +142,14 @@ const server=http.createServer((req,res)=>{
   await page.setViewportSize({width:1280,height:1000});
   await page.evaluate(()=>window.usbFixture.dropPost=true);
   await page.locator('#presetApply').click();await page.waitForFunction(()=>document.getElementById('presetStatus').textContent.includes('Устройство подключено к сети'));
+  await page.waitForFunction(()=>document.getElementById('presetLocalLink').getAttribute('aria-disabled')==='false');
+  assert.equal(await localLink.getAttribute('href'),'http://192.168.1.99/');assert.equal(await localLink.getAttribute('target'),'_blank');
+  assert.match(await localLink.getAttribute('rel'),/noopener/);
+  await context.route('http://192.168.1.99/',route=>route.fulfill({contentType:'text/html',body:'<title>Device web UI</title>'}));
+  const deviceTabPromise=context.waitForEvent('page');await localLink.click();const deviceTab=await deviceTabPromise;
+  await deviceTab.waitForLoadState();assert.equal(deviceTab.url(),'http://192.168.1.99/');assert.equal(await deviceTab.title(),'Device web UI');assert.equal(page.url(),base);await deviceTab.close();
+  for(const width of [1280,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.locator('.preset-actions').screenshot({path:path.join(output,`device-link-${width}.png`)});}
+  await page.setViewportSize({width:1280,height:1000});
   const saved=await page.evaluate(()=>({name:usbFixture.name,ssid:usbFixture.network.ssid,wifi:usbFixture.wifiPassword,host:usbFixture.mqtt.host,discovery:usbFixture.mqtt.discovery,password:usbFixture.password,settingsWrites:usbFixture.writes.filter(w=>w.path==='/api/settings').length,cids:usbFixture.calls.filter(c=>c.path==='/api/settings').map(c=>c.cid)}));
   assert.equal(saved.name,'RA3VLD_Test');assert.equal(saved.ssid,'Сеть дома');assert.equal(saved.wifi,'fixture-wifi-password');assert.equal(saved.host,'192.168.1.10');assert.equal(saved.discovery,true);assert.equal(saved.password,'fixture-mqtt-password');assert.equal(saved.settingsWrites,1);assert.equal(saved.cids.length,2);assert.equal(saved.cids[0],saved.cids[1]);
   assert.deepEqual(await page.evaluate(()=>usbFixture.signals),{dataTerminalReady:true,requestToSend:false});
@@ -150,17 +161,21 @@ const server=http.createServer((req,res)=>{
   await page.evaluate(()=>{usbFixture.failMqtt=true;usbFixture.writes=[];});
   await page.locator('#presetApply').click();await page.waitForFunction(()=>document.getElementById('presetStatus').textContent.includes('mqtt_storage_failed'));
   assert.equal(await page.locator('#presetMqttPassword').inputValue(),'fixture-mqtt-password');
+  assert.equal(await localLink.getAttribute('href'),null);assert.equal(await localLink.getAttribute('aria-disabled'),'true');
   assert.equal(await page.evaluate(()=>usbFixture.writes.some(w=>w.path==='/api/wifi')),false);
   await page.evaluate(()=>{usbFixture.failMqtt=false;});
   // Static IP follows reboot -> same ID -> readback -> network confirmation.
   await page.locator('#presetIpMode').selectOption('static');await page.locator('#presetAddress').fill('192.168.1.50');await page.locator('#presetGateway').fill('192.168.1.1');await page.locator('#presetDns').fill('192.168.1.1');
   await page.locator('#presetApply').click();await page.waitForFunction(()=>usbFixture.network.wifi.address==='192.168.1.50'&&!usbFixture.network.trial,{},{timeout:20000});
   await page.waitForFunction(()=>!document.getElementById('presetApply').disabled);assert.match(await page.locator('#presetLog').innerText(),/успешно запущена и подтверждена/);
+  assert.equal(await localLink.getAttribute('href'),'http://192.168.1.50/');
   // A changed board/session never silently receives a retry in a new session.
   await page.evaluate(()=>{usbFixture.id='112233445566';usbFixture.writes=[];});
   await page.locator('#presetApply').click();await page.waitForFunction(()=>document.getElementById('presetStatus').textContent.includes('другая плата'));
   assert.equal(await page.evaluate(()=>usbFixture.writes.length),0);
-  await page.locator('#presetNewDevice').click();await page.locator('#presetApply').click();
+  await page.locator('#presetNewDevice').click();
+  assert.equal(await localLink.getAttribute('href'),null);
+  await page.locator('#presetApply').click();
   await page.waitForFunction(()=>!document.getElementById('presetApply').disabled&&document.getElementById('presetLog').textContent.includes('112233445566'));
   await page.locator('#presetNewDevice').click();await page.evaluate(()=>usbFixture.id='aabbccddeeff');
   // Independent broker selection, followed by explicit account consent.
@@ -195,6 +210,7 @@ assert(await page.locator('#presetServiceTroubleshooting').isVisible());assert.m
   for(const width of [1280,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.locator('.preset-panel').screenshot({path:path.join(output,`service-${width}.png`)});}
   // Unsupported profiles visibly keep their manual setup path.
   await page.locator('#boardSelect').selectOption('esp32');await page.locator('input[value="esp32_spp"]').check();assert(await page.locator('#presetForm').isVisible());assert.equal(await page.locator('#presetFields').evaluate(node=>node.disabled),true);assert(await page.locator('#presetName').isDisabled());assert.match(await page.locator('#presetUnavailable').innerText(),/основной прошивке/);
+  assert.equal(await localLink.getAttribute('href'),null);assert.equal(await localLink.getAttribute('aria-disabled'),'true');
   // Run the actual patched vendor callback with its loader already disconnected.
   // Settings stay frozen, and the same granted port is handed off automatically.
   await page.locator('#boardSelect').selectOption('s3');await page.locator('#presetMqttMode').selectOption('preserve');await page.locator('#presetName').fill('Auto_Handoff');await page.locator('#confirmHardware').check();

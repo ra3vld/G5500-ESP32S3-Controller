@@ -110,13 +110,12 @@
               <p class="small muted">Привязку к <a href="https://rotator.r3v.ru" target="_blank" rel="noopener noreferrer">rotator.r3v.ru</a> можно выполнить позже вручную. Свой MQTT-брокер работает независимо от сервиса.</p>
               <p class="small muted">Wi-Fi и параметры своего MQTT-брокера передаются только плате по USB. Форма не сохраняет пароли между посещениями. Оборудование и калибровка проверяются отдельно в интерфейсе устройства.</p>
             </fieldset>
-            <div class="preset-actions"><button id="presetApply" type="submit">Подключиться по USB и применить настройки</button><button id="presetCancel" type="button" hidden>Остановить настройку</button></div>
+            <div class="preset-actions"><button id="presetApply" type="submit">Подключиться по USB и применить настройки</button><a id="presetLocalLink" class="preset-device-link" target="_blank" rel="noopener noreferrer" aria-disabled="true" tabindex="-1" title="Подключитесь по USB и дождитесь проверки сети.">Перейти на устройство ↗</a><button id="presetCancel" type="button" hidden>Остановить настройку</button></div>
           </form>
           <div id="presetProgress" class="preset-progress" role="status" hidden>
             <strong id="presetStatus"></strong><ol id="presetLog"></ol>
             <a id="presetConsent" class="preset-primary-link" target="_blank" rel="noopener noreferrer" hidden>Открыть rotator.r3v.ru и подтвердить привязку ↗</a>
             <a id="presetDeviceLink" target="_blank" rel="noopener noreferrer" hidden>Открыть мой шек ↗</a>
-            <a id="presetLocalLink" target="_blank" rel="noopener noreferrer" hidden>Открыть интерфейс устройства ↗</a>
             <button id="presetRefresh" type="button" hidden>Проверить связь с сервисом</button>
             <button id="presetRestartLink" type="button" hidden>Начать привязку к сервису заново</button>
             <button id="presetNewDevice" type="button" hidden>Настроить другую плату</button>
