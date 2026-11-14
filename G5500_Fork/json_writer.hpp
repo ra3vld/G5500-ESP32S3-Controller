@@ -8,6 +8,9 @@
 #include <cstring>
 #include <string_view>
 #include <type_traits>
+#if G5500_COMPACT_DECIMAL
+#include "compact_decimal.hpp"
+#endif
 
 namespace forkrot {
 struct JsonQuoted { std::string_view text; };
@@ -66,11 +69,16 @@ private:
     // Keep float telemetry on the float overload: promoting it to double adds
     // software-double work on ESP32, on the same CPU as the PID owner.
     // GCC's to_chars uses Ryu with caller-owned output storage.
+#if G5500_COMPACT_DECIMAL
+    const auto size=compact_decimal::format(number,sizeof number-1,value,precision);
+    if(!size)good_=false;else append({number,size});
+#else
     const auto result = std::to_chars(number, number + sizeof number - 1, value,
         precision < 0 ? std::chars_format::general : std::chars_format::fixed,
         precision < 0 ? 6 : precision);
     if (result.ec != std::errc()) good_ = false;
     else append({number, size_t(result.ptr - number)});
+#endif
     return *this;
   }
   JsonWriter &append(std::string_view text) {

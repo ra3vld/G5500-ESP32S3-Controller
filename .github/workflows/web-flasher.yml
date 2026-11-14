@@ -59,6 +59,7 @@ jobs:
       - run: python3 -m unittest discover -s tests -p test_web_flasher.py
       - run: python3 -m unittest discover -s tests -p test_build_config.py
       - run: python3 -m unittest discover -s tests -p 'test_*web_release.py'
+      - run: python3 tools/check_native.py compact_decimal_tests compact_decimal_ubsan_tests status_memory_s2_compact_tests protocol_s2_compact_tests
       - run: python3 -m pip install Markdown==3.5.2
       - run: npm run build:web-flasher -- --allow-missing
       - run: npx playwright install --with-deps chromium

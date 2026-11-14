@@ -19,6 +19,10 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I tests/ota_fakes -I G5500_For
 ./build/ota_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DG5500_HAS_OTA_PARTITIONS=0 -I tests/ota_noarduino_fakes -I tests/ota_fakes -I G5500_Fork G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp tests/ota_tests.cpp -o build/ota_no_partitions_tests
 ./build/ota_no_partitions_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DG5500_COMPACT_DECIMAL=1 -I G5500_Fork tests/compact_decimal_tests.cpp -o build/compact_decimal_tests
+./build/compact_decimal_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -fsanitize=undefined -fno-sanitize-recover=undefined -DG5500_COMPACT_DECIMAL=1 -I G5500_Fork tests/compact_decimal_tests.cpp -o build/compact_decimal_ubsan_tests
+./build/compact_decimal_ubsan_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -pthread -DDEVICE_API_TEST -DOTA_REMOTE_TEST -DG5500_OTA_PROFILE=\"test\" -I tests/ota_remote_fakes -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp tests/ota_remote_tests.cpp -o build/ota_remote_tests
 ./build/ota_remote_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -pthread -DDEVICE_API_TEST -DOTA_REMOTE_TEST -DARDUINO_OTA_SUPPORT=0 -DG5500_OTA_PROFILE=\"test\" -I tests/ota_remote_fakes -I tests/device_fakes -I tests/ota_fakes -I tests/fakes -I G5500_Fork G5500_Fork/ota.cpp G5500_Fork/ota_remote.cpp tests/ota_remote_tests.cpp -o build/ota_remote_noarduino_tests
@@ -178,6 +182,8 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I G5500_F
 ./build/protocol_memory_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -DDRIVE_SIMULATION=0 -I G5500_Fork G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp tests/protocol_shortest_tests.cpp -o build/protocol_shortest_tests
 ./build/protocol_shortest_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables -DG5500_COMPACT_DECIMAL=1 -DBOARD_PROFILE=2 -DDRIVE_SIMULATION=0 -I G5500_Fork G5500_Fork/control.cpp $MOTION_SOURCES G5500_Fork/protocol.cpp tests/protocol_shortest_tests.cpp -o build/protocol_s2_compact_tests
+./build/protocol_s2_compact_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp tests/external_az_settings_tests.cpp -o build/external_az_settings_tests
 ./build/external_az_settings_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -I tests/fakes -I G5500_Fork $CORE_SOURCES G5500_Fork/storage.cpp tests/manual_protocol_tests.cpp -o build/manual_protocol_tests
@@ -342,6 +348,8 @@ ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -DBOARD_PR
 ./build/status_memory_st7796_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=1 -I G5500_Fork $CORE_SOURCES tests/status_memory_tests.cpp -o build/status_memory_s3_tests
 ./build/status_memory_s3_tests
+${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -Wall -Wextra -Werror -O2 -DBOARD_PROFILE=2 -DG5500_COMPACT_DECIMAL=1 -I G5500_Fork $CORE_SOURCES tests/status_memory_tests.cpp -o build/status_memory_s2_compact_tests
+./build/status_memory_s2_compact_tests
 ${CXX:-g++} -std=c++17 -DDRIVE_SIMULATION=0 -DHOME_ASSISTANT_DISCOVERY_SUPPORT=0 -Wall -Wextra -Werror -O2 -I G5500_Fork $CORE_SOURCES tests/mqtt_plain_tests.cpp -o build/mqtt_plain_tests
 ./build/mqtt_plain_tests
 
