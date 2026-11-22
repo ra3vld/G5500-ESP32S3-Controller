@@ -367,6 +367,33 @@ void DeviceApi::execute(std::string_view method, std::string_view path, FormView
   const bool hardwarePath=path=="/api/hardware" || path.substr(0,14)=="/api/hardware/";
   const bool stop=path=="/api/hardware/stop" || (path=="/api/move" && (web_.value("d")=="S" || web_.value("d")=="A" || web_.value("d")=="E"));
   if(ota_.locked() && !stop && path!="/api/status" && path!="/api/diaglog" && path!="/api/diagnostics" && path.substr(0,8)!="/api/ota") { reply(503,"update_locked"); return; }
+#if COMMAND_API_SUPPORT
+  if(command && runtime_.recovery && path=="/api/provisioning") {
+    const bool hud=runtime_.configuredAsHud();
+    if(method=="POST") {
+      const auto name=arguments.count==1 && arguments.entries[0].first=="rotorName"
+          ? arguments.entries[0].second : std::string_view{};
+      if(!validRotorName(name)) { reply(400,"invalid_name"); return; }
+      const bool saved=storage_.saveProvisioningName(hud,std::string(name));
+      reply(saved?200:503,saved?"":"storage_failed");
+      return;
+    }
+    if(method!="GET") { reply(405,"method_not_allowed"); return; }
+    char id[13];
+    std::snprintf(id,sizeof id,"%012llx",static_cast<unsigned long long>(runtime_.hud.id & 0xffffffffffffULL));
+    std::string name;
+    Model model;
+    storage_.loadProvisioningSettings(hud,name,model);
+    output << "{\"deviceId\":" << jsonQuoted(id) << ",\"deviceRole\":" << jsonQuoted(hud?"hud":"controller")
+      << ",\"rotorName\":" << jsonQuoted(name) << ",\"model\":" << jsonQuoted(modelName(model))
+      << ",\"build\":{\"boardProfile\":" << SELECTED_BOARD << ",\"displayKind\":" << DISPLAY_KIND
+      << ",\"localDrive\":" << (CROWPANEL_LOCAL_DRIVE?"true":"false")
+      << ",\"features\":";
+    writeBuildFeatures(output);
+    output << "}}";
+    return;
+  }
+#endif
   if(runtime_.recovery && !stop && !hardwarePath && path!="/api/status" && path!="/api/mqtt" && path!="/api/network" && path!="/api/diagnostics" && path!="/api/diaglog" && path!="/api/resetreason" && path!="/api/resethistory" && path!="/api/wifi" && path!="/api/ap") { reply(409,"recovery_only"); return; }
   if (path=="/api/hardware/activity") {
     if (method!="POST") { reply(405,"method_not_allowed"); return; }

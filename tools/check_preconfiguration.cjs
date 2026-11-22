@@ -37,9 +37,17 @@ function fakeSerial() {
       let body={},status=200,type='application/json';
       const config=()=>({rotorName:state.name,model:'G5500',build:{displayKind:0,board:'ESP32-S3 N16R8',features:{commandApi:true,mqtt:true,mqttTls:true,ethernet:false}},padding:'x'.repeat(800)});
       if (f.method==='GET') {
-        if (f.path==='/api/device') body={ok:true,deviceRole:'controller',deviceId:state.id,volatile:'x'.repeat(1200)};
+        if (state.recovery && ['/api/device','/api/config'].includes(f.path)) {status=409;body={ok:false,error:'recovery_only'};}
+        else if (state.recovery && f.path==='/api/provisioning') {
+          if (state.recoveryApi) {
+            body={...config(),deviceRole:'controller',deviceId:state.id};
+            body.build.boardProfile=state.boardProfile;
+            body.build.localDrive=false;
+          } else {status=409;body={ok:false,error:'recovery_only'};}
+        }
+        else if (f.path==='/api/device') body={ok:true,deviceRole:'controller',deviceId:state.id,volatile:'x'.repeat(1200)};
         else if (f.path==='/api/config') body=config();
-        else if (f.path==='/api/status') body={moving:false,recovery:false,model:'G5500'};
+        else if (f.path==='/api/status') body={moving:false,recovery:!!state.recovery,reason:state.recovery || 'none',model:'G5500'};
         else if (f.path==='/api/mqtt') body=state.mqtt;
         else if (f.path==='/api/network') body=state.network;
         else {status=404;body={error:'unknown_fixture_route'};}
@@ -47,20 +55,27 @@ function fakeSerial() {
         const args=Object.fromEntries(Object.entries(f).filter(([k])=>!['v','cid','boot','sid','method','path','page','selection'].includes(k)));
         state.writes.push({path:f.path,args});
         if (state.failMqtt && f.path==='/api/mqtt') {status=503;body={error:'mqtt_storage_failed'};}
-        else if (f.path==='/api/settings') {state.name=args.rotorName;body={ok:true};}
+        else if (f.path==='/api/settings' || (state.recoveryApi && state.recovery && f.path==='/api/provisioning')) {state.name=args.rotorName;body={ok:true};}
         else if (f.path==='/api/mqtt') {
           for (const [k,v] of Object.entries(args)) {
             if (k==='password') {state.password=v;state.mqtt.hasPassword=!!v;}
             else state.mqtt[k]=['enabled','tls','discovery'].includes(k)?v==='true':k==='port'?Number(v):v;
           }
           state.mqtt.connected=state.network.connected;body={ok:true};
-        } else if (f.path==='/api/wifi') {state.network.ssid=args.ssid;state.wifiPassword=args.pass;state.network.connected=true;state.network.staIp='192.168.1.99';type='text/plain';body='Настройки Wi-Fi сохранены.';}
+        } else if (f.path==='/api/wifi') {
+          state.network.ssid=args.ssid;state.wifiPassword=args.pass;
+          if (!state.recovery) {state.network.connected=true;state.network.staIp='192.168.1.99';}
+          type='text/plain';body='Настройки Wi-Fi сохранены.';
+        }
         else if (f.path==='/api/network') {
           for (const [k,v] of Object.entries(args)) {
             if (k==='choice') state.network.choice=Number(v);
             else {const match=/^(wifi|eth)(Mode|Address|Mask|Gateway|Dns1|Dns2)$/.exec(k);if(match) state.network[match[1]][match[2][0].toLowerCase()+match[2].slice(1)]=v;}
           }
-          state.network.trial=true;state.network.staIp=state.network.wifi.mode==='static'?state.network.wifi.address:'192.168.1.99';state.reboot=true;body={ok:true};
+          if (!state.recovery) {
+            state.network.trial=true;state.network.staIp=state.network.wifi.mode==='static'?state.network.wifi.address:'192.168.1.99';state.reboot=true;
+          }
+          body={ok:true};
         } else if (f.path==='/api/network/confirm') {assertToken(args.token);state.network.trial=false;body={ok:true};}
         else {status=404;body={error:'unknown_fixture_route'};}
       }
@@ -138,6 +153,47 @@ const server=http.createServer((req,res)=>{
   await page.locator('#presetMqttMode').selectOption('manual');await page.locator('#presetMqttHost').fill('192.168.1.10');
   await page.locator('#presetMqttUser').fill('station');await page.locator('#presetMqttPassword').fill('fixture-mqtt-password');
   await page.locator('#presetDiscovery').check();await page.locator('#presetDiscoveryPrefix').fill('homeassistant');
+  // Recovery denies both identity and configuration while allowing status reads.
+  await page.evaluate(()=>{usbFixture.recovery='invalid_config';});
+  await page.locator('#presetApply').click();
+  await page.waitForFunction(()=>document.getElementById('presetProgress').dataset.error==='true'&&!document.getElementById('presetApply').disabled);
+  assert.match(await page.locator('#presetStatus').innerText(),/режиме восстановления.*Настройки оборудования не прошли проверку.*192\.168\.4\.1\/hardware/);
+  assert.deepEqual(await page.evaluate(()=>usbFixture.calls.map(call=>call.path)),['/api/hello','/api/device','/api/status','/api/provisioning']);
+  assert.equal(await page.evaluate(()=>usbFixture.writes.length),0);
+  assert.equal(await page.locator('#presetName').inputValue(),'RA3VLD_Test');
+  assert.equal(await localLink.getAttribute('href'),null);
+  assert.equal(requests.length,0);
+  await page.evaluate(()=>{usbFixture.recovery=null;});
+  const recoveryPage=await context.newPage();
+  recoveryPage.on('pageerror',e=>errors.push(e.message));
+  await recoveryPage.goto(base);await recoveryPage.locator('#workspace').waitFor({state:'visible'});
+  await recoveryPage.evaluate(()=>{Object.assign(usbFixture,{recovery:'invalid_config',recoveryApi:true,boardProfile:9});});
+  await recoveryPage.locator('#presetName').fill('From_recovery');
+  await recoveryPage.locator('#presetSsid').fill('Home');
+  await recoveryPage.locator('#presetWifiPassword').fill('fixture-wifi-password');
+  await recoveryPage.locator('#presetIpMode').selectOption('static');
+  await recoveryPage.locator('#presetAddress').fill('192.168.1.50');
+  await recoveryPage.locator('#presetGateway').fill('192.168.1.1');
+  await recoveryPage.locator('#presetMqttMode').selectOption('manual');
+  await recoveryPage.locator('#presetMqttHost').fill('192.168.1.10');
+  await recoveryPage.locator('#presetApply').click();
+  await recoveryPage.waitForFunction(()=>document.getElementById('presetStatus').textContent.includes('другой конфигурацией'));
+  assert.equal(await recoveryPage.evaluate(()=>usbFixture.writes.length),0);
+  await recoveryPage.evaluate(()=>{usbFixture.boardProfile=1;usbFixture.opens=0;});
+  await recoveryPage.locator('#presetApply').click();
+  await recoveryPage.waitForFunction(()=>!document.getElementById('presetApply').disabled&&document.getElementById('presetStatus').textContent.includes('после выхода из режима восстановления'));
+  assert.deepEqual(await recoveryPage.evaluate(()=>({
+    name:usbFixture.name, ssid:usbFixture.network.ssid, ip:usbFixture.network.wifi.address,
+    broker:usbFixture.mqtt.host, connected:usbFixture.network.connected, trial:usbFixture.network.trial,
+    opens:usbFixture.opens, writes:usbFixture.writes.map(write=>write.path)
+  })),{name:'From_recovery',ssid:'Home',ip:'192.168.1.50',broker:'192.168.1.10',connected:false,trial:false,
+    opens:1,writes:['/api/provisioning','/api/mqtt','/api/wifi','/api/network']});
+  assert.equal(await recoveryPage.locator('#presetLocalLink').getAttribute('href'),'http://192.168.4.1/hardware');
+  await recoveryPage.evaluate(()=>{usbFixture.id='112233445566';usbFixture.writes=[];});
+  await recoveryPage.locator('#presetApply').click();
+  await recoveryPage.waitForFunction(()=>document.getElementById('presetStatus').textContent.includes('другая плата'));
+  assert.equal(await recoveryPage.evaluate(()=>usbFixture.writes.length),0);
+  await recoveryPage.close();
   for(const width of [1280,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.locator('.preset-panel').screenshot({path:path.join(output,`manual-${width}.png`)});}
   await page.setViewportSize({width:1280,height:1000});
   await page.evaluate(()=>window.usbFixture.dropPost=true);
@@ -239,6 +295,6 @@ assert(await page.locator('#presetServiceTroubleshooting').isVisible());assert.m
   await page.waitForTimeout(650);
   assert.equal(await page.evaluate(()=>usbFixture.writes.length),writesBefore);
   assert.deepEqual(errors,[]);
-  console.log('PASS: manual MQTT/Discovery independent of service, UTF-8 Wi-Fi, identical POST retry, saved-state verification, storage failure/retry, static-IP reboot/confirm, wrong-device guard, account consent, MQTT TLS delivery, no secret storage, actual vendor callback/automatic USB handoff/frozen draft, desktop/mobile');
+  console.log('PASS: recovery provisioning and legacy guidance, manual MQTT/Discovery independent of service, UTF-8 Wi-Fi, identical POST retry, saved-state verification, storage failure/retry, static-IP reboot/confirm, wrong-device guard, account consent, MQTT TLS delivery, no secret storage, actual vendor callback/automatic USB handoff/frozen draft, desktop/mobile');
  }finally{await browser.close();await new Promise(r=>server.close(r));if(service.listening)await new Promise(r=>service.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});

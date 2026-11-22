@@ -75,8 +75,25 @@ struct PinMap {
   FORK_PIN_MAP(FORK_PIN_MEMBER)
 #undef FORK_PIN_MEMBER
   PinMap() {
+#if SELECTED_BOARD == BOARD_ESP32_C3
+#if DISPLAY_KIND == DISPLAY_LCD1602
+    lcdRs=1;lcdE=3;lcdD4=4;lcdD5=5;lcdD6=6;lcdD7=7;
+#elif DISPLAY_KIND == DISPLAY_ILI9341 || DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796
+    tftMosi=6;tftSck=4;tftCs=7;tftDc=1;tftRst=10;
+#if DISPLAY_KIND == DISPLAY_ILI9341
+    tftMiso=5;touchCs=3;
+#endif
+#endif
+#endif
 #if DISPLAY_KIND == DISPLAY_GC9A01 || DISPLAY_KIND == DISPLAY_ST7796
     tftMiso=touchCs=touchIrq=-1;
+#if SELECTED_BOARD == BOARD_ESP32
+    touchSda=13;touchScl=19;
+#elif SELECTED_BOARD == BOARD_ESP32_C3
+    touchSda=5;touchScl=3;
+#elif SELECTED_BOARD == BOARD_S3 || SELECTED_BOARD == BOARD_S2_MINI || SELECTED_BOARD == BOARD_S2_LEGACY
+    touchSda=8;touchScl=9;
+#endif
 #endif
 #if DISPLAY_KIND == DISPLAY_ST77916
     tftDc=touchCs=tftRst=touchIrq=-1;

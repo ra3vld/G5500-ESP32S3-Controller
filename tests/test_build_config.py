@@ -229,6 +229,7 @@ int main() {
 #include <string>
 using namespace forkrot;
 int main() {
+  assert(!board::validateHardware(HardwareConfig{})); // clean NVS uses this map
   HardwareConfig c;c.simulation=true;c.bluetooth=false;c.buttonGpio=-1;
   for(const auto &d:pinDefinitions)c.pins.*d.member=-1;
   // Missing display wiring must enter setup, never initialize arbitrary GPIOs.

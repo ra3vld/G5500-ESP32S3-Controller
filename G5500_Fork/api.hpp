@@ -5,6 +5,7 @@
 #include "encoder_settings.hpp"
 #include <map>
 namespace forkrot {
+bool validRotorName(std::string_view name);
 struct Settings {
   unsigned n1mmPort = 12040, pstPort = 1234, reportPort = 13010, commandPort = 4535;
   std::string reportHost;

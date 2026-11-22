@@ -112,7 +112,7 @@ export class SerialApi {
           const body = reply.type === 'application/json' ? JSON.parse(text) : text;
           if (reply.status < 200 || reply.status >= 300) {
             const reason = typeof body === 'string' ? body : body.error || body.result || 'Ошибка устройства';
-            throw Error(`Устройство: ${reason} (${reply.status}).`);
+            throw Object.assign(Error(`Устройство: ${reason} (${reply.status}).`), {status:reply.status});
           }
           return body;
         }
@@ -127,7 +127,16 @@ export class SerialApi {
     // later pages are live; reading this bounded prefix avoids assembling them
     // across different revisions. Unknown firmware layout fails closed.
     const reply = await this.exchange({method:'GET', path:'/api/device', boot:this.boot, sid:String(this.sid), page:'0'});
-    if (reply.status !== 200 || reply.boot !== this.boot || reply.sid !== this.sid || reply.offset !== 0 || reply.type !== 'application/json') throw Error('Не удалось проверить ID устройства.');
+    const matches = reply.boot === this.boot && reply.sid === this.sid && reply.offset === 0 && reply.type === 'application/json';
+    if (!matches || reply.status !== 200) {
+      const error = Error('Не удалось проверить ID устройства.');
+      if (matches && reply.status === 409 && reply.next === null) {
+        let body;
+        try {body = JSON.parse(atob(reply.base64));} catch { /* Malformed responses keep the generic error. */ }
+        if (body?.ok === false && body.error === 'recovery_only') error.code = 'recovery_only';
+      }
+      throw error;
+    }
     const prefix = new TextDecoder('utf-8', {fatal:true}).decode(Uint8Array.from(atob(reply.base64), (c) => c.charCodeAt(0)));
     const fields = /^\{"ok":true,"deviceRole":"(controller|hud)","deviceId":"([0-9a-f]{12})"[,}]/.exec(prefix);
     if (!fields || fields[2] === '000000000000') throw Error('Прошивка не вернула постоянный ID устройства.');

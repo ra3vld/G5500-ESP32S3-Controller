@@ -10,6 +10,13 @@
 #include <cstdio>
 #include <cstdlib>
 namespace forkrot {
+bool validRotorName(std::string_view name) {
+  if (name.empty() || name.size() > 31) return false;
+  for (unsigned char ch : name)
+    if (!std::isalnum(ch) && ch != '_' && ch != '-' && ch != ' ') return false;
+  return true;
+}
+
 std::string jsonQuote(const std::string &s) {
   std::string out = "\"";
   for (unsigned char ch : s) {
@@ -240,9 +247,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
       bool ok = false;
       if (key == "rotorName") {
         name = value;
-        ok = !name.empty() && name.size() <= 31;
-        for (unsigned char ch : name)
-          ok = ok && (std::isalnum(ch) || ch == '_' || ch == '-' || ch == ' ');
+        ok = validRotorName(name);
       } else if (key == "n1mmPort")
         ok = integer(value, next.n1mmPort, 1, 65535);
       else if (key == "pstPort")
@@ -338,10 +343,7 @@ Response apiView(Controller &controller, Protocol &protocol, Settings &settings,
     }
     if (has(form, "rotorName")) {
       name = get(form, "rotorName");
-      valid = valid && !name.empty() && name.size() <= 31;
-      for (unsigned char ch : name) {
-        valid = valid && (std::isalnum(ch) || ch == '_' || ch == '-' || ch == ' ');
-      }
+      valid = valid && validRotorName(name);
     }
     if (has(form, "n1mmPort")) {
       valid = integer(get(form, "n1mmPort"), next.n1mmPort, 1, 65535) && valid;

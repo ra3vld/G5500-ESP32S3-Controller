@@ -7,6 +7,13 @@ const bytes = (text) => new TextEncoder().encode(text).length;
 const cleanText = (text) => !/[\x00-\x1f\x7f]/.test(text);
 const ipv4 = (text) => /^(?:\d{1,3}\.){3}\d{1,3}$/.test(text) && text.split('.').every((n) => Number(n) <= 255 && String(Number(n)) === n);
 const b64url = (data) => btoa(String.fromCharCode(...data)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+const boardProfiles = {s3:1,s2legacy:2,s2mini:3,esp32:4,crowpanel:5,wt32:6,waveshare:7,guition:8,c3:9,sunton:10};
+
+function recoveryError(status) {
+  const reason = status.reason === 'invalid_config' ? ' Настройки оборудования не прошли проверку.' : '';
+  return Error('Устройство в режиме восстановления.' + reason +
+    ' Подключитесь к Wi-Fi G5500-Recovery-… и откройте http://192.168.4.1/hardware. После настройки оборудования повторите применение настроек по USB.');
+}
 
 export class ServiceLink {
   constructor(origin) {
@@ -171,21 +178,39 @@ export class Preconfigurator {
     this.render(); return true;
   }
   async device(api, draft) {
-    const identity = await api.identity();
+    let identity, config, status;
+    try {identity = await api.identity();} catch (error) {
+      if (error.code !== 'recovery_only') throw error;
+      status = await api.request('GET', '/api/status');
+      if (!status.recovery) throw Error('Режим устройства изменился. Подключитесь по USB снова.');
+      try {config = await api.request('GET', '/api/provisioning');} catch (failure) {
+        if (failure.status === 404 || failure.status === 409) throw recoveryError(status);
+        throw failure;
+      }
+      const {deviceId, deviceRole} = config;
+      if (typeof deviceId !== 'string' || !/^[0-9a-f]{12}$/.test(deviceId) || deviceId === '000000000000' ||
+          !['controller','hud'].includes(deviceRole)) throw Error('Прошивка не вернула постоянный ID устройства.');
+      identity = {deviceId, deviceRole};
+    }
     if (this.expectedId && this.expectedId !== identity.deviceId) throw Error('Подключена другая плата. Выберите устройство с ID ' + this.expectedId + '.');
-    this.expectedId = identity.deviceId;
-    const config = await api.request('GET', '/api/config');
+    const recovery = Boolean(status?.recovery);
+    config ??= await api.request('GET', '/api/config');
     const caps = config.build?.features;
-    if (!caps?.commandApi || config.build.displayKind !== draft.profile.display_kind) throw Error('Плата запущена с другой конфигурацией дисплея или без совместимого API. Проверьте прошивку.');
-    const status = await api.request('GET', '/api/status');
+    if (!caps?.commandApi || config.build.displayKind !== draft.profile.display_kind ||
+        (recovery && (config.build.boardProfile !== boardProfiles[draft.profile.board] ||
+          config.build.localDrive !== (draft.profile.base_id === 'crowpanel_21_az')))) {
+      throw Error('Плата запущена с другой конфигурацией или без совместимого API. Проверьте прошивку.');
+    }
+    status ??= await api.request('GET', '/api/status');
     if (status.moving) throw Error('Устройство движется. Остановите его перед настройкой.');
-    if (status.recovery) throw Error('Устройство в режиме восстановления. Сначала исправьте оборудование в его веб-интерфейсе.');
+    if (status.recovery && !recovery) throw recoveryError(status);
     if (draft.mqttMode !== 'preserve' && !caps.mqtt) throw Error('В работающей прошивке нет MQTT.');
     if ((draft.mqttMode === 'service' || draft.mqtt?.tls) && !caps.mqttTls) throw Error('Работающая прошивка не поддерживает MQTT TLS.');
     if (draft.interface === 'eth' && draft.ipMode !== 'preserve' && !caps.ethernet) throw Error('В работающей прошивке нет Ethernet.');
     if (draft.mqttMode === 'service' && identity.deviceRole !== 'controller') throw Error('Для сервиса выберите контроллер поворотки. Пульт HUD настраивается отдельно.');
-    this.log('USB: контроллер ' + identity.deviceId + ', совместимость проверена.');
-    return {identity, config};
+    this.expectedId = identity.deviceId;
+    this.log('USB: устройство ' + identity.deviceId + ', совместимость проверена.');
+    return {identity, config, recovery};
   }
 
   async serviceCredentials(device, config, name) {
@@ -236,11 +261,11 @@ export class Preconfigurator {
     let api;
     try {
       api = await this.connect(port);
-      const {identity, config} = await this.device(api, draft);
+      const {identity, config, recovery} = await this.device(api, draft);
       this.checkCancelled();
       if (draft.name && draft.name !== config.rotorName) {
-        await api.request('POST', '/api/settings', {rotorName:draft.name});
-        if ((await api.request('GET', '/api/config')).rotorName !== draft.name) throw Error('Не подтверждено сохранение имени.');
+        await api.request('POST', recovery ? '/api/provisioning' : '/api/settings', {rotorName:draft.name});
+        if ((await api.request('GET', recovery ? '/api/provisioning' : '/api/config')).rotorName !== draft.name) throw Error('Не подтверждено сохранение имени.');
         this.log('Имя контроллера сохранено.');
       }
       this.checkCancelled();
@@ -267,20 +292,29 @@ export class Preconfigurator {
       if (draft.ipMode !== 'preserve') {
         const desired = {mode:draft.ipMode, ...(draft.ipMode === 'static' ? {address:draft.address, mask:draft.mask, gateway:draft.gateway || '0.0.0.0', dns1:draft.dns || '0.0.0.0'} : {})};
         const current = network[draft.interface];
-        if (Object.entries(desired).some(([key, value]) => current[key] !== value)) {
+        const choice = draft.interface === 'eth' ? 4 : 1;
+        if (network.choice !== choice || Object.entries(desired).some(([key, value]) => current[key] !== value)) {
           const field = {mode:'Mode', address:'Address', mask:'Mask', gateway:'Gateway', dns1:'Dns1'};
           const values = Object.fromEntries(Object.entries(desired).map(([key, value]) => [draft.interface + field[key], value]));
           if (draft.ipMode === 'static') values[draft.interface + 'Dns2'] = '0.0.0.0';
-          values.choice = draft.interface === 'eth' ? '4' : '1';
+          values.choice = String(choice);
           this.checkCancelled();
           await api.request('POST', '/api/network', values);
-          this.log('IP-параметры сохранены. Ожидаем перезапуск и проверяем сеть…');
-          await api.close(); api = null; await pause(4000);
-          api = await this.connect(this.port); await this.device(api, draft);
+          if (recovery) {
+            network = await api.request('GET', '/api/network');
+            if (network.choice !== choice || Object.entries(desired).some(([key, value]) => network[draft.interface]?.[key] !== value)) {
+              throw Error('Устройство не подтвердило сохранение IP-параметров.');
+            }
+            this.log('IP-параметры сохранены в режиме восстановления.');
+          } else {
+            this.log('IP-параметры сохранены. Ожидаем перезапуск и проверяем сеть…');
+            await api.close(); api = null; await pause(4000);
+            api = await this.connect(this.port); await this.device(api, draft);
+          }
         }
       }
-      this.message('Параметры сохранены. Проверяем подключение к сети…');
-      for (let attempt = 0; attempt < 25; attempt++) {
+      if (!recovery) this.message('Параметры сохранены. Проверяем подключение к сети…');
+      for (let attempt = 0; !recovery && attempt < 25; attempt++) {
         this.checkCancelled(); network = await api.request('GET', '/api/network');
         if (network.connected || network.ethConnected || (!draft.ssid && draft.ipMode === 'preserve')) break;
         await pause(1000);
@@ -289,13 +323,17 @@ export class Preconfigurator {
       this.checkCancelled();
       if (draft.ipMode !== 'preserve' && network[draft.interface].mode !== draft.ipMode) throw Error('IP-настройки не сохранились или были возвращены после неудачного запуска.');
       if (draft.ipMode === 'static' && network[draft.interface].address !== draft.address) throw Error('Статический IP не подтверждён.');
-      const ip = network.ethConnected ? network.ethIp : network.connected ? network.staIp : network.apIp;
-      if (network.trial && network.trialBooted && (network.connected || network.ethConnected)) {
+      const ip = recovery ? network.apIp : network.ethConnected ? network.ethIp : network.connected ? network.staIp : network.apIp;
+      if (!recovery && network.trial && network.trialBooted && (network.connected || network.ethConnected)) {
         await api.request('POST', '/api/network/confirm', {token:String(network.token), address:network.choice === 4 ? network.ethIp : network.staIp});
         if ((await api.request('GET', '/api/network')).trial) throw Error('Не подтверждена новая сетевая конфигурация.');
         this.log('Сетевая конфигурация успешно запущена и подтверждена.');
       }
-      if (ip && ipv4(ip) && ip !== '0.0.0.0') this.localURL = 'http://' + ip + '/';
+      if (ip && ipv4(ip) && ip !== '0.0.0.0') this.localURL = 'http://' + ip + (recovery ? '/hardware' : '/');
+      if (recovery) {
+        this.message('Настройки сохранены. Подключитесь к Wi-Fi G5500-Recovery-… и завершите настройку оборудования. Подключение к сети и MQTT можно проверить после выхода из режима восстановления.');
+        return;
+      }
       this.message(network.connected || network.ethConnected ? 'Настройки применены. Устройство подключено к сети.' : 'Настройки сохранены. Подключение к сети пока не подтверждено — проверьте Wi-Fi и повторите проверку.');
       if (draft.mqttMode === 'manual' || draft.mqttMode === 'service') {
         const mqtt = await api.request('GET', '/api/mqtt');

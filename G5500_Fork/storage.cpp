@@ -851,6 +851,23 @@ void Storage::saveTouchCalibration(const TouchCalibration &touchCalibration) {
   prefs_.end();
 }
 
+void Storage::loadProvisioningSettings(bool hud, std::string &name, Model &model) {
+  const bool opened=prefs_.begin("forkcfg",true);
+  const String savedName=opened ? prefs_.getString("name","G5500") : String("G5500");
+  name=(opened && hud ? prefs_.getString("hudname",savedName) : savedName).c_str();
+  const auto savedModel=opened ? prefs_.getUChar("model",0) : 0;
+  model=savedModel<=uint8_t(Model::G800SA) ? Model(savedModel) : Model::G5500;
+  prefs_.end();
+}
+
+bool Storage::saveProvisioningName(bool hud, const std::string &name) {
+  if (!prefs_.begin("forkcfg",false)) { prefs_.end(); return false; }
+  const char *key=hud ? "hudname" : "name";
+  const bool saved=prefs_.putString(key,name.c_str())==name.size() && prefs_.getString(key)==name.c_str();
+  prefs_.end();
+  return saved;
+}
+
 void Storage::loadForkSettings(Runtime &runtime) {
   if(!runtime.hud.isHud()) {
     prefs_.begin("forkmotion",true);

@@ -38,6 +38,7 @@ jobs:
     timeout-minutes: 20
     outputs:
       release_tag: ${{ steps.release.outputs.tag }}
+      eligible: ${{ steps.release.outputs.eligible }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,9 +50,6 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - run: python3 -m pip install Markdown==3.5.2
-      - run: python3 -m unittest discover -s tests -p test_update_web_flasher_site.py
-      - run: python3 -m unittest discover -s tests -p test_split_web_release.py
       - id: release
         name: Download the latest stable release website
         env:
@@ -63,26 +61,57 @@ jobs:
           [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           gh release view "$RELEASE_TAG" --json isDraft,isPrerelease --jq 'if .isDraft or .isPrerelease then error("A published stable release is required") else . end'
           mkdir -p artifacts/release-files
-          gh release download "$RELEASE_TAG" --pattern web-flasher-site.zip --pattern release-manifest.json --pattern SHA256SUMS --dir artifacts/release-files
+          gh release download "$RELEASE_TAG" --pattern release-manifest.json --pattern SHA256SUMS --dir artifacts/release-files
+          eligible=$(PYTHONPATH=tools python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from update_web_flasher_site import verify_archive
+          from web_flasher import source_digest
+          folder = Path("artifacts/release-files")
+          manifest = folder / "release-manifest.json"
+          verify_archive(manifest, folder / "SHA256SUMS")
+          released = json.loads(manifest.read_text())["source_sha256"]
+          print("true" if released == source_digest() else "false")
+          PY
+          )
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "eligible=$eligible" >> "$GITHUB_OUTPUT"
+          if [[ "$eligible" != true ]]; then
+            echo "Firmware sources differ from $RELEASE_TAG. The firmware release workflow will publish the new website with the matching firmware." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh release download "$RELEASE_TAG" --pattern web-flasher-site.zip --dir artifacts/release-files
           if python3 -c 'import json,sys; sys.exit(json.load(open("artifacts/release-files/release-manifest.json")).get("schema") != 2)'; then
             gh release download "$RELEASE_TAG" --pattern 'firmware-*.zip' --pattern source-code.zip --dir artifacts/release-files
           fi
-          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+      - if: steps.release.outputs.eligible == 'true'
+        run: python3 -m pip install Markdown==3.5.2
+      - if: steps.release.outputs.eligible == 'true'
+        run: python3 -m unittest discover -s tests -p test_update_web_flasher_site.py
+      - if: steps.release.outputs.eligible == 'true'
+        run: python3 -m unittest discover -s tests -p test_split_web_release.py
       - name: Update UI and verify unchanged released firmware
+        if: steps.release.outputs.eligible == 'true'
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: python3 tools/update_web_flasher_site.py --archive artifacts/release-files/web-flasher-site.zip --checksums artifacts/release-files/SHA256SUMS --tag "$RELEASE_TAG"
-      - run: npm ci --ignore-scripts
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:web-flasher
-      - run: npm run test:preconfiguration
-      - uses: actions/upload-pages-artifact@v4
+      - if: steps.release.outputs.eligible == 'true'
+        run: npm ci --ignore-scripts
+      - if: steps.release.outputs.eligible == 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.release.outputs.eligible == 'true'
+        run: npm run test:web-flasher
+      - if: steps.release.outputs.eligible == 'true'
+        run: npm run test:preconfiguration
+      - if: steps.release.outputs.eligible == 'true'
+        uses: actions/upload-pages-artifact@v4
         with:
           path: dist/web-flasher
           retention-days: 1
 
   deploy:
     needs: build
+    if: needs.build.outputs.eligible == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

@@ -1,6 +1,38 @@
 #include "device_service_fixture.hpp"
 #include "panel_metrics.hpp"
 #include <nvs.h>
+#if COMMAND_API_SUPPORT
+static void recoveryProvisioningTests() {
+  Fixture f;
+  f.runtime.recovery=true;
+  f.runtime.controller.configurationLocked=true;
+  f.runtime.hud.id=0xaabbccddeeffULL;
+  auto &saved=Preferences::database["forkcfg"];
+  saved["name"]=String("Controller");
+  saved["hudname"]=String("HUD");
+  saved["model"]=uint8_t(Model::G800SA);
+  saved["speed"]=uint32_t(37);
+  const auto original=saved;
+  assert(f.call("GET","/api/device","",true).status==409);
+  assert(f.call("GET","/api/provisioning","",false).status==409);
+  for(bool hud:{false,true}) {
+    f.runtime.hardwareHudRole=hud;
+    const auto identity=f.call("GET","/api/provisioning","",true);
+    assert(identity.status==200 && identity.body.find("\"deviceId\":\"aabbccddeeff\"")!=std::string::npos);
+    assert(identity.body.find(hud?"\"deviceRole\":\"hud\"":"\"deviceRole\":\"controller\"")!=std::string::npos);
+    assert(identity.body.find("\"model\":\"G800SA\"")!=std::string::npos);
+    assert(f.call("POST","/api/provisioning","rotorName=A&model=G5500",true).status==400);
+    assert(f.call("POST","/api/provisioning","rotorName=%26",true).status==400);
+    assert(f.call("POST","/api/move","d=R",true).status==409);
+    assert(f.call("POST","/api/provisioning","rotorName=Configured",true).status==200);
+    const auto after=f.call("GET","/api/provisioning","",true);
+    assert(after.body.find("\"rotorName\":\"Configured\"")!=std::string::npos);
+    assert(std::get<String>(saved.at(hud?"name":"hudname"))==(hud?"Configured":"HUD"));
+    assert(f.runtime.recovery && f.runtime.controller.configurationLocked && !f.restart.pending());
+  }
+  assert(saved.at("model")==original.at("model") && saved.at("speed")==original.at("speed"));
+}
+#endif
 static void hardwareStorageApiTests() {
   for(bool wire:{false,true}) {
     Fixture f;f.runtime.recovery=true;f.runtime.controller.configurationLocked=true;
@@ -397,6 +429,9 @@ static void networkRecoveryTests() {
   }
 }
 int main(int argc,char **argv) {
+#if COMMAND_API_SUPPORT
+  if (argc == 1) recoveryProvisioningTests();
+#endif
   {
     Fixture f;
     const auto before=Preferences::database;

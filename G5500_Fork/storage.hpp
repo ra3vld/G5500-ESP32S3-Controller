@@ -48,6 +48,8 @@ public:
   void loadTouchCalibration(TouchCalibration &touchCalibration);
   void saveTouchCalibration(const TouchCalibration &touchCalibration);
   void loadForkSettings(Runtime &runtime);
+  void loadProvisioningSettings(bool hud, std::string &name, Model &model);
+  bool saveProvisioningName(bool hud, const std::string &name);
   void loadMotionSettings(Runtime &runtime);
   bool saveForkSettings(const Runtime &runtime);
   bool serviceRuntimeSpeeds(Runtime &runtime, uint32_t now, bool force = false);
