@@ -1,0 +1,116 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+syntax = "proto3";
+package shack.v1;
+
+message Version {
+  uint32 major = 1;
+  uint32 minor = 2;
+}
+
+message HelloRequest {}
+message ListDevicesRequest {
+  string after_device_id = 1;
+  uint32 limit = 2;
+}
+message GetTunerStateRequest {
+  string device_id = 1;
+}
+
+message Request {
+  Version version = 1;
+  string request_id = 2;
+  string node_id = 3;
+
+  oneof call {
+    HelloRequest hello = 10;
+    ListDevicesRequest list_devices = 11;
+    GetTunerStateRequest get_tuner_state = 12;
+  }
+}
+
+// HTTP and USB use the same method and request target.
+message UsbRequest {
+  Version version = 1;
+  string request_id = 2;
+  string method = 3;
+  string target = 4;
+}
+
+message Hello {
+  uint32 max_message_bytes = 1;
+  uint32 max_catalog_page = 2;
+}
+
+message TunerCapabilities {
+  bool tune = 1;
+  bool memory_tune = 2;
+  bool full_tune = 3;
+  bool toggle_bypass = 4;
+  bool manual_mode = 5;
+  bool auto_mode = 6;
+  bool controlled_mode = 7;
+  bool rf_meter = 8;
+  uint32 antenna_ports = 9;
+}
+
+message Device {
+  string device_id = 1;
+
+  oneof capabilities {
+    TunerCapabilities tuner = 10;
+  }
+}
+
+message Catalog {
+  repeated Device devices = 1;
+  string next_after_device_id = 2;
+}
+
+enum TunerMode {
+  TUNER_MODE_UNKNOWN = 0;
+  TUNER_MODE_MANUAL = 1;
+  TUNER_MODE_AUTO = 2;
+  TUNER_MODE_CONTROLLED = 3;
+  TUNER_MODE_BYPASS = 4;
+}
+
+message RfMeter {
+  optional double forward_watts = 1;
+  optional double reflected_watts = 2;
+  optional double swr = 3;
+}
+
+message TunerState {
+  string device_id = 1;
+  bool connected = 2;
+  bool busy = 3;
+  uint32 sequence = 4;
+  TunerMode mode = 5;
+  optional uint32 antenna = 6;
+  optional uint32 meter_age_ms = 7;
+  RfMeter meter = 8;
+}
+
+message Error {
+  enum Code {
+    CODE_UNSPECIFIED = 0;
+    INVALID_REQUEST = 1;
+    UNSUPPORTED_VERSION = 2;
+    NOT_FOUND = 3;
+    UNAVAILABLE = 4;
+  }
+  Code code = 1;
+}
+
+message Response {
+  Version version = 1;
+  string request_id = 2;
+  string node_id = 3;
+
+  oneof reply {
+    Hello hello = 10;
+    Catalog catalog = 11;
+    TunerState tuner_state = 12;
+    Error error = 13;
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "request": {
+    "version": {
+      "major": 1
+    },
+    "requestId": "req-1",
+    "nodeId": "shack-a",
+    "getTunerState": {
+      "deviceId": "tuner.hf"
+    }
+  },
+  "requestHex": "0a02080112057265712d311a07736861636b2d61620a0a0874756e65722e6866",
+  "response": {
+    "version": {
+      "major": 1
+    },
+    "requestId": "req-1",
+    "nodeId": "shack-a",
+    "tunerState": {
+      "deviceId": "tuner.hf",
+      "connected": true,
+      "sequence": 42,
+      "mode": "TUNER_MODE_AUTO",
+      "antenna": 0,
+      "meterAgeMs": 0,
+      "meter": {
+        "forwardWatts": 0.0,
+        "reflectedWatts": 0.0,
+        "swr": 1.3
+      }
+    }
+  },
+  "responseHex": "0a02080112057265712d311a07736861636b2d6162310a0874756e65722e68661001202a280230003800421b09000000000000000011000000000000000019cdccccccccccf43f"
+}

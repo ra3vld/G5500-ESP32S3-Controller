@@ -296,3 +296,7 @@ curl --data 'token=123&generation=2&pin.azAdc=1' http://192.168.4.1/api/hardware
 `GET /api/diagnostics` возвращает `networkMemoryLimited`, `udpDropped` (пакеты логгеров с недопустимым размером) и `tcpAborts` (принудительно закрытые сеансы rotctld). `GET /api/diagnostics?previousFailure=0` или `1` читает первый отказ предыдущего запуска размером менее 1024 байт или от 1024 байт соответственно. Если `ready=true`, ответ содержит `size`, `caps`, `free`, `largestBlock`, `task`, `function`, `pc` и `elf` — SHA-256 ELF, необходимый для расшифровки адресов стека. При отсутствии корректной записи возвращается `ready=false`.
 
 Эти контексты также доступны в `previousAllocations` ответа `GET /api/hardware/reboots`, включая recovery. Запись переживает программный перезапуск; после отключения питания её наличие не гарантируется.
+
+## Shack Protocol v1.0
+
+HTTP-запросы `GET /shack/v1/hello` и `GET /shack/v1/devices` принимают заголовки `Shack-Version: 1.0` и `Shack-Request-Id`. В каталоге G5500 представлен как `rotator`. Операции чтения и управления повороткой доступны по командному API и live-интерфейсу. [Общая схема Shack Protocol](https://github.com/ra3vld/shack-libs/tree/main/protocol)

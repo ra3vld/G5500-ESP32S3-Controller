@@ -6,6 +6,9 @@
 #include "diagnostic_pages.hpp"
 #include "web_assets.hpp"
 #include "web_encoding.hpp"
+#ifdef ARDUINO
+#include "src/shack-libs/protocol/firmware/shack_wire.hpp"
+#endif
 namespace forkrot {
 bool WebInterface::handleStaticRequest(std::string_view request) {
   if(request.substr(0,8)!="GET /ui/")return false;
@@ -68,6 +71,25 @@ void WebInterface::setupWeb() {
     if(!self.runtime_.recovery && request.substr(0,16)=="GET /api/status ") {
       self.serveApi("GET","/api/status",{});return true;
     }
+#ifdef ARDUINO
+    if (request.substr(0, 11) == "GET /shack/") {
+      const auto end = request.find(' ', 4);
+      const auto path = request.substr(4, end - 4);
+      char node[13];
+      const uint64_t mac = ESP.getEfuseMac();
+      snprintf(node, sizeof node, "%012llx", static_cast<unsigned long long>(mac & 0xffffffffffffULL));
+      std::string body;
+      int status = 0;
+      if (end == request.npos || !shack::http({node, "rotator"}, path,
+              httpHeader(request, "shack-version"), httpHeader(request, "shack-request-id"), status, body)) {
+        status = 400;
+        body = "{\"error\":\"shack_request\"}";
+      }
+      self.web_.sendHeader("Cache-Control", "no-store");
+      self.web_.sendFixed(status, "application/json", body.data(), body.size(), false);
+      return true;
+    }
+#endif
     return self.handleStaticRequest(request) || self.handleMqttRequest(request) || self.handleHardwareRequest(request) ||
         (!self.runtime_.recovery && self.handleOtaRequest(request));
   },this);

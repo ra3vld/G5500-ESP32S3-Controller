@@ -1,0 +1,3 @@
+# Preserve upstream bytes, including whitespace in source notices.
+nanopb/** -whitespace
+arduinojson/** -whitespace

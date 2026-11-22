@@ -1,0 +1,18 @@
+{
+  "version": {"major": 1, "minor": 0},
+  "limits": {"message_bytes": 1024, "id_bytes": 32, "http_target_bytes": 128, "catalog_page": 3},
+  "http": {
+    "version_header": "Shack-Version",
+    "request_id_header": "Shack-Request-Id",
+    "hello": "GET /shack/v{major}/hello",
+    "list_devices": "GET /shack/v{major}/devices",
+    "get_tuner_state": "GET /shack/v{major}/devices/{device_id}/state"
+  },
+  "udp": {"port": 4536},
+  "usb": {"prefix": "@SHACK "},
+  "mqtt": {
+    "request": "shack/v{major}/{node_id}/read/{request_id}/request",
+    "response": "shack/v{major}/{node_id}/read/{request_id}/reply",
+    "qos": 1
+  }
+}

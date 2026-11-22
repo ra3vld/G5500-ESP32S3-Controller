@@ -1,0 +1,9 @@
+nanopb 0.4.9.1 runtime and license
+https://github.com/nanopb/nanopb/tree/0.4.9.1
+
+ArduinoJson 7.4.3 amalgamated header for G5500 and license
+https://github.com/bblanchon/ArduinoJson/releases/tag/v7.4.3
+ESP-IDF projects use their existing ArduinoJson component.
+
+wire.pb.c and wire.pb.h generated from schema/shack_protocol/wire.proto and .options
+with nanopb 0.4.9.1 and libprotoc 31.1.

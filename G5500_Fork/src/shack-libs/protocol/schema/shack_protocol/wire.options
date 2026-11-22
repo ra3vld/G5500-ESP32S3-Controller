@@ -1,0 +1,13 @@
+shack.v1.Catalog.devices max_count:3
+shack.v1.Catalog.next_after_device_id max_length:32
+shack.v1.Device.device_id max_length:32
+shack.v1.GetTunerStateRequest.device_id max_length:32
+shack.v1.ListDevicesRequest.after_device_id max_length:32
+shack.v1.Request.node_id max_length:32
+shack.v1.Request.request_id max_length:32
+shack.v1.Response.node_id max_length:32
+shack.v1.Response.request_id max_length:32
+shack.v1.TunerState.device_id max_length:32
+shack.v1.UsbRequest.method max_length:3
+shack.v1.UsbRequest.request_id max_length:32
+shack.v1.UsbRequest.target max_length:128
