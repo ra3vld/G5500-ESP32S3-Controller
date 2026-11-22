@@ -1,0 +1,111 @@
+// G5500 Fork; original by UA1CFM. GPL-3.0.
+#pragma once
+#include "control.hpp"
+#include "json_writer.hpp"
+namespace forkrot {
+
+enum CalibrationMode : uint8_t { CAL_GS232_2POINT = 0, CAL_MULTI_POINT = 1 };
+inline constexpr uint8_t AZ36_CAL_N = 5, AZ45_CAL_N = 6, EL_CAL_N = 5;
+inline constexpr float az36CalDeg[AZ36_CAL_N] = {0, 90, 180, 270, 360};
+inline constexpr float az45CalDeg[AZ45_CAL_N] = {0, 90, 180, 270, 360, 450};
+inline constexpr float elCalDeg[EL_CAL_N] = {0, 45, 90, 135, 180};
+inline constexpr uint8_t AZ_CUSTOM_CAL_N = 16;
+struct CustomAxisCalibration {
+  AzRange range;
+  bool initialized = false, zeroSet = false, fullSet = false;
+  int zeroMv = 0, fullMv = 3100;
+  uint8_t count = 2;
+  float degrees[AZ_CUSTOM_CAL_N] = {0, 450}; // Distance from the left stop.
+  int millivolts[AZ_CUSTOM_CAL_N] = {-1, -1};
+};
+using CustomAzCalibration = CustomAxisCalibration;
+struct CalibrationEndpoints {
+  int az36_0 = 0, az36Max = 3100, az45_0 = 0, az45Max = 3100;
+  int el0 = 0, elMax = 3100;
+  bool valid = false;
+};
+struct CalibrationState {
+  uint64_t sensorIdentity[2]{};
+  CalibrationEndpoints cal;
+  CalibrationMode calibrationMode = CAL_GS232_2POINT;
+  uint8_t gsAzMode = 45;
+  CustomAzCalibration custom;
+  uint8_t elProfile = EL_STANDARD;
+  CustomAxisCalibration customEl = [] { CustomAxisCalibration c; c.range={0,180}; c.degrees[1]=180; return c; }();
+  bool storageFault = false;
+  int az36CalMv[AZ36_CAL_N] = {-1, -1, -1, -1, -1};
+  int az45CalMv[AZ45_CAL_N] = {-1, -1, -1, -1, -1, -1};
+  int elCalMv[EL_CAL_N] = {-1, -1, -1, -1, -1};
+  bool az36MultiValid = false, az45MultiValid = false, elMultiValid = false;
+  bool az36LinearValid = false, az45LinearValid = false, elLinearValid = false;
+  bool az36OSet = false, az36FSet = false, az45OSet = false, az45FSet = false;
+  bool elOSet = false, elFSet = false;
+};
+inline void bindPositionSensors(CalibrationState &s,const HardwareConfig &c) {
+  for(unsigned axis=0;axis<2;++axis) {
+    const uint64_t identity=positionSensorIdentity(c,axis);
+    if(s.sensorIdentity[axis]==identity) continue;
+    s.sensorIdentity[axis]=identity;
+    auto &custom=axis?s.customEl:s.custom;
+    custom.zeroSet=custom.fullSet=false;
+    std::fill_n(custom.millivolts,AZ_CUSTOM_CAL_N,-1);
+    if(!axis) {
+      s.az36OSet=s.az36FSet=s.az45OSet=s.az45FSet=false;
+      s.az36LinearValid=s.az45LinearValid=s.az36MultiValid=s.az45MultiValid=false;
+      std::fill_n(s.az36CalMv,AZ36_CAL_N,-1);std::fill_n(s.az45CalMv,AZ45_CAL_N,-1);
+    } else {
+      s.elOSet=s.elFSet=s.elLinearValid=s.elMultiValid=false;
+      std::fill_n(s.elCalMv,EL_CAL_N,-1);
+    }
+    s.cal.valid=false;
+  }
+}
+
+float clampf(float v, float lo, float hi);
+float mapCal(int raw, int a, int b, float maxd);
+bool calPointsMonotonic(const int *adc, uint8_t n);
+float mapPiecewise(int raw, const int *adc, const float *deg, uint8_t n);
+class Calibration {
+public:
+  explicit Calibration(Controller &controller) : controller_(controller) {}
+  CalibrationState &state() {
+    return state_;
+  }
+  const CalibrationState &state() const {
+    return state_;
+  }
+  bool activeAzLinearValid() const;
+  bool activeAzMultiValid() const;
+  int activeAz2Zero() const;
+  int activeAz2Full() const;
+  bool activeAzOSet() const;
+  bool activeAzFSet() const;
+  AzRange activeAzRange() const;
+  float mapAz(int millivolts) const;
+  bool configureAz(uint8_t profile, float start, float span);
+  bool editAzPoint(const char *operation, float angle, int millivolts = -1);
+  void captureAzEndpoint(bool full, int millivolts);
+  void resetAz(bool multi);
+  bool writeAzJson(JsonWriter &json) const;
+  bool activeElLinearValid() const;
+  bool activeElMultiValid() const;
+  int activeEl2Zero() const;
+  int activeEl2Full() const;
+  bool activeElOSet() const;
+  bool activeElFSet() const;
+  RotationRange activeElRange() const;
+  float mapEl(int millivolts) const;
+  bool configureEl(uint8_t profile, float start, float span);
+  bool editElPoint(const char *operation, float angle, int millivolts = -1);
+  void captureElEndpoint(bool full, int millivolts);
+  void resetEl(bool multi);
+  bool writeElJson(JsonWriter &json) const;
+  void refreshMultiCalValidity();
+  bool selectedCalibrationValid() const;
+  const char *calibrationModeName() const;
+
+private:
+  Controller &controller_;
+  CalibrationState state_;
+};
+} // namespace forkrot

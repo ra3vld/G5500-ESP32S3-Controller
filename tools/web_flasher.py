@@ -88,7 +88,7 @@ def sha256(path):
 
 def source_digest():
     paths = sorted(p for p in (ROOT / 'G5500_Fork').rglob('*') if p.is_file()
-                   and p.suffix in {'.h', '.hpp', '.cpp', '.c', '.ino', '.csv'}
+                   and p.suffix in {'.h', '.hpp', '.cpp', '.inc', '.c', '.ino', '.csv'}
                    and p.name != 'build_identity.hpp' and not p.name.endswith('.ino.cpp')
                    and 'build' not in p.relative_to(ROOT / 'G5500_Fork').parts)
     paths += [ROOT / name for name in ['platformio.ini',
@@ -191,9 +191,10 @@ def build(profile, pio, jobs):
     # therefore needs its own source directory as well as its own build cache.
     sketch = ROOT / 'build/web-flasher-source' / cache_key / 'G5500_Fork'
     if shared_cache:
-        from build_s2_sdk import copy_changed
+        from build_s2_sdk import copy_changed, sync_source
         shutil.copytree(ROOT / 'G5500_Fork', sketch, dirs_exist_ok=True, copy_function=copy_changed,
                         ignore=shutil.ignore_patterns('*.ino.cpp', 'build_identity.hpp', '__pycache__', 'build'))
+        sync_source(ROOT / 'G5500_Fork/src', sketch / 'src')
     else:
         shutil.rmtree(sketch, ignore_errors=True)
         shutil.copytree(ROOT / 'G5500_Fork', sketch,

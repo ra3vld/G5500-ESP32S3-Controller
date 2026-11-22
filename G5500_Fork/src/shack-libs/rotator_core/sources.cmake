@@ -1,0 +1,12 @@
+set(SHACK_ROTATOR_PLANNER_SOURCES
+    "${CMAKE_CURRENT_LIST_DIR}/ruckig/brake.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/ruckig/position_first_step1.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/ruckig/position_first_step2.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/ruckig/position_second_step1.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/ruckig/position_second_step2.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/ruckig/position_third_step1.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/ruckig/position_third_step2.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/ruckig/velocity_second_step1.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/ruckig/velocity_second_step2.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/ruckig/velocity_third_step1.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/ruckig/velocity_third_step2.cpp")

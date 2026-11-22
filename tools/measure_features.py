@@ -164,7 +164,7 @@ def main():
   if not root.is_relative_to(a.output):p.error('Snapshot must belong to --output')
   previous=json.loads((root/'manifest.json').read_text())
  source=(ROOT/'build/feature-memory/sources'/previous['sourceSha256']/'G5500_Fork') if previous else ROOT/'G5500_Fork'
- paths=[x for x in source.rglob('*') if x.is_file() and x.suffix in {'.ino','.cpp','.hpp','.h','.c','.csv'} and not x.name.endswith('.ino.cpp')]
+ paths=[x for x in source.rglob('*') if x.is_file() and x.suffix in {'.ino','.cpp', '.inc','.hpp','.h','.c','.csv'} and not x.name.endswith('.ino.cpp')]
  if previous and (not paths or digest(paths,source.parent)!=previous['sourceSha256']):
   p.error('Frozen snapshot is missing or modified; do not mix measurements from different sources')
  source_hash=previous['sourceSha256'] if previous else digest(paths)
@@ -190,7 +190,7 @@ def main():
    if not library.is_dir():continue
    h=hashlib.sha256()
    for file in sorted(library.rglob('*')):
-    if file.is_file() and (file.suffix in {'.h','.hpp','.c','.cpp','.S'} or file.name in {'library.json','library.properties'}):
+    if file.is_file() and (file.suffix in {'.h','.hpp','.c','.cpp', '.inc','.S'} or file.name in {'library.json','library.properties'}):
      h.update(str(file.relative_to(library)).encode()+b'\0'+file.read_bytes())
    library_fingerprint.append([library.name,h.hexdigest()])
  results=[]

@@ -1,5 +1,5 @@
 #include "control.hpp"
-#include "src/ruckig/ruckig.hpp"
+#include "../G5500_Fork/src/shack-libs/rotator_core/ruckig/ruckig.hpp"
 #include <cassert>
 #include <cmath>
 #include <iostream>

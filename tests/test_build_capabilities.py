@@ -53,6 +53,8 @@ class BuildCapabilitiesTests(unittest.TestCase):
             flash = '8MB'
             defines = []
             def subst(self, key):
+                if key == '$PIOENV':
+                    return 'esp32_8mb'
                 return str(ROOT if key == '$PROJECT_DIR' else ROOT/'G5500_Fork')
             def BoardConfig(self):
                 return {'upload.flash_size': '4MB', 'build.partitions': 'unused.csv'}
@@ -66,7 +68,8 @@ class BuildCapabilitiesTests(unittest.TestCase):
         env = Environment()
         with patch('subprocess.run'):
             runpy.run_path(str(ROOT/'tools/platformio_version.py'), init_globals={'env': env, 'Import': lambda _: None})
-        self.assertEqual(dict(env.values['CPPDEFINES']), {'G5500_BUILD_FLASH_BYTES': 8 << 20, 'G5500_HAS_OTA_PARTITIONS': 1})
+        self.assertEqual(dict(env.values['CPPDEFINES']), {'G5500_BUILD_FLASH_BYTES': 8 << 20, 'G5500_HAS_OTA_PARTITIONS': 1,
+                          'G5500_OTA_PROFILE': '\\"esp32_8mb\\"'})
         env.partition = 'G5500_Fork/partitions_esp32.csv'
         env.flash = '4MB'
         with patch('subprocess.run'):

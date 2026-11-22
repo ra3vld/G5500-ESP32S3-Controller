@@ -32,7 +32,7 @@ sh tools/build_ruckig_native.sh
 sh tools/test_st7796.sh
 sh tools/test_setup_motion.sh
 sh tools/test_motion_rates.sh
-${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork/src/ruckig tests/ruckig_workspace_tests.cpp build/motion/libruckig.a -o build/ruckig_workspace_tests
+${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork/src/shack-libs/rotator_core/ruckig tests/ruckig_workspace_tests.cpp build/motion/libruckig.a -o build/ruckig_workspace_tests
 ./build/ruckig_workspace_tests
 ${CXX:-g++} -std=c++17 -Wall -Wextra -Werror -O2 -I G5500_Fork tests/socket_write_tests.cpp -o build/socket_write_tests
 ./build/socket_write_tests

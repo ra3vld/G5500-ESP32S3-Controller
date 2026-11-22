@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import time
 from project_version import generate
+from build_s2_sdk import sync_source
 from build_capabilities import partition_capabilities
 ROOT=Path(__file__).resolve().parents[1]
 PINNED_PLATFORM='https://github.com/pioarduino/platform-espressif32/releases/download/55.03.312-1/platform-espressif32.zip'
@@ -45,11 +46,25 @@ for name in (['arduino','platformio'] if a.tool=='all' else [a.tool]):
     locks.append(handle)
 source=ROOT/'G5500_Fork'
 generate(ROOT)
-source_hash=hashlib.sha256(b''.join(f.name.encode()+f.read_bytes() for f in sorted(source.iterdir()) if f.suffix in {'.ino','.c','.cpp','.hpp','.h','.csv'} and not f.name.endswith('.ino.cpp'))).hexdigest()
-frozen=ROOT/'build/matrix/sources'/source_hash/a.tool/'G5500_Fork'
-frozen.mkdir(parents=True,exist_ok=True)
-for f in source.iterdir():
-    if f.suffix in {'.ino','.c','.cpp','.hpp','.h','.csv'} and not f.name.endswith('.ino.cpp'): shutil.copy2(f,frozen/f.name)
+source_files = [
+    path for path in sorted(source.rglob('*'))
+    if path.is_file() and (path.suffix in {'.ino', '.c', '.cpp', '.hpp', '.h', '.inc', '.csv'}
+                           or path.name in {'LICENSE', 'REVISION', 'UPSTREAM.md'})
+    and not path.name.endswith('.ino.cpp')
+]
+source_hash = hashlib.sha256(b''.join(
+    file.relative_to(source).as_posix().encode() + b'\0' + file.read_bytes()
+    for file in source_files
+)).hexdigest()
+frozen = ROOT / 'build/matrix/sources' / source_hash / a.tool / 'G5500_Fork'
+def copy_sketch(origin, target):
+    target.mkdir(parents=True, exist_ok=True)
+    for file in origin.iterdir():
+        if file.is_file() and file.suffix in {'.ino', '.c', '.cpp', '.hpp', '.h', '.csv'} and not file.name.endswith('.ino.cpp'):
+            shutil.copy2(file, target / file.name)
+    sync_source(origin / 'src', target / 'src')
+
+copy_sketch(source, frozen)
 source=frozen
 combinations=[case for case in itertools.product(a.boards,range(3),range(2),range(3)) if case[0]!='wt32-eth01' or case[1]==0]
 if a.select=='lcd': combinations=[case for case in combinations if case[1]==2]
@@ -69,8 +84,7 @@ def build(tool,board,display,bt,drive):
     if not capabilities['G5500_HAS_OTA_PARTITIONS']: flags += ' -DARDUINO_OTA_SUPPORT=0'
     if tool=='arduino':
         sketch=work/'G5500_Fork';sketch.mkdir(exist_ok=True)
-        for f in source.iterdir():
-            if f.suffix in {'.ino','.c','.cpp','.hpp','.h'} and not f.name.endswith('.ino.cpp'): shutil.copy2(f,sketch/f.name)
+        copy_sketch(source, sketch)
         shutil.copy2(source/partition_file,sketch/'partitions.csv')
         fqbn=f'{a.arduino_vendor}:esp32:'+('esp32s3:FlashSize=16M,PSRAM=opi,PartitionScheme=custom,USBMode=hwcdc,CDCOnBoot=cdc,FlashMode=qio' if board=='s3' else 'wt32-eth01:FlashFreq=40,PartitionScheme=huge_app' if board=='wt32-eth01' else 'lolin_s2_mini:CDCOnBoot=default' if board=='s2-mini' else 'esp32:FlashSize=4M,PSRAM=disabled,PartitionScheme=huge_app,FlashMode=dio,FlashFreq=40,DebugLevel=none' if board in ('esp32','wt32-eth01') else 'esp32s2:FlashSize=4M,PSRAM=disabled,PartitionScheme=min_spiffs,CDCOnBoot=cdc,UploadMode=cdc')
         cmd=[a.arduino_cli]
@@ -83,8 +97,7 @@ def build(tool,board,display,bt,drive):
         binary=work/'output/G5500_Fork.ino.bin'
     else:
         snapshot=work/'G5500_Fork';snapshot.mkdir(exist_ok=True)
-        for f in source.iterdir():
-            if f.suffix in {'.ino','.c','.cpp','.hpp','.h','.csv'} and not f.name.endswith('.ino.cpp'): shutil.copy2(f,snapshot/f.name)
+        copy_sketch(source, snapshot)
         config=work/'platformio.ini'
         extra='-DBOARD_HAS_PSRAM -DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=1' if board=='s3' else '-DARDUINO_USB_MODE=0 -DARDUINO_USB_CDC_ON_BOOT='+('0' if board in ('esp32','wt32-eth01') else '1')+(' -DBOARD_HAS_PSRAM' if board=='s2-mini' else '')
         memory='board_build.arduino.memory_type = qio_opi\nboard_build.psram_type = opi\n' if board=='s3' else ''

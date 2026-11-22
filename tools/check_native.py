@@ -114,7 +114,7 @@ def prepare_build(root, selected, compiler):
             flags = ['-std=c++17', '-O2', '-Wall', '-Wextra',
                      '-Wno-unused-parameter', '-Wno-array-bounds']
             members = [compile_object(str(source.relative_to(root)), flags)
-                       for source in sorted((root / 'G5500_Fork/src/ruckig').glob('*.cpp'))]
+                       for source in sorted((root / 'G5500_Fork/src/shack-libs/rotator_core/ruckig').glob('*.cpp'))]
             library = cache / 'lib' / digest([identity, flags]) / 'libruckig.a'
             library.parent.mkdir(parents=True, exist_ok=True)
             rules.extend([

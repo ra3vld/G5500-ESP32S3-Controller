@@ -1,0 +1,49 @@
+// G5500 Fork; original by UA1CFM. GPL-3.0.
+#pragma once
+#include "control.hpp"
+#include <string_view>
+namespace forkrot {
+struct Packet {
+  Result result = Result::Invalid;
+  bool matched = false;
+  std::string reply;
+};
+struct ManualFollowSettings {
+  bool n1mm = false, pst = false, gs232 = false, rotctld = false;
+};
+enum class ExternalAzMode { Shortest, Mechanical };
+class Protocol {
+  Controller &controller_;
+  float pstBaseAzimuth_ = 0;
+  bool pstBaseValid_ = false, longPath_ = false;
+  FixedVector<Target, 16> loadedSequence_;
+  uint32_t loadedIntervalMs_ = 1000;
+  uint32_t loadedStopEpoch_ = 0;
+  bool loadedSequenceStarted_ = false;
+  float externalAzimuth(float angle, bool bidirectional = false) const;
+  float lineAzimuth(float angle) const;
+
+public:
+  std::string rotorName = "G5500";
+  ManualFollowSettings manualFollow;
+  ExternalAzMode externalAzMode = ExternalAzMode::Shortest;
+  explicit Protocol(Controller &c) : controller_(c) {}
+  void setExternalAzMode(ExternalAzMode mode) {
+    if (externalAzMode != mode) resetPst();
+    externalAzMode = mode;
+  }
+  std::string positionReport(float mechanicalAz) const;
+  Packet datagram(std::string_view input, uint32_t now);
+  Packet line(std::string_view input, uint32_t now, bool tcp = false);
+  void resetSession() {
+    resetPst();
+    loadedSequence_.clear();
+    loadedSequenceStarted_ = false;
+    loadedStopEpoch_ = controller_.stopEpoch;
+  }
+  void resetPst() {
+    pstBaseValid_ = false;
+    longPath_ = false;
+  }
+};
+} // namespace forkrot
